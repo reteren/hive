@@ -2,11 +2,19 @@ import type { Point } from "../board/cameraMath";
 import type { Link, LinkAnchor } from "../model/link";
 import { isFrameAnchor } from "../links/anchors";
 import { newId } from "../model/note";
-import type { Note, NoteKind } from "../model/note";
+import {
+  IMPORTANCE_LEVELS,
+  PURPOSE_KINDS,
+  type ImportanceLevel,
+  type Note,
+  type NoteKind,
+  type PurposeKind,
+  type TaskState,
+} from "../model/note";
 import { uniqueName } from "../notes/naming";
 
 export const HIVE_CLIPBOARD_MARKER = "hive/nodes";
-export const HIVE_CLIPBOARD_VERSION = 1;
+export const HIVE_CLIPBOARD_VERSION = 2;
 export const HIVE_CLIPBOARD_MIME = "application/x-hive-nodes+json";
 export const HIVE_CLIPBOARD_WEB_MIME = `web ${HIVE_CLIPBOARD_MIME}`;
 export const FALLBACK_PASTE_OFFSET: Point = { x: 2, y: 2 };
@@ -22,6 +30,10 @@ export interface ClipboardNode {
   width: number;
   height: number | null;
   createdAt?: number;
+  task: TaskState | null;
+  taskMemory: TaskState | null;
+  importance: ImportanceLevel | null;
+  purposes: PurposeKind[];
 }
 
 export interface ClipboardLink {
@@ -53,7 +65,9 @@ export function serializeNotes(notes: readonly Note[], links: readonly Clipboard
   const payload: HiveClipboardPayload = {
     marker: HIVE_CLIPBOARD_MARKER,
     version: HIVE_CLIPBOARD_VERSION,
-    nodes: notes.map(({ id, type, name, text, x, y, width, height, createdAt }) => ({
+    nodes: notes.map(({
+      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, importance, purposes,
+    }) => ({
       sourceId: id,
       type,
       name,
@@ -63,6 +77,10 @@ export function serializeNotes(notes: readonly Note[], links: readonly Clipboard
       width,
       height,
       createdAt,
+      task: task ? { ...task } : null,
+      taskMemory: taskMemory ? { ...taskMemory } : null,
+      importance: importance ?? null,
+      purposes: [...new Set(purposes ?? [])],
     })),
     links: links.flatMap((link) => noteIds.has(link.from) && noteIds.has(link.to)
       ? [{
@@ -87,7 +105,8 @@ export function parseNotesPayload(serialized: string): HiveClipboardPayload | nu
     return null;
   }
 
-  if (!isRecord(value) || value.marker !== HIVE_CLIPBOARD_MARKER || value.version !== HIVE_CLIPBOARD_VERSION) {
+  if (!isRecord(value) || value.marker !== HIVE_CLIPBOARD_MARKER ||
+    (value.version !== 1 && value.version !== HIVE_CLIPBOARD_VERSION)) {
     return null;
   }
   if (!Array.isArray(value.nodes) || value.nodes.length === 0 || value.nodes.length > 10_000) return null;
@@ -96,20 +115,10 @@ export function parseNotesPayload(serialized: string): HiveClipboardPayload | nu
   const ids = new Set<string>();
   const nodes: ClipboardNode[] = [];
   for (const candidate of value.nodes) {
-    if (!isClipboardNode(candidate)) return null;
-    if (ids.has(candidate.sourceId)) return null;
-    ids.add(candidate.sourceId);
-    nodes.push({
-      sourceId: candidate.sourceId,
-      type: candidate.type,
-      name: candidate.name,
-      text: candidate.text,
-      x: candidate.x,
-      y: candidate.y,
-      width: candidate.width,
-      height: candidate.height,
-      ...(candidate.createdAt === undefined ? {} : { createdAt: candidate.createdAt }),
-    });
+    const node = parseClipboardNode(candidate);
+    if (!node || ids.has(node.sourceId)) return null;
+    ids.add(node.sourceId);
+    nodes.push(node);
   }
 
   const links: ClipboardLink[] = [];
@@ -136,6 +145,15 @@ export function parseNotesPayload(serialized: string): HiveClipboardPayload | nu
     version: HIVE_CLIPBOARD_VERSION,
     nodes,
     links,
+  };
+}
+
+/** Completion and remembered state belong to the source note; pasted copies start clean. */
+export function taskFieldsForPaste(note: Pick<Note, "task" | "taskMemory">): Pick<Note, "task" | "taskMemory"> {
+  const task = note.task;
+  return {
+    task: task ? (task.done ? { done: false, doneAt: null } : { ...task }) : null,
+    taskMemory: null,
   };
 }
 
@@ -196,17 +214,66 @@ export function placeNotes<T extends NoteGeometry>(
   return notes.map((note) => ({ ...note, x: note.x + deltaX, y: note.y + deltaY }));
 }
 
-function isClipboardNode(value: unknown): value is ClipboardNode {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value.sourceId === "string" && value.sourceId.trim().length > 0 &&
-    (value.type === "note" || value.type === "pro" || value.type === "con") &&
-    typeof value.name === "string" &&
-    typeof value.text === "string" &&
-    finite(value.x) && finite(value.y) && finite(value.width) && value.width > 0 &&
-    (value.height === null || (finite(value.height) && value.height > 0)) &&
-    (value.createdAt === undefined || (finite(value.createdAt) && value.createdAt >= 0))
-  );
+function parseClipboardNode(value: unknown): ClipboardNode | null {
+  if (!isRecord(value) || typeof value.sourceId !== "string" || value.sourceId.trim().length === 0 ||
+    (value.type !== "note" && value.type !== "pro" && value.type !== "con" &&
+      value.type !== "importance" && value.type !== "purpose") ||
+    typeof value.name !== "string" || typeof value.text !== "string" ||
+    !finite(value.x) || !finite(value.y) || !finite(value.width) || value.width <= 0 ||
+    !(value.height === null || (finite(value.height) && value.height > 0)) ||
+    (value.createdAt !== undefined && (!finite(value.createdAt) || value.createdAt < 0))) return null;
+
+  const task = parseTaskState(value.task);
+  if (value.task !== undefined && value.task !== null && !task) return null;
+  const taskMemory = parseTaskState(value.taskMemory);
+  if (value.taskMemory !== undefined && value.taskMemory !== null && !taskMemory) return null;
+  const importance = parseImportance(value.importance);
+  if (value.importance !== undefined && value.importance !== null && !importance) return null;
+  const purposes = parsePurposes(value.purposes);
+  if (!purposes) return null;
+
+  return {
+    sourceId: value.sourceId,
+    type: value.type,
+    name: value.name,
+    text: value.text,
+    x: value.x,
+    y: value.y,
+    width: value.width,
+    height: value.height,
+    ...(value.createdAt === undefined ? {} : { createdAt: value.createdAt }),
+    task,
+    taskMemory,
+    importance,
+    purposes,
+  };
+}
+
+function parseTaskState(value: unknown): TaskState | null {
+  if (value === undefined || value === null) return null;
+  if (!isRecord(value) || typeof value.done !== "boolean") return null;
+  if (value.done) {
+    return finite(value.doneAt) && value.doneAt >= 0 ? { done: true, doneAt: value.doneAt } : null;
+  }
+  return value.doneAt === null ? { done: false, doneAt: null } : null;
+}
+
+function parseImportance(value: unknown): ImportanceLevel | null {
+  return typeof value === "string" && IMPORTANCE_LEVELS.includes(value as ImportanceLevel)
+    ? value as ImportanceLevel
+    : null;
+}
+
+function parsePurposes(value: unknown): PurposeKind[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return null;
+  const purposes: PurposeKind[] = [];
+  for (const candidate of value) {
+    if (typeof candidate !== "string" || !PURPOSE_KINDS.includes(candidate as PurposeKind)) return null;
+    const purpose = candidate as PurposeKind;
+    if (!purposes.includes(purpose)) purposes.push(purpose);
+  }
+  return purposes;
 }
 
 function isClipboardLink(value: unknown): value is ClipboardLink {

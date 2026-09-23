@@ -1,4 +1,9 @@
 import { ChangeSet, EditorSelection, type Text } from "@codemirror/state";
+import {
+  applyTextEditEffects,
+  mergeTextEditEffects,
+  type TextEditEffect,
+} from "../transfer/textEditHooks";
 
 export type TextEditKind = "typing" | "backspace" | "forward-delete" | "atomic";
 
@@ -14,6 +19,8 @@ export interface TextEditRecord {
   kind: TextEditKind;
   at: number;
   group: number;
+  /** Changes to dependent nodes that share this edit's Undo/Redo boundary. */
+  transferEffects?: TextEditEffect[];
 }
 
 const MERGE_WINDOW_MS = 1000;
@@ -29,11 +36,24 @@ export function createTextEditRecord(input: Omit<TextEditRecord, "inverse">): Te
   return { ...input, inverse: input.forward.invert(input.before) };
 }
 
+/** Replay a source edit and its dependent node changes as one Undo/Redo transition. */
+export function replayTextEditRecord(
+  edit: TextEditRecord,
+  direction: "undo" | "redo",
+  applySourceText: (text: string) => void,
+): void {
+  applySourceText((direction === "redo" ? edit.after : edit.before).toString());
+  applyTextEditEffects(edit.transferEffects ?? [], direction);
+}
+
 export function mergeTextEditRecords(
   previous: TextEditRecord,
   next: TextEditRecord,
 ): TextEditRecord | null {
   if (!canMergeTextEditRecords(previous, next)) return null;
+
+  const transferEffects = mergeTextEditEffects(previous.transferEffects ?? [], next.transferEffects ?? []);
+  if (!transferEffects) return null;
 
   const forward = previous.forward.compose(next.forward);
   return {
@@ -43,6 +63,7 @@ export function mergeTextEditRecords(
     inverse: forward.invert(previous.before),
     selectionAfter: next.selectionAfter,
     at: next.at,
+    transferEffects,
   };
 }
 

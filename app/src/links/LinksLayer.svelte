@@ -4,7 +4,7 @@
   import { PX_PER_UNIT, screenToWorld, type Point } from "../board/cameraMath";
   import { isTextEditingTarget } from "../commands/focus";
   import { board } from "../model/board.svelte";
-  import { links, canLink } from "../model/links.svelte";
+  import { links, canLink, linkRefusalReason } from "../model/links.svelte";
   import { ME_OBJECT_ID, type Link, type LinkAnchor } from "../model/link";
   import { newId } from "../model/note";
   import { noteBounds, type Bounds } from "../notes/layout.svelte";
@@ -323,8 +323,10 @@
         lineInteraction.sourceAnchor = fromAnchor ?? null;
         return false;
       }
-      if (!canLink(fromId, toId)) {
-        setLineError("These objects already have a link", point);
+      const kind = tool.active === "line-weak" ? "weak" : "strong";
+      const refusal = linkRefusalReason(fromId, toId, kind);
+      if (refusal || !canLink(fromId, toId, kind)) {
+        setLineError(refusal ?? "Could not create link", point);
         lineInteraction.sourceId = fromId;
         lineInteraction.sourceAnchor = fromAnchor ?? null;
         return false;
@@ -333,7 +335,7 @@
         id: newId(),
         from: fromId,
         to: toId,
-        kind: tool.active === "line-weak" ? "weak" : "strong",
+        kind,
         shape: tool.lineShape,
         ...(fromAnchor ? { fromAnchor } : {}),
         ...(toAnchor ? { toAnchor } : {}),

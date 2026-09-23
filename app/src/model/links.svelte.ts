@@ -1,5 +1,6 @@
 import { pairKey, type Link } from "./link";
-import { canCreateLinkPair } from "../links/rules";
+import { canCreateLinkPair, linkRefusalReason as getLinkRefusalReason } from "../links/rules";
+import { tool } from "../tools/tool.svelte";
 
 /**
  * Links of the open board. Raw mutations like board.svelte.ts: user-facing changes go
@@ -15,8 +16,12 @@ export function linkBetween(a: string, b: string): Link | undefined {
 }
 
 /** Whether a new link between a and b is allowed (no self-link, one link per pair). */
-export function canLink(a: string, b: string): boolean {
-  return canCreateLinkPair(a, b, Object.values(links.byId));
+export function canLink(a: string, b: string, kind: Link["kind"] = activeLinkKind()): boolean {
+  return canCreateLinkPair(a, b, Object.values(links.byId), kind);
+}
+
+export function linkRefusalReason(a: string, b: string, kind: Link["kind"] = activeLinkKind()): string | null {
+  return getLinkRefusalReason(a, b, kind, Object.values(links.byId));
 }
 
 export function addLink(link: Link): void {
@@ -41,4 +46,8 @@ export function linksOf(objectId: string): Link[] {
 
 export function replaceLinks(next: Link[]): void {
   links.byId = Object.fromEntries(next.map((link) => [link.id, link]));
+}
+
+function activeLinkKind(): Link["kind"] {
+  return tool.active === "line-weak" ? "weak" : "strong";
 }

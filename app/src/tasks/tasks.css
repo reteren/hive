@@ -1,0 +1,15 @@
+/* Keep task affordances vector-based so they remain sharp with the board zoom. */
+.note-card[data-task="open"] .note-header,
+.note-card[data-task="done"] .note-header {
+  gap: 5px;
+}
+
+.note-card[data-task="done"] .note-name {
+  color: var(--text-dim);
+  text-decoration: line-through;
+  text-decoration-color: #a0a0a0;
+}
+
+.note-card[data-task="done"] .note-content {
+  opacity: 0.72;
+}

@@ -9,6 +9,7 @@ import {
   placeNotes,
   remapClipboardLinks,
   serializeNotes,
+  taskFieldsForPaste,
   uniqueCopyNames,
 } from "../src/clipboard/payload";
 
@@ -63,7 +64,7 @@ describe("clipboard payload", () => {
   it("rejects malformed, unknown, duplicate-id, and invalid-geometry payloads", () => {
     expect(parseNotesPayload("{")).toBeNull();
     expect(parseNotesPayload(JSON.stringify({ marker: "other", version: 1, nodes: [], links: [] }))).toBeNull();
-    expect(parseNotesPayload(JSON.stringify({ marker: HIVE_CLIPBOARD_MARKER, version: 2, nodes: [], links: [] }))).toBeNull();
+    expect(parseNotesPayload(JSON.stringify({ marker: HIVE_CLIPBOARD_MARKER, version: 3, nodes: [], links: [] }))).toBeNull();
 
     const valid = JSON.parse(serializeNotes([noteA]));
     expect(parseNotesPayload(JSON.stringify({ ...valid, nodes: [valid.nodes[0], valid.nodes[0]] }))).toBeNull();
@@ -92,6 +93,55 @@ describe("clipboard payload", () => {
     expect(copied).toEqual([{
       id: "new-link", from: "copy-a", to: "copy-b", kind: "strong", shape: "zigzag", fromAnchor: { x: 1, y: 0.5 },
     }]);
+  });
+
+  it("round trips R3 fields and pastes completed tasks as open", () => {
+    const source: Note = {
+      ...noteA,
+      id: "pro-note",
+      type: "pro",
+      task: { done: true, doneAt: 1_700_000_000_000 },
+      taskMemory: { done: false, doneAt: null },
+      importance: "absolute",
+      purposes: ["concept", "decision", "concept"],
+    };
+    const parsed = parseNotesPayload(serializeNotes([source]));
+
+    expect(parsed?.version).toBe(2);
+    expect(parsed?.nodes[0]).toMatchObject({
+      type: "pro",
+      task: { done: true, doneAt: 1_700_000_000_000 },
+      importance: "absolute",
+      purposes: ["concept", "decision"],
+    });
+    expect(parsed?.nodes[0].taskMemory).toEqual({ done: false, doneAt: null });
+    expect(taskFieldsForPaste(parsed!.nodes[0])).toEqual({
+      task: { done: false, doneAt: null }, taskMemory: null,
+    });
+    expect(taskFieldsForPaste({ task: { done: false, doneAt: null }, taskMemory: { done: true, doneAt: 99 } })).toEqual({
+      task: { done: false, doneAt: null }, taskMemory: null,
+    });
+    expect(taskFieldsForPaste({ task: null, taskMemory: null })).toEqual({ task: null, taskMemory: null });
+  });
+
+  it("reads v1 clipboard data with default R3 fields", () => {
+    const current = JSON.parse(serializeNotes([noteA])) as Record<string, unknown>;
+    const nodes = current.nodes as Array<Record<string, unknown>>;
+    const legacyNodes = nodes.map(({ task: _task, importance: _importance, purposes: _purposes, ...node }) => node);
+    const parsed = parseNotesPayload(JSON.stringify({ ...current, version: 1, nodes: legacyNodes }));
+
+    expect(parsed?.nodes[0]).toMatchObject({
+      type: "note", task: null, taskMemory: null, importance: null, purposes: [],
+    });
+  });
+
+  it("round trips standalone Importance and Purpose node kinds", () => {
+    const parsed = parseNotesPayload(serializeNotes([
+      { ...noteA, id: "importance-1", type: "importance", importance: "important" },
+      { ...noteB, id: "purpose-1", type: "purpose", purposes: ["quote"] },
+    ]));
+
+    expect(parsed?.nodes.map((node) => node.type)).toEqual(["importance", "purpose"]);
   });
 });
 

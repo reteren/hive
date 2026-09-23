@@ -20,6 +20,7 @@
   import SequentialRename from "./notes/SequentialRename.svelte";
   import SearchPanel from "./search/SearchPanel.svelte";
   import ObjectsPanel from "./navigation/ObjectsPanel.svelte";
+  import TransferNotice from "./transfer/TransferNotice.svelte";
   import { display } from "./settings/display.svelte";
 
   let undoLogCommand = $derived(getCommand("ui.toggleUndoLog"));
@@ -36,6 +37,7 @@
     <SequentialRename />
     <SearchPanel />
     <ObjectsPanel />
+    <TransferNotice />
     <div class="upper-controls">
       <CommandButton commandId="ui.commandSearch" />
       <button

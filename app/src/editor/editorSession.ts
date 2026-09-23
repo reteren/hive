@@ -1,4 +1,5 @@
 import type { EditorView } from "@codemirror/view";
+import { board } from "../model/board.svelte";
 import { editing } from "../notes/editing.svelte";
 
 export interface ScreenPoint {
@@ -11,6 +12,9 @@ let activeEditor: { noteId: string; view: EditorView } | null = null;
 const destroyedEditors = new WeakSet<EditorView>();
 
 export function startNoteEditing(noteId: string, point: ScreenPoint): void {
+  // Standalone Importance/Purpose modules have no text to edit (R3.6).
+  const type = board.notes[noteId]?.type;
+  if (type === "importance" || type === "purpose") return;
   if (editing.noteId === noteId) {
     pendingClick = null;
     return;

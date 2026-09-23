@@ -6,6 +6,7 @@ import { replaceBoard, board, updateNote } from "../model/board.svelte";
 import { links, replaceLinks } from "../model/links.svelte";
 import type { Link } from "../model/link";
 import type { Note } from "../model/note";
+import { taskLog, type TaskLogEntry } from "../tasks/taskLog.svelte";
 import { clear as clearHistory, execute } from "../history/history.svelte";
 import { clearSelection } from "../selection/selection.svelte";
 import { clearSelectedLink } from "../links/selection.svelte";
@@ -47,6 +48,7 @@ interface ProjectSnapshot {
   indexJson: string;
   notes: Note[];
   links: Link[];
+  taskLog: TaskLogEntry[];
 }
 
 interface ChangedFile {
@@ -134,6 +136,8 @@ function applyProject(loaded: ProjectLoad): void {
   const { index: parsedIndex, warnings: indexWarnings } = parseProjectIndexWithWarnings(loaded.indexJson);
   const notes = mergeLoadedNotes(parsedIndex, loaded.notes);
   const missingFiles = new Set(loaded.missingFiles ?? []);
+  const normalizedIndex = serializeProjectIndex(notes, parsedIndex, parsedIndex.links, parsedIndex.taskLog);
+  const sourceVersion = JSON.parse(loaded.indexJson) as { version?: unknown };
 
   // A different project must not inherit the previous one's editor, selection or Undo steps.
   resetProjectScopedState();
@@ -152,7 +156,10 @@ function applyProject(loaded: ProjectLoad): void {
     loaded.notes.filter((note) => missingFiles.has(note.file)).map((note) => note.id),
   );
   externalDeleteWarnings = new Map();
-  lastSavedIndex = serializeProjectIndex(notes, parsedIndex, parsedIndex.links);
+  lastSavedIndex = sourceVersion.version === 2 && indexWarnings.length === 0
+    ? normalizedIndex
+    : loaded.indexJson;
+  taskLog.entries = parsedIndex.taskLog.map((entry) => ({ ...entry }));
   project.path = loaded.path;
   project.name = loaded.name;
   project.error = "";
@@ -180,10 +187,12 @@ function makeSnapshot(): ProjectSnapshot {
     return note ? [{ ...note }] : [];
   });
   const currentLinks = Object.values(links.byId).map((link) => ({ ...link }));
+  const currentTaskLog = taskLog.entries.map((entry) => ({ ...entry }));
   return {
-    indexJson: serializeProjectIndex(notes, indexTemplate, currentLinks),
+    indexJson: serializeProjectIndex(notes, indexTemplate, currentLinks, currentTaskLog),
     notes,
     links: currentLinks,
+    taskLog: currentTaskLog,
   };
 }
 

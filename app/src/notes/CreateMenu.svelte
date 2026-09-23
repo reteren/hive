@@ -1,17 +1,27 @@
 <script lang="ts">
   import { viewport } from "../board/camera.svelte";
-  import { createNote } from "./noteCommands";
+  import { createNote, createNoteKind } from "./noteCommands";
   import { createMenuPosition } from "./creationPosition";
   import { creationMenu, closeCreationMenu } from "./creation.svelte";
 
   const menuPosition = $derived(createMenuPosition(
     creationMenu.screenAnchor,
     viewport,
-    { width: 164, height: 74 },
+    { width: 164, height: 202 },
   ));
 
   function createNoteFromMenu(): void {
     createNote();
+    if (!creationMenu.pinned) closeCreationMenu();
+  }
+
+  function createMiniNodeFromMenu(kind: "pro" | "con"): void {
+    createNoteKind(kind);
+    if (!creationMenu.pinned) closeCreationMenu();
+  }
+
+  function createModuleFromMenu(kind: "importance" | "purpose"): void {
+    createNoteKind(kind);
     if (!creationMenu.pinned) closeCreationMenu();
   }
 </script>
@@ -57,6 +67,24 @@
       <button class="create-item" type="button" onclick={createNoteFromMenu}>
         <span class="note-icon" aria-hidden="true"></span>
         <span>Note</span>
+      </button>
+      <button class="create-item" type="button" onclick={() => createMiniNodeFromMenu("pro")}>
+        <span class="kind-icon plus-icon" aria-hidden="true">+</span>
+        <span>Plus</span>
+      </button>
+      <button class="create-item" type="button" onclick={() => createMiniNodeFromMenu("con")}>
+        <span class="kind-icon minus-icon" aria-hidden="true">−</span>
+        <span>Minus</span>
+      </button>
+      <button class="create-item" type="button" onclick={() => createModuleFromMenu("importance")}>
+        <span class="module-icon importance-icon" aria-hidden="true"></span>
+        <span>Importance</span>
+      </button>
+      <button class="create-item" type="button" onclick={() => createModuleFromMenu("purpose")}>
+        <span class="module-icon purpose-icon" aria-hidden="true">
+          <svg viewBox="0 0 16 16"><path d="M8 2.5 13.5 8 8 13.5 2.5 8zM8 5v6M5 8h6" /></svg>
+        </span>
+        <span>Purpose</span>
       </button>
     </div>
   </aside>
@@ -156,5 +184,59 @@
     border: 1px solid #929292;
     border-radius: 2px;
     box-shadow: inset 0 -3px 0 #303030;
+  }
+
+  .kind-icon {
+    display: grid;
+    width: 15px;
+    height: 15px;
+    place-items: center;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .plus-icon {
+    color: #83c38f;
+    background: #263b2d;
+  }
+
+  .minus-icon {
+    color: #dc8884;
+    background: #3b2928;
+  }
+
+  .module-icon {
+    display: grid;
+    width: 15px;
+    height: 15px;
+    flex: 0 0 auto;
+    place-items: center;
+  }
+
+  .importance-icon {
+    width: 9px;
+    height: 9px;
+    margin-inline: 3px;
+    border: 1px solid #eee;
+    border-radius: 50%;
+    background: #d6d6d6;
+    box-shadow: 0 0 5px rgb(214 214 214 / 35%);
+  }
+
+  .purpose-icon {
+    color: #70b5a1;
+  }
+
+  .purpose-icon svg {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.4;
   }
 </style>

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { noteMenuItems, registerNoteMenuItem } from "./noteMenu";
+  import "../tasks/taskActions.svelte";
   import { onMount } from "svelte";
   import type { Action } from "svelte/action";
   import { board } from "../model/board.svelte";
@@ -10,6 +12,19 @@
   import { closeCreationMenu, creationMenu, markCreationMenuToolbarTrigger } from "./creation.svelte";
   import { closeLinkContextMenu, linkContext } from "../links-in-text/contextMenu.svelte";
   import { formatPointAddress } from "../links-in-text/format";
+  import TasksPanel from "../tasks/TasksPanel.svelte";
+
+  registerNoteMenuItem({
+    id: "notes.copyLink",
+    label: () => "Copy link to note",
+    run: (noteId) => { void copyNoteLink(noteId); },
+    order: 10,
+  });
+
+  let activeNoteMenuItems = $derived.by(() => {
+    const menu = linkContext.menu;
+    return menu?.kind === "note" ? noteMenuItems(menu.noteId) : [];
+  });
 
   onMount(() => {
     const boardElement = document.querySelector<HTMLElement>(".board");
@@ -19,26 +34,25 @@
       const target = event.target instanceof Element ? event.target : null;
       if (!target || !target.closest(".board") || target.closest("[data-selection-ignore], [data-create-menu]")) return;
 
-      const header = target.closest<HTMLElement>("[data-note-header]");
-      const noteId = header?.closest<HTMLElement>("[data-note-id]")?.dataset.noteId;
+      const noteRoot = target.closest<HTMLElement>("[data-note-id]");
+      const noteId = noteRoot?.dataset.noteId;
       const rect = boardElement!.getBoundingClientRect();
       const local = { x: event.clientX - rect.left, y: event.clientY - rect.top };
       const point = screenToWorld(camera, viewport, local);
-      if (header && noteId) {
+      if (noteRoot && noteId) {
         event.preventDefault();
         event.stopPropagation();
+        const menuHeight = Math.max(44, noteMenuItems(noteId).length * 32 + 8);
         linkContext.menu = {
           kind: "note",
           noteId,
           x: clampMenuPosition(local.x, viewport.width, 196),
-          y: clampMenuPosition(local.y, viewport.height, 44),
+          y: clampMenuPosition(local.y, viewport.height, menuHeight),
         };
         linkContext.commandNoteId = noteId;
         linkContext.commandPoint = point;
         return;
       }
-
-      if (target.closest("[data-note-id]")) return;
 
       event.preventDefault();
       event.stopPropagation();
@@ -145,6 +159,8 @@
     {/each}
   </div>
 
+  <TasksPanel />
+
   {#if linkContext.menu}
     <div
       class="link-context-menu"
@@ -170,15 +186,17 @@
         >Copy coordinates ({coordinateLabel(point)})</button>
       {:else}
         {@const noteId = linkContext.menu.noteId}
-        <button
-          type="button"
-          role="menuitem"
-          onclick={(event) => {
-            event.stopPropagation();
-            void copyNoteLink(noteId);
-            closeLinkContextMenu();
-          }}
-        >Copy link to note</button>
+        {#each activeNoteMenuItems as item (item.id)}
+          <button
+            type="button"
+            role="menuitem"
+            onclick={(event) => {
+              event.stopPropagation();
+              item.run(noteId);
+              closeLinkContextMenu();
+            }}
+          >{item.label(noteId)}</button>
+        {/each}
       {/if}
     </div>
   {/if}
@@ -213,6 +231,8 @@
     width: max-content;
     max-width: calc(100% - 16px);
     min-width: 168px;
+    flex-direction: column;
+    gap: 2px;
     padding: 4px;
     border: 1px solid #4c4c4c;
     border-radius: 4px;
@@ -224,6 +244,7 @@
   .link-context-menu button {
     width: 100%;
     min-width: 0;
+    min-height: 28px;
     padding: 6px 8px;
     border: 0;
     border-radius: 2px;

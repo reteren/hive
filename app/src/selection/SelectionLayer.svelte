@@ -10,6 +10,11 @@
   import { noteBounds, type Bounds } from "../notes/layout.svelte";
   import { isTextEditingTarget } from "../commands/focus";
   import {
+    clearModuleDropPreview,
+    tryInsertModuleOnDrop,
+    updateModuleDropPreview,
+  } from "../modules/moduleDrop.svelte";
+  import {
     boundsAsFrame,
     cancelMoveGesture,
     cancelResizeGesture,
@@ -59,6 +64,7 @@
     updatePrecisionDelta,
     type PrecisionDeltaTracker,
   } from "./precision";
+  import { resolveModuleDropDecision } from "./moduleDropDecision";
 
   interface Outline {
     id: string;
@@ -237,8 +243,9 @@
       if (grabGesture) {
         event.preventDefault();
         event.stopPropagation();
-        updateGrabAt(screenToWorld(camera, viewport, local), event.ctrlKey, event.altKey);
-        commitGrab();
+        const world = screenToWorld(camera, viewport, local);
+        updateGrabAt(world, event.ctrlKey, event.altKey);
+        commitGrab(world);
         return;
       }
 
@@ -689,6 +696,7 @@
         grid.step,
       );
       applyFrames(gesture.gesture.after);
+      updateModulePreview(gesture.gesture.before, world);
       return;
     }
 
@@ -702,6 +710,7 @@
         grid.step,
       );
       applyFrames(gesture.gesture.after);
+      updateModulePreview(gesture.gesture.before, world);
       return;
     }
 
@@ -747,8 +756,7 @@
       if (cancelled) {
         applyFrames(cancelMoveGesture(gesture.gesture));
       } else if (gesture.started) {
-        const change = moveGestureChange(gesture.gesture);
-        if (change) recordGeometryChange("Move", targetForMove(change.before, gesture.gesture.anchorId), change);
+        commitMoveGesture(gesture.gesture, gesture.precision.pointer);
       } else if (
         gesture.toggleOnClickId &&
         shouldToggleSelectedHeaderAfterGesture(gesture.started, cancelled)
@@ -760,10 +768,7 @@
         if (cancelled) {
           applyFrames(cancelMoveGesture(gesture.gesture));
         } else if (gesture.started) {
-          const change = moveGestureChange(gesture.gesture);
-          if (change) {
-            recordGeometryChange("Move", targetForMove(change.before, gesture.noteId), change);
-          }
+          commitMoveGesture(gesture.gesture, gesture.precision.pointer);
         }
       }
       gesture.noteElement.style.userSelect = gesture.previousUserSelect;
@@ -787,6 +792,7 @@
       if (change) recordGeometryChange("Scale", `${change.before.length} notes`, change);
     }
 
+    clearModuleDropPreview();
     completePendingAltContextPick(pointerId, !cancelled);
 
     if (release) releasePointer(pointerId);
@@ -811,6 +817,7 @@
       grid.step,
     );
     applyFrames(grabGesture.after);
+    updateModulePreview(grabGesture.before, world);
   }
 
   function startGrab(): void {
@@ -826,10 +833,10 @@
     selection.grabActive = true;
   }
 
-  function commitGrab(): void {
+  function commitGrab(world: Point): void {
     if (!grabGesture) return;
-    const change = moveGestureChange(grabGesture);
-    if (change) recordGeometryChange("Move", targetForMove(change.before, grabGesture.anchorId), change);
+    commitMoveGesture(grabGesture, world);
+    clearModuleDropPreview();
     grabGesture = null;
     grabStartWorld = null;
     grabPrecision = null;
@@ -839,6 +846,7 @@
   function cancelGrab(): void {
     if (!grabGesture) return;
     applyFrames(cancelMoveGesture(grabGesture));
+    clearModuleDropPreview();
     grabGesture = null;
     grabStartWorld = null;
     grabPrecision = null;
@@ -899,6 +907,38 @@
   function applyFrames(frames: readonly NoteFrame[]): void {
     for (const frame of frames) {
       updateNote(frame.id, { x: frame.x, y: frame.y, width: frame.width, height: frame.height });
+    }
+  }
+
+  function commitMoveGesture(gesture: MoveGesture, worldPoint: Point): void {
+    const movedTypes = gesture.before.map((frame) => boardState.notes[frame.id]?.type ?? "note");
+    const initialDecision = resolveModuleDropDecision(movedTypes, false);
+    const moduleId = initialDecision.tryInsert && gesture.before.length === 1
+      ? gesture.before[0].id
+      : null;
+    let inserted = false;
+    if (moduleId) {
+      // Insert from the module's pre-drag position so Undo brings it back where it was dragged from.
+      const dropped = boardState.notes[moduleId];
+      const droppedFrame = dropped
+        ? { id: moduleId, x: dropped.x, y: dropped.y, width: dropped.width, height: dropped.height }
+        : null;
+      applyFrames(gesture.before);
+      inserted = tryInsertModuleOnDrop(moduleId, worldPoint);
+      if (!inserted && droppedFrame) applyFrames([droppedFrame]);
+    }
+    const decision = resolveModuleDropDecision(movedTypes, false, inserted);
+    if (!decision.commitMove) return;
+
+    const change = moveGestureChange(gesture);
+    if (change) recordGeometryChange("Move", targetForMove(change.before, gesture.anchorId), change);
+  }
+
+  function updateModulePreview(frames: readonly NoteFrame[], worldPoint: Point): void {
+    if (frames.length !== 1) return;
+    const note = boardState.notes[frames[0].id];
+    if (note?.type === "importance" || note?.type === "purpose") {
+      updateModuleDropPreview(note.id, worldPoint);
     }
   }
 

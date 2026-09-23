@@ -459,12 +459,6 @@ fn open_project_root(selected: &Path) -> Result<OpenedProject, String> {
 }
 
 fn validate_index(index: &BoardIndex) -> Result<(), String> {
-    if index.version != 1 {
-        return Err(format!(
-            "unsupported board index version: {}",
-            index.version
-        ));
-    }
     let mut ids = HashSet::new();
     let mut files = HashSet::new();
     for note in &index.notes {
@@ -506,18 +500,16 @@ fn validate_index(index: &BoardIndex) -> Result<(), String> {
 }
 
 fn migrate_index(index: &mut BoardIndex) -> Result<(), String> {
-    if index.version > 1 {
-        return Err(format!(
-            "unsupported board index version: {}",
-            index.version
-        ));
-    }
     for note in &mut index.notes {
         if note.file.is_empty() {
             note.file = format!("{}.md", sanitize_note_name(&note.name));
         }
     }
-    index.version = 1;
+    // Rust only needs note identity and safe Markdown paths. Preserve known and
+    // future index versions plus flattened JSON fields through open/save cycles.
+    if index.version == 0 {
+        index.version = 1;
+    }
     Ok(())
 }
 
@@ -1153,7 +1145,9 @@ fn remember_project(app: &AppHandle, root: &Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{atomic_create, atomic_write, sanitize_note_name, validate_note_file};
+    use super::{
+        atomic_create, atomic_write, open_project_root, sanitize_note_name, validate_note_file,
+    };
     use std::fs;
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -1224,5 +1218,72 @@ mod tests {
         assert!(atomic_create(&path, b"replacement").is_err());
         assert_eq!(fs::read(&path).expect("read original"), b"original");
         fs::remove_dir_all(directory).expect("remove test directory");
+    }
+
+    fn open_index_fixture(label: &str, index: serde_json::Value) -> serde_json::Value {
+        let directory = test_directory(label);
+        let notes = directory.join("notes");
+        fs::create_dir_all(&notes).expect("create notes directory");
+        fs::write(notes.join("Benefit.md"), "body").expect("write note body");
+        fs::write(
+            directory.join("board.json"),
+            serde_json::to_vec(&index).expect("encode index fixture"),
+        )
+        .expect("write board index");
+
+        let opened = open_project_root(&directory).expect("open project index");
+        let round_trip =
+            serde_json::from_str(&opened.load.index_json).expect("decode returned index");
+        fs::remove_dir_all(directory).expect("remove test project");
+        round_trip
+    }
+
+    #[test]
+    fn opens_v1_index_with_links_and_preserves_r3_and_unknown_fields() {
+        let fixture = serde_json::json!({
+            "version": 1,
+            "futureIndexSetting": { "enabled": true },
+            "links": [{ "id": "line-1", "from": "a", "to": "b", "kind": "weak", "shape": "straight" }],
+            "taskLog": [{ "noteId": "a", "name": "Benefit", "doneAt": 1700000000000_i64 }],
+            "notes": [{
+                "id": "a", "name": "Benefit", "file": "Benefit.md", "x": 1, "y": 2, "width": 30, "height": null,
+                "type": "pro", "task": { "done": true, "doneAt": 1700000000000_i64 },
+                "taskMemory": { "done": false, "doneAt": null },
+                "importance": "absolute", "purposes": ["concept", "decision"], "futureNoteField": "kept"
+            }]
+        });
+
+        let round_trip = open_index_fixture("v1", fixture);
+        assert_eq!(round_trip["version"], 1);
+        assert_eq!(round_trip["links"][0]["id"], "line-1");
+        assert_eq!(round_trip["taskLog"][0]["noteId"], "a");
+        assert_eq!(round_trip["notes"][0]["type"], "pro");
+        assert_eq!(round_trip["notes"][0]["task"]["done"], true);
+        assert_eq!(round_trip["notes"][0]["taskMemory"]["done"], false);
+        assert_eq!(round_trip["notes"][0]["importance"], "absolute");
+        assert_eq!(round_trip["notes"][0]["purposes"][1], "decision");
+        assert_eq!(round_trip["notes"][0]["futureNoteField"], "kept");
+        assert_eq!(round_trip["futureIndexSetting"]["enabled"], true);
+    }
+
+    #[test]
+    fn opens_v2_and_future_indexes_without_downgrading_their_versions() {
+        for (label, version) in [("v2", 2), ("future", 7)] {
+            let fixture = serde_json::json!({
+                "version": version,
+                "futureIndexField": ["keep", 2],
+                "notes": [{
+                    "id": "a", "name": "Benefit", "file": "Benefit.md", "x": 1, "y": 2, "width": 30, "height": null,
+                    "type": "con", "task": null, "importance": "medium", "purposes": ["timeline"],
+                    "futureNoteField": { "kept": true }
+                }]
+            });
+
+            let round_trip = open_index_fixture(label, fixture);
+            assert_eq!(round_trip["version"], version);
+            assert_eq!(round_trip["futureIndexField"][0], "keep");
+            assert_eq!(round_trip["notes"][0]["type"], "con");
+            assert_eq!(round_trip["notes"][0]["futureNoteField"]["kept"], true);
+        }
     }
 }

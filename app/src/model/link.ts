@@ -29,6 +29,8 @@ export interface Link {
   fromAnchor?: LinkAnchor;
   /** Optional normalised frame attachment; absent on older board data. */
   toAnchor?: LinkAnchor;
+  /** Text → Task transfer declined by the user for this link (R3.7, H10 "Keep"). */
+  transferDeclined?: boolean;
 }
 
 /** Order-independent key of the pair a link occupies. */

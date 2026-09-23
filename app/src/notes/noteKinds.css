@@ -1,0 +1,97 @@
+.note-card[data-kind="pro"] {
+  --note-frame: #293d2e;
+  --note-body: #202d23;
+  border-color: #4e805b;
+}
+
+.note-card[data-kind="con"] {
+  --note-frame: #422d2c;
+  --note-body: #302222;
+  border-color: #89504b;
+}
+
+.note-card[data-kind="pro"] .note-header,
+.note-card[data-kind="con"] .note-header {
+  min-height: 24px;
+  padding-inline: 6px;
+  font-size: 10px;
+}
+
+.note-card[data-kind="pro"] .note-header {
+  color: #d9ebdc;
+  background: #304a36;
+  border-bottom-color: #48674e;
+}
+
+.note-card[data-kind="con"] .note-header {
+  color: #f0d9d7;
+  background: #523533;
+  border-bottom-color: #774542;
+}
+
+.note-card[data-kind="pro"] .note-name::before,
+.note-card[data-kind="con"] .note-name::before {
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.note-card[data-kind="pro"] .note-name::before {
+  color: #8bd398;
+  content: "+";
+}
+
+.note-card[data-kind="con"] .note-name::before {
+  color: #ed918b;
+  content: "−";
+}
+
+.note-card[data-kind="importance"],
+.note-card[data-kind="purpose"] {
+  --note-frame: #292929;
+  --note-body: #292929;
+  min-height: 0;
+  border-color: #555;
+}
+
+.note-card[data-kind="importance"] .note-header,
+.note-card[data-kind="purpose"] .note-header {
+  display: none;
+}
+
+.note-card[data-kind="importance"] .note-frame,
+.note-card[data-kind="purpose"] .note-frame,
+.note-card[data-kind="importance"] .note-frame.fixed-height,
+.note-card[data-kind="purpose"] .note-frame.fixed-height {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  background: transparent;
+}
+
+.note-card[data-kind="importance"] .note-frame-edge,
+.note-card[data-kind="purpose"] .note-frame-edge {
+  display: none;
+}
+
+.note-card[data-kind="importance"] .note-content,
+.note-card[data-kind="purpose"] .note-content {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  grid-area: auto;
+  padding: 3px 5px;
+  overflow: visible;
+  background: transparent;
+}
+
+.note-card[data-kind="importance"]:has(.module-node-body .module-picker),
+.note-card[data-kind="purpose"]:has(.module-node-body .module-picker) {
+  z-index: 35;
+  overflow: visible;
+}

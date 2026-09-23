@@ -17,9 +17,11 @@ import { coloredHighlights, getContrastingTextColor } from "./highlight";
 import { openHighlightPalette } from "./highlightPalette";
 import { hiveMarkdownExtensions } from "./markdownSyntax";
 import { collapsedLinkMarkup, visibleMarkdownLinksInTree } from "./linkPreview";
+import { applyTextEditEffects, captureTextEditEffects } from "../transfer/textEditHooks";
 import {
   createTextEditRecord,
   mergeTextEditRecords,
+  replayTextEditRecord,
   textEditKind,
   type TextEditRecord,
 } from "./textEditHistory";
@@ -165,7 +167,9 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
         group: selectionGroup,
       });
 
+      edit.transferEffects = captureTextEditEffects(noteId, before.toString(), after.toString());
       updateNote(noteId, { text: after.toString() });
+      applyTextEditEffects(edit.transferEffects, "redo");
       record(createHistoryCommand(edit));
       observedHistoryEntries = history.entries;
       observedHistoryCursor = history.cursor;
@@ -322,23 +326,24 @@ function isTextHistoryCommand(
 
 function replayTextEdit(edit: TextEditRecord, direction: "undo" | "redo"): void {
   const forward = direction === "redo";
-  const nextText = forward ? edit.after : edit.before;
   const expectedText = forward ? edit.before : edit.after;
   const changes = forward ? edit.forward : edit.inverse;
   const selection = forward ? edit.selectionAfter : edit.selectionBefore;
 
-  updateNote(edit.noteId, { text: nextText.toString() });
-  const view = editorForNote(edit.noteId);
-  if (!view) return;
+  replayTextEditRecord(edit, direction, (nextText) => {
+    updateNote(edit.noteId, { text: nextText });
+    const view = editorForNote(edit.noteId);
+    if (!view) return;
 
-  const currentText = view.state.doc.toString();
-  const transactionChanges =
-    currentText === expectedText.toString()
-      ? changes
-      : { from: 0, to: view.state.doc.length, insert: nextText.toString() };
-  view.dispatch({
-    changes: transactionChanges,
-    selection: currentText === expectedText.toString() ? selection : undefined,
-    annotations: Transaction.addToHistory.of(false),
+    const currentText = view.state.doc.toString();
+    const transactionChanges =
+      currentText === expectedText.toString()
+        ? changes
+        : { from: 0, to: view.state.doc.length, insert: nextText };
+    view.dispatch({
+      changes: transactionChanges,
+      selection: currentText === expectedText.toString() ? selection : undefined,
+      annotations: Transaction.addToHistory.of(false),
+    });
   });
 }

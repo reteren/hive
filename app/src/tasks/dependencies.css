@@ -1,0 +1,34 @@
+.dependencyBadge {
+  display: inline-flex;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font: 700 10px/1 system-ui, sans-serif;
+  vertical-align: middle;
+  cursor: help;
+}
+
+.dependencyBadge--blocked {
+  color: #f1bd62;
+  background: #302616;
+}
+
+.dependencyBadge--stale {
+  color: #ff9b73;
+  background: #351e19;
+}
+
+.dependencyBadge svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.2;
+}

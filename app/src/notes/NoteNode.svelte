@@ -12,6 +12,8 @@
   import NoteBody from "../editor/NoteBody.svelte";
   import TaskCheckbox from "../tasks/TaskCheckbox.svelte";
   import NoteModules from "../modules/NoteModules.svelte";
+  import ModuleNodeBody from "../modules/ModuleNodeBody.svelte";
+  import { effectiveImportance } from "../modules/moduleActions.svelte";
   import { startNoteEditing } from "../editor/editorSession";
   import { tool } from "../tools/tool.svelte";
 
@@ -84,6 +86,7 @@
 
   function beginEditingFromDoubleClick(event: MouseEvent): void {
     if (editing.noteId === note.id || !(event.target instanceof Element)) return;
+    if (note.type === "importance" || note.type === "purpose") return;
     if (event.target.closest(".note-header, [data-text-link], input, button")) return;
     tool.active = "select";
     startNoteEditing(note.id, { x: event.clientX, y: event.clientY });
@@ -96,7 +99,7 @@
   data-editing={editing.noteId === note.id ? "true" : "false"}
   data-kind={note.type}
   data-task={note.task ? (note.task.done ? "done" : "open") : undefined}
-  data-importance={note.importance ?? undefined}
+  data-importance={effectiveImportance(note.id) ?? undefined}
   style:left={`${note.x * PX_PER_UNIT}px`}
   style:top={`${note.y * PX_PER_UNIT}px`}
   style:width={`${note.width * PX_PER_UNIT}px`}
@@ -132,7 +135,11 @@
     <div class="note-frame-edge note-frame-edge-top" data-note-header aria-hidden="true"></div>
     <div class="note-frame-edge note-frame-edge-left" data-note-header aria-hidden="true"></div>
     <div class="note-content" data-note-body>
-      <NoteBody {note} />
+      {#if note.type === "importance" || note.type === "purpose"}
+        <ModuleNodeBody {note} />
+      {:else}
+        <NoteBody {note} />
+      {/if}
     </div>
     <div class="note-frame-edge note-frame-edge-right" data-note-header aria-hidden="true"></div>
     <div class="note-frame-edge note-frame-edge-bottom" data-note-header aria-hidden="true"></div>

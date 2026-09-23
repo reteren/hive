@@ -19,6 +19,7 @@ import {
   placeNotes,
   remapClipboardLinks,
   serializeNotes,
+  taskFieldsForPaste,
   uniqueCopyNames,
   type ClipboardLink,
 } from "./payload";
@@ -190,7 +191,10 @@ function selectIds(ids: readonly string[]): void {
   if (ids.length > 0) setPrimary(ids[ids.length - 1]);
 }
 
-type CopySource = Pick<Note, "name" | "text" | "x" | "y" | "width" | "height" | "createdAt"> & { sourceId: string };
+type CopySource = Pick<Note,
+  "type" | "name" | "text" | "x" | "y" | "width" | "height" | "createdAt" |
+  "task" | "taskMemory" | "importance" | "purposes"
+> & { sourceId: string };
 
 function createCopies(
   sourceNotes: readonly CopySource[],
@@ -206,7 +210,7 @@ function createCopies(
     idMap.set(note.sourceId, id);
     return {
       id,
-      type: "note" as const,
+      type: note.type,
       name: names[index],
       text: note.text,
       x: note.x,
@@ -214,6 +218,9 @@ function createCopies(
       width: note.width,
       height: note.height,
       createdAt: note.createdAt ?? Date.now(),
+      ...taskFieldsForPaste(note),
+      importance: note.importance ?? null,
+      purposes: [...new Set(note.purposes ?? [])],
     };
   });
   return { notes, links: remapClipboardLinks(sourceLinks, idMap) };
@@ -371,7 +378,10 @@ function sameNotes(first: readonly Note[], second: readonly Note[]): boolean {
   return first.length === second.length && first.every((note, index) => {
     const other = second[index];
     return other && note.id === other.id && note.name === other.name && note.text === other.text &&
-      note.x === other.x && note.y === other.y && note.width === other.width && note.height === other.height;
+      note.type === other.type && note.x === other.x && note.y === other.y && note.width === other.width &&
+      note.height === other.height && JSON.stringify(note.task ?? null) === JSON.stringify(other.task ?? null) &&
+      note.importance === other.importance &&
+      JSON.stringify(note.purposes ?? []) === JSON.stringify(other.purposes ?? []);
   });
 }
 

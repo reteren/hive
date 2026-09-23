@@ -21,3 +21,4 @@ desktop.ini
 *.msi
 *.pdb
 app/src-tauri/target-alt/
+app/.tmp-edge*/

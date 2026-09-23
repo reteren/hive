@@ -1,5 +1,9 @@
-/** "note" — ordinary text node; "pro"/"con" — the green/red plus/minus mini-nodes (R3.5). */
-export type NoteKind = "note" | "pro" | "con";
+/**
+ * "note" — ordinary text node; "pro"/"con" — the green/red plus/minus mini-nodes (R3.5);
+ * "importance"/"purpose" — a standalone (external) module on the board (R3.6): no text, its value
+ * lives in `importance` / `purposes`, and it applies to the notes it links to.
+ */
+export type NoteKind = "note" | "pro" | "con" | "importance" | "purpose";
 
 /** Importance levels (R3.3): white / yellow / red / purple / rainbow. */
 export const IMPORTANCE_LEVELS = ["basic", "medium", "important", "immediately", "absolute"] as const;
@@ -46,6 +50,8 @@ export interface Note {
   createdAt?: number;
   /** Task flag and completion (R3.1). */
   task?: TaskState | null;
+  /** Task state remembered while the task flag is off, restored when it is turned back on (A03). */
+  taskMemory?: TaskState | null;
   /** Importance inserted into this note (R3.3); at most one per target, embedded or external. */
   importance?: ImportanceLevel | null;
   /** Purpose labels inserted into this note (R3.4). */
