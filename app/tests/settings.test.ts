@@ -1,0 +1,58 @@
+import { describe, expect, it } from "vitest";
+import {
+  DEFAULT_VIEW_SETTINGS,
+  parseViewSettings,
+  serializeViewSettings,
+  VIEW_SETTINGS_VERSION,
+} from "../src/settings/viewSettings";
+
+describe("view settings serialization", () => {
+  it("round-trips a versioned settings snapshot", () => {
+    const settings = {
+      camera: { x: 32.5, y: -80, zoom: 2.4 },
+      cameraSettings: { minZoom: 0.1, maxZoom: 12, zoomSensitivity: 0.002, panSpeed: 720 },
+      grid: { step: 25, showGrid: false, snap: true },
+      display: { rightPanelOpen: false },
+    };
+
+    const serialized = serializeViewSettings(settings);
+    const parsed = JSON.parse(serialized) as { version: number };
+
+    expect(parsed.version).toBe(VIEW_SETTINGS_VERSION);
+    expect(parseViewSettings(serialized, DEFAULT_VIEW_SETTINGS)).toEqual(settings);
+  });
+
+  it("uses defaults for a missing or corrupt file", () => {
+    expect(parseViewSettings(null, DEFAULT_VIEW_SETTINGS)).toEqual(DEFAULT_VIEW_SETTINGS);
+    expect(parseViewSettings("{not json", DEFAULT_VIEW_SETTINGS)).toEqual(DEFAULT_VIEW_SETTINGS);
+  });
+
+  it("keeps valid fields while replacing invalid, partial, or unknown-version values", () => {
+    const settings = parseViewSettings(
+      JSON.stringify({
+        version: 99,
+        camera: { x: 14, y: "bad", zoom: 200 },
+        cameraSettings: { minZoom: 0.1, maxZoom: 5, zoomSensitivity: -1, panSpeed: 900 },
+        grid: { step: 0, showGrid: false, snap: "yes" },
+        display: { rightPanelOpen: false },
+      }),
+      DEFAULT_VIEW_SETTINGS,
+    );
+
+    expect(settings).toEqual({
+      camera: { x: 14, y: 0, zoom: 1 },
+      cameraSettings: { minZoom: 0.1, maxZoom: 5, zoomSensitivity: 0.0015, panSpeed: 900 },
+      grid: { step: 10, showGrid: false, snap: false },
+      display: { rightPanelOpen: false },
+    });
+  });
+
+  it("rejects non-finite positions and zooms outside the configured limits", () => {
+    const settings = parseViewSettings(
+      `{"version":${VIEW_SETTINGS_VERSION},"camera":{"x":1e400,"y":-3,"zoom":0.04}}`,
+      DEFAULT_VIEW_SETTINGS,
+    );
+
+    expect(settings.camera).toEqual({ x: 0, y: -3, zoom: 1 });
+  });
+});

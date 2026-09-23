@@ -6,28 +6,27 @@
   import LeftToolbar from "./ui/LeftToolbar.svelte";
   import RightPanel from "./ui/RightPanel.svelte";
   import TopBar from "./ui/TopBar.svelte";
-
-  let rightPanelOpen = $state(true);
+  import { display } from "./settings/display.svelte";
 
   registerCommand({
     id: "ui.toggleRightPanel",
     label: "Toggle Display Panel",
     keys: ["KeyN"],
     run: () => {
-      rightPanelOpen = !rightPanelOpen;
+      display.rightPanelOpen = !display.rightPanelOpen;
     },
-    isActive: () => rightPanelOpen,
+    isActive: () => display.rightPanelOpen,
   });
 </script>
 
-<div class="shell" class:panel-collapsed={!rightPanelOpen}>
+<div class="shell" class:panel-collapsed={!display.rightPanelOpen}>
   <div class="top"><TopBar /></div>
   <div class="left"><LeftToolbar /></div>
   <main class="center">
     <Board />
     <div class="overlay-bottom-right"><CoordsIndicator /></div>
   </main>
-  {#if rightPanelOpen}
+  {#if display.rightPanelOpen}
     <div class="right"><RightPanel /></div>
   {/if}
   <KeyDispatcher />

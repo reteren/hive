@@ -3,6 +3,9 @@ import App from "./App.svelte";
 import "./styles/theme.css";
 import "./board/cameraCommands";
 import "./board/gridCommands";
+import { initializeViewSettingsPersistence } from "./settings/persistence.svelte";
+
+await initializeViewSettingsPersistence();
 
 const target = document.getElementById("app");
 
