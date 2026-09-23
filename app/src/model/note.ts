@@ -1,3 +1,30 @@
+/** "note" — ordinary text node; "pro"/"con" — the green/red plus/minus mini-nodes (R3.5). */
+export type NoteKind = "note" | "pro" | "con";
+
+/** Importance levels (R3.3): white / yellow / red / purple / rainbow. */
+export const IMPORTANCE_LEVELS = ["basic", "medium", "important", "immediately", "absolute"] as const;
+export type ImportanceLevel = (typeof IMPORTANCE_LEVELS)[number];
+
+/** Purpose labels (R3.4): visual meaning markers, a note may carry several. */
+export const PURPOSE_KINDS = [
+  "quote",
+  "concept",
+  "openQuestion",
+  "decision",
+  "hypothesis",
+  "experiment",
+  "compare",
+  "timeline",
+] as const;
+export type PurposeKind = (typeof PURPOSE_KINDS)[number];
+
+/** Task state (R3.1); absent/null means the note is not a task. */
+export interface TaskState {
+  done: boolean;
+  /** When the task was last completed (ms since epoch), null while open. */
+  doneAt: number | null;
+}
+
 /**
  * A plain board note (R1). Geometry is in board units (u); x/y is the top-left corner.
  * The Markdown body lives in `text` and is saved as its own .md file named after `name`.
@@ -5,7 +32,7 @@
 export interface Note {
   /** Permanent id, independent of the name (ROADMAP "Технические границы" §1). */
   id: string;
-  type: "note";
+  type: NoteKind;
   /** Display name, unique within the project; also the .md file name. */
   name: string;
   /** Markdown body. */
@@ -17,6 +44,12 @@ export interface Note {
   height: number | null;
   /** Creation time (ms since epoch); older projects may lack it. Used by search ordering (R2.4). */
   createdAt?: number;
+  /** Task flag and completion (R3.1). */
+  task?: TaskState | null;
+  /** Importance inserted into this note (R3.3); at most one per target, embedded or external. */
+  importance?: ImportanceLevel | null;
+  /** Purpose labels inserted into this note (R3.4). */
+  purposes?: PurposeKind[];
 }
 
 /** New note width from the roadmap examples. */

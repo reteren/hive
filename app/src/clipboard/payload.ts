@@ -2,7 +2,7 @@ import type { Point } from "../board/cameraMath";
 import type { Link, LinkAnchor } from "../model/link";
 import { isFrameAnchor } from "../links/anchors";
 import { newId } from "../model/note";
-import type { Note } from "../model/note";
+import type { Note, NoteKind } from "../model/note";
 import { uniqueName } from "../notes/naming";
 
 export const HIVE_CLIPBOARD_MARKER = "hive/nodes";
@@ -14,7 +14,7 @@ const AUTO_NOTE_HEIGHT_UNITS = 6;
 
 export interface ClipboardNode {
   sourceId: string;
-  type: "note";
+  type: NoteKind;
   name: string;
   text: string;
   x: number;
@@ -101,7 +101,7 @@ export function parseNotesPayload(serialized: string): HiveClipboardPayload | nu
     ids.add(candidate.sourceId);
     nodes.push({
       sourceId: candidate.sourceId,
-      type: "note",
+      type: candidate.type,
       name: candidate.name,
       text: candidate.text,
       x: candidate.x,
@@ -200,7 +200,7 @@ function isClipboardNode(value: unknown): value is ClipboardNode {
   if (!isRecord(value)) return false;
   return (
     typeof value.sourceId === "string" && value.sourceId.trim().length > 0 &&
-    value.type === "note" &&
+    (value.type === "note" || value.type === "pro" || value.type === "con") &&
     typeof value.name === "string" &&
     typeof value.text === "string" &&
     finite(value.x) && finite(value.y) && finite(value.width) && value.width > 0 &&

@@ -10,6 +10,8 @@
   import { PX_PER_UNIT } from "../board/cameraMath";
   import { uniqueName } from "./naming";
   import NoteBody from "../editor/NoteBody.svelte";
+  import TaskCheckbox from "../tasks/TaskCheckbox.svelte";
+  import NoteModules from "../modules/NoteModules.svelte";
   import { startNoteEditing } from "../editor/editorSession";
   import { tool } from "../tools/tool.svelte";
 
@@ -92,6 +94,9 @@
   class="note-card"
   data-note-id={note.id}
   data-editing={editing.noteId === note.id ? "true" : "false"}
+  data-kind={note.type}
+  data-task={note.task ? (note.task.done ? "done" : "open") : undefined}
+  data-importance={note.importance ?? undefined}
   style:left={`${note.x * PX_PER_UNIT}px`}
   style:top={`${note.y * PX_PER_UNIT}px`}
   style:width={`${note.width * PX_PER_UNIT}px`}
@@ -108,6 +113,7 @@
     ondblclick={startRename}
     onkeydown={handleHeaderKeydown}
   >
+    <TaskCheckbox {note} />
     {#if renaming}
       <input
         bind:this={renameInput}
@@ -121,6 +127,7 @@
       <span class="note-name">{note.name}</span>
     {/if}
   </header>
+  <NoteModules {note} />
   <div class="note-frame" class:fixed-height={note.height !== null}>
     <div class="note-frame-edge note-frame-edge-top" data-note-header aria-hidden="true"></div>
     <div class="note-frame-edge note-frame-edge-left" data-note-header aria-hidden="true"></div>
