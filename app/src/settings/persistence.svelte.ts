@@ -1,7 +1,8 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { registerCloseFlush } from "../lifecycle/closeFlush";
 import { camera, cameraSettings } from "../board/camera.svelte";
 import { grid } from "../board/grid.svelte";
+import { history as undoHistory, setHistoryLimit } from "../history/history.svelte";
 import { display } from "./display.svelte";
 import { parseViewSettings, serializeViewSettings, type ViewSettings } from "./viewSettings";
 
@@ -9,8 +10,6 @@ const SAVE_DEBOUNCE_MS = 400;
 
 let initialization: Promise<void> | null = null;
 let initialized = false;
-let closeInProgress = false;
-let allowClose = false;
 let saveTimer: number | null = null;
 let lastPersistedSnapshot = "";
 let writeQueue: Promise<void> = Promise.resolve();
@@ -45,21 +44,7 @@ async function initialize(): Promise<void> {
     });
   });
 
-  try {
-    await getCurrentWindow().onCloseRequested(async (event) => {
-      if (allowClose) return;
-      event.preventDefault();
-      if (closeInProgress) return;
-
-      closeInProgress = true;
-      await flushViewSettings();
-      allowClose = true;
-      await getCurrentWindow().close();
-    });
-  } catch (error) {
-    console.warn("Could not register the close-time settings flush.", error);
-    window.addEventListener("beforeunload", onBeforeUnload);
-  }
+  registerCloseFlush("view-settings", flushViewSettings);
 }
 
 function scheduleSave(snapshot: string): void {
@@ -94,10 +79,6 @@ function persistSnapshot(snapshot: string): Promise<void> {
   return writeQueue;
 }
 
-function onBeforeUnload(): void {
-  void flushViewSettings();
-}
-
 function currentSettings(): ViewSettings {
   return {
     camera: { x: camera.x, y: camera.y, zoom: camera.zoom },
@@ -109,6 +90,7 @@ function currentSettings(): ViewSettings {
     },
     grid: { step: grid.step, showGrid: grid.showGrid, snap: grid.snap },
     display: { rightPanelOpen: display.rightPanelOpen },
+    history: { limit: undoHistory.limit },
   };
 }
 
@@ -124,4 +106,5 @@ function applySettings(settings: ViewSettings): void {
   grid.showGrid = settings.grid.showGrid;
   grid.snap = settings.grid.snap;
   display.rightPanelOpen = settings.display.rightPanelOpen;
+  setHistoryLimit(settings.history.limit);
 }

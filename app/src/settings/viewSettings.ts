@@ -1,7 +1,8 @@
 import { isValidGridStep } from "../board/gridMath";
 import type { Camera } from "../board/cameraMath";
+import { DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT, MIN_HISTORY_LIMIT } from "../history/historyStack";
 
-export const VIEW_SETTINGS_VERSION = 1;
+export const VIEW_SETTINGS_VERSION = 2;
 
 export interface CameraSettings {
   minZoom: number;
@@ -20,11 +21,16 @@ export interface DisplaySettings {
   rightPanelOpen: boolean;
 }
 
+export interface HistorySettings {
+  limit: number;
+}
+
 export interface ViewSettings {
   camera: Camera;
   cameraSettings: CameraSettings;
   grid: GridSettings;
   display: DisplaySettings;
+  history: HistorySettings;
 }
 
 export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
@@ -37,6 +43,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
   },
   grid: { step: 10, showGrid: true, snap: false },
   display: { rightPanelOpen: true },
+  history: { limit: DEFAULT_HISTORY_LIMIT },
 };
 
 const MIN_ALLOWED_ZOOM_LIMIT = 0.001;
@@ -65,6 +72,7 @@ export function parseViewSettings(serialized: string | null | undefined, default
   const cameraInput = asRecord(parsed.camera);
   const gridInput = asRecord(parsed.grid);
   const displayInput = asRecord(parsed.display);
+  const historyInput = asRecord(parsed.history);
 
   return {
     camera: {
@@ -83,6 +91,9 @@ export function parseViewSettings(serialized: string | null | undefined, default
     display: {
       rightPanelOpen: booleanOrDefault(displayInput.rightPanelOpen, defaults.display.rightPanelOpen),
     },
+    history: {
+      limit: historyLimitOrDefault(historyInput.limit, defaults.history.limit),
+    },
   };
 }
 
@@ -99,6 +110,7 @@ export function serializeViewSettings(settings: ViewSettings): string {
     },
     grid: { step: settings.grid.step, showGrid: settings.grid.showGrid, snap: settings.grid.snap },
     display: { rightPanelOpen: settings.display.rightPanelOpen },
+    history: { limit: settings.history.limit },
   });
 }
 
@@ -131,6 +143,7 @@ function cloneViewSettings(settings: ViewSettings): ViewSettings {
     cameraSettings: { ...settings.cameraSettings },
     grid: { ...settings.grid },
     display: { ...settings.display },
+    history: { ...settings.history },
   };
 }
 
@@ -156,6 +169,13 @@ function boundedNumber(value: unknown, fallback: number, min: number, max: numbe
 
 function booleanOrDefault(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
+}
+
+function historyLimitOrDefault(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isInteger(value) &&
+    value >= MIN_HISTORY_LIMIT && value <= MAX_HISTORY_LIMIT
+    ? value
+    : fallback;
 }
 
 function gridStepOrDefault(value: unknown, fallback: number): number {

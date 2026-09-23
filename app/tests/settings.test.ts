@@ -13,6 +13,7 @@ describe("view settings serialization", () => {
       cameraSettings: { minZoom: 0.1, maxZoom: 12, zoomSensitivity: 0.002, panSpeed: 720 },
       grid: { step: 25, showGrid: false, snap: true },
       display: { rightPanelOpen: false },
+      history: { limit: 256 },
     };
 
     const serialized = serializeViewSettings(settings);
@@ -27,6 +28,18 @@ describe("view settings serialization", () => {
     expect(parseViewSettings("{not json", DEFAULT_VIEW_SETTINGS)).toEqual(DEFAULT_VIEW_SETTINGS);
   });
 
+  it("loads older view settings without a history limit", () => {
+    const oldSettings = JSON.stringify({
+      version: 1,
+      camera: DEFAULT_VIEW_SETTINGS.camera,
+      cameraSettings: DEFAULT_VIEW_SETTINGS.cameraSettings,
+      grid: DEFAULT_VIEW_SETTINGS.grid,
+      display: DEFAULT_VIEW_SETTINGS.display,
+    });
+
+    expect(parseViewSettings(oldSettings, DEFAULT_VIEW_SETTINGS)).toEqual(DEFAULT_VIEW_SETTINGS);
+  });
+
   it("keeps valid fields while replacing invalid, partial, or unknown-version values", () => {
     const settings = parseViewSettings(
       JSON.stringify({
@@ -35,6 +48,7 @@ describe("view settings serialization", () => {
         cameraSettings: { minZoom: 0.1, maxZoom: 5, zoomSensitivity: -1, panSpeed: 900 },
         grid: { step: 0, showGrid: false, snap: "yes" },
         display: { rightPanelOpen: false },
+        history: { limit: 999 },
       }),
       DEFAULT_VIEW_SETTINGS,
     );
@@ -44,6 +58,7 @@ describe("view settings serialization", () => {
       cameraSettings: { minZoom: 0.1, maxZoom: 5, zoomSensitivity: 0.0015, panSpeed: 900 },
       grid: { step: 10, showGrid: false, snap: false },
       display: { rightPanelOpen: false },
+      history: { limit: 64 },
     });
   });
 

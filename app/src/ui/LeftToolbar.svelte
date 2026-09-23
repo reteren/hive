@@ -5,6 +5,7 @@
 <!-- Left vertical panel of working tools (R0.4). -->
 <nav class="left-toolbar" aria-label="Navigation tools">
   <CommandButton commandId="view.home" />
+  <CommandButton commandId="notes.createMenu" />
 </nav>
 
 <style>
