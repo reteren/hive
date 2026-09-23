@@ -12,7 +12,7 @@
   import { isLineTool, tool } from "../tools/tool.svelte";
   import { objectColor } from "./colors";
   import { strokeIntersectsPath } from "./lineGeometry";
-  import { buildArrowGeometry, buildShape, type ShapeResult } from "./shapes";
+  import { buildArrowGeometry, buildShape, buildShapeDashPaths, type ShapeResult } from "./shapes";
   import { pointOnCircleToward, projectPointToAnchor, shapeEndpoints } from "./anchors";
   import { clientToBoardPoint, clientToWorld } from "./coordinates";
   import { completeLinkGesture, resolveCutRelease, type LinkDraft } from "./gestures";
@@ -31,6 +31,7 @@
     path: string;
     shaftPath: string;
     headPath: string | null;
+    dashPaths: string[] | null;
     selected: boolean;
     gradient: null | {
       id: string;
@@ -59,6 +60,7 @@
   interface PreviewLink {
     path: string;
     headPath: string | null;
+    dashPaths: string[] | null;
     kind: Link["kind"];
   }
 
@@ -93,15 +95,20 @@
           fromColor,
           toColor,
         };
-    const arrow = link.kind === "strong" ? buildArrowGeometry(link.shape, geometry) : null;
+    const arrow = buildArrowGeometry(link.shape, geometry);
+    const shapeDashes = link.kind === "weak" && (link.shape === "wave" || link.shape === "zigzag")
+      ? buildShapeDashPaths(link.shape, geometry, arrow.shaftLength)
+      : [];
+    const dashPaths = shapeDashes.length > 0 ? shapeDashes : null;
 
     return [{
       id: link.id,
       kind: link.kind,
       geometry,
       path: geometry.path,
-      shaftPath: arrow?.shaftPath ?? geometry.path,
-      headPath: arrow?.headPath ?? null,
+      shaftPath: arrow.shaftPath,
+      headPath: arrow.headPath,
+      dashPaths,
       selected: selectedLink.id === link.id,
       gradient,
     }];
@@ -125,12 +132,20 @@
       true,
     );
     const route = sourceId === ME_OBJECT_ID ? circleSource(endpoints) : endpoints;
-    const geometry = buildShape(tool.lineShape, route);
-    const arrow = tool.active === "line-strong" ? buildArrowGeometry(tool.lineShape, geometry) : null;
+    const geometry = buildShape(tool.lineShape, {
+      ...route,
+      sourceBounds: sourceId === ME_OBJECT_ID ? undefined : source,
+    });
+    const arrow = buildArrowGeometry(tool.lineShape, geometry);
+    const kind = tool.active === "line-weak" ? "weak" : "strong";
+    const shapeDashes = kind === "weak" && (tool.lineShape === "wave" || tool.lineShape === "zigzag")
+      ? buildShapeDashPaths(tool.lineShape, geometry, arrow.shaftLength)
+      : [];
     return {
-      path: arrow?.shaftPath ?? geometry.path,
-      headPath: arrow?.headPath ?? null,
-      kind: tool.active === "line-weak" ? "weak" : "strong",
+      path: arrow.shaftPath,
+      headPath: arrow.headPath,
+      dashPaths: shapeDashes.length > 0 ? shapeDashes : null,
+      kind,
     };
   });
 
@@ -445,7 +460,12 @@
       link.from === ME_OBJECT_ID,
       link.to === ME_OBJECT_ID,
     );
-    return buildShape(link.shape, link.from === ME_OBJECT_ID ? circleSource(endpoints) : endpoints);
+    const route = link.from === ME_OBJECT_ID ? circleSource(endpoints) : endpoints;
+    return buildShape(link.shape, {
+      ...route,
+      sourceBounds: link.from === ME_OBJECT_ID ? undefined : source,
+      targetBounds: target,
+    });
   }
 
   function circleSource(endpoints: ReturnType<typeof shapeEndpoints>): ReturnType<typeof shapeEndpoints> {
@@ -495,16 +515,29 @@
       {#each renderedLinks as link (link.id)}
         <g data-link-id={link.id} class:selected={link.selected}>
           <path class="link-hit" d={link.path} />
-          <path
-            class="link-line"
-            class:weak={link.kind === "weak"}
-            d={link.shaftPath}
-            style:stroke={link.selected ? "var(--accent)" : link.gradient ? `url(#${link.gradient.id})` : undefined}
-            style:stroke-width={lineStrokeWidth(link.kind, link.selected)}
-          />
+          {#if link.dashPaths}
+            {#each link.dashPaths as dashPath, index (`${link.id}-dash-${index}`)}
+              <path
+                class="link-line custom-dashes"
+                class:weak={link.kind === "weak"}
+                d={dashPath}
+                style:stroke={link.selected ? "var(--accent)" : link.gradient ? `url(#${link.gradient.id})` : undefined}
+                style:stroke-width={lineStrokeWidth(link.kind, link.selected)}
+              />
+            {/each}
+          {:else}
+            <path
+              class="link-line"
+              class:weak={link.kind === "weak"}
+              d={link.shaftPath}
+              style:stroke={link.selected ? "var(--accent)" : link.gradient ? `url(#${link.gradient.id})` : undefined}
+              style:stroke-width={lineStrokeWidth(link.kind, link.selected)}
+            />
+          {/if}
           {#if link.headPath}
             <path
               class="link-arrow"
+              class:weak={link.kind === "weak"}
               d={link.headPath}
               style:fill={link.selected ? "var(--accent)" : link.gradient ? link.gradient.toColor : undefined}
             />
@@ -512,14 +545,25 @@
         </g>
       {/each}
       {#if previewLink}
-        <path
-          class="link-line link-preview"
-          class:weak={previewLink.kind === "weak"}
-          d={previewLink.path}
-          style:stroke-width={lineStrokeWidth(previewLink.kind, false)}
-        />
+        {#if previewLink.dashPaths}
+          {#each previewLink.dashPaths as dashPath, index (`preview-dash-${index}`)}
+            <path
+              class="link-line link-preview custom-dashes"
+              class:weak={previewLink.kind === "weak"}
+              d={dashPath}
+              style:stroke-width={lineStrokeWidth(previewLink.kind, false)}
+            />
+          {/each}
+        {:else}
+          <path
+            class="link-line link-preview"
+            class:weak={previewLink.kind === "weak"}
+            d={previewLink.path}
+            style:stroke-width={lineStrokeWidth(previewLink.kind, false)}
+          />
+        {/if}
         {#if previewLink.headPath}
-          <path class="link-arrow link-preview" d={previewLink.headPath} />
+          <path class="link-arrow link-preview" class:weak={previewLink.kind === "weak"} d={previewLink.headPath} />
         {/if}
       {/if}
     </svg>
@@ -587,12 +631,22 @@
   .link-line.weak {
     stroke-width: 0.2px;
     stroke-dasharray: 2.4 1.2;
+    opacity: 0.88;
+  }
+
+  .link-line.custom-dashes {
+    stroke-dasharray: none;
+    stroke-linecap: round;
   }
 
   .link-line.link-preview {
     stroke: #c5ad72;
     stroke-dasharray: 2.4 1.2;
     opacity: 0.85;
+  }
+
+  .link-line.link-preview.custom-dashes {
+    stroke-dasharray: none;
   }
 
   .link-preview.weak {
@@ -609,8 +663,17 @@
     pointer-events: none;
   }
 
+  .link-arrow.weak {
+    fill: #a1b6bd;
+    opacity: 0.88;
+  }
+
   .link-arrow.link-preview {
     fill: #c5ad72;
+  }
+
+  .link-arrow.link-preview.weak {
+    fill: #a1b6bd;
   }
 
   .cut-preview {

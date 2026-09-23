@@ -91,6 +91,19 @@ describe("static Markdown renderer", () => {
     expect(tree.textContent).toBe("safe label");
   });
 
+  it("assigns distinct static preview classes to note, point and external links", () => {
+    const tree = render(
+      "[note](hive://note/id) [point](hive://point/1,2) [web](https://example.test)",
+    );
+    const links = collect(tree).filter((node) => node.className.includes("md-link-text"));
+
+    expect(links.map((node) => node.className)).toEqual([
+      "md-link-text is-note-link is-clickable is-missing",
+      "md-link-text is-point-link is-clickable",
+      "md-link-text is-external-link is-clickable",
+    ]);
+  });
+
   it("resolves note names, point addresses and visibly marks missing notes", () => {
     const notices: string[] = [];
     const noteJumps: string[] = [];

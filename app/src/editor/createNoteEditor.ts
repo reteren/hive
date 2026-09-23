@@ -1,17 +1,22 @@
 import { defaultKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
-import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { defaultHighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { EditorState, Transaction } from "@codemirror/state";
 import { Decoration, drawSelection, EditorView, keymap, ViewPlugin, type DecorationSet } from "@codemirror/view";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Note } from "../model/note";
 import { history, record, type HistoryCommand } from "../history/history.svelte";
-import { updateNote } from "../model/board.svelte";
+import { board, updateNote } from "../model/board.svelte";
 import { runCommand } from "../commands/registry.svelte";
+import { teleportToObject, teleportToPoint } from "../navigation/navigate";
+import { showLinkStatus } from "../links-in-text/contextMenu.svelte";
+import { parseTextLink, textLinkStyleClass } from "../links-in-text/format";
 import { attachEditor, editorForNote, exitNoteEditing } from "./editorSession";
 import { toggleHeading, toggleWrapper } from "./formatting";
 import { coloredHighlights, getContrastingTextColor } from "./highlight";
 import { openHighlightPalette } from "./highlightPalette";
 import { hiveMarkdownExtensions } from "./markdownSyntax";
+import { collapsedLinkMarkup, visibleMarkdownLinksInTree } from "./linkPreview";
 import {
   createTextEditRecord,
   mergeTextEditRecords,
@@ -55,12 +60,64 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
     },
     { decorations: (plugin) => plugin.decorations },
   );
+  const linkPreview = ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet = Decoration.none;
+      atomicRanges: DecorationSet = Decoration.none;
+
+      constructor(view: EditorView) {
+        this.rebuild(view);
+      }
+
+      update(update: import("@codemirror/view").ViewUpdate): void {
+        if (update.docChanged || update.selectionSet || update.viewportChanged) this.rebuild(update.view);
+      }
+
+      private rebuild(view: EditorView): void {
+        const state = view.state;
+        const text = state.doc.toString();
+        const links = visibleMarkdownLinksInTree(syntaxTree(state), text, view.visibleRanges);
+        const hidden = collapsedLinkMarkup(links, state.selection);
+        const decorations = links.flatMap((link) => {
+          if (link.labelTo <= link.labelFrom) return [];
+          const missing = link.target.kind === "note" && !board.notes[link.target.noteId];
+          const classes = `cm-hive-link ${textLinkStyleClass(link.target)}${missing ? " is-missing" : ""}`;
+          return [Decoration.mark({
+            class: classes,
+            attributes: {
+              "data-hive-link": link.url,
+              title: "Ctrl+click to follow link",
+            },
+          }).range(link.labelFrom, link.labelTo)];
+        });
+        const replacements = hidden.map((range) => Decoration.replace({}).range(range.from, range.to));
+        this.decorations = Decoration.set([...decorations, ...replacements], true);
+        this.atomicRanges = Decoration.set(replacements, true);
+      }
+    },
+    { decorations: (plugin) => plugin.decorations },
+  );
   const extensions = [
     markdown({ extensions: hiveMarkdownExtensions }),
     syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     EditorView.lineWrapping,
     drawSelection(),
     highlightColors,
+    linkPreview,
+    EditorView.atomicRanges.of((view) => view.plugin(linkPreview)?.atomicRanges ?? Decoration.none),
+    EditorView.domEventHandlers({
+      mousedown(event) {
+        if (event.button !== 0 || (!event.ctrlKey && !event.metaKey)) return false;
+        const target = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-hive-link]") : null;
+        const url = target?.dataset.hiveLink;
+        if (!url) return false;
+
+        event.preventDefault();
+        event.stopPropagation();
+        followTextLink(url);
+        return true;
+      },
+    }),
     keymap.of([
       { key: "Escape", run: (view) => (exitNoteEditing(view), true) },
       { key: "Mod-b", run: (view) => toggleWrapper(view, "**") },
@@ -143,6 +200,22 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
         },
         "&.cm-focused": { outline: "none" },
         ".cm-activeLine": { backgroundColor: "transparent" },
+        ".cm-hive-link": {
+          color: "#83b8e8",
+          cursor: "pointer",
+          textDecorationColor: "#557998",
+          textDecorationLine: "underline",
+          textUnderlineOffset: "2px",
+        },
+        ".cm-hive-link.is-note-link": {
+          textDecorationColor: "#83b8e8",
+          textDecorationLine: "overline underline",
+        },
+        ".cm-hive-link.is-point-link": { textDecorationStyle: "dotted" },
+        ".cm-hive-link.is-missing": {
+          color: "#d88982",
+          textDecorationColor: "#8d5550",
+        },
         ".hive-highlight-palette": {
           position: "absolute",
           top: "0",
@@ -185,6 +258,23 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
   const view = new EditorView({ parent, state });
   attachEditor(noteId, view);
   return view;
+}
+
+function followTextLink(value: string): void {
+  const target = parseTextLink(value);
+  if (!target) return;
+
+  try {
+    if (target.kind === "external") {
+      void Promise.resolve(openUrl(target.url)).catch(() => showLinkStatus("Could not open this link."));
+    } else if (target.kind === "point") {
+      teleportToPoint(target.point, { label: "Text link" });
+    } else if (!board.notes[target.noteId] || !teleportToObject(target.noteId, { label: "Text link" })) {
+      showLinkStatus("This note is missing.");
+    }
+  } catch {
+    showLinkStatus("Could not open this link.");
+  }
 }
 
 function highlightDecorations(view: EditorView): DecorationSet {

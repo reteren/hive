@@ -5,6 +5,14 @@ export type TextLinkTarget =
   | { kind: "point"; point: Point }
   | { kind: "note"; noteId: string };
 
+export type TextLinkStyleClass = "is-note-link" | "is-point-link" | "is-external-link";
+
+export function textLinkStyleClass(target: TextLinkTarget): TextLinkStyleClass {
+  if (target.kind === "note") return "is-note-link";
+  if (target.kind === "point") return "is-point-link";
+  return "is-external-link";
+}
+
 const coordinatePattern = /^(-?(?:\d+(?:\.\d*)?|\.\d+)),(-?(?:\d+(?:\.\d*)?|\.\d+))$/u;
 
 /** Parse only supported external URLs and hive addresses from note text. */

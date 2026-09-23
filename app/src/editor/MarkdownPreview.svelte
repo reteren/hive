@@ -187,6 +187,17 @@
     cursor: pointer;
   }
 
+  .markdown-preview :global(.md-link-text.is-note-link) {
+    text-decoration-color: #83b8e8;
+    text-decoration-line: overline underline;
+    text-decoration-style: solid;
+    text-underline-offset: 2px;
+  }
+
+  .markdown-preview :global(.md-link-text.is-point-link) {
+    text-decoration-style: dotted;
+  }
+
   .markdown-preview :global(.md-link-text.is-clickable:focus-visible) {
     border-radius: 2px;
     outline: 1px solid var(--accent);

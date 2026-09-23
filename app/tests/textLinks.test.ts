@@ -4,9 +4,16 @@ import {
   formatNoteMarkdownLink,
   formatPointAddress,
   parseTextLink,
+  textLinkStyleClass,
 } from "../src/links-in-text/format";
 
 describe("text link addresses", () => {
+  it("maps supported link kinds to distinct visual classes", () => {
+    expect(textLinkStyleClass({ kind: "note", noteId: "id" })).toBe("is-note-link");
+    expect(textLinkStyleClass({ kind: "point", point: { x: 1, y: 2 } })).toBe("is-point-link");
+    expect(textLinkStyleClass({ kind: "external", url: "https://example.test/" })).toBe("is-external-link");
+  });
+
   it("parses point addresses with negative and decimal coordinates", () => {
     expect(parseTextLink("hive://point/12.5,-40")).toEqual({
       kind: "point",

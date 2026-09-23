@@ -1,6 +1,6 @@
 import { hiveMarkdownParser } from "./markdownSyntax";
 import { coloredHighlights, getContrastingTextColor } from "./highlight";
-import { parseTextLink } from "../links-in-text/format";
+import { parseTextLink, textLinkStyleClass } from "../links-in-text/format";
 import type { Point } from "../board/cameraMath";
 
 const maxCachedEntries = 128;
@@ -361,7 +361,8 @@ function renderLink(
     : false;
   const note = target?.kind === "note" ? options.linkActions?.resolveNote?.(target.noteId) : undefined;
   const missingNote = target?.kind === "note" && !note;
-  const classes = `md-link-text${target ? " is-clickable" : ""}${missingNote ? " is-missing" : ""}`;
+  const styleClass = target ? ` ${textLinkStyleClass(target)}` : "";
+  const classes = `md-link-text${styleClass}${target ? " is-clickable" : ""}${missingNote ? " is-missing" : ""}`;
   const label = element(doc, parent, "span", classes);
 
   if (target) {

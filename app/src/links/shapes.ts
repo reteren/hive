@@ -7,12 +7,23 @@ export interface ShapeInput {
   end: Point;
   startNormal: Point;
   endNormal: Point;
+  sourceBounds?: ShapeBounds;
+  targetBounds?: ShapeBounds;
+}
+
+export interface ShapeBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export interface ShapeResult {
   path: string;
   polyline: Point[];
   endTangent: Point;
+  /** Board-space arc-length ranges for shape-aligned weak-line dashes. */
+  dashRanges?: Array<{ start: number; end: number }>;
 }
 
 export interface ArrowGeometry {
@@ -21,12 +32,16 @@ export interface ArrowGeometry {
   tip: Point;
   base: Point;
   tangent: Point;
+  shaftLength: number;
 }
 
 const SHORT_LINE_LENGTH = 2.5;
 const SHAPE_LEAD = 1;
 const WAVE_PERIOD = 3;
 const WAVE_AMPLITUDE = 0.75;
+const SHAPE_GAP_FRACTION = 0.22;
+const ORTHOGONAL_STUB = 1.5;
+const ORTHOGONAL_CLEARANCE = 0.3;
 const SHAPE_MIN_LENGTH = SHAPE_LEAD * 2 + WAVE_PERIOD;
 const SAMPLE_SPACING = 0.08;
 const MAX_SAMPLES = 512;
@@ -40,11 +55,16 @@ export function buildShape(shape: LineShape, input: ShapeInput): ShapeResult {
   const length = magnitude(chord);
   const direction = normalized(chord, { x: 1, y: 0 });
 
-  if (!Number.isFinite(length) || length <= SHORT_LINE_LENGTH || shape === "straight") {
+  if (!Number.isFinite(length) || length <= EPSILON) {
     return result([start, end], direction);
   }
 
-  if (shape === "orthogonal") return buildOrthogonal(start, end, chord);
+  if (shape === "straight") return result([start, end], direction);
+  if (length <= SHORT_LINE_LENGTH && shape !== "orthogonal") return result([start, end], direction);
+
+  if (shape === "orthogonal") {
+    return buildOrthogonal(start, end, chord, input.startNormal, input.endNormal, input.sourceBounds, input.targetBounds);
+  }
 
   const curve = buildCurve(start, end, chord, input.startNormal, input.endNormal);
   if (shape === "curved") {
@@ -87,7 +107,32 @@ export function buildArrowGeometry(
     tip,
     base,
     tangent,
+    shaftLength: Math.max(0, totalLength - trimDistance),
   };
+}
+
+/** Build independent dash paths for wave/zigzag without breaking their defining bends. */
+export function buildShapeDashPaths(
+  shape: LineShape,
+  geometry: ShapeResult,
+  endDistance = Number.POSITIVE_INFINITY,
+): string[] {
+  if (shape !== "wave" && shape !== "zigzag") return [];
+  const distances = cumulativeDistances(geometry.polyline);
+  const ranges = geometry.dashRanges ?? [];
+  const paths: string[] = [];
+  const cutoff = Number.isFinite(endDistance) ? Math.max(0, endDistance) : Number.POSITIVE_INFINITY;
+
+  for (let index = 0; index < ranges.length; index += 1) {
+    const range = ranges[index];
+    const closesAtArrowBase = Number.isFinite(endDistance) && index === ranges.length - 1;
+    const end = closesAtArrowBase ? Math.min(cutoff, distances.at(-1) ?? range.end) : Math.min(range.end, cutoff);
+    if (end - range.start <= EPSILON) continue;
+    const points = pointsBetweenDistances(geometry.polyline, distances, range.start, end);
+    if (points.length < 2) continue;
+    paths.push(shape === "wave" ? smoothPath(points) : pathFromPoints(points));
+  }
+  return paths;
 }
 
 function buildCurve(start: Point, end: Point, chord: Point, startNormal: Point, endNormal: Point): Cubic {
@@ -123,17 +168,26 @@ function buildLeadCurve(start: Point, end: Point, direction: Point, startNormal:
   };
 }
 
-function buildOrthogonal(start: Point, end: Point, chord: Point): ShapeResult {
-  const middleX = start.x + chord.x / 2;
-  if (!Number.isFinite(middleX)) return result([start, end], normalized(chord, { x: 1, y: 0 }));
-
-  const points = compact([
-    start,
-    { x: middleX, y: start.y },
-    { x: middleX, y: end.y },
-    end,
-  ]);
-  return result(points, lastTangent(points, chord));
+function buildOrthogonal(
+  start: Point,
+  end: Point,
+  chord: Point,
+  startNormal: Point,
+  endNormal: Point,
+  sourceBounds?: ShapeBounds,
+  targetBounds?: ShapeBounds,
+): ShapeResult {
+  const fallback = normalized(chord, { x: 1, y: 0 });
+  const sourceDirection = unit(startNormal, fallback);
+  const targetDirection = unit(endNormal, scale(fallback, -1));
+  const startStub = add(start, scale(sourceDirection, ORTHOGONAL_STUB));
+  const endStub = add(end, scale(targetDirection, ORTHOGONAL_STUB));
+  const obstacles = [sourceBounds, targetBounds]
+    .filter((bounds): bounds is ShapeBounds => bounds !== undefined)
+    .map((bounds) => expandBounds(bounds, ORTHOGONAL_CLEARANCE));
+  const middle = routeOrthogonalStubs(startStub, endStub, sourceDirection, targetDirection, obstacles);
+  const points = compact([start, startStub, ...middle, endStub, end]);
+  return result(points, scale(targetDirection, -1));
 }
 
 function buildWave(curve: Cubic): ShapeResult {
@@ -158,10 +212,24 @@ function buildWave(curve: Cubic): ShapeResult {
 
   const route = [curve.leadStart ?? curve.start, curve.start, ...points, curve.end, curve.leadEnd ?? curve.end];
   const compactRoute = compact(route);
+  const leadLength = magnitude(subtract(points[0], curve.leadStart ?? curve.start));
+  const activeDistances = cumulativeDistances(points);
+  const halfPeriod = length / (cycles * 2);
+  const gapWidth = halfPeriod * SHAPE_GAP_FRACTION;
+  const dashRanges: Array<{ start: number; end: number }> = [];
+  for (let index = 0; index < cycles * 2; index += 1) {
+    const startDistance = index * halfPeriod + gapWidth / 2;
+    const endDistance = (index + 1) * halfPeriod - gapWidth / 2;
+    dashRanges.push({
+      start: index === 0 ? 0 : leadLength + mapDistance(distances, activeDistances, startDistance),
+      end: leadLength + mapDistance(distances, activeDistances, endDistance),
+    });
+  }
   return {
     path: smoothPathWithLeads(compactRoute),
     polyline: compactRoute,
     endTangent: normalized(subtract(curve.end, curve.control2), { x: 1, y: 0 }),
+    dashRanges,
   };
 }
 
@@ -189,13 +257,195 @@ function buildZigzag(curve: Cubic): ShapeResult {
     points.push(add(center, scale(normal, station.offset)));
   }
   points.push(curve.end, curve.leadEnd ?? curve.end);
-  return result(compact(points), normalized(subtract(curve.end, curve.control2), { x: 1, y: 0 }));
+  const route = compact(points);
+  const routeDistances = cumulativeDistances(route);
+  const peakDistances = stations.map((_, index) => routeDistances[index + 2]);
+  const dashRanges = peakDistances.map((peak, index) => {
+    const previous = peakDistances[index - 1];
+    const next = peakDistances[index + 1];
+    const spacingBefore = previous === undefined ? next === undefined ? 0 : next - peak : peak - previous;
+    const spacingAfter = next === undefined ? spacingBefore : next - peak;
+    const start = index === 0 ? 0 : peak - spacingBefore / 2 + spacingBefore * SHAPE_GAP_FRACTION / 2;
+    const end = peak + spacingAfter / 2 - spacingAfter * SHAPE_GAP_FRACTION / 2;
+    return { start, end };
+  });
+  return {
+    ...result(route, normalized(subtract(curve.end, curve.control2), { x: 1, y: 0 })),
+    dashRanges,
+  };
 }
 
 function cycleCount(length: number, availableSamples: number): number {
   const desired = Math.max(1, Math.round(length / WAVE_PERIOD));
   const maxCycles = Math.max(1, Math.floor(Math.max(1, availableSamples) / 8));
   return Math.min(desired, maxCycles);
+}
+
+function routeOrthogonalStubs(
+  start: Point,
+  end: Point,
+  startNormal: Point,
+  endNormal: Point,
+  obstacles: readonly ShapeBounds[],
+): Point[] {
+  if (samePoint(start, end)) return [start, end];
+  const minX = Math.min(start.x, end.x, ...obstacles.map(bounds => bounds.x));
+  const maxX = Math.max(start.x, end.x, ...obstacles.map(bounds => bounds.x + bounds.width));
+  const minY = Math.min(start.y, end.y, ...obstacles.map(bounds => bounds.y));
+  const maxY = Math.max(start.y, end.y, ...obstacles.map(bounds => bounds.y + bounds.height));
+  const padding = Math.max(2, Math.max(maxX - minX, maxY - minY) * 0.1);
+  const xValues = uniqueSorted([
+    start.x, end.x, (start.x + end.x) / 2,
+    minX - padding, maxX + padding,
+    ...obstacles.flatMap(bounds => [bounds.x, bounds.x + bounds.width]),
+  ]);
+  const yValues = uniqueSorted([
+    start.y, end.y, (start.y + end.y) / 2,
+    minY - padding, maxY + padding,
+    ...obstacles.flatMap(bounds => [bounds.y, bounds.y + bounds.height]),
+  ]);
+  const nodes: Point[] = [];
+  for (const x of xValues) {
+    for (const y of yValues) {
+      const point = { x, y };
+      if (isInsideAny(point, obstacles)) continue;
+      nodes.push(point);
+    }
+  }
+
+  const findNode = (point: Point): number => nodes.findIndex(node => samePoint(node, point));
+  const startIndex = findNode(start);
+  const endIndex = findNode(end);
+  if (startIndex < 0 || endIndex < 0) return [start, end];
+
+  const adjacency: Array<Array<{ node: number; direction: number; length: number }>> = nodes.map(() => []);
+  for (let first = 0; first < nodes.length; first += 1) {
+    for (let second = first + 1; second < nodes.length; second += 1) {
+      const direction = directionBetween(nodes[first], nodes[second]);
+      if (direction < 0 || !isClear(nodes[first], nodes[second], obstacles)) continue;
+      const length = magnitude(subtract(nodes[second], nodes[first]));
+      adjacency[first].push({ node: second, direction, length });
+      adjacency[second].push({ node: first, direction: (direction + 2) % 4, length });
+    }
+  }
+
+  const initialDirection = cardinalDirection(startNormal);
+  const requiredEndDirection = cardinalDirection(scale(endNormal, -1));
+  const states = new Map<string, RouteState>();
+  const initial: RouteState = {
+    node: startIndex,
+    direction: initialDirection,
+    bends: 0,
+    length: 0,
+    previous: null,
+    visited: false,
+  };
+  states.set(routeStateKey(initial.node, initial.direction), initial);
+
+  while (true) {
+    let current: RouteState | undefined;
+    for (const state of states.values()) {
+      if (state.visited) continue;
+      if (!current || compareRouteCost(state, current) < 0) current = state;
+    }
+    if (!current) return [start, end];
+    current.visited = true;
+
+    if (current.node === endIndex && (requiredEndDirection < 0 || current.direction === requiredEndDirection)) {
+      const route: Point[] = [];
+      let cursor: RouteState | null = current;
+      while (cursor) {
+        route.push(nodes[cursor.node]);
+        cursor = cursor.previous ? states.get(cursor.previous) ?? null : null;
+      }
+      return route.reverse();
+    }
+
+    for (const edge of adjacency[current.node]) {
+      if (current.node === startIndex && initialDirection >= 0 && edge.direction !== initialDirection) continue;
+      if (edge.node === endIndex && requiredEndDirection >= 0 && edge.direction !== requiredEndDirection) continue;
+      const bends = current.bends + (current.direction >= 0 && current.direction !== edge.direction ? 1 : 0);
+      const length = current.length + edge.length;
+      const key = routeStateKey(edge.node, edge.direction);
+      const previous = states.get(key);
+      if (previous && compareCost(bends, length, previous.bends, previous.length) >= 0) continue;
+      states.set(key, {
+        node: edge.node,
+        direction: edge.direction,
+        bends,
+        length,
+        previous: routeStateKey(current.node, current.direction),
+        visited: false,
+      });
+    }
+  }
+}
+
+interface RouteState {
+  node: number;
+  /** E, S, W, N; -1 when the source is radial rather than axis aligned. */
+  direction: number;
+  bends: number;
+  length: number;
+  previous: string | null;
+  visited: boolean;
+}
+
+function routeStateKey(node: number, direction: number): string {
+  return `${node}:${direction}`;
+}
+
+function compareRouteCost(a: RouteState, b: RouteState): number {
+  return compareCost(a.bends, a.length, b.bends, b.length);
+}
+
+function compareCost(aBends: number, aLength: number, bBends: number, bLength: number): number {
+  return aBends - bBends || aLength - bLength;
+}
+
+function directionBetween(start: Point, end: Point): number {
+  if (Math.abs(start.y - end.y) <= EPSILON) return end.x >= start.x ? 0 : 2;
+  if (Math.abs(start.x - end.x) <= EPSILON) return end.y >= start.y ? 1 : 3;
+  return -1;
+}
+
+function cardinalDirection(vector: Point): number {
+  if (Math.abs(vector.x) > Math.abs(vector.y) && Math.abs(vector.y) <= EPSILON) return vector.x >= 0 ? 0 : 2;
+  if (Math.abs(vector.y) > Math.abs(vector.x) && Math.abs(vector.x) <= EPSILON) return vector.y >= 0 ? 1 : 3;
+  return -1;
+}
+
+function expandBounds(bounds: ShapeBounds, amount: number): ShapeBounds {
+  return {
+    x: bounds.x - amount,
+    y: bounds.y - amount,
+    width: bounds.width + amount * 2,
+    height: bounds.height + amount * 2,
+  };
+}
+
+function isInsideAny(point: Point, obstacles: readonly ShapeBounds[]): boolean {
+  return obstacles.some(bounds => point.x > bounds.x + EPSILON && point.x < bounds.x + bounds.width - EPSILON &&
+    point.y > bounds.y + EPSILON && point.y < bounds.y + bounds.height - EPSILON);
+}
+
+function isClear(start: Point, end: Point, obstacles: readonly ShapeBounds[]): boolean {
+  return obstacles.every(bounds => {
+    if (Math.abs(start.y - end.y) <= EPSILON) {
+      return !(start.y > bounds.y + EPSILON && start.y < bounds.y + bounds.height - EPSILON &&
+        Math.max(Math.min(start.x, end.x), bounds.x + EPSILON) < Math.min(Math.max(start.x, end.x), bounds.x + bounds.width - EPSILON));
+    }
+    if (Math.abs(start.x - end.x) <= EPSILON) {
+      return !(start.x > bounds.x + EPSILON && start.x < bounds.x + bounds.width - EPSILON &&
+        Math.max(Math.min(start.y, end.y), bounds.y + EPSILON) < Math.min(Math.max(start.y, end.y), bounds.y + bounds.height - EPSILON));
+    }
+    return false;
+  });
+}
+
+function uniqueSorted(values: number[]): number[] {
+  return values.filter(Number.isFinite).sort((a, b) => a - b).filter((value, index, sorted) =>
+    index === 0 || Math.abs(value - sorted[index - 1]) > EPSILON);
 }
 
 function sampleCurve(curve: Cubic, count: number): Point[] {
@@ -302,6 +552,37 @@ function pointAtDistance(points: readonly Point[], distances: readonly number[],
   return points[points.length - 1];
 }
 
+function pointsBetweenDistances(
+  points: readonly Point[],
+  distances: readonly number[],
+  startDistance: number,
+  endDistance: number,
+): Point[] {
+  if (points.length < 2 || distances.length !== points.length) return [];
+  const total = distances[distances.length - 1] ?? 0;
+  const start = clamp(startDistance, 0, total);
+  const end = clamp(endDistance, start, total);
+  const segment = [pointAtDistance(points, distances, start)];
+  for (let index = 1; index < points.length - 1; index += 1) {
+    if (distances[index] > start + EPSILON && distances[index] < end - EPSILON) segment.push(points[index]);
+  }
+  segment.push(pointAtDistance(points, distances, end));
+  return compact(segment);
+}
+
+function mapDistance(sourceDistances: readonly number[], targetDistances: readonly number[], value: number): number {
+  if (sourceDistances.length < 2 || sourceDistances.length !== targetDistances.length) return value;
+  const sourceEnd = sourceDistances[sourceDistances.length - 1];
+  const bounded = clamp(value, 0, sourceEnd);
+  for (let index = 1; index < sourceDistances.length; index += 1) {
+    if (sourceDistances[index] + EPSILON < bounded) continue;
+    const span = sourceDistances[index] - sourceDistances[index - 1];
+    const ratio = span <= EPSILON ? 0 : (bounded - sourceDistances[index - 1]) / span;
+    return targetDistances[index - 1] + (targetDistances[index] - targetDistances[index - 1]) * ratio;
+  }
+  return targetDistances[targetDistances.length - 1];
+}
+
 function tangentAtDistance(points: readonly Point[], distances: readonly number[], distance: number): Point {
   for (let index = 1; index < distances.length; index += 1) {
     if (distances[index] + EPSILON >= distance) {
@@ -382,6 +663,14 @@ function normalized(point: Point, fallback: Point): Point {
       : { x: 1, y: 0 };
   }
   return { x: point.x / length, y: point.y / length };
+}
+
+function unit(point: Point, fallback: Point): Point {
+  return normalized(safeVector(point), fallback);
+}
+
+function samePoint(first: Point, second: Point): boolean {
+  return Math.abs(first.x - second.x) <= EPSILON && Math.abs(first.y - second.y) <= EPSILON;
 }
 
 function smoothStep(value: number): number {

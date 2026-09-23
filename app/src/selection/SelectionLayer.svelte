@@ -47,6 +47,11 @@
     toggleSelected,
   } from "./selection.svelte";
   import { selectionForEditing } from "./editingSelection";
+  import {
+    noteMoveStarts,
+    notePressIntent,
+    shouldToggleSelectedHeaderAfterGesture,
+  } from "./noteMoveIntent";
   import { RESIZE_EDGES, resizeEdgeAxes, type ResizeEdge } from "./resize";
   import {
     createPrecisionDeltaTracker,
@@ -74,6 +79,20 @@
         started: boolean;
         captured: boolean;
         gesture: MoveGesture;
+        toggleOnClickId: string | null;
+      }
+    | {
+        kind: "body-move";
+        pointerId: number;
+        startScreen: Point;
+        startWorld: Point;
+        precision: PrecisionDeltaTracker;
+        noteId: string;
+        noteElement: HTMLElement;
+        previousUserSelect: string;
+        started: boolean;
+        captured: boolean;
+        gesture: MoveGesture | null;
       }
     | {
         kind: "resize";
@@ -121,6 +140,7 @@
   let pendingAltContextPick: PendingAltContextPick | null = null;
   let altHeld = false;
   let suppressContextMenuUntil = 0;
+  let suppressBodyClickUntil = 0;
 
   let outlines = $derived.by((): Outline[] => {
     const ppu = pixelsPerUnit(camera);
@@ -206,6 +226,7 @@
       }
 
       if (event.button !== 0 || event.isPrimary === false) return;
+      suppressBodyClickUntil = 0;
 
       const target = event.target instanceof Element ? event.target : null;
       if (!target || target.closest(".selection-context-pick, [data-create-menu], [data-selection-ignore]")) return;
@@ -225,8 +246,21 @@
       const groupHandle = target.closest<HTMLElement>("[data-group-scale-handle]");
       const resizeHandle = target.closest<HTMLElement>("[data-resize-handle]");
       const header = target.closest("[data-note-header]");
-      const canDragFromTarget = groupHandle !== null || resizeHandle !== null ||
-        (header !== null && !isTextEditingTarget(event.target));
+      const noteRoot = target.closest<HTMLElement>("[data-note-id]");
+      const noteId = noteRoot?.dataset.noteId ?? null;
+      const noteBody = target.closest("[data-note-body]");
+      const region = resizeHandle
+        ? "resize-handle"
+        : header
+          ? "header"
+          : noteBody
+            ? "body"
+            : noteRoot
+              ? "frame"
+              : "outside";
+      const pressIntent = notePressIntent(region, noteId, editing.noteId);
+      const canDragFromTarget = groupHandle !== null ||
+        (pressIntent === "move-candidate" && !isTextEditingTarget(event.target));
       pendingAltContextPick = null;
 
       if (event.altKey) {
@@ -269,12 +303,17 @@
       }
 
       if (header && !isTextEditingTarget(event.target)) {
-        const noteRoot = header.closest<HTMLElement>("[data-note-id]");
         const id = noteRoot?.dataset.noteId;
         if (!id || !boardState.notes[id]) return;
 
+        let toggleOnClickId: string | null = null;
         if (event.ctrlKey) {
-          if (!toggleSelected(id)) return;
+          if (selection.ids.includes(id)) {
+            setPrimary(id);
+            toggleOnClickId = id;
+          } else {
+            toggleSelected(id);
+          }
         } else if (selection.ids.includes(id)) {
           setPrimary(id);
         } else {
@@ -284,11 +323,18 @@
         if (!selection.ids.includes(id)) return;
         const frames = framesForSelection();
         if (frames.length === 0) return;
-        startMove(event, local, world, frames, id);
+        startMove(event, local, world, frames, id, toggleOnClickId);
         return;
       }
 
-      if (target.closest("[data-note-id]")) return;
+      if (noteRoot) {
+        if (isTextEditingTarget(event.target)) return;
+        const intent = notePressIntent(noteBody ? "body" : "frame", noteId, editing.noteId);
+        if (intent === "move-candidate" && noteId && boardState.notes[noteId]) {
+          startBodyMove(event, local, world, noteId, noteRoot);
+        }
+        return;
+      }
 
       activeGesture = {
         kind: "marquee",
@@ -349,11 +395,24 @@
     }
 
     function onClick(event: MouseEvent): void {
+      if (suppressBodyClickUntil > performance.now()) {
+        suppressBodyClickUntil = 0;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
+
       const target = event.target instanceof Element ? event.target : null;
-      if (!target || event.altKey || target.closest(".selection-context-pick")) return;
+      if (
+        !target ||
+        event.altKey ||
+        target.closest(
+          ".selection-context-pick, [data-create-menu], [data-selection-ignore], [data-note-header], [data-resize-handle], [data-group-scale-handle]",
+        )
+      ) return;
 
       const body = target.closest("[data-note-body]");
-      const noteRoot = body?.closest<HTMLElement>("[data-note-id]");
+      const noteRoot = body?.closest<HTMLElement>("[data-note-id]") ?? target.closest<HTMLElement>("[data-note-id]");
       const id = noteRoot?.dataset.noteId;
       if (!id || !boardState.notes[id]) return;
 
@@ -371,6 +430,7 @@
       const target = event.target instanceof Element ? event.target : null;
       if (!target) return;
 
+      const body = target.closest("[data-note-body]");
       const handle = target?.closest<HTMLElement>(
         '[data-resize-handle="bottom"], [data-resize-handle="top"]',
       );
@@ -387,7 +447,6 @@
         return;
       }
 
-      const body = target.closest("[data-note-body]");
       const noteRoot = body?.closest<HTMLElement>("[data-note-id]");
       const editingId = noteRoot?.dataset.noteId;
       if (editingId && boardState.notes[editingId]) ensureEditingSelection(editingId);
@@ -399,6 +458,11 @@
       event.preventDefault();
       event.stopPropagation();
       if (grabGesture) cancelGrab();
+    }
+
+    function onNativeDragStart(event: DragEvent): void {
+      if (activeGesture?.kind !== "body-move" || !activeGesture.started) return;
+      event.preventDefault();
     }
 
     function onPrecisionKeyDown(event: KeyboardEvent): void {
@@ -415,6 +479,7 @@
     }
 
     boardEl.addEventListener("pointerdown", onPointerDown, true);
+    boardEl.addEventListener("dragstart", onNativeDragStart, true);
     window.addEventListener("pointermove", onPointerMove, true);
     window.addEventListener("pointerup", onPointerUp, true);
     window.addEventListener("pointercancel", onPointerCancel, true);
@@ -446,6 +511,7 @@
       window.removeEventListener("pointerup", onPointerUp, true);
       window.removeEventListener("pointercancel", onPointerCancel, true);
       boardEl.removeEventListener("pointerdown", onPointerDown, true);
+      boardEl.removeEventListener("dragstart", onNativeDragStart, true);
       boardEl.removeEventListener("lostpointercapture", onLostPointerCapture, true);
       boardEl.removeEventListener("click", onClick, true);
       boardEl.removeEventListener("dblclick", onDoubleClick, true);
@@ -484,7 +550,14 @@
     return boundsAsFrame(id, bounds, note.height);
   }
 
-  function startMove(event: PointerEvent, screen: Point, world: Point, frames: NoteFrame[], anchorId: string): void {
+  function startMove(
+    event: PointerEvent,
+    screen: Point,
+    world: Point,
+    frames: NoteFrame[],
+    anchorId: string,
+    toggleOnClickId: string | null = null,
+  ): void {
     activeGesture = {
       kind: "move",
       pointerId: event.pointerId,
@@ -493,7 +566,32 @@
       started: false,
       captured: false,
       gesture: createMoveGesture(frames, anchorId, world),
+      toggleOnClickId,
     };
+  }
+
+  function startBodyMove(
+    event: PointerEvent,
+    screen: Point,
+    world: Point,
+    noteId: string,
+    noteElement: HTMLElement,
+  ): void {
+    activeGesture = {
+      kind: "body-move",
+      pointerId: event.pointerId,
+      startScreen: screen,
+      startWorld: world,
+      precision: createPrecisionDeltaTracker(world, event.altKey),
+      noteId,
+      noteElement,
+      previousUserSelect: noteElement.style.userSelect,
+      started: false,
+      captured: false,
+      gesture: null,
+    };
+    // The static note body is a move surface; active editor text remains untouched.
+    noteElement.style.userSelect = "none";
   }
 
   function startResize(
@@ -558,12 +656,42 @@
     // Alt toggle during that interval rebases at the actual cursor location.
     const precision = updatePrecisionDelta(gesture.precision, world, event.altKey);
     gesture.precision = precision.tracker;
-    if (!gesture.started && !crossedGestureThreshold(gesture.startScreen, screen)) return;
+    const thresholdCrossed = crossedGestureThreshold(gesture.startScreen, screen);
+    const shouldStart = gesture.kind === "body-move"
+      ? noteMoveStarts("move-candidate", thresholdCrossed)
+      : thresholdCrossed;
+    if (!gesture.started && !shouldStart) return;
     if (!gesture.captured && captureForFollowup) {
       capturePointer(event.pointerId);
       gesture.captured = true;
     }
     gesture.started = true;
+
+    if (gesture.kind === "body-move") {
+      event.preventDefault();
+      if (!gesture.gesture) {
+        if (event.ctrlKey) {
+          if (!selection.ids.includes(gesture.noteId)) toggleSelected(gesture.noteId);
+        } else if (selection.ids.includes(gesture.noteId)) {
+          setPrimary(gesture.noteId);
+        } else {
+          selectOnly(gesture.noteId);
+        }
+        const frames = framesForSelection();
+        if (frames.length === 0) return;
+        gesture.gesture = createMoveGesture(frames, gesture.noteId, gesture.startWorld);
+      }
+      const adjustedWorld = addPoint(gesture.startWorld, precision.delta);
+      gesture.gesture = updateMoveGesture(
+        gesture.gesture,
+        adjustedWorld,
+        grid.snap || event.ctrlKey,
+        grid.step,
+      );
+      applyFrames(gesture.gesture.after);
+      return;
+    }
+
     const adjustedWorld = addPoint(gesture.gesture.startWorld, precision.delta);
 
     if (gesture.kind === "move") {
@@ -621,6 +749,26 @@
       } else if (gesture.started) {
         const change = moveGestureChange(gesture.gesture);
         if (change) recordGeometryChange("Move", targetForMove(change.before, gesture.gesture.anchorId), change);
+      } else if (
+        gesture.toggleOnClickId &&
+        shouldToggleSelectedHeaderAfterGesture(gesture.started, cancelled)
+      ) {
+        toggleSelected(gesture.toggleOnClickId);
+      }
+    } else if (gesture.kind === "body-move") {
+      if (gesture.gesture) {
+        if (cancelled) {
+          applyFrames(cancelMoveGesture(gesture.gesture));
+        } else if (gesture.started) {
+          const change = moveGestureChange(gesture.gesture);
+          if (change) {
+            recordGeometryChange("Move", targetForMove(change.before, gesture.noteId), change);
+          }
+        }
+      }
+      gesture.noteElement.style.userSelect = gesture.previousUserSelect;
+      if (gesture.started && !cancelled) {
+        suppressBodyClickUntil = performance.now() + 500;
       }
     } else if (gesture.kind === "resize") {
       if (cancelled) {
