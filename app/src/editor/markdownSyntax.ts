@@ -37,5 +37,21 @@ const coloredHighlight: MarkdownConfig = {
   ],
 };
 
-export const hiveMarkdownExtensions: MarkdownExtension[] = [...GFM, coloredHighlight];
+const hiveAddress: MarkdownConfig = {
+  defineNodes: [{ name: "HiveAddress" }],
+  parseInline: [
+    {
+      name: "HiveAddress",
+      before: "Autolink",
+      parse(cx, next, pos) {
+        if (next !== 104 && next !== 72) return -1;
+        const rest = cx.slice(pos, pos + 512);
+        const match = /^hive:\/\/(?:point\/-?(?:\d+(?:\.\d+)?|\.\d+),-?(?:\d+(?:\.\d+)?|\.\d+)(?![\w.])|note\/[\w~%-]+)/iu.exec(rest);
+        return match ? cx.addElement(cx.elt("HiveAddress", pos, pos + match[0].length)) : -1;
+      },
+    },
+  ],
+};
+
+export const hiveMarkdownExtensions: MarkdownExtension[] = [...GFM, coloredHighlight, hiveAddress];
 export const hiveMarkdownParser = parser.configure(hiveMarkdownExtensions);

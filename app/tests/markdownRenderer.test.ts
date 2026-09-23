@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createMarkdownFragment } from "../src/editor/markdown";
+import { createMarkdownFragment, linkedNoteIds } from "../src/editor/markdown";
 
 class FakeNode {
   readonly children: FakeNode[] = [];
   readonly attributes = new Map<string, string>();
+  readonly listeners = new Map<string, EventListener>();
   readonly style: { backgroundColor?: string; color?: string } = {};
   className = "";
 
@@ -16,6 +17,10 @@ class FakeNode {
 
   setAttribute(name: string, value: string): void {
     this.attributes.set(name, value);
+  }
+
+  addEventListener(type: string, listener: EventListener): void {
+    this.listeners.set(type, listener);
   }
 
   get textContent(): string {
@@ -76,11 +81,77 @@ describe("static Markdown renderer", () => {
     expect(all.some((node) => node.attributes.has("onerror"))).toBe(false);
   });
 
-  it("shows link labels as styled text without navigation", () => {
+  it("renders supported links as safe, clickable spans without href attributes", () => {
     const tree = render("[safe label](https://example.test)");
     const all = collect(tree);
     expect(all.some((node) => node.tagName === "a")).toBe(false);
-    expect(all.every((node) => !node.attributes.has("href"))).toBe(true);
+    const link = all.find((node) => node.attributes.get("data-text-link") === "");
+    expect(link?.attributes.get("role")).toBe("link");
+    expect(link?.attributes.get("href")).toBeUndefined();
     expect(tree.textContent).toBe("safe label");
+  });
+
+  it("resolves note names, point addresses and visibly marks missing notes", () => {
+    const notices: string[] = [];
+    const noteJumps: string[] = [];
+    const tree = createMarkdownFragment(
+      "[note](hive://note/id-1) [ ](hive://point/-2.5,3) [gone](hive://note/deleted)",
+      fakeDocument,
+      {
+        resolveNote: (noteId) => noteId === "id-1" ? { id: noteId, name: "Current name" } : undefined,
+        teleportToNote: (noteId) => { noteJumps.push(noteId); return true; },
+        onNotice: (message) => notices.push(message),
+      },
+    ) as unknown as FakeNode;
+    const links = collect(tree).filter((node) => node.attributes.get("role") === "link");
+
+    expect(links.map((link) => link.textContent)).toEqual(["note", "Point (-2.5, 3)", "gone (missing)"]);
+    expect(links[2].className).toContain("is-missing");
+    links[0].listeners.get("click")?.({ preventDefault() {}, stopPropagation() {} } as Event);
+    expect(noteJumps).toEqual(["id-1"]);
+    links[2].listeners.get("click")?.({ preventDefault() {}, stopPropagation() {} } as Event);
+    expect(notices).toEqual(["This note is missing."]);
+
+    const noLabelTree = createMarkdownFragment("[ ](hive://note/id-1)", fakeDocument, {
+      resolveNote: (noteId) => noteId === "id-1" ? { id: noteId, name: "Current name" } : undefined,
+    }) as unknown as FakeNode;
+    expect(collect(noLabelTree).find((node) => node.attributes.get("role") === "link")?.textContent)
+      .toBe("Current name");
+  });
+
+  it("invokes link actions and keeps unsupported schemes inert", () => {
+    const opened: string[] = [];
+    const teleported: Array<{ x: number; y: number }> = [];
+    const tree = createMarkdownFragment(
+      "[web](https://example.test/path) [point](hive://point/1.25,-4) [unsafe](javascript:alert(1))",
+      fakeDocument,
+      {
+        openExternal: (url) => { opened.push(url); },
+        teleportToPoint: (point) => { teleported.push(point); },
+      },
+    ) as unknown as FakeNode;
+    const links = collect(tree);
+    const clickable = links.filter((node) => node.attributes.get("role") === "link");
+    const unsafe = links.find((node) => node.textContent === "unsafe");
+
+    clickable[0].listeners.get("click")?.({ preventDefault() {}, stopPropagation() {} } as Event);
+    clickable[1].listeners.get("click")?.({ preventDefault() {}, stopPropagation() {} } as Event);
+    expect(opened).toEqual(["https://example.test/path"]);
+    expect(teleported).toEqual([{ x: 1.25, y: -4 }]);
+    expect(unsafe?.attributes.has("role")).toBe(false);
+    expect(unsafe?.attributes.has("href")).toBe(false);
+  });
+
+  it("renders plain hive addresses as clickable links in pasted note text", () => {
+    const tree = createMarkdownFragment("Point hive://point/-2.5,3 and note hive://note/note-1.", fakeDocument, {
+      resolveNote: (noteId) => noteId === "note-1" ? { id: noteId, name: "Renamed note" } : undefined,
+    }) as unknown as FakeNode;
+    const links = collect(tree).filter((node) => node.attributes.get("role") === "link");
+
+    expect(links.map((link) => link.textContent)).toEqual(["Point (-2.5, 3)", "Renamed note"]);
+    expect(linkedNoteIds("See hive://note/note-1.")).toEqual(["note-1"]);
+
+    const codeTree = render("`hive://point/1,2`");
+    expect(collect(codeTree).some((node) => node.attributes.has("data-text-link"))).toBe(false);
   });
 });

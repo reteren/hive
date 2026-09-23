@@ -3,13 +3,22 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { registerCloseFlush } from "../lifecycle/closeFlush";
 import { replaceBoard, board, updateNote } from "../model/board.svelte";
+import { links, replaceLinks } from "../model/links.svelte";
+import type { Link } from "../model/link";
 import type { Note } from "../model/note";
 import { clear as clearHistory, execute } from "../history/history.svelte";
 import { clearSelection } from "../selection/selection.svelte";
+import { clearSelectedLink } from "../links/selection.svelte";
+import { cancelLineDraft } from "../links/interaction.svelte";
+import { clearNavigationHistory } from "../navigation/navigationHistory.svelte";
+import { resetObjectsPanelSearch } from "../navigation/panelState.svelte";
+import { resetSearch } from "../search/search.svelte";
+import { tool } from "../tools/tool.svelte";
 import { editing } from "../notes/editing.svelte";
 import {
   mergeLoadedNotes,
   parseProjectIndex,
+  parseProjectIndexWithWarnings,
   serializeProjectIndex,
   type LoadedProjectNote,
   type ProjectIndex,
@@ -37,6 +46,7 @@ interface SavedNote {
 interface ProjectSnapshot {
   indexJson: string;
   notes: Note[];
+  links: Link[];
 }
 
 interface ChangedFile {
@@ -121,11 +131,12 @@ function startBoardObserver(): void {
 }
 
 function applyProject(loaded: ProjectLoad): void {
-  const parsedIndex = parseProjectIndex(loaded.indexJson);
+  const { index: parsedIndex, warnings: indexWarnings } = parseProjectIndexWithWarnings(loaded.indexJson);
   const notes = mergeLoadedNotes(parsedIndex, loaded.notes);
   const missingFiles = new Set(loaded.missingFiles ?? []);
 
   // A different project must not inherit the previous one's editor, selection or Undo steps.
+  resetProjectScopedState();
   editing.noteId = null;
   clearSelection();
   clearHistory();
@@ -141,15 +152,26 @@ function applyProject(loaded: ProjectLoad): void {
     loaded.notes.filter((note) => missingFiles.has(note.file)).map((note) => note.id),
   );
   externalDeleteWarnings = new Map();
-  lastSavedIndex = serializeProjectIndex(notes, parsedIndex);
+  lastSavedIndex = serializeProjectIndex(notes, parsedIndex, parsedIndex.links);
   project.path = loaded.path;
   project.name = loaded.name;
   project.error = "";
-  project.warnings = [...loaded.warnings];
+  project.warnings = [...new Set([...loaded.warnings, ...indexWarnings])];
   project.conflicts = [];
   project.ready = true;
   replaceBoard(notes);
+  replaceLinks(parsedIndex.links ?? []);
   loading = false;
+}
+
+/** Reset state whose ids or navigation context belongs to the currently open project. */
+export function resetProjectScopedState(): void {
+  cancelLineDraft();
+  clearSelectedLink();
+  tool.active = "select";
+  clearNavigationHistory();
+  resetSearch();
+  resetObjectsPanelSearch();
 }
 
 function makeSnapshot(): ProjectSnapshot {
@@ -157,9 +179,11 @@ function makeSnapshot(): ProjectSnapshot {
     const note = board.notes[id];
     return note ? [{ ...note }] : [];
   });
+  const currentLinks = Object.values(links.byId).map((link) => ({ ...link }));
   return {
-    indexJson: serializeProjectIndex(notes, indexTemplate),
+    indexJson: serializeProjectIndex(notes, indexTemplate, currentLinks),
     notes,
+    links: currentLinks,
   };
 }
 

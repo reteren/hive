@@ -45,7 +45,7 @@
     setPrimary,
     toggleSelected,
   } from "./selection.svelte";
-  import type { ResizeEdge } from "./resize";
+  import { RESIZE_EDGES, resizeEdgeAxes, type ResizeEdge } from "./resize";
 
   interface Outline {
     id: string;
@@ -306,7 +306,9 @@
 
     function onDoubleClick(event: MouseEvent): void {
       const target = event.target instanceof Element ? event.target : null;
-      const handle = target?.closest<HTMLElement>('[data-resize-handle="bottom"]');
+      const handle = target?.closest<HTMLElement>(
+        '[data-resize-handle="bottom"], [data-resize-handle="top"]',
+      );
       const id = handle?.dataset.noteId;
       const note = id ? boardState.notes[id] : undefined;
       if (!id || !note || note.height === null) return;
@@ -616,6 +618,25 @@
     if (boardState.notes[id]) selectOnly(id);
     closeContextPick();
   }
+
+  function handleLabel(edge: ResizeEdge): string {
+    return edge.replaceAll("-", " ");
+  }
+
+  function isCornerHandle(edge: ResizeEdge): boolean {
+    const axes = resizeEdgeAxes(edge);
+    return axes.horizontal !== null && axes.vertical !== null;
+  }
+
+  function resizeHandleTitle(edge: ResizeEdge): string {
+    const base = `Resize from ${handleLabel(edge)}`;
+    return edge === "top" || edge === "bottom" ? `${base}; double-click for auto height` : base;
+  }
+
+  function groupHandleTitle(edge: ResizeEdge): string {
+    const base = `Scale selection from ${handleLabel(edge)}`;
+    return isCornerHandle(edge) ? `${base}; hold Shift to preserve aspect ratio` : base;
+  }
 </script>
 
 <div class="selection-layer" bind:this={layer} aria-hidden="false">
@@ -633,30 +654,18 @@
       aria-label="Selected {outline.name}"
     >
       {#if selection.ids.length === 1 && outline.primary}
-        <button
-          class="resize-handle resize-right"
-          type="button"
-          data-resize-handle="right"
-          data-note-id={outline.id}
-          aria-label="Resize {outline.name} width"
-          title="Resize width"
-        ></button>
-        <button
-          class="resize-handle resize-bottom"
-          type="button"
-          data-resize-handle="bottom"
-          data-note-id={outline.id}
-          aria-label="Resize {outline.name} height"
-          title="Resize height; double-click for auto height"
-        ></button>
-        <button
-          class="resize-handle resize-corner"
-          type="button"
-          data-resize-handle="corner"
-          data-note-id={outline.id}
-          aria-label="Resize {outline.name} width and height"
-          title="Resize width and height"
-        ></button>
+        {#each RESIZE_EDGES as edge (edge)}
+          <button
+            class={`resize-handle resize-handle-${edge}`}
+            class:resize-handle-corner={isCornerHandle(edge)}
+            class:resize-handle-side={!isCornerHandle(edge)}
+            type="button"
+            data-resize-handle={edge}
+            data-note-id={outline.id}
+            aria-label="Resize {outline.name} from {handleLabel(edge)}"
+            title={resizeHandleTitle(edge)}
+          ></button>
+        {/each}
       {/if}
     </div>
   {/each}
@@ -673,27 +682,17 @@
       role="group"
       aria-label="Selection bounds for {selection.ids.length} notes"
     >
-      <button
-        class="resize-handle resize-right"
-        type="button"
-        data-group-scale-handle="right"
-        aria-label="Scale selected notes horizontally"
-        title="Scale selected notes horizontally"
-      ></button>
-      <button
-        class="resize-handle resize-bottom"
-        type="button"
-        data-group-scale-handle="bottom"
-        aria-label="Scale selected notes vertically"
-        title="Scale selected notes vertically"
-      ></button>
-      <button
-        class="resize-handle resize-corner"
-        type="button"
-        data-group-scale-handle="corner"
-        aria-label="Scale selected notes horizontally and vertically"
-        title="Scale selection; hold Shift to preserve aspect ratio"
-      ></button>
+      {#each RESIZE_EDGES as edge (edge)}
+        <button
+          class={`resize-handle resize-handle-${edge}`}
+          class:resize-handle-corner={isCornerHandle(edge)}
+          class:resize-handle-side={!isCornerHandle(edge)}
+          type="button"
+          data-group-scale-handle={edge}
+          aria-label="Scale selected notes from {handleLabel(edge)}"
+          title={groupHandleTitle(edge)}
+        ></button>
+      {/each}
     </div>
   {/if}
 
@@ -764,42 +763,88 @@
     position: absolute;
     z-index: 1;
     display: block;
+    width: 16px;
+    height: 16px;
     padding: 0;
-    border: 1px solid #191919;
-    border-radius: 3px;
-    background: var(--accent);
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
     pointer-events: auto;
     touch-action: none;
   }
 
-  .resize-handle:hover {
+  .resize-handle::before {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    width: 8px;
+    height: 8px;
+    box-sizing: border-box;
+    border: 1px solid #191919;
+    border-radius: 50%;
+    background: var(--accent);
+    content: "";
+  }
+
+  .resize-handle-corner::before {
+    border-radius: 0;
+  }
+
+  .resize-handle:hover::before,
+  .resize-handle:focus-visible::before {
     background: #ffd260;
   }
 
-  .resize-right {
-    top: 50%;
-    right: -5px;
-    width: 9px;
-    height: 24px;
-    transform: translateY(-50%);
-    cursor: ew-resize;
+  .resize-handle-top-left {
+    top: -8px;
+    left: -8px;
+    cursor: nwse-resize;
   }
 
-  .resize-bottom {
-    bottom: -5px;
+  .resize-handle-top {
+    top: -8px;
     left: 50%;
-    width: 24px;
-    height: 9px;
     transform: translateX(-50%);
     cursor: ns-resize;
   }
 
-  .resize-corner {
-    right: -5px;
-    bottom: -5px;
-    width: 11px;
-    height: 11px;
+  .resize-handle-top-right {
+    top: -8px;
+    right: -8px;
+    cursor: nesw-resize;
+  }
+
+  .resize-handle-right {
+    top: 50%;
+    right: -8px;
+    transform: translateY(-50%);
+    cursor: ew-resize;
+  }
+
+  .resize-handle-bottom-right {
+    right: -8px;
+    bottom: -8px;
     cursor: nwse-resize;
+  }
+
+  .resize-handle-bottom {
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    cursor: ns-resize;
+  }
+
+  .resize-handle-bottom-left {
+    bottom: -8px;
+    left: -8px;
+    cursor: nesw-resize;
+  }
+
+  .resize-handle-left {
+    top: 50%;
+    left: -8px;
+    transform: translateY(-50%);
+    cursor: ew-resize;
   }
 
   .marquee {

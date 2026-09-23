@@ -2,7 +2,7 @@ import type { Point } from "../board/cameraMath";
 import { snapToGrid } from "../board/gridMath";
 import type { Bounds } from "../notes/layout.svelte";
 import { MIN_NOTE_HEIGHT } from "../notes/layout.svelte";
-import { MIN_NOTE_WIDTH, type ResizeEdge } from "./resize";
+import { MIN_NOTE_WIDTH, resizeEdgeAxes, type ResizeEdge } from "./resize";
 import type { GeometryChange, NoteFrame } from "./gestures";
 
 export interface GroupScaleGesture {
@@ -59,10 +59,7 @@ export function updateGroupScaleGesture(
   return { ...gesture, after };
 }
 
-/**
- * Scale note positions and dimensions around the group's top-left corner.
- * Auto-height notes scale their position only; width and height=null stay unchanged.
- */
+/** Scale note positions and dimensions around the fixed side opposite the dragged handle. */
 export function scaleGroupFrames(
   frames: readonly NoteFrame[],
   bounds: Bounds,
@@ -75,13 +72,13 @@ export function scaleGroupFrames(
   if (frames.length === 0) return [];
 
   const scales = edgeScales(bounds, edge, delta, snap, step);
+  const axes = resizeEdgeAxes(edge);
   let scaleX = clampScale(scales.x, minimumWidthScale(frames));
   let scaleY = clampScale(scales.y, minimumHeightScale(frames));
 
-  if (edge === "corner" && preserveAspect) {
-    // Use the axis moved farther as a fraction of its original group dimension.
-    // That edge drives the uniform scale; the other edge follows its aspect ratio.
-    const xDominates = Math.abs(delta.x / bounds.width) >= Math.abs(delta.y / bounds.height);
+  if (axes.horizontal !== null && axes.vertical !== null && preserveAspect) {
+    // The axis with the larger proportional scale change drives the uniform factor.
+    const xDominates = Math.abs(scales.x - 1) >= Math.abs(scales.y - 1);
     const uniformMinimum = Math.max(minimumWidthScale(frames), minimumHeightScale(frames));
     const uniform = clampScale(xDominates ? scales.x : scales.y, uniformMinimum);
     scaleX = uniform;
@@ -90,8 +87,12 @@ export function scaleGroupFrames(
 
   return frames.map((frame) => ({
     ...frame,
-    x: bounds.x + (frame.x - bounds.x) * scaleX,
-    y: bounds.y + (frame.y - bounds.y) * scaleY,
+    x: axes.horizontal === "left"
+      ? bounds.x + bounds.width - (bounds.x + bounds.width - frame.x) * scaleX
+      : bounds.x + (frame.x - bounds.x) * scaleX,
+    y: axes.vertical === "top"
+      ? bounds.y + bounds.height - (bounds.y + bounds.height - frame.y) * scaleY
+      : bounds.y + (frame.y - bounds.y) * scaleY,
     width: frame.width * scaleX,
     height: frame.height === null ? null : frame.height * scaleY,
   }));
@@ -113,23 +114,38 @@ function edgeScales(
   snap: boolean,
   step: number,
 ): { x: number; y: number } {
-  const rawRight = bounds.x + bounds.width + delta.x;
-  const rawBottom = bounds.y + bounds.height + delta.y;
-  const right = snap && (edge === "right" || edge === "corner")
-    ? snapToGrid({ x: rawRight, y: 0 }, step).x
-    : rawRight;
-  const bottom = snap && (edge === "bottom" || edge === "corner")
-    ? snapToGrid({ x: 0, y: rawBottom }, step).y
-    : rawBottom;
+  const axes = resizeEdgeAxes(edge);
+  let horizontalScale = 1;
+  let verticalScale = 1;
+
+  if (axes.horizontal === "left") {
+    const rawLeft = bounds.x + delta.x;
+    const left = snap ? snapToGrid({ x: rawLeft, y: 0 }, step).x : rawLeft;
+    horizontalScale = (bounds.x + bounds.width - left) / bounds.width;
+  } else if (axes.horizontal === "right") {
+    const rawRight = bounds.x + bounds.width + delta.x;
+    const right = snap ? snapToGrid({ x: rawRight, y: 0 }, step).x : rawRight;
+    horizontalScale = (right - bounds.x) / bounds.width;
+  }
+
+  if (axes.vertical === "top") {
+    const rawTop = bounds.y + delta.y;
+    const top = snap ? snapToGrid({ x: 0, y: rawTop }, step).y : rawTop;
+    verticalScale = (bounds.y + bounds.height - top) / bounds.height;
+  } else if (axes.vertical === "bottom") {
+    const rawBottom = bounds.y + bounds.height + delta.y;
+    const bottom = snap ? snapToGrid({ x: 0, y: rawBottom }, step).y : rawBottom;
+    verticalScale = (bottom - bounds.y) / bounds.height;
+  }
 
   return {
-    x: edge === "right" || edge === "corner" ? (right - bounds.x) / bounds.width : 1,
-    y: edge === "bottom" || edge === "corner" ? (bottom - bounds.y) / bounds.height : 1,
+    x: horizontalScale,
+    y: verticalScale,
   };
 }
 
 function minimumWidthScale(frames: readonly NoteFrame[]): number {
-  return Math.max(0, ...frames.flatMap((frame) => frame.height === null ? [] : [MIN_NOTE_WIDTH / frame.width]));
+  return Math.max(0, ...frames.map((frame) => MIN_NOTE_WIDTH / frame.width));
 }
 
 function minimumHeightScale(frames: readonly NoteFrame[]): number {

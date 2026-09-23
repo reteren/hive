@@ -18,7 +18,7 @@ describe("group scale", () => {
       { id: "b", x: 50, y: 40, width: 30, height: 30 },
     ];
 
-    expect(scaleGroupFrames(frames, groupBounds, "corner", { x: 50, y: 50 }, false, 10)).toEqual([
+    expect(scaleGroupFrames(frames, groupBounds, "bottom-right", { x: 50, y: 50 }, false, 10)).toEqual([
       { id: "a", x: 0, y: 0, width: 30, height: 30 },
       { id: "b", x: 75, y: 60, width: 45, height: 45 },
     ]);
@@ -31,7 +31,7 @@ describe("group scale", () => {
     ];
     const bounds = { x: 0, y: 0, width: 100, height: 100 };
 
-    const scaled = scaleGroupFrames(frames, bounds, "corner", { x: -70, y: -80 }, false, 10);
+    const scaled = scaleGroupFrames(frames, bounds, "bottom-right", { x: -70, y: -80 }, false, 10);
     expect(scaled).toEqual([
       { id: "a", x: 0, y: 0, width: 12, height: 6 },
       { id: "b", x: 30, y: 24, width: 24, height: 12 },
@@ -44,7 +44,7 @@ describe("group scale", () => {
       { id: "manual", x: 40, y: 50, width: 20, height: 10 },
     ];
 
-    const scaled = scaleGroupFrames(frames, groupBounds, "corner", { x: 50, y: 50 }, false, 10);
+    const scaled = scaleGroupFrames(frames, groupBounds, "bottom-right", { x: 50, y: 50 }, false, 10);
     expect(scaled).toEqual([
       { id: "auto", x: 15, y: 30, width: 30, height: null },
       { id: "manual", x: 60, y: 75, width: 30, height: 15 },
@@ -66,7 +66,7 @@ describe("group scale", () => {
       { id: "b", x: 50, y: 40, width: 30, height: 30 },
     ];
 
-    const scaled = scaleGroupFrames(frames, groupBounds, "corner", { x: 50, y: 20 }, false, 10, true);
+    const scaled = scaleGroupFrames(frames, groupBounds, "bottom-right", { x: 50, y: 20 }, false, 10, true);
     expect(scaled[1].x / 50).toBeCloseTo(scaled[1].y / 40);
     expect(scaled[1].height).toBe(45);
     expect(scaled[0].width / 20).toBeCloseTo(scaled[1].height! / 30);
@@ -77,10 +77,55 @@ describe("group scale", () => {
       { id: "a", x: 10, y: 10, width: 20, height: null },
       { id: "b", x: 40, y: 50, width: 20, height: 10 },
     ];
-    const gesture = createGroupScaleGesture(frames, groupBounds, "corner", { x: 100, y: 100 });
+    const gesture = createGroupScaleGesture(frames, groupBounds, "bottom-right", { x: 100, y: 100 });
     const preview = updateGroupScaleGesture(gesture, { x: 150, y: 150 }, false, 10);
 
     expect(cancelGroupScaleGesture(preview)).toEqual(frames);
     expect(groupScaleGestureChange(preview, true)).toBeNull();
+  });
+
+  it("anchors all eight group handles at the opposite sides", () => {
+    const frame: NoteFrame = { id: "a", x: 0, y: 0, width: 100, height: 100 };
+    const cases = [
+      ["top-left", { x: -50, y: -50 }, { x: -50, y: -50, width: 150, height: 150 }],
+      ["top", { x: 0, y: -50 }, { x: 0, y: -50, width: 100, height: 150 }],
+      ["top-right", { x: 50, y: -50 }, { x: 0, y: -50, width: 150, height: 150 }],
+      ["right", { x: 50, y: 0 }, { x: 0, y: 0, width: 150, height: 100 }],
+      ["bottom-right", { x: 50, y: 50 }, { x: 0, y: 0, width: 150, height: 150 }],
+      ["bottom", { x: 0, y: 50 }, { x: 0, y: 0, width: 100, height: 150 }],
+      ["bottom-left", { x: -50, y: 50 }, { x: -50, y: 0, width: 150, height: 150 }],
+      ["left", { x: -50, y: 0 }, { x: -50, y: 0, width: 150, height: 100 }],
+    ] as const;
+
+    for (const [edge, delta, expected] of cases) {
+      expect(scaleGroupFrames([frame], groupBounds, edge, delta, false, 10)).toEqual([
+        { id: "a", ...expected },
+      ]);
+    }
+  });
+
+  it("keeps the opposite group corner fixed when the scale clamps at node minima", () => {
+    const frames: NoteFrame[] = [
+      { id: "a", x: 0, y: 0, width: 20, height: 10 },
+      { id: "b", x: 60, y: 80, width: 40, height: 20 },
+    ];
+
+    expect(scaleGroupFrames(frames, groupBounds, "top-left", { x: 80, y: 80 }, false, 10)).toEqual([
+      { id: "a", x: 40, y: 40, width: 12, height: 6 },
+      { id: "b", x: 76, y: 88, width: 24, height: 12 },
+    ]);
+  });
+
+  it("keeps Shift corner proportions from each corner anchor", () => {
+    const frames: NoteFrame[] = [
+      { id: "a", x: 0, y: 0, width: 20, height: 20 },
+      { id: "b", x: 50, y: 40, width: 30, height: 30 },
+    ];
+
+    const scaled = scaleGroupFrames(frames, groupBounds, "top-left", { x: -50, y: -20 }, false, 10, true);
+    expect(scaled).toEqual([
+      { id: "a", x: -50, y: -50, width: 30, height: 30 },
+      { id: "b", x: 25, y: 10, width: 45, height: 45 },
+    ]);
   });
 });

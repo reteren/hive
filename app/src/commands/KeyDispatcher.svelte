@@ -3,6 +3,7 @@
   import { commands } from "./registry.svelte";
   import { findMatchingCommand } from "./keys";
   import { isTextEditingTarget } from "./focus";
+  import { shouldRunOnKeydown } from "../search/keyboardRepeat";
 
   function isInteractiveTarget(target: EventTarget | null): boolean {
     if (!(target instanceof Element)) return false;
@@ -29,9 +30,9 @@
       const command = findMatchingCommand(event, commands.values());
       if (!command) return;
 
-      // Keep browser defaults suppressed for a held toggle key, but run its action once.
+      // Keep browser defaults suppressed while held; commands repeat only by explicit opt-in.
       event.preventDefault();
-      if (!event.repeat || !command.isActive) command.run();
+      if (shouldRunOnKeydown(command, event.repeat)) command.run();
     }
 
     window.addEventListener("keydown", handleKeydown);

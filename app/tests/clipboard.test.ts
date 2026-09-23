@@ -7,6 +7,7 @@ import {
   notesAsPlainText,
   parseNotesPayload,
   placeNotes,
+  remapClipboardLinks,
   serializeNotes,
   uniqueCopyNames,
 } from "../src/clipboard/payload";
@@ -34,14 +35,17 @@ const noteB: Note = {
 };
 
 describe("clipboard payload", () => {
-  it("serializes a versioned Hive payload with a reserved links field", () => {
-    const serialized = serializeNotes([noteA, noteB]);
+  it("serializes a versioned Hive payload with only internal links", () => {
+    const serialized = serializeNotes([noteA, noteB], [
+      { from: "note-a", to: "note-b", kind: "strong", shape: "straight" },
+      { from: "note-a", to: "other", kind: "weak", shape: "straight" },
+    ]);
     const value = JSON.parse(serialized);
 
     expect(value).toMatchObject({
       marker: HIVE_CLIPBOARD_MARKER,
       version: HIVE_CLIPBOARD_VERSION,
-      links: [],
+      links: [{ from: "note-a", to: "note-b", kind: "strong", shape: "straight" }],
       nodes: [
         { sourceId: "note-a", type: "note", name: "Alpha", text: noteA.text },
         { sourceId: "note-b", type: "note", name: "Beta", text: "body" },
@@ -66,6 +70,17 @@ describe("clipboard payload", () => {
 
   it("provides a readable plain-text representation for other apps", () => {
     expect(notesAsPlainText([noteA, noteB])).toBe("Alpha\nfirst line\nsecond line\n\nBeta\nbody");
+  });
+
+  it("remaps internal link endpoints to the newly pasted notes", () => {
+    const copied = remapClipboardLinks([
+      { from: "note-a", to: "note-b", kind: "strong", shape: "straight" },
+      { from: "note-a", to: "outside", kind: "weak", shape: "straight" },
+    ], new Map([["note-a", "copy-a"], ["note-b", "copy-b"]]), () => "new-link");
+
+    expect(copied).toEqual([{
+      id: "new-link", from: "copy-a", to: "copy-b", kind: "strong", shape: "straight",
+    }]);
   });
 });
 

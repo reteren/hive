@@ -1,25 +1,32 @@
 import { camera, pointer } from "../board/camera.svelte";
 import { DEFAULT_NOTE_WIDTH, newId, type Note } from "../model/note";
 import { board, addNote, removeNote } from "../model/board.svelte";
+import { addLink, links, removeLink } from "../model/links.svelte";
+import type { Link } from "../model/link";
 import { execute, historyFeedback, type HistoryCommand } from "../history/history.svelte";
 import { MIN_NOTE_HEIGHT } from "../notes/layout.svelte";
 import { uniqueName } from "../notes/naming";
 import { clearSelection, includeSelected, selection, setPrimary } from "../selection/selection.svelte";
 import { registerCommand, runCommand } from "../commands/registry.svelte";
 import { isTextEditingTarget } from "../commands/focus";
+import { clearSelectedLink, selectedLink } from "../links/selection.svelte";
+import { unlinkSelected } from "../links/operations";
 import {
   HIVE_CLIPBOARD_MIME,
   HIVE_CLIPBOARD_WEB_MIME,
   notesAsPlainText,
   parseNotesPayload,
   placeNotes,
+  remapClipboardLinks,
   serializeNotes,
   uniqueCopyNames,
+  type ClipboardLink,
 } from "./payload";
 
 interface SelectionSnapshot {
   ids: string[];
   primaryId: string | null;
+  linkId: string | null;
 }
 
 interface IndexedNote {
@@ -88,6 +95,7 @@ export async function cutSelection(): Promise<void> {
 export function deleteSelection(): void {
   const notes = selectedNotes();
   if (notes.length === 0) {
+    if (unlinkSelected()) return;
     showClipboardFeedback("Nothing selected to delete");
     return;
   }
@@ -101,8 +109,12 @@ export function duplicateSelection(): void {
     return;
   }
 
-  const copies = createCopies(originals, pointer.world ? { ...pointer.world } : null);
-  addCopies(copies, "Duplicate", originals.length === 1 ? copies[0]?.name : `${copies.length} notes`);
+  const copies = createCopies(
+    originals.map((note) => ({ ...note, sourceId: note.id })),
+    pointer.world ? { ...pointer.world } : null,
+    linksBetween(originals),
+  );
+  addCopies(copies.notes, copies.links, "Duplicate", originals.length === 1 ? copies.notes[0]?.name : `${copies.notes.length} notes`);
   runCommand("select.move");
 }
 
@@ -116,8 +128,8 @@ export async function pasteFromClipboard(): Promise<void> {
   try {
     const source = await readClipboard();
     if (source.kind === "hive") {
-      const notes = createCopies(source.payload.nodes, destination);
-      addCopies(notes, "Paste", notes.length === 1 ? notes[0]?.name : `${notes.length} notes`);
+      const copies = createCopies(source.payload.nodes, destination, source.payload.links);
+      addCopies(copies.notes, copies.links, "Paste", copies.notes.length === 1 ? copies.notes[0]?.name : `${copies.notes.length} notes`);
       return;
     }
 
@@ -137,8 +149,9 @@ export async function pasteFromClipboard(): Promise<void> {
       y: center.y - MIN_NOTE_HEIGHT / 2,
       width: DEFAULT_NOTE_WIDTH,
       height: null,
+      createdAt: Date.now(),
     };
-    addCopies([note], "Paste", note.name);
+    addCopies([note], [], "Paste", note.name);
   } catch (error) {
     showClipboardFeedback(clipboardErrorMessage(error));
   } finally {
@@ -158,6 +171,7 @@ function selectionSnapshot(): SelectionSnapshot {
   return {
     ids,
     primaryId: selection.primaryId && ids.includes(selection.primaryId) ? selection.primaryId : ids.at(-1) ?? null,
+    linkId: selectedLink.id && links.byId[selectedLink.id] ? selectedLink.id : null,
   };
 }
 
@@ -166,34 +180,46 @@ function restoreSelection(snapshot: SelectionSnapshot): void {
   clearSelection();
   for (const id of ids) includeSelected(id);
   if (snapshot.primaryId && ids.includes(snapshot.primaryId)) setPrimary(snapshot.primaryId);
+  selectedLink.id = snapshot.linkId && links.byId[snapshot.linkId] ? snapshot.linkId : null;
 }
 
 function selectIds(ids: readonly string[]): void {
   clearSelection();
+  clearSelectedLink();
   for (const id of ids) includeSelected(id);
   if (ids.length > 0) setPrimary(ids[ids.length - 1]);
 }
 
-type CopySource = Pick<Note, "name" | "text" | "x" | "y" | "width" | "height">;
+type CopySource = Pick<Note, "name" | "text" | "x" | "y" | "width" | "height" | "createdAt"> & { sourceId: string };
 
-function createCopies(sourceNotes: readonly CopySource[], destination: { x: number; y: number } | null): Note[] {
+function createCopies(
+  sourceNotes: readonly CopySource[],
+  destination: { x: number; y: number } | null,
+  sourceLinks: readonly ClipboardLink[],
+): { notes: Note[]; links: Link[] } {
   const existingNames = Object.values(board.notes).map((note) => note.name);
   const names = uniqueCopyNames(sourceNotes.map((note) => note.name), existingNames);
   const positioned = placeNotes(sourceNotes, destination);
-
-  return positioned.map((note, index) => ({
-    id: newId(),
-    type: "note",
-    name: names[index],
-    text: note.text,
-    x: note.x,
-    y: note.y,
-    width: note.width,
-    height: note.height,
-  }));
+  const idMap = new Map<string, string>();
+  const notes = positioned.map((note, index) => {
+    const id = newId();
+    idMap.set(note.sourceId, id);
+    return {
+      id,
+      type: "note" as const,
+      name: names[index],
+      text: note.text,
+      x: note.x,
+      y: note.y,
+      width: note.width,
+      height: note.height,
+      createdAt: note.createdAt ?? Date.now(),
+    };
+  });
+  return { notes, links: remapClipboardLinks(sourceLinks, idMap) };
 }
 
-function addCopies(notes: readonly Note[], label: "Paste" | "Duplicate", target?: string): void {
+function addCopies(notes: readonly Note[], copiedLinks: readonly Link[], label: "Paste" | "Duplicate", target?: string): void {
   if (notes.length === 0) return;
   const previousSelection = selectionSnapshot();
   const startIndex = board.order.length;
@@ -204,9 +230,11 @@ function addCopies(notes: readonly Note[], label: "Paste" | "Duplicate", target?
     target,
     do: () => {
       notes.forEach((note, index) => addNote(note, startIndex + index));
+      copiedLinks.forEach(addLink);
       selectIds(ids);
     },
     undo: () => {
+      copiedLinks.forEach((link) => removeLink(link.id));
       for (const id of ids) removeNote(id);
       restoreSelection(previousSelection);
     },
@@ -222,22 +250,34 @@ function deleteNotes(notes: readonly Note[], label: "Cut" | "Delete"): void {
   if (indexed.length === 0) return;
 
   const previousSelection = selectionSnapshot();
+  const deletedIds = new Set(indexed.map(({ note }) => note.id));
+  const attachedLinks = Object.values(links.byId).filter((link) => deletedIds.has(link.from) || deletedIds.has(link.to));
   const target = indexed.length === 1 ? indexed[0].note.name : `${indexed.length} notes`;
   const command: HistoryCommand = {
     label,
     target,
     do: () => {
+      attachedLinks.forEach((link) => removeLink(link.id));
       for (const { note } of indexed) removeNote(note.id);
       clearSelection();
+      clearSelectedLink();
     },
     undo: () => {
       for (const { note, index } of [...indexed].sort((first, second) => first.index - second.index)) {
         addNote({ ...note }, index);
       }
+      attachedLinks.forEach(addLink);
       restoreSelection(previousSelection);
     },
   };
   execute(command);
+}
+
+function linksBetween(notes: readonly Note[]): ClipboardLink[] {
+  const ids = new Set(notes.map((note) => note.id));
+  return Object.values(links.byId).flatMap((link) => ids.has(link.from) && ids.has(link.to)
+    ? [{ from: link.from, to: link.to, kind: link.kind, shape: link.shape }]
+    : []);
 }
 
 async function writeNotesToClipboard(notes: readonly Note[]): Promise<ClipboardWriteResult> {
@@ -245,7 +285,7 @@ async function writeNotesToClipboard(notes: readonly Note[]): Promise<ClipboardW
   const plainText = notesAsPlainText(notes);
   if (!clipboard) throw new Error("Clipboard access is unavailable in this window.");
 
-  const serialized = serializeNotes(notes);
+  const serialized = serializeNotes(notes, linksBetween(notes));
   if (!clipboard.write || typeof ClipboardItem === "undefined") {
     await clipboard.writeText(plainText);
     return "text";
@@ -398,7 +438,7 @@ registerCommand({
   label: "Delete",
   keys: ["Delete", "Backspace"],
   run: deleteSelection,
-  isActive: () => selection.ids.length > 0,
+  isActive: () => selection.ids.length > 0 || selectedLink.id !== null,
 });
 
 registerCommand({

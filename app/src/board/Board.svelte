@@ -4,6 +4,8 @@
   import { viewport } from "./camera.svelte";
   import { attachCameraInput } from "./cameraInput";
   import GridLayer from "./GridLayer.svelte";
+  import LinksLayer from "../links/LinksLayer.svelte";
+  import "../links/commands";
   import MeMarker from "./MeMarker.svelte";
   import NotesLayer from "../notes/NotesLayer.svelte";
   import SelectionLayer from "../selection/SelectionLayer.svelte";
@@ -13,6 +15,11 @@
   import { isTextEditingTarget } from "../commands/focus";
   import { resolveBoardEscapeAction } from "../selection/escapePriority";
   import { closeUndoLog, undoLogPanel } from "../history/history.svelte";
+  import { cancelLineDraft } from "../links/interaction.svelte";
+  import { isLineTool, tool } from "../tools/tool.svelte";
+  import { selection } from "../selection/selection.svelte";
+  import { closeLinkContextMenu, linkContext } from "../links-in-text/contextMenu.svelte";
+  import { resolveLineToolEscapeAction } from "../search/escapePriority";
 
   let board: HTMLDivElement;
 
@@ -64,7 +71,32 @@
     } else if (action === "close-undo-log") {
       closeUndoLog();
       event.preventDefault();
+    } else if (action === "pass-through" && isLineTool()) {
+      const escapeAction = resolveLineToolEscapeAction({
+        focusedFloatingUi: isFocusedEscapeOverlay(event.target) || isFocusedEscapeOverlay(document.activeElement),
+        contextMenuOpen: linkContext.menu !== null,
+        selectionContextPickOpen: selection.contextPick !== null,
+        lineToolActive: isLineTool(),
+      });
+      if (escapeAction === "close-context-menu") {
+        closeLinkContextMenu();
+        event.preventDefault();
+        event.stopPropagation();
+      } else if (escapeAction === "cancel-line-tool") {
+        tool.active = "select";
+        cancelLineDraft();
+        event.preventDefault();
+      }
     }
+  }
+
+  function isFocusedEscapeOverlay(target: EventTarget | null): boolean {
+    if (!(target instanceof Element)) return false;
+    const overlay = target.closest(
+      "dialog, [role='dialog'], [role='menu'], [role='alertdialog'], [data-selection-ignore], #undo-log-panel, .selection-context-pick",
+    );
+    if (!overlay) return false;
+    return !overlay.closest(".search-trigger, .objects-tab");
   }
 </script>
 
@@ -76,6 +108,7 @@
   role="application"
 >
   <GridLayer />
+  <LinksLayer />
   <MeMarker />
   <NotesLayer />
   <SelectionLayer />

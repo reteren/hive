@@ -1,6 +1,6 @@
 {
   "name": "hive",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Spatial board for notes and tasks",
   "license": "MIT",
   "author": "reteren",
@@ -22,7 +22,8 @@
     "@lezer/highlight": "^1.2.3",
     "@lezer/markdown": "^1.7.2",
     "@tauri-apps/api": "^2.11.1",
-    "@tauri-apps/plugin-dialog": "^2.7.3"
+    "@tauri-apps/plugin-dialog": "^2.7.3",
+    "@tauri-apps/plugin-opener": "^2.5.5"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.0",

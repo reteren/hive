@@ -10,6 +10,7 @@
   import { PX_PER_UNIT } from "../board/cameraMath";
   import { uniqueName } from "./naming";
   import NoteBody from "../editor/NoteBody.svelte";
+  import { startNoteEditing } from "../editor/editorSession";
 
   let { note, measureHeight }: { note: Note; measureHeight: Action<HTMLElement, string> } = $props();
   let renaming = $state(false);
@@ -53,12 +54,6 @@
     beginRename();
   }
 
-  const activateBody: Action<HTMLElement> = (element) => {
-    const onClick = () => startEditing();
-    element.addEventListener("click", onClick);
-    return { destroy: () => element.removeEventListener("click", onClick) };
-  };
-
   function commitRename(): void {
     if (!renaming) return;
 
@@ -84,8 +79,10 @@
     renaming = false;
   }
 
-  function startEditing(): void {
-    editing.noteId = note.id;
+  function beginEditingFromDoubleClick(event: MouseEvent): void {
+    if (editing.noteId === note.id || !(event.target instanceof Element)) return;
+    if (event.target.closest("[data-note-header], [data-text-link], input, button")) return;
+    startNoteEditing(note.id, { x: event.clientX, y: event.clientY });
   }
 </script>
 
@@ -99,6 +96,7 @@
   style:height={note.height === null ? "auto" : `${note.height * PX_PER_UNIT}px`}
   style:min-height={note.height === null ? `${MIN_NOTE_HEIGHT * PX_PER_UNIT}px` : "0px"}
   use:measureHeight={note.id}
+  ondblclick={beginEditingFromDoubleClick}
 >
   <header
     class="note-header"
@@ -124,7 +122,6 @@
   <div
     class="note-content"
     data-note-body
-    use:activateBody
   >
     <NoteBody {note} />
   </div>

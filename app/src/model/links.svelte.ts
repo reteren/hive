@@ -1,4 +1,5 @@
 import { pairKey, type Link } from "./link";
+import { canCreateLinkPair } from "../links/rules";
 
 /**
  * Links of the open board. Raw mutations like board.svelte.ts: user-facing changes go
@@ -15,7 +16,7 @@ export function linkBetween(a: string, b: string): Link | undefined {
 
 /** Whether a new link between a and b is allowed (no self-link, one link per pair). */
 export function canLink(a: string, b: string): boolean {
-  return a !== b && !linkBetween(a, b);
+  return canCreateLinkPair(a, b, Object.values(links.byId));
 }
 
 export function addLink(link: Link): void {

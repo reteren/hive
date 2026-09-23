@@ -1,5 +1,7 @@
 import { hiveMarkdownParser } from "./markdownSyntax";
 import { coloredHighlights, getContrastingTextColor } from "./highlight";
+import { parseTextLink } from "../links-in-text/format";
+import type { Point } from "../board/cameraMath";
 
 const maxCachedEntries = 128;
 const maxCachedCharacters = 512_000;
@@ -20,6 +22,15 @@ interface RenderOptions {
   trimEdges?: boolean;
   highlights?: ReadonlyMap<number, ReturnType<typeof coloredHighlights>[number]>;
   consumedColorSuffixes?: ReadonlySet<number>;
+  linkActions?: MarkdownLinkActions;
+}
+
+export interface MarkdownLinkActions {
+  resolveNote?: (noteId: string) => { id: string; name: string } | undefined;
+  openExternal?: (url: string) => void | Promise<void>;
+  teleportToPoint?: (point: Point) => void;
+  teleportToNote?: (noteId: string) => boolean;
+  onNotice?: (message: string) => void;
 }
 
 export function parseMarkdown(text: string): MarkdownTree {
@@ -47,7 +58,26 @@ export function parseMarkdown(text: string): MarkdownTree {
   return tree;
 }
 
-export function createMarkdownFragment(text: string, doc: Document = document): DocumentFragment {
+export function linkedNoteIds(text: string): string[] {
+  const result = new Set<string>();
+  const visit = (node: MarkdownNode): void => {
+    if (node.name === "Link" || node.name === "Autolink" || node.name === "URL" || node.name === "HiveAddress") {
+      const urlNode = node.getChild("URL") ?? node.getChild("HiveAddress");
+      const value = text.slice(urlNode?.from ?? node.from, urlNode?.to ?? node.to);
+      const target = parseTextLink(value);
+      if (target?.kind === "note") result.add(target.noteId);
+    }
+    for (const child of nodes(node)) visit(child);
+  };
+  visit(parseMarkdown(text).topNode);
+  return [...result];
+}
+
+export function createMarkdownFragment(
+  text: string,
+  doc: Document = document,
+  linkActions?: MarkdownLinkActions,
+): DocumentFragment {
   const tree = parseMarkdown(text);
   const fragment = doc.createDocumentFragment();
   const ranges = coloredHighlights(text, tree);
@@ -55,7 +85,7 @@ export function createMarkdownFragment(text: string, doc: Document = document): 
   const consumedColorSuffixes = new Set(
     ranges.filter((highlight) => highlight.hasColorSuffix).map((highlight) => highlight.to),
   );
-  renderChildren(tree.topNode, fragment, text, doc, { highlights, consumedColorSuffixes });
+  renderChildren(tree.topNode, fragment, text, doc, { highlights, consumedColorSuffixes, linkActions });
   return fragment;
 }
 
@@ -208,16 +238,17 @@ function renderNode(
     return;
   }
 
-  if (name === "Link" || name === "Image" || name === "Autolink" || name === "URL") {
-    const label = element(doc, parent, "span", "md-link-text");
-    if (name === "URL") {
-      appendText(label, doc, source.slice(node.from, node.to));
-    } else {
-      renderChildren(node, label, source, doc, {
-        ...options,
-        skip: new Set(["LinkMark", "URL", "LinkTitle"]),
-      });
-    }
+  if (name === "Link" || name === "Autolink" || name === "URL" || name === "HiveAddress") {
+    renderLink(node, parent, source, doc, options);
+    return;
+  }
+
+  if (name === "Image") {
+    const label = element(doc, parent, "span", "md-image-label");
+    renderChildren(node, label, source, doc, {
+      ...options,
+      skip: new Set(["LinkMark", "ImageMark", "URL", "LinkTitle"]),
+    });
     return;
   }
 
@@ -312,6 +343,75 @@ function renderNode(
   }
 
   appendText(parent, doc, source.slice(node.from, node.to));
+}
+
+function renderLink(
+  node: MarkdownNode,
+  parent: Node,
+  source: string,
+  doc: Document,
+  options: RenderOptions,
+): void {
+  const urlNode = node.getChild("URL") ?? node.getChild("HiveAddress");
+  const rawUrl = urlNode ? source.slice(urlNode.from, urlNode.to) : source.slice(node.from, node.to);
+  const target = parseTextLink(rawUrl);
+  const marks = node.getChildren("LinkMark");
+  const hasLabel = node.name === "Link"
+    ? marks.length >= 2 && source.slice(marks[0].to, marks[1].from).trim().length > 0
+    : false;
+  const note = target?.kind === "note" ? options.linkActions?.resolveNote?.(target.noteId) : undefined;
+  const missingNote = target?.kind === "note" && !note;
+  const classes = `md-link-text${target ? " is-clickable" : ""}${missingNote ? " is-missing" : ""}`;
+  const label = element(doc, parent, "span", classes);
+
+  if (target) {
+    label.setAttribute("role", "link");
+    label.setAttribute("tabindex", "0");
+    label.setAttribute("data-text-link", "");
+    const activate = (event: Event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (missingNote) {
+        options.linkActions?.onNotice?.("This note is missing.");
+        return;
+      }
+      try {
+        if (target.kind === "external") {
+          void Promise.resolve(options.linkActions?.openExternal?.(target.url)).catch(() => {
+            options.linkActions?.onNotice?.("Could not open this link.");
+          });
+        } else if (target.kind === "point") {
+          options.linkActions?.teleportToPoint?.(target.point);
+        } else if (options.linkActions?.teleportToNote?.(target.noteId) === false) {
+          options.linkActions?.onNotice?.("This note is missing.");
+        }
+      } catch {
+        options.linkActions?.onNotice?.("Could not open this link.");
+      }
+    };
+    label.addEventListener("click", activate);
+    label.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") activate(event);
+    });
+  }
+
+  if (target?.kind === "note" && !hasLabel) {
+    appendText(label, doc, note?.name ?? "Missing note");
+  } else if (target?.kind === "point" && !hasLabel) {
+    appendText(label, doc, `Point (${target.point.x}, ${target.point.y})`);
+  } else if (node.name === "URL" || node.name === "Autolink") {
+    appendText(label, doc, source.slice(urlNode?.from ?? node.from, urlNode?.to ?? node.to));
+  } else {
+    renderChildren(node, label, source, doc, {
+      ...options,
+      skip: new Set(["LinkMark", "URL", "LinkTitle"]),
+    });
+  }
+
+  if (missingNote && hasLabel) {
+    const missing = element(doc, label, "span", "md-link-missing-label");
+    appendText(missing, doc, " (missing)");
+  }
 }
 
 function renderTable(

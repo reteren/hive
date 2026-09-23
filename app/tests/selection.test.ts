@@ -85,13 +85,67 @@ describe("selection move and resize gestures", () => {
     ]);
   });
 
-  it("snaps the dragged resize edge and enforces minimum dimensions", () => {
+  it("resizes from all eight edges while keeping the opposite sides fixed", () => {
+    const frame = { id: "a", x: 5, y: 7, width: 20, height: 21 };
+    const cases = [
+      ["top-left", { x: -5, y: -4 }, { x: 0, y: 3, width: 25, height: 25 }],
+      ["top", { x: 0, y: -4 }, { x: 5, y: 3, width: 20, height: 25 }],
+      ["top-right", { x: 5, y: -4 }, { x: 5, y: 3, width: 25, height: 25 }],
+      ["right", { x: 5, y: 0 }, { x: 5, y: 7, width: 25, height: 21 }],
+      ["bottom-right", { x: 5, y: 4 }, { x: 5, y: 7, width: 25, height: 25 }],
+      ["bottom", { x: 0, y: 4 }, { x: 5, y: 7, width: 20, height: 25 }],
+      ["bottom-left", { x: -5, y: 4 }, { x: 0, y: 7, width: 25, height: 25 }],
+      ["left", { x: -5, y: 0 }, { x: 0, y: 7, width: 25, height: 21 }],
+    ] as const;
+
+    for (const [edge, delta, expected] of cases) {
+      expect(resizeNote(frame, 21, edge, delta, false, 10)).toEqual(expected);
+    }
+  });
+
+  it("snaps dragged edges and clamps left/top at the minimum without moving the opposite side", () => {
     const frame = { id: "a", x: 5, y: 7, width: 20, height: null };
-    expect(resizeNote(frame, 21, "right", { x: 4, y: 0 }, true, 10)).toEqual({ width: 25, height: null });
-    expect(resizeNote(frame, 21, "bottom", { x: 0, y: 5 }, true, 10)).toEqual({ width: 20, height: 23 });
-    expect(resizeNote(frame, 21, "corner", { x: -100, y: -100 }, false, 10)).toEqual({
+    expect(resizeNote(frame, 21, "right", { x: 4, y: 0 }, true, 10)).toEqual({
+      x: 5,
+      y: 7,
+      width: 25,
+      height: null,
+    });
+    expect(resizeNote(frame, 21, "bottom", { x: 0, y: 5 }, true, 10)).toEqual({
+      x: 5,
+      y: 7,
+      width: 20,
+      height: 23,
+    });
+    expect(resizeNote(frame, 21, "left", { x: 4, y: 0 }, true, 10)).toEqual({
+      x: 10,
+      y: 7,
+      width: 15,
+      height: null,
+    });
+    expect(resizeNote(frame, 21, "top", { x: 0, y: 4 }, true, 10)).toEqual({
+      x: 5,
+      y: 10,
+      width: 20,
+      height: 18,
+    });
+
+    const manual = { id: "a", x: 5, y: 7, width: 20, height: 21 };
+    expect(resizeNote(manual, 21, "top-left", { x: 100, y: 100 }, false, 10)).toEqual({
+      x: 13,
+      y: 22,
       width: MIN_NOTE_WIDTH,
       height: 6,
+    });
+  });
+
+  it("turns an auto-height note manual when dragging the top handle", () => {
+    const frame = { id: "a", x: 5, y: 7, width: 20, height: null };
+    expect(resizeNote(frame, 21, "top", { x: 0, y: 4 }, false, 10)).toEqual({
+      x: 5,
+      y: 11,
+      width: 20,
+      height: 17,
     });
   });
 

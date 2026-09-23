@@ -8,11 +8,8 @@
 
   let { note }: { note: Note } = $props();
 
-  function beginEditing(event: PointerEvent): void {
-    startNoteEditing(note.id, { x: event.clientX, y: event.clientY });
-  }
-
   function beginEditingFromKeyboard(event: KeyboardEvent): void {
+    if (event.target !== event.currentTarget) return;
     if (event.code !== "Space" && event.code !== "Enter") return;
     event.preventDefault();
     const rect = event.currentTarget instanceof HTMLElement
@@ -33,7 +30,6 @@
     role="button"
     tabindex="0"
     aria-label={`Edit text for ${note.name}`}
-    onpointerdown={beginEditing}
     onkeydown={beginEditingFromKeyboard}
   >
     <MarkdownPreview text={note.text} />

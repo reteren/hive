@@ -1,12 +1,17 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { createMarkdownFragment } from "./markdown";
+  import { openUrl } from "@tauri-apps/plugin-opener";
+  import { board } from "../model/board.svelte";
+  import { teleportToObject, teleportToPoint } from "../navigation/navigate";
+  import { showLinkStatus } from "../links-in-text/contextMenu.svelte";
+  import { createMarkdownFragment, linkedNoteIds } from "./markdown";
 
   let { text }: { text: string } = $props();
   let container: HTMLDivElement;
   let visible = $state(false);
   let renderedText: string | null = null;
   let renderedAsMarkdown = false;
+  let renderedNotesKey = "";
 
   onMount(() => {
     if (!("IntersectionObserver" in window)) {
@@ -24,12 +29,29 @@
   $effect(() => {
     const source = text;
     const shouldRenderMarkdown = visible;
-    if (!container || (source === renderedText && shouldRenderMarkdown === renderedAsMarkdown)) return;
+    const linkedIds = linkedNoteIds(source);
+    const notesKey = JSON.stringify(linkedIds.map((id) => [id, board.notes[id]?.name ?? null]));
+    if (
+      !container ||
+      (source === renderedText && shouldRenderMarkdown === renderedAsMarkdown && notesKey === renderedNotesKey)
+    ) return;
 
-    if (shouldRenderMarkdown) container.replaceChildren(createMarkdownFragment(source));
+    if (shouldRenderMarkdown) {
+      container.replaceChildren(createMarkdownFragment(source, document, {
+        resolveNote: (noteId) => {
+          const note = board.notes[noteId];
+          return note ? { id: note.id, name: note.name } : undefined;
+        },
+        openExternal: openUrl,
+        teleportToPoint: (point) => teleportToPoint(point, { label: "Text link" }),
+        teleportToNote: (noteId) => teleportToObject(noteId, { label: "Text link" }),
+        onNotice: showLinkStatus,
+      }));
+    }
     else container.textContent = source;
     renderedText = source;
     renderedAsMarkdown = shouldRenderMarkdown;
+    renderedNotesKey = notesKey;
   });
 </script>
 
@@ -159,6 +181,27 @@
     text-decoration: underline;
     text-decoration-color: #557998;
     text-underline-offset: 2px;
+  }
+
+  .markdown-preview :global(.md-link-text.is-clickable) {
+    cursor: pointer;
+  }
+
+  .markdown-preview :global(.md-link-text.is-clickable:focus-visible) {
+    border-radius: 2px;
+    outline: 1px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .markdown-preview :global(.md-link-text.is-missing) {
+    color: #d88982;
+    text-decoration-color: #8d5550;
+  }
+
+  .markdown-preview :global(.md-link-missing-label) {
+    color: #b77770;
+    font-size: 0.9em;
+    font-style: italic;
   }
 
   .markdown-preview :global(.md-task-checkbox) {

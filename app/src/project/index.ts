@@ -1,4 +1,5 @@
 import type { Note } from "../model/note";
+import { pairKey, type Link } from "../model/link";
 import { noteFileKey, sanitizeNoteName } from "./fileNames";
 
 export interface IndexedNote {
@@ -15,11 +16,16 @@ export interface IndexedNote {
 export interface ProjectIndex {
   version: 1;
   notes: IndexedNote[];
+  links?: Link[];
   [key: string]: unknown;
 }
 
 /** Parse v1 indexes and migrate the original unversioned/v0 index shape. */
 export function parseProjectIndex(contents: string): ProjectIndex {
+  return parseProjectIndexWithWarnings(contents).index;
+}
+
+export function parseProjectIndexWithWarnings(contents: string): { index: ProjectIndex; warnings: string[] } {
   let parsed: unknown;
   try {
     parsed = JSON.parse(contents);
@@ -36,11 +42,15 @@ export function parseProjectIndex(contents: string): ProjectIndex {
 
   const notes = parsed.notes.map((value, index) => parseNote(value, index));
   validateUniqueNotes(notes);
-  return { ...parsed, version: 1, notes };
+  const parsedLinks = sanitizeProjectLinks(parsed.links, new Set(notes.map((note) => note.id)));
+  return {
+    index: { ...parsed, version: 1, notes, links: parsedLinks.links },
+    warnings: parsedLinks.warnings,
+  };
 }
 
 /** Serialize board data while retaining index and per-note fields added by later versions. */
-export function serializeProjectIndex(notes: readonly Note[], previous?: ProjectIndex): string {
+export function serializeProjectIndex(notes: readonly Note[], previous?: ProjectIndex, nextLinks?: readonly Link[]): string {
   const extrasById = new Map(previous?.notes.map((note) => [note.id, note]) ?? []);
   const indexedNotes = notes.map((note) => {
     const previousNote = extrasById.get(note.id);
@@ -53,10 +63,11 @@ export function serializeProjectIndex(notes: readonly Note[], previous?: Project
       y: note.y,
       width: note.width,
       height: note.height,
+      ...(note.createdAt === undefined ? {} : { createdAt: note.createdAt }),
     };
   });
   validateUniqueNotes(indexedNotes);
-  return JSON.stringify({ ...previous, version: 1, notes: indexedNotes });
+  return JSON.stringify({ ...previous, version: 1, notes: indexedNotes, links: [...(nextLinks ?? previous?.links ?? [])] });
 }
 
 /** Validate a project index against loaded note bodies and return board-ready notes. */
@@ -78,6 +89,9 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       y: entry.y,
       width: entry.width,
       height: entry.height,
+      ...(typeof entry.createdAt === "number" && Number.isFinite(entry.createdAt) && entry.createdAt >= 0
+        ? { createdAt: entry.createdAt }
+        : {}),
     };
   });
 }
@@ -132,6 +146,44 @@ function validateUniqueNotes(notes: readonly IndexedNote[]): void {
     if (files.has(key)) throw new Error(`Project contains colliding note file ${note.file}.`);
     files.add(key);
   }
+}
+
+function sanitizeProjectLinks(value: unknown, noteIds: ReadonlySet<string>): { links: Link[]; warnings: string[] } {
+  if (value === undefined) return { links: [], warnings: [] };
+  if (!Array.isArray(value)) return { links: [], warnings: ["Invalid links in board.json were discarded."] };
+
+  const links: Link[] = [];
+  const ids = new Set<string>();
+  const pairs = new Set<string>();
+  let dropped = false;
+  for (const candidate of value) {
+    if (!isRecord(candidate)) {
+      dropped = true;
+      continue;
+    }
+    const { id, from, to, kind } = candidate;
+    const shape = candidate.shape ?? "straight";
+    if (typeof id !== "string" || id.trim() === "" || id.length > 200 ||
+      typeof from !== "string" || !noteIds.has(from) || typeof to !== "string" || !noteIds.has(to) ||
+      (kind !== "strong" && kind !== "weak") ||
+      (shape !== "straight" && shape !== "curved" && shape !== "orthogonal") || from === to || ids.has(id)) {
+      dropped = true;
+      continue;
+    }
+    const key = pairKey(from, to);
+    if (pairs.has(key)) {
+      dropped = true;
+      continue;
+    }
+    ids.add(id);
+    pairs.add(key);
+    links.push({ id, from, to, kind, shape });
+  }
+
+  return {
+    links,
+    warnings: dropped ? ["Invalid or dangling links in board.json were discarded."] : [],
+  };
 }
 
 function validateNoteFile(file: string, id: string): void {

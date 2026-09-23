@@ -3,6 +3,7 @@ import type { Note } from "../src/model/note";
 import {
   mergeLoadedNotes,
   parseProjectIndex,
+  parseProjectIndexWithWarnings,
   serializeProjectIndex,
 } from "../src/project/index";
 
@@ -46,6 +47,24 @@ describe("project index", () => {
 
     expect(migrated.version).toBe(1);
     expect(migrated.notes[0]).toMatchObject({ file: "Old note.md", height: null });
+  });
+
+  it("round trips links and drops dangling links with a warning", () => {
+    const notes: Note[] = [
+      { id: "a", type: "note", name: "A", text: "", x: 0, y: 0, width: 10, height: null },
+      { id: "b", type: "note", name: "B", text: "", x: 20, y: 0, width: 10, height: null },
+    ];
+    const link = { id: "ab", from: "a", to: "b", kind: "strong" as const, shape: "straight" as const };
+    const roundTrip = parseProjectIndex(serializeProjectIndex(notes, undefined, [link]));
+    expect(roundTrip.links).toEqual([link]);
+
+    const loaded = parseProjectIndexWithWarnings(JSON.stringify({
+      version: 1,
+      notes: notes.map(({ id, name, x, y, width, height }) => ({ id, name, x, y, width, height })),
+      links: [link, { ...link, id: "dangling", to: "missing" }],
+    }));
+    expect(loaded.index.links).toEqual([link]);
+    expect(loaded.warnings).toEqual(["Invalid or dangling links in board.json were discarded."]);
   });
 
   it("merges Markdown bodies without taking geometry from the body response", () => {
