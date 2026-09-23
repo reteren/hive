@@ -1,0 +1,32 @@
+[package]
+name = "hive"
+version = "0.1.0"
+description = "Spatial board for notes and tasks"
+license = "MIT"
+authors = ["reteren"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "hive_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+# `tauri build` supplies it automatically, but `cargo build --release` does not:
+# without it a release exe loads the dev server instead of the embedded dist.
+custom-protocol = ["tauri/custom-protocol"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+tauri = { version = "2.11.5", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

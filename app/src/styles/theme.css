@@ -1,0 +1,40 @@
+:root {
+  --bg-board: #161616;
+  --bg-panel: #232323;
+  --bg-panel-raised: #2c2c2c;
+  --bg-hover: #353535;
+  --bg-active: #3d5a80;
+  --border: #0e0e0e;
+  --text: #d6d6d6;
+  --text-dim: #8a8a8a;
+  --accent: #e8b030;
+  --grid-minor: rgba(255, 255, 255, 0.05);
+  --grid-major: rgba(255, 255, 255, 0.1);
+  --axis: rgba(232, 176, 48, 0.28);
+
+  --ui-font: "Segoe UI", system-ui, sans-serif;
+  --ui-font-size: 12px;
+  --mono-font: "Cascadia Mono", Consolas, monospace;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg-board);
+  color: var(--text);
+  font-family: var(--ui-font);
+  font-size: var(--ui-font-size);
+  user-select: none;
+}

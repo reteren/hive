@@ -1,0 +1,28 @@
+{
+  "name": "hive",
+  "version": "0.1.0",
+  "description": "Spatial board for notes and tasks",
+  "license": "MIT",
+  "author": "reteren",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "tauri": "tauri",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.1"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.0",
+    "@tauri-apps/cli": "^2.11.4",
+    "svelte": "^5.57.0",
+    "svelte-check": "^4.0.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.0",
+    "vitest": "^3.2.4"
+  }
+}

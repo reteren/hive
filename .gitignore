@@ -1,0 +1,22 @@
+# Obsidian per-device state
+.obsidian/workspace.json
+
+# Node
+app/node_modules/
+app/dist/
+.vite/
+
+# Rust / Tauri
+app/src-tauri/target/
+app/src-tauri/gen/
+
+# OS / editors
+Thumbs.db
+desktop.ini
+.vscode/*
+.idea/
+
+# Build output
+*.exe
+*.msi
+*.pdb
