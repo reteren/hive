@@ -6,7 +6,7 @@
   --bg-active: #3d5a80;
   --border: #0e0e0e;
   --text: #d6d6d6;
-  --text-dim: #8a8a8a;
+  --text-dim: #a0a0a0;
   --accent: #e8b030;
   --grid-minor: rgba(255, 255, 255, 0.05);
   --grid-major: rgba(255, 255, 255, 0.1);
@@ -37,4 +37,38 @@ body {
   font-family: var(--ui-font);
   font-size: var(--ui-font-size);
   user-select: none;
+}
+
+button {
+  color: inherit;
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+::selection {
+  color: #fff4d0;
+  background: #665421;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1b1b1b;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #505050;
+  border: 2px solid #1b1b1b;
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #696969;
 }

@@ -20,6 +20,10 @@ export function registerCommand(command: Command): void {
   commands.set(command.id, command);
 }
 
+export function getCommand(id: string): Command | undefined {
+  return commands.get(id);
+}
+
 export function runCommand(id: string): void {
   commands.get(id)?.run();
 }
