@@ -4,6 +4,8 @@
   import { attachCameraInput } from "./cameraInput";
   import GridLayer from "./GridLayer.svelte";
   import MeMarker from "./MeMarker.svelte";
+  import NotesLayer from "../notes/NotesLayer.svelte";
+  import SelectionLayer from "../selection/SelectionLayer.svelte";
 
   let board: HTMLDivElement;
 
@@ -24,6 +26,8 @@
 <div class="board" bind:this={board} tabindex="-1">
   <GridLayer />
   <MeMarker />
+  <NotesLayer />
+  <SelectionLayer />
 </div>
 
 <style>
