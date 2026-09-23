@@ -13,7 +13,7 @@
 </div>
 
 <style>
-  /* Sizes below are at zoom 1 (1 u = 10 px): the dot is 1.2 u across. */
+  /* Sizes below are at zoom 1 (1 u = 10 px): the dot is 7.2 u across (beacon size). */
   .me {
     position: absolute;
     left: 0;
@@ -24,22 +24,23 @@
 
   .dot {
     position: absolute;
-    left: -6px;
-    top: -6px;
-    width: 12px;
-    height: 12px;
+    left: -36px;
+    top: -36px;
+    width: 72px;
+    height: 72px;
     border-radius: 50%;
     background: var(--accent);
-    box-shadow: 0 0 0 3px rgba(232, 176, 48, 0.25);
+    box-shadow: 0 0 0 12px rgba(232, 176, 48, 0.25);
     pointer-events: auto;
     cursor: crosshair;
   }
 
   .label {
     position: absolute;
-    left: 10px;
-    top: -18px;
+    left: 46px;
+    top: -30px;
     color: var(--accent);
+    font-size: 40px;
     font-weight: 600;
     letter-spacing: 0.04em;
     white-space: nowrap;
