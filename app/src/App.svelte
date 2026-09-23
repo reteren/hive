@@ -18,6 +18,8 @@
   import TopBar from "./ui/TopBar.svelte";
   import UndoLog from "./ui/UndoLog.svelte";
   import SequentialRename from "./notes/SequentialRename.svelte";
+  import SearchPanel from "./search/SearchPanel.svelte";
+  import ObjectsPanel from "./navigation/ObjectsPanel.svelte";
   import { display } from "./settings/display.svelte";
 
   let undoLogCommand = $derived(getCommand("ui.toggleUndoLog"));
@@ -32,6 +34,8 @@
     <CommandSearch />
     <KeymapEditor />
     <SequentialRename />
+    <SearchPanel />
+    <ObjectsPanel />
     <div class="upper-controls">
       <CommandButton commandId="ui.commandSearch" />
       <button
