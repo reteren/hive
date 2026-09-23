@@ -43,6 +43,13 @@
     position = { left, top };
   }
 
+  $effect(() => {
+    label;
+    bindings.join("|");
+    if (!visible) return;
+    void tick().then(positionBubble);
+  });
+
   async function showLater(): Promise<void> {
     hide();
     timer = window.setTimeout(async () => {

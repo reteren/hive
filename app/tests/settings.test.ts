@@ -14,6 +14,7 @@ describe("view settings serialization", () => {
       grid: { step: 25, showGrid: false, snap: true },
       display: { rightPanelOpen: false },
       history: { limit: 256 },
+      keyOverrides: { "view.home": ["Ctrl+Alt+KeyH"], "edit.undo": [] },
     };
 
     const serialized = serializeViewSettings(settings);
@@ -40,6 +41,19 @@ describe("view settings serialization", () => {
     expect(parseViewSettings(oldSettings, DEFAULT_VIEW_SETTINGS)).toEqual(DEFAULT_VIEW_SETTINGS);
   });
 
+  it("loads version 2 settings without a keymap and defaults to no overrides", () => {
+    const oldSettings = JSON.stringify({
+      version: 2,
+      camera: DEFAULT_VIEW_SETTINGS.camera,
+      cameraSettings: DEFAULT_VIEW_SETTINGS.cameraSettings,
+      grid: DEFAULT_VIEW_SETTINGS.grid,
+      display: DEFAULT_VIEW_SETTINGS.display,
+      history: DEFAULT_VIEW_SETTINGS.history,
+    });
+
+    expect(parseViewSettings(oldSettings, DEFAULT_VIEW_SETTINGS)).toEqual(DEFAULT_VIEW_SETTINGS);
+  });
+
   it("keeps valid fields while replacing invalid, partial, or unknown-version values", () => {
     const settings = parseViewSettings(
       JSON.stringify({
@@ -59,6 +73,7 @@ describe("view settings serialization", () => {
       grid: { step: 10, showGrid: false, snap: false },
       display: { rightPanelOpen: false },
       history: { limit: 64 },
+      keyOverrides: {},
     });
   });
 

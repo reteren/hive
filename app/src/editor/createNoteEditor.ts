@@ -2,13 +2,16 @@ import { defaultKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { EditorState, Transaction } from "@codemirror/state";
-import { drawSelection, EditorView, keymap } from "@codemirror/view";
+import { Decoration, drawSelection, EditorView, keymap, ViewPlugin, type DecorationSet } from "@codemirror/view";
 import type { Note } from "../model/note";
 import { history, record, type HistoryCommand } from "../history/history.svelte";
 import { updateNote } from "../model/board.svelte";
 import { runCommand } from "../commands/registry.svelte";
 import { attachEditor, editorForNote, exitNoteEditing } from "./editorSession";
 import { toggleHeading, toggleWrapper } from "./formatting";
+import { coloredHighlights, getContrastingTextColor } from "./highlight";
+import { openHighlightPalette } from "./highlightPalette";
+import { hiveMarkdownExtensions } from "./markdownSyntax";
 import {
   createTextEditRecord,
   mergeTextEditRecords,
@@ -36,11 +39,28 @@ export function observeHistoryBoundary(
 
 export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
   const noteId = note.id;
+  const highlightColors = ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+
+      constructor(view: EditorView) {
+        this.decorations = highlightDecorations(view);
+      }
+
+      update(update: import("@codemirror/view").ViewUpdate): void {
+        if (update.docChanged || update.viewportChanged) {
+          this.decorations = highlightDecorations(update.view);
+        }
+      }
+    },
+    { decorations: (plugin) => plugin.decorations },
+  );
   const extensions = [
-    markdown(),
+    markdown({ extensions: hiveMarkdownExtensions }),
     syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     EditorView.lineWrapping,
     drawSelection(),
+    highlightColors,
     keymap.of([
       { key: "Escape", run: (view) => (exitNoteEditing(view), true) },
       { key: "Mod-b", run: (view) => toggleWrapper(view, "**") },
@@ -48,6 +68,7 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
       { key: "Mod-Shift-x", run: (view) => toggleWrapper(view, "~~") },
       { key: "Mod-e", run: (view) => toggleWrapper(view, "`") },
       { key: "Mod-1", run: toggleHeading },
+      { key: "Mod-Shift-h", run: openHighlightPalette },
       { key: "Mod-z", run: () => (runCommand("edit.undo"), true) },
       { key: "Mod-Shift-z", run: () => (runCommand("edit.redo"), true) },
       { key: "Mod-y", run: () => (runCommand("edit.redo"), true) },
@@ -122,6 +143,39 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
         },
         "&.cm-focused": { outline: "none" },
         ".cm-activeLine": { backgroundColor: "transparent" },
+        ".hive-highlight-palette": {
+          position: "absolute",
+          top: "0",
+          left: "0",
+          zIndex: "20",
+          display: "flex",
+          alignItems: "center",
+          gap: "5px",
+          padding: "5px 7px",
+          border: "1px solid #505050",
+          borderRadius: "4px",
+          backgroundColor: "var(--bg-panel)",
+          boxShadow: "0 3px 10px rgba(0, 0, 0, 0.55)",
+        },
+        ".hive-highlight-title": {
+          paddingRight: "2px",
+          color: "var(--text-dim)",
+          fontFamily: "var(--ui-font)",
+          fontSize: "11px",
+        },
+        ".hive-highlight-swatch": {
+          width: "18px",
+          height: "18px",
+          padding: "0",
+          border: "1px solid rgba(0, 0, 0, 0.45)",
+          borderRadius: "50%",
+          cursor: "pointer",
+        },
+        ".hive-highlight-swatch:hover, .hive-highlight-swatch:focus-visible": {
+          transform: "scale(1.12)",
+          outline: "2px solid #ffffff",
+          outlineOffset: "1px",
+        },
       },
       { dark: true },
     ),
@@ -132,6 +186,21 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
   attachEditor(noteId, view);
   return view;
 }
+
+function highlightDecorations(view: EditorView): DecorationSet {
+  const source = view.state.doc.toString();
+  return Decoration.set(
+    coloredHighlights(source).map((highlight) =>
+      Decoration.mark({
+        class: "cm-hive-highlight",
+        attributes: {
+          style: `background-color:${highlight.color};color:${getContrastingTextColor(highlight.color)}`,
+        },
+      }).range(highlight.from, highlight.to),
+    ),
+  );
+}
+
 
 function createHistoryCommand(edit: TextEditRecord): HistoryCommand & { edit: TextEditRecord } {
   return {

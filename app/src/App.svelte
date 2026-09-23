@@ -1,63 +1,27 @@
+<script module lang="ts">
+  import "./commands/appCommands.svelte";
+</script>
+
 <script lang="ts">
-  import { registerCommand } from "./commands/registry.svelte";
+  import { formatKey } from "./commands/keys";
+  import { getCommand } from "./commands/registry.svelte";
   import KeyDispatcher from "./commands/KeyDispatcher.svelte";
   import Board from "./board/Board.svelte";
-  import { redo, toggleUndoLog, undo, undoLogPanel } from "./history/history.svelte";
+  import { toggleUndoLog, undoLogPanel } from "./history/history.svelte";
+  import CommandSearch from "./ui/CommandSearch.svelte";
+  import KeymapEditor from "./ui/KeymapEditor.svelte";
+  import CommandButton from "./ui/CommandButton.svelte";
   import CoordsIndicator from "./ui/CoordsIndicator.svelte";
   import HistoryToast from "./ui/HistoryToast.svelte";
   import LeftToolbar from "./ui/LeftToolbar.svelte";
   import RightPanel from "./ui/RightPanel.svelte";
   import TopBar from "./ui/TopBar.svelte";
   import UndoLog from "./ui/UndoLog.svelte";
+  import SequentialRename from "./notes/SequentialRename.svelte";
   import { display } from "./settings/display.svelte";
 
-  function runUndo(): void {
-    try {
-      undo();
-    } catch {
-      // The history wrapper reports a short failure caption without moving its cursor.
-    }
-  }
-
-  function runRedo(): void {
-    try {
-      redo();
-    } catch {
-      // The history wrapper reports a short failure caption without moving its cursor.
-    }
-  }
-
-  registerCommand({
-    id: "edit.undo",
-    label: "Undo",
-    keys: ["Ctrl+KeyZ"],
-    run: runUndo,
-  });
-
-  registerCommand({
-    id: "edit.redo",
-    label: "Redo",
-    keys: ["Ctrl+Shift+KeyZ", "Ctrl+KeyY"],
-    run: runRedo,
-  });
-
-  registerCommand({
-    id: "ui.toggleUndoLog",
-    label: "Toggle Undo Log",
-    keys: ["Ctrl+Alt+KeyZ"],
-    run: toggleUndoLog,
-    isActive: () => undoLogPanel.open,
-  });
-
-  registerCommand({
-    id: "ui.toggleRightPanel",
-    label: "Toggle Display Panel",
-    keys: ["KeyN"],
-    run: () => {
-      display.rightPanelOpen = !display.rightPanelOpen;
-    },
-    isActive: () => display.rightPanelOpen,
-  });
+  let undoLogCommand = $derived(getCommand("ui.toggleUndoLog"));
+  let undoLogKeys = $derived(undoLogCommand?.keys.map(formatKey).join(", ") ?? "");
 </script>
 
 <div class="shell" class:panel-collapsed={!display.rightPanelOpen}>
@@ -65,26 +29,32 @@
   <div class="left"><LeftToolbar /></div>
   <main class="center">
     <Board />
-    <button
-      class="undo-log-toggle"
-      class:active={undoLogPanel.open}
-      type="button"
-      aria-label="Undo log; Ctrl+Alt+Z"
-      aria-controls="undo-log-panel"
-      aria-expanded={undoLogPanel.open}
-      aria-pressed={undoLogPanel.open}
-      title="Undo log · Ctrl+Alt+Z"
-      onclick={toggleUndoLog}
-    >
-      <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-        <path d="M3.5 5.5h13M3.5 10h13M3.5 14.5h13" />
-        <circle cx="6" cy="5.5" r="1.1" />
-        <circle cx="11" cy="10" r="1.1" />
-        <circle cx="8" cy="14.5" r="1.1" />
-      </svg>
-      <span>Undo log</span>
-      <kbd>Ctrl+Alt+Z</kbd>
-    </button>
+    <CommandSearch />
+    <KeymapEditor />
+    <SequentialRename />
+    <div class="upper-controls">
+      <CommandButton commandId="ui.commandSearch" />
+      <button
+        class="undo-log-toggle"
+        class:active={undoLogPanel.open}
+        type="button"
+        aria-label={`Undo log${undoLogKeys ? `; ${undoLogKeys}` : ""}`}
+        aria-controls="undo-log-panel"
+        aria-expanded={undoLogPanel.open}
+        aria-pressed={undoLogPanel.open}
+        title={`Undo log${undoLogKeys ? ` · ${undoLogKeys}` : ""}`}
+        onclick={toggleUndoLog}
+      >
+        <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+          <path d="M3.5 5.5h13M3.5 10h13M3.5 14.5h13" />
+          <circle cx="6" cy="5.5" r="1.1" />
+          <circle cx="11" cy="10" r="1.1" />
+          <circle cx="8" cy="14.5" r="1.1" />
+        </svg>
+        <span>Undo log</span>
+        {#if undoLogKeys}<kbd>{undoLogKeys}</kbd>{/if}
+      </button>
+    </div>
     {#if undoLogPanel.open}
       <UndoLog />
     {/if}
@@ -140,10 +110,6 @@
   }
 
   .undo-log-toggle {
-    position: absolute;
-    z-index: 6;
-    top: 8px;
-    right: 8px;
     display: inline-flex;
     min-height: 30px;
     align-items: center;
@@ -156,6 +122,16 @@
     font: inherit;
     font-size: 10px;
     cursor: pointer;
+  }
+
+  .upper-controls {
+    display: flex;
+    position: absolute;
+    z-index: 6;
+    top: 8px;
+    right: 8px;
+    align-items: center;
+    gap: 4px;
   }
 
   .undo-log-toggle svg {

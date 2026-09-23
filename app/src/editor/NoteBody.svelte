@@ -3,6 +3,7 @@
   import { editing } from "../notes/editing.svelte";
   import type { Note } from "../model/note";
   import EditorHost from "./EditorHost.svelte";
+  import MarkdownPreview from "./MarkdownPreview.svelte";
   import { startNoteEditing } from "./editorSession";
 
   let { note }: { note: Note } = $props();
@@ -35,7 +36,7 @@
     onpointerdown={beginEditing}
     onkeydown={beginEditingFromKeyboard}
   >
-    <div class="static-text">{note.text}</div>
+    <MarkdownPreview text={note.text} />
   </div>
 {/if}
 
@@ -49,11 +50,6 @@
     height: 100%;
     min-height: 0;
     overflow: hidden;
-  }
-
-  .static-text {
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
   }
 
   .fixed-height :global(.editor-host),

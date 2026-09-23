@@ -1,10 +1,11 @@
 <script lang="ts">
   import "../board/gridCommands";
   import { grid, GRID_STEP_PRESETS, setGridStep } from "../board/grid.svelte";
-  import { commands, runCommand } from "../commands/registry.svelte";
+  import { formatKey } from "../commands/keys";
+  import { getCommand, runCommand } from "../commands/registry.svelte";
 
-  const showCommand = commands.get("grid.toggleShow");
-  const snapCommand = commands.get("grid.toggleSnap");
+  let showCommand = $derived(getCommand("grid.toggleShow"));
+  let snapCommand = $derived(getCommand("grid.toggleSnap"));
   let stepMenu: HTMLDetailsElement;
   let stepDraft = $state(String(grid.step));
   let stepError = $state("");
@@ -13,7 +14,7 @@
 
   function commandTitle(command: typeof showCommand): string {
     if (!command) return "";
-    return `${command.label}${command.keys.length ? ` (${command.keys.join(", ")})` : ""}`;
+    return `${command.label}${command.keys.length ? ` (${command.keys.map(formatKey).join(", ")})` : ""}`;
   }
 
   function choosePreset(step: number): void {

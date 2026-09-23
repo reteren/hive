@@ -11,6 +11,7 @@
   import { editing } from "../notes/editing.svelte";
   import { creationMenu } from "../notes/creation.svelte";
   import { isTextEditingTarget } from "../commands/focus";
+  import { resolveBoardEscapeAction } from "../selection/escapePriority";
 
   let board: HTMLDivElement;
 
@@ -26,11 +27,11 @@
     });
     observer.observe(board);
     const detachInput = attachCameraInput(board);
-    window.addEventListener("keydown", onKeydown);
+    window.addEventListener("keydown", onKeydown, true);
     return () => {
       observer.disconnect();
       detachInput();
-      window.removeEventListener("keydown", onKeydown);
+      window.removeEventListener("keydown", onKeydown, true);
     };
   });
 
@@ -43,14 +44,22 @@
   }
 
   function onKeydown(event: KeyboardEvent): void {
-    if (event.code !== "Escape" || isTextEditingTarget(event.target) || isTextEditingTarget(document.activeElement)) {
-      return;
-    }
+    if (event.code !== "Escape" || event.defaultPrevented) return;
 
-    event.preventDefault();
-    editing.noteId = null;
-    creationMenu.open = false;
-    creationMenu.pinned = false;
+    const action = resolveBoardEscapeAction({
+      textEditingTarget: isTextEditingTarget(event.target) || isTextEditingTarget(document.activeElement),
+      editorOpen: editing.noteId !== null,
+      createMenuOpen: creationMenu.open,
+    });
+
+    if (action === "close-editor") {
+      editing.noteId = null;
+      event.preventDefault();
+    } else if (action === "close-create-menu") {
+      creationMenu.open = false;
+      creationMenu.pinned = false;
+      event.preventDefault();
+    }
   }
 </script>
 

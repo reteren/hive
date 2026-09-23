@@ -1,3 +1,4 @@
+use crate::watcher::ProjectWatcher;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
@@ -88,10 +89,55 @@ pub struct SaveResult {
     warnings: Vec<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConflictCopyRequest {
+    file: String,
+    kind: String,
+    timestamp: String,
+    text: String,
+}
+
 struct StagedWrite {
     temporary: PathBuf,
     target: PathBuf,
     previous: Option<Vec<u8>>,
+}
+
+struct PendingWatchWrites {
+    watcher: ProjectWatcher,
+    paths: Vec<PathBuf>,
+    finished: bool,
+}
+
+impl PendingWatchWrites {
+    fn new(watcher: ProjectWatcher) -> Self {
+        Self {
+            watcher,
+            paths: Vec::new(),
+            finished: false,
+        }
+    }
+
+    fn begin(&mut self, path: &Path, contents: &[u8]) {
+        self.watcher.begin_write(path, contents);
+        self.paths.push(path.to_path_buf());
+    }
+
+    fn finish(&mut self, succeeded: bool) {
+        for path in &self.paths {
+            self.watcher.finish_write(path, succeeded);
+        }
+        self.finished = true;
+    }
+}
+
+impl Drop for PendingWatchWrites {
+    fn drop(&mut self) {
+        if !self.finished {
+            self.finish(false);
+        }
+    }
 }
 
 impl Drop for StagedWrite {
@@ -104,6 +150,7 @@ impl Drop for StagedWrite {
 pub fn initialize_project(
     app: AppHandle,
     state: State<'_, ProjectState>,
+    watcher: State<'_, ProjectWatcher>,
 ) -> Result<ProjectLoad, String> {
     let mut startup_warning = None;
     let remembered = last_project_path(&app)
@@ -120,6 +167,8 @@ pub fn initialize_project(
                         .root
                         .lock()
                         .map_err(|_| "project state is unavailable")? = Some(project.root.clone());
+                    let mut project = project;
+                    enable_project_watch(&watcher, &mut project);
                     return Ok(project.load);
                 }
                 Err(error) => {
@@ -158,6 +207,7 @@ pub fn initialize_project(
         .root
         .lock()
         .map_err(|_| "project state is unavailable")? = Some(project.root.clone());
+    enable_project_watch(&watcher, &mut project);
     Ok(project.load)
 }
 
@@ -165,6 +215,7 @@ pub fn initialize_project(
 pub fn create_project(
     app: AppHandle,
     state: State<'_, ProjectState>,
+    watcher: State<'_, ProjectWatcher>,
     path: String,
 ) -> Result<ProjectLoad, String> {
     let selected = PathBuf::from(path);
@@ -186,6 +237,8 @@ pub fn create_project(
         .root
         .lock()
         .map_err(|_| "project state is unavailable")? = Some(project.root.clone());
+    let mut project = project;
+    enable_project_watch(&watcher, &mut project);
     Ok(project.load)
 }
 
@@ -193,20 +246,23 @@ pub fn create_project(
 pub fn open_project(
     app: AppHandle,
     state: State<'_, ProjectState>,
+    watcher: State<'_, ProjectWatcher>,
     path: String,
 ) -> Result<ProjectLoad, String> {
-    let project = open_project_root(Path::new(&path))?;
+    let mut project = open_project_root(Path::new(&path))?;
     remember_project(&app, &project.root)?;
     *state
         .root
         .lock()
         .map_err(|_| "project state is unavailable")? = Some(project.root.clone());
+    enable_project_watch(&watcher, &mut project);
     Ok(project.load)
 }
 
 #[tauri::command]
 pub fn save_project(
     state: State<'_, ProjectState>,
+    watcher: State<'_, ProjectWatcher>,
     request: SaveRequest,
 ) -> Result<SaveResult, String> {
     let root = state
@@ -215,7 +271,125 @@ pub fn save_project(
         .map_err(|_| "project state is unavailable")?
         .clone()
         .ok_or_else(|| "no project is open".to_string())?;
-    save_project_files(&root, request)
+    save_project_files(&root, request, &watcher)
+}
+
+#[tauri::command]
+pub fn write_conflict_copy(
+    state: State<'_, ProjectState>,
+    watcher: State<'_, ProjectWatcher>,
+    request: ConflictCopyRequest,
+) -> Result<String, String> {
+    let root = state
+        .root
+        .lock()
+        .map_err(|_| "project state is unavailable")?
+        .clone()
+        .ok_or_else(|| "no project is open".to_string())?;
+    validate_note_file(&request.file)?;
+    if request.kind != "external" && request.kind != "local" {
+        return Err("conflict copy kind must be external or local".to_string());
+    }
+    if !is_conflict_timestamp(&request.timestamp) {
+        return Err("conflict copy timestamp is invalid".to_string());
+    }
+
+    let notes_directory = ensure_notes_directory(&root)?;
+    let index_path = root.join(INDEX_FILE_NAME);
+    let index_contents = fs::read(&index_path)
+        .map_err(|error| format!("could not read {INDEX_FILE_NAME}: {error}"))?;
+    let mut index: BoardIndex = serde_json::from_slice(&index_contents)
+        .map_err(|error| format!("{INDEX_FILE_NAME} is invalid: {error}"))?;
+    migrate_index(&mut index)?;
+    validate_index(&index)?;
+    let tracked_files = index
+        .notes
+        .iter()
+        .map(|note| windows_case_key(&note.file))
+        .collect::<HashSet<_>>();
+    let base = &request.file[..request.file.len() - 3];
+    for collision in 1..=1_000 {
+        let file = conflict_copy_file_name(base, &request.kind, &request.timestamp, collision);
+        validate_note_file(&file)?;
+        if tracked_files.contains(&windows_case_key(&file)) {
+            continue;
+        }
+        let path = safe_note_path(&notes_directory, &file)?;
+        let bytes = request.text.as_bytes();
+        watcher.begin_write(&path, bytes);
+        match atomic_create(&path, bytes) {
+            Ok(()) => {
+                watcher.finish_write(&path, true);
+                return Ok(file);
+            }
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                watcher.finish_write(&path, false);
+            }
+            Err(error) => {
+                watcher.finish_write(&path, false);
+                return Err(format!(
+                    "could not save {} conflict copy: {error}",
+                    request.kind
+                ));
+            }
+        }
+    }
+    Err("could not choose a unique conflict copy name".to_string())
+}
+
+#[tauri::command]
+pub fn acknowledge_external_file_change(
+    state: State<'_, ProjectState>,
+    watcher: State<'_, ProjectWatcher>,
+    file: String,
+    text: Option<String>,
+) -> Result<bool, String> {
+    let root = state
+        .root
+        .lock()
+        .map_err(|_| "project state is unavailable")?
+        .clone()
+        .ok_or_else(|| "no project is open".to_string())?;
+    validate_note_file(&file)?;
+    let notes_directory = ensure_notes_directory(&root)?;
+    let path = safe_note_path(&notes_directory, &file)?;
+    Ok(watcher.acknowledge_external_change(&path, text.as_deref().map(str::as_bytes)))
+}
+
+fn enable_project_watch(watcher: &ProjectWatcher, project: &mut OpenedProject) {
+    let notes_directory = project.root.join(NOTES_DIRECTORY);
+    if let Err(error) = watcher.watch_notes(&notes_directory) {
+        project
+            .load
+            .warnings
+            .push(format!("External note monitoring is unavailable: {error}"));
+    }
+}
+
+fn is_conflict_timestamp(timestamp: &str) -> bool {
+    let bytes = timestamp.as_bytes();
+    bytes.len() == 15
+        && bytes[0..4].iter().all(u8::is_ascii_digit)
+        && bytes[4] == b'-'
+        && bytes[5..7].iter().all(u8::is_ascii_digit)
+        && bytes[7] == b'-'
+        && bytes[8..10].iter().all(u8::is_ascii_digit)
+        && bytes[10] == b' '
+        && bytes[11..15].iter().all(u8::is_ascii_digit)
+}
+
+fn conflict_copy_file_name(base: &str, kind: &str, timestamp: &str, collision: usize) -> String {
+    let collision_suffix = if collision == 1 {
+        String::new()
+    } else {
+        format!(" {collision}")
+    };
+    let suffix = format!(" ({kind} {timestamp}){collision_suffix}");
+    let available_units = 120usize.saturating_sub(suffix.encode_utf16().count());
+    let shortened_base = truncate_utf16(base, available_units)
+        .trim_end_matches(['.', ' '])
+        .to_string();
+    format!("{shortened_base}{suffix}.md")
 }
 
 struct OpenedProject {
@@ -392,9 +566,14 @@ fn truncate_utf16(value: &str, max_units: usize) -> String {
     result
 }
 
-fn save_project_files(root: &Path, request: SaveRequest) -> Result<SaveResult, String> {
+fn save_project_files(
+    root: &Path,
+    request: SaveRequest,
+    watcher: &ProjectWatcher,
+) -> Result<SaveResult, String> {
     let root = canonical_project_root(root)?;
     let notes_directory = ensure_notes_directory(&root)?;
+    let mut pending_watch_writes = PendingWatchWrites::new(watcher.clone());
     let index_path = root.join(INDEX_FILE_NAME);
     ensure_regular_or_missing(&index_path)?;
     let old_index_bytes = fs::read(&index_path)
@@ -482,6 +661,7 @@ fn save_project_files(root: &Path, request: SaveRequest) -> Result<SaveResult, S
         };
 
         if let Some(bytes) = content {
+            pending_watch_writes.begin(&target, &bytes);
             stage_or_cleanup(&mut staged, &target, &bytes)?;
         } else {
             ensure_regular_or_missing(&target)?;
@@ -536,6 +716,21 @@ fn save_project_files(root: &Path, request: SaveRequest) -> Result<SaveResult, S
         stage_or_cleanup(&mut staged, &index_path, &serialized_index)?;
     }
 
+    for write in &staged {
+        if write.target.parent() == Some(notes_directory.as_path()) {
+            if let Err(error) = watcher.verify_current_content(&write.target) {
+                cleanup_staged(&staged);
+                return Err(error);
+            }
+        }
+    }
+    for (source, _) in &removed_files {
+        if let Err(error) = watcher.verify_current_content(source) {
+            cleanup_staged(&staged);
+            return Err(error);
+        }
+    }
+
     let mut committed = Vec::new();
     for write in &staged {
         if let Err(error) = replace_staged_file(&write.temporary, &write.target) {
@@ -560,9 +755,12 @@ fn save_project_files(root: &Path, request: SaveRequest) -> Result<SaveResult, S
                 "Saved project, but could not remove old note file {}: {error}",
                 source.display()
             ));
+        } else {
+            watcher.acknowledge_external_change(&source, None);
         }
     }
 
+    pending_watch_writes.finish(true);
     Ok(SaveResult { warnings })
 }
 

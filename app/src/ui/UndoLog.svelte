@@ -9,8 +9,14 @@
     undo,
     undoLogPanel,
   } from "../history/history.svelte";
+  import { formatKey } from "../commands/keys";
+  import { getCommand } from "../commands/registry.svelte";
 
   let limitDraft = $state(String(history.limit));
+  let undoCommand = $derived(getCommand("edit.undo"));
+  let redoCommand = $derived(getCommand("edit.redo"));
+  let undoBindings = $derived(undoCommand?.keys.map(formatKey).join(", ") ?? "");
+  let redoBindings = $derived(redoCommand?.keys.map(formatKey).join(", ") ?? "");
   $effect(() => {
     limitDraft = String(history.limit);
   });
@@ -84,8 +90,18 @@
   <p class="panel-hint">Choose a point in the command history.</p>
 
   <div class="history-actions" aria-label="Undo and redo">
-    <button type="button" onclick={runUndo} title="Undo · Ctrl+Z">Undo <kbd>Ctrl+Z</kbd></button>
-    <button type="button" onclick={runRedo} title="Redo · Ctrl+Shift+Z">Redo <kbd>Ctrl+Shift+Z</kbd></button>
+    <button
+      type="button"
+      aria-label={`Undo${undoBindings ? `; ${undoBindings}` : ""}`}
+      onclick={runUndo}
+      title={`Undo${undoBindings ? ` · ${undoBindings}` : ""}`}
+    >Undo {#if undoBindings}<kbd>{undoBindings}</kbd>{/if}</button>
+    <button
+      type="button"
+      aria-label={`Redo${redoBindings ? `; ${redoBindings}` : ""}`}
+      onclick={runRedo}
+      title={`Redo${redoBindings ? ` · ${redoBindings}` : ""}`}
+    >Redo {#if redoBindings}<kbd>{redoBindings}</kbd>{/if}</button>
   </div>
 
   <label class="limit-setting">

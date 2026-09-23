@@ -1,8 +1,9 @@
 import { isValidGridStep } from "../board/gridMath";
 import type { Camera } from "../board/cameraMath";
+import { sanitizeKeyOverrides, type KeyBindingOverrides } from "../commands/keymap";
 import { DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT, MIN_HISTORY_LIMIT } from "../history/historyStack";
 
-export const VIEW_SETTINGS_VERSION = 2;
+export const VIEW_SETTINGS_VERSION = 3;
 
 export interface CameraSettings {
   minZoom: number;
@@ -31,6 +32,7 @@ export interface ViewSettings {
   grid: GridSettings;
   display: DisplaySettings;
   history: HistorySettings;
+  keyOverrides: KeyBindingOverrides;
 }
 
 export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
@@ -44,6 +46,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
   grid: { step: 10, showGrid: true, snap: false },
   display: { rightPanelOpen: true },
   history: { limit: DEFAULT_HISTORY_LIMIT },
+  keyOverrides: {},
 };
 
 const MIN_ALLOWED_ZOOM_LIMIT = 0.001;
@@ -94,6 +97,7 @@ export function parseViewSettings(serialized: string | null | undefined, default
     history: {
       limit: historyLimitOrDefault(historyInput.limit, defaults.history.limit),
     },
+    keyOverrides: sanitizeKeyOverrides(parsed.keyOverrides),
   };
 }
 
@@ -111,6 +115,7 @@ export function serializeViewSettings(settings: ViewSettings): string {
     grid: { step: settings.grid.step, showGrid: settings.grid.showGrid, snap: settings.grid.snap },
     display: { rightPanelOpen: settings.display.rightPanelOpen },
     history: { limit: settings.history.limit },
+    keyOverrides: sanitizeKeyOverrides(settings.keyOverrides),
   });
 }
 
@@ -144,6 +149,7 @@ function cloneViewSettings(settings: ViewSettings): ViewSettings {
     grid: { ...settings.grid },
     display: { ...settings.display },
     history: { ...settings.history },
+    keyOverrides: sanitizeKeyOverrides(settings.keyOverrides),
   };
 }
 

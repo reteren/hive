@@ -3,6 +3,7 @@ import App from "./App.svelte";
 import "./styles/theme.css";
 import "./board/cameraCommands";
 import "./board/gridCommands";
+import "./clipboard/commands";
 import "./project/commands";
 import { initializeViewSettingsPersistence } from "./settings/persistence.svelte";
 import { initializeProjectPersistence } from "./project/persistence.svelte";

@@ -1,3 +1,15 @@
+export interface ProjectConflict {
+  noteId: string;
+  noteName: string;
+  file: string;
+  localText: string;
+  externalText: string;
+  localCopyFile: string | null;
+  externalCopyFile: string | null;
+  savingCopies: boolean;
+  copyError: string;
+}
+
 export const project = $state({
   path: "",
   name: "No project",
@@ -5,5 +17,6 @@ export const project = $state({
   saving: false,
   error: "",
   warnings: [] as string[],
+  conflicts: [] as ProjectConflict[],
   menuOpen: false,
 });

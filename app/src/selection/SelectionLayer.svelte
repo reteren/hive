@@ -26,6 +26,14 @@
   } from "./gestures";
   import { hitTestNotes, notesTouchingMarquee, rectFromPoints } from "./hitTesting";
   import {
+    cancelGroupScaleGesture,
+    createGroupScaleGesture,
+    groupScaleGestureChange,
+    unionBounds,
+    updateGroupScaleGesture,
+    type GroupScaleGesture,
+  } from "./groupScale";
+  import {
     attachSelectionController,
     clearSelection,
     closeContextPick,
@@ -65,6 +73,14 @@
         started: boolean;
         captured: boolean;
         gesture: ResizeGesture;
+      }
+    | {
+        kind: "group-scale";
+        pointerId: number;
+        startScreen: Point;
+        started: boolean;
+        captured: boolean;
+        gesture: GroupScaleGesture;
       }
     | {
         kind: "marquee";
@@ -118,6 +134,27 @@
     };
   });
 
+  let groupBounds = $derived.by(() => {
+    if (selection.ids.length < 2) return null;
+    const bounds = selection.ids.flatMap((id) => {
+      const note = boardState.notes[id];
+      return note ? [noteBounds(note)] : [];
+    });
+    return unionBounds(bounds);
+  });
+
+  let groupOutline = $derived.by(() => {
+    if (!groupBounds) return null;
+    const screen = worldToScreen(camera, viewport, { x: groupBounds.x, y: groupBounds.y });
+    const ppu = pixelsPerUnit(camera);
+    return {
+      left: screen.x,
+      top: screen.y,
+      width: groupBounds.width * ppu,
+      height: groupBounds.height * ppu,
+    };
+  });
+
   let contextNotes = $derived(
     selection.contextPick?.noteIds.flatMap((id) => {
       const note = boardState.notes[id];
@@ -142,6 +179,9 @@
 
       if (event.button !== 0 || event.isPrimary === false) return;
 
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target || target.closest(".selection-context-pick, [data-create-menu], [data-selection-ignore]")) return;
+
       const local = localPoint(event);
       if (!local) return;
 
@@ -152,9 +192,6 @@
         commitGrab();
         return;
       }
-
-      const target = event.target instanceof Element ? event.target : null;
-      if (!target || target.closest(".selection-context-pick")) return;
 
       const world = screenToWorld(camera, viewport, local);
       if (event.altKey) {
@@ -173,6 +210,14 @@
       }
 
       closeContextPick();
+
+      const groupHandle = target.closest<HTMLElement>("[data-group-scale-handle]");
+      if (groupHandle && selection.ids.length > 1 && groupBounds) {
+        const edge = groupHandle.dataset.groupScaleHandle as ResizeEdge | undefined;
+        const frames = framesForSelection();
+        if (edge && frames.length > 1) startGroupScale(event, edge, local, world, frames, groupBounds);
+        return;
+      }
 
       const resizeHandle = target.closest<HTMLElement>("[data-resize-handle]");
       if (resizeHandle) {
@@ -203,7 +248,7 @@
         return;
       }
 
-      if (target.closest("[data-note-id]") || target.closest("[data-selection-ignore]")) return;
+      if (target.closest("[data-note-id]")) return;
 
       activeGesture = {
         kind: "marquee",
@@ -377,6 +422,25 @@
     };
   }
 
+  function startGroupScale(
+    event: PointerEvent,
+    edge: ResizeEdge,
+    screen: Point,
+    world: Point,
+    frames: NoteFrame[],
+    bounds: Bounds,
+  ): void {
+    closeContextPick();
+    activeGesture = {
+      kind: "group-scale",
+      pointerId: event.pointerId,
+      startScreen: screen,
+      started: false,
+      captured: false,
+      gesture: createGroupScaleGesture(frames, bounds, edge, world),
+    };
+  }
+
   function updatePointerGesture(event: PointerEvent, screen: Point, captureForFollowup = true): void {
     const gesture = activeGesture;
     if (!gesture) return;
@@ -400,8 +464,20 @@
       return;
     }
 
-    gesture.gesture = updateResizeGesture(gesture.gesture, world, grid.snap || event.ctrlKey, grid.step);
-    applyFrames([gesture.gesture.after]);
+    if (gesture.kind === "resize") {
+      gesture.gesture = updateResizeGesture(gesture.gesture, world, grid.snap || event.ctrlKey, grid.step);
+      applyFrames([gesture.gesture.after]);
+      return;
+    }
+
+    gesture.gesture = updateGroupScaleGesture(
+      gesture.gesture,
+      world,
+      grid.snap || event.ctrlKey,
+      grid.step,
+      event.shiftKey,
+    );
+    applyFrames(gesture.gesture.after);
   }
 
   function finishPointerGesture(pointerId: number, cancelled: boolean, release = true): void {
@@ -428,14 +504,21 @@
         const change = moveGestureChange(gesture.gesture);
         if (change) recordGeometryChange("Move", targetForMove(change.before, gesture.gesture.anchorId), change);
       }
-    } else if (cancelled) {
-      applyFrames([cancelResizeGesture(gesture.gesture)]);
-    } else if (gesture.started) {
-      const change = resizeGestureChange(gesture.gesture);
-      if (change) {
-        const note = boardState.notes[change.before[0].id];
-        recordGeometryChange("Resize", note?.name ?? "", change);
+    } else if (gesture.kind === "resize") {
+      if (cancelled) {
+        applyFrames([cancelResizeGesture(gesture.gesture)]);
+      } else if (gesture.started) {
+        const change = resizeGestureChange(gesture.gesture);
+        if (change) {
+          const note = boardState.notes[change.before[0].id];
+          recordGeometryChange("Resize", note?.name ?? "", change);
+        }
       }
+    } else if (cancelled) {
+      applyFrames(cancelGroupScaleGesture(gesture.gesture));
+    } else if (gesture.started) {
+      const change = groupScaleGestureChange(gesture.gesture);
+      if (change) recordGeometryChange("Scale", `${change.before.length} notes`, change);
     }
 
     if (release) releasePointer(pointerId);
@@ -509,12 +592,12 @@
     return boardState.notes[anchorId]?.name ?? boardState.notes[frames[0]?.id ?? ""]?.name ?? "";
   }
 
-  function recordGeometryChange(label: "Move" | "Resize", target: string, change: GeometryChange): void {
+  function recordGeometryChange(label: "Move" | "Resize" | "Scale", target: string, change: GeometryChange): void {
     record(geometryCommand(label, target, change.before, change.after));
   }
 
   function geometryCommand(
-    label: "Move" | "Resize",
+    label: "Move" | "Resize" | "Scale",
     target: string,
     before: readonly NoteFrame[],
     after: readonly NoteFrame[],
@@ -549,7 +632,7 @@
       style:height="{outline.height}px"
       aria-label="Selected {outline.name}"
     >
-      {#if outline.primary}
+      {#if selection.ids.length === 1 && outline.primary}
         <button
           class="resize-handle resize-right"
           type="button"
@@ -577,6 +660,42 @@
       {/if}
     </div>
   {/each}
+
+  {#if groupOutline}
+    <div
+      class="selection-outline selection-group-outline"
+      data-selected="true"
+      data-selection-group="true"
+      style:left="{groupOutline.left}px"
+      style:top="{groupOutline.top}px"
+      style:width="{groupOutline.width}px"
+      style:height="{groupOutline.height}px"
+      role="group"
+      aria-label="Selection bounds for {selection.ids.length} notes"
+    >
+      <button
+        class="resize-handle resize-right"
+        type="button"
+        data-group-scale-handle="right"
+        aria-label="Scale selected notes horizontally"
+        title="Scale selected notes horizontally"
+      ></button>
+      <button
+        class="resize-handle resize-bottom"
+        type="button"
+        data-group-scale-handle="bottom"
+        aria-label="Scale selected notes vertically"
+        title="Scale selected notes vertically"
+      ></button>
+      <button
+        class="resize-handle resize-corner"
+        type="button"
+        data-group-scale-handle="corner"
+        aria-label="Scale selected notes horizontally and vertically"
+        title="Scale selection; hold Shift to preserve aspect ratio"
+      ></button>
+    </div>
+  {/if}
 
   {#if marqueeScreen}
     <div
@@ -634,6 +753,11 @@
 
   .selection-outline[data-primary="true"] {
     border-width: 1.5px;
+  }
+
+  .selection-group-outline {
+    border-style: dashed;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
   }
 
   .resize-handle {

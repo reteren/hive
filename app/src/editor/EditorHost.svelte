@@ -5,6 +5,7 @@
   import type { Note } from "../model/note";
   import { consumePendingClick, detachEditor } from "./editorSession";
   import { breakTextEditGroup, createNoteEditor, observeHistoryBoundary } from "./createNoteEditor";
+  import { closeHighlightPalette } from "./highlightPalette";
   import type { EditorView } from "@codemirror/view";
 
   let { note }: { note: Note } = $props();
@@ -36,6 +37,7 @@
     return () => {
       cancelAnimationFrame(frame);
       view.dom.removeEventListener("wheel", onWheel);
+      closeHighlightPalette(view);
       breakTextEditGroup();
       detachEditor(view);
       editorView = null;

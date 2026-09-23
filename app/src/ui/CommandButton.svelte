@@ -19,6 +19,7 @@
   function preventMouseFocus(event: MouseEvent): void {
     if (event.button !== 0) return;
     event.preventDefault();
+    if (commandId === "ui.commandSearch") return;
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
   }
 

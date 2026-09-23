@@ -2,6 +2,7 @@
   import { camera } from "../board/camera.svelte";
   import CommandButton from "./CommandButton.svelte";
   import GridControls from "./GridControls.svelte";
+  import ConflictNotice from "./ConflictNotice.svelte";
   import { runCommand } from "../commands/registry.svelte";
   import { project } from "../project/project.svelte";
 
@@ -60,10 +61,14 @@
   <div class="top-actions">
     <CommandButton commandId="ui.toggleRightPanel" />
   </div>
+  <div class="conflict-status">
+    <ConflictNotice />
+  </div>
 </header>
 
 <style>
   .top-bar {
+    position: relative;
     display: grid;
     grid-template-columns: minmax(130px, 1fr) minmax(0, auto) minmax(34px, 1fr);
     align-items: center;
@@ -71,6 +76,14 @@
     padding: 3px 5px;
     background: var(--bg-panel);
     border-bottom: 1px solid var(--border);
+  }
+
+  .conflict-status {
+    position: absolute;
+    z-index: 32;
+    top: calc(100% + 3px);
+    left: 6px;
+    max-width: calc(100vw - 12px);
   }
 
   .brand {

@@ -1,0 +1,210 @@
+<script lang="ts">
+  import { onMount } from "svelte";
+  import { createMarkdownFragment } from "./markdown";
+
+  let { text }: { text: string } = $props();
+  let container: HTMLDivElement;
+  let visible = $state(false);
+  let renderedText: string | null = null;
+  let renderedAsMarkdown = false;
+
+  onMount(() => {
+    if (!("IntersectionObserver" in window)) {
+      visible = true;
+      return;
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) visible = true;
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  });
+
+  $effect(() => {
+    const source = text;
+    const shouldRenderMarkdown = visible;
+    if (!container || (source === renderedText && shouldRenderMarkdown === renderedAsMarkdown)) return;
+
+    if (shouldRenderMarkdown) container.replaceChildren(createMarkdownFragment(source));
+    else container.textContent = source;
+    renderedText = source;
+    renderedAsMarkdown = shouldRenderMarkdown;
+  });
+</script>
+
+<div bind:this={container} class="markdown-preview"></div>
+
+<style>
+  .markdown-preview {
+    min-width: 0;
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+    user-select: text;
+  }
+
+  .markdown-preview :global(p) {
+    margin: 0.35em 0;
+    white-space: normal;
+  }
+
+  .markdown-preview :global(p:first-child),
+  .markdown-preview :global(h1:first-child),
+  .markdown-preview :global(h2:first-child),
+  .markdown-preview :global(h3:first-child),
+  .markdown-preview :global(h4:first-child),
+  .markdown-preview :global(h5:first-child),
+  .markdown-preview :global(h6:first-child),
+  .markdown-preview :global(ul:first-child),
+  .markdown-preview :global(ol:first-child),
+  .markdown-preview :global(blockquote:first-child),
+  .markdown-preview :global(pre:first-child),
+  .markdown-preview :global(table:first-child) {
+    margin-top: 0;
+  }
+
+  .markdown-preview :global(p:last-child),
+  .markdown-preview :global(h1:last-child),
+  .markdown-preview :global(h2:last-child),
+  .markdown-preview :global(h3:last-child),
+  .markdown-preview :global(h4:last-child),
+  .markdown-preview :global(h5:last-child),
+  .markdown-preview :global(h6:last-child),
+  .markdown-preview :global(ul:last-child),
+  .markdown-preview :global(ol:last-child),
+  .markdown-preview :global(blockquote:last-child),
+  .markdown-preview :global(pre:last-child),
+  .markdown-preview :global(table:last-child) {
+    margin-bottom: 0;
+  }
+
+  .markdown-preview :global(h1),
+  .markdown-preview :global(h2),
+  .markdown-preview :global(h3),
+  .markdown-preview :global(h4),
+  .markdown-preview :global(h5),
+  .markdown-preview :global(h6) {
+    margin: 0.65em 0 0.2em;
+    line-height: 1.2;
+  }
+
+  .markdown-preview :global(h1) { font-size: 1.35em; }
+  .markdown-preview :global(h2) { font-size: 1.2em; }
+  .markdown-preview :global(h3) { font-size: 1.1em; }
+  .markdown-preview :global(h4),
+  .markdown-preview :global(h5),
+  .markdown-preview :global(h6) { font-size: 1em; }
+
+  .markdown-preview :global(ul),
+  .markdown-preview :global(ol) {
+    margin: 0.4em 0;
+    padding-left: 1.55em;
+  }
+
+  .markdown-preview :global(li) {
+    padding-left: 0.1em;
+  }
+
+  .markdown-preview :global(li > p) {
+    margin: 0.15em 0;
+  }
+
+  .markdown-preview :global(blockquote) {
+    margin: 0.45em 0;
+    padding-left: 0.7em;
+    border-left: 2px solid var(--text-dim);
+    color: var(--text-dim);
+  }
+
+  .markdown-preview :global(pre) {
+    margin: 0.45em 0;
+    padding: 0.5em 0.6em;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: #1c1c1c;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .markdown-preview :global(code) {
+    font-family: var(--mono-font);
+    font-size: 0.94em;
+  }
+
+  .markdown-preview :global(.md-inline-code) {
+    padding: 0 0.2em;
+    border-radius: 2px;
+    background: #2a2a2a;
+    color: #e5c786;
+    white-space: pre-wrap;
+  }
+
+  .markdown-preview :global(hr) {
+    height: 1px;
+    margin: 0.65em 0;
+    border: 0;
+    background: #555;
+  }
+
+  .markdown-preview :global(.md-highlight) {
+    padding: 0 0.08em;
+    border-radius: 2px;
+  }
+
+  .markdown-preview :global(.md-link-text) {
+    color: #83b8e8;
+    text-decoration: underline;
+    text-decoration-color: #557998;
+    text-underline-offset: 2px;
+  }
+
+  .markdown-preview :global(.md-task-checkbox) {
+    display: inline-flex;
+    width: 0.92em;
+    height: 0.92em;
+    align-items: center;
+    justify-content: center;
+    margin-right: 0.45em;
+    border: 1px solid #8c8c8c;
+    border-radius: 2px;
+    vertical-align: -0.08em;
+  }
+
+  .markdown-preview :global(.md-task-checkbox.is-checked) {
+    border-color: var(--accent);
+    background: var(--accent);
+  }
+
+  .markdown-preview :global(.md-task-checkbox.is-checked::after) {
+    content: "✓";
+    color: #181818;
+    font-size: 0.8em;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .markdown-preview :global(.md-table) {
+    display: block;
+    width: 100%;
+    border-collapse: collapse;
+    overflow-x: auto;
+    font-size: 0.94em;
+  }
+
+  .markdown-preview :global(.md-table th),
+  .markdown-preview :global(.md-table td) {
+    min-width: 2.6em;
+    padding: 0.25em 0.4em;
+    border: 1px solid #4a4a4a;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+
+  .markdown-preview :global(.md-table th) {
+    background: #2b2b2b;
+    font-weight: 600;
+  }
+</style>

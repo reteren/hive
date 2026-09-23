@@ -3,6 +3,7 @@ import { registerCloseFlush } from "../lifecycle/closeFlush";
 import { camera, cameraSettings } from "../board/camera.svelte";
 import { grid } from "../board/grid.svelte";
 import { history as undoHistory, setHistoryLimit } from "../history/history.svelte";
+import { getCommandKeyOverrides, setCommandKeyOverrides } from "../commands/registry.svelte";
 import { display } from "./display.svelte";
 import { parseViewSettings, serializeViewSettings, type ViewSettings } from "./viewSettings";
 
@@ -33,7 +34,7 @@ async function initialize(): Promise<void> {
   }
 
   applySettings(settings);
-  lastPersistedSnapshot = serializeViewSettings(settings);
+  lastPersistedSnapshot = serializeViewSettings(currentSettings());
   initialized = true;
 
   $effect.root(() => {
@@ -91,6 +92,7 @@ function currentSettings(): ViewSettings {
     grid: { step: grid.step, showGrid: grid.showGrid, snap: grid.snap },
     display: { rightPanelOpen: display.rightPanelOpen },
     history: { limit: undoHistory.limit },
+    keyOverrides: getCommandKeyOverrides(),
   };
 }
 
@@ -107,4 +109,5 @@ function applySettings(settings: ViewSettings): void {
   grid.snap = settings.grid.snap;
   display.rightPanelOpen = settings.display.rightPanelOpen;
   setHistoryLimit(settings.history.limit);
+  setCommandKeyOverrides(settings.keyOverrides);
 }
