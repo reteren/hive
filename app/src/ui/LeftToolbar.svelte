@@ -6,16 +6,19 @@
   import { isLineTool, tool } from "../tools/tool.svelte";
 
   let searchCommand = $derived(getCommand("search.open"));
+  let moveCommand = $derived(getCommand("select.move"));
   let shapeLabel = $derived(tool.lineShape[0].toUpperCase() + tool.lineShape.slice(1));
   let shapeBindings = $derived(searchCommand?.keys ?? []);
+  let selectHint = $derived(moveCommand?.keys.length
+    ? `${moveCommand.keys.map(formatKey).join(", ")} — Move selection`
+    : "Move selection");
 </script>
 
 <!-- Left vertical panel of working tools (R0.4). -->
 <nav class="left-toolbar" aria-label="Navigation tools">
   <CommandButton commandId="view.home" />
   <CommandButton commandId="notes.createMenu" />
-  <CommandButton commandId="tool.select" />
-  <CommandButton commandId="select.move" />
+  <CommandButton commandId="tool.select" secondaryHint={selectHint} />
   <CommandButton commandId="tool.lineStrong" />
   <CommandButton commandId="tool.lineWeak" />
   {#if isLineTool()}

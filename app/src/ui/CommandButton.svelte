@@ -7,10 +7,12 @@
     commandId,
     showLabel = false,
     className = "",
+    secondaryHint,
   } = $props<{
     commandId: string;
     showLabel?: boolean;
     className?: string;
+    secondaryHint?: string;
   }>();
 
   let command = $derived(getCommand(commandId));
@@ -39,7 +41,7 @@
 </script>
 
 {#if command}
-  <Tooltip label={command.label} bindings={command.keys}>
+  <Tooltip label={command.label} bindings={command.keys} secondaryHint={secondaryHint}>
     <button
       type="button"
       class="command-button {className}"

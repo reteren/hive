@@ -6,6 +6,7 @@
   import { pixelsPerUnit, screenToWorld, worldToScreen, type Point } from "../board/cameraMath";
   import { grid } from "../board/grid.svelte";
   import { execute, record, type HistoryCommand } from "../history/history.svelte";
+  import { editing } from "../notes/editing.svelte";
   import { noteBounds, type Bounds } from "../notes/layout.svelte";
   import { isTextEditingTarget } from "../commands/focus";
   import {
@@ -45,6 +46,7 @@
     setPrimary,
     toggleSelected,
   } from "./selection.svelte";
+  import { selectionForEditing } from "./editingSelection";
   import { RESIZE_EDGES, resizeEdgeAxes, type ResizeEdge } from "./resize";
   import {
     createPrecisionDeltaTracker,
@@ -182,6 +184,11 @@
       return note ? [{ id, name: note.name }] : [];
     }) ?? [],
   );
+
+  $effect(() => {
+    const editingId = editing.noteId;
+    if (editingId && boardState.notes[editingId]) ensureEditingSelection(editingId);
+  });
 
   onMount(() => {
     boardElement = layer.parentElement;
@@ -350,24 +357,40 @@
       const id = noteRoot?.dataset.noteId;
       if (!id || !boardState.notes[id]) return;
 
+      if (editing.noteId === id) {
+        ensureEditingSelection(id);
+        return;
+      }
+
       if (event.ctrlKey) toggleSelected(id);
+      else if (selection.ids.includes(id)) ensureEditingSelection(id);
       else selectOnly(id);
     }
 
     function onDoubleClick(event: MouseEvent): void {
       const target = event.target instanceof Element ? event.target : null;
+      if (!target) return;
+
       const handle = target?.closest<HTMLElement>(
         '[data-resize-handle="bottom"], [data-resize-handle="top"]',
       );
-      const id = handle?.dataset.noteId;
-      const note = id ? boardState.notes[id] : undefined;
-      if (!id || !note || note.height === null) return;
+      if (handle) {
+        const id = handle.dataset.noteId;
+        const note = id ? boardState.notes[id] : undefined;
+        if (id && note && note.height !== null) {
+          event.preventDefault();
+          event.stopPropagation();
+          const before = frameForNote(id);
+          const after = { ...before, height: null };
+          execute(geometryCommand("Resize", note.name, [before], [after]));
+        }
+        return;
+      }
 
-      event.preventDefault();
-      event.stopPropagation();
-      const before = frameForNote(id);
-      const after = { ...before, height: null };
-      execute(geometryCommand("Resize", note.name, [before], [after]));
+      const body = target.closest("[data-note-body]");
+      const noteRoot = body?.closest<HTMLElement>("[data-note-id]");
+      const editingId = noteRoot?.dataset.noteId;
+      if (editingId && boardState.notes[editingId]) ensureEditingSelection(editingId);
     }
 
     function onContextMenu(event: MouseEvent): void {
@@ -699,6 +722,18 @@
     if (open) setContextPick(pending.noteIds, pending.point, viewport);
   }
 
+  function ensureEditingSelection(noteId: string): void {
+    const next = selectionForEditing(selection, noteId);
+    const unchanged =
+      selection.primaryId === next.primaryId &&
+      selection.ids.length === next.ids.length &&
+      selection.ids.every((id, index) => id === next.ids[index]);
+    if (unchanged) return;
+
+    selection.ids = next.ids;
+    selection.primaryId = next.primaryId;
+  }
+
   function rebasePrecision(alt: boolean): void {
     const gesture = activeGesture;
     if (gesture && gesture.kind !== "marquee") gesture.precision = setPrecisionAlt(gesture.precision, alt);
@@ -875,17 +910,20 @@
 
   .selection-outline {
     position: absolute;
-    border: 1px solid var(--accent);
+    box-sizing: border-box;
+    border: 0;
+    outline: 1px solid var(--accent);
+    outline-offset: 1px;
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
     pointer-events: none;
   }
 
   .selection-outline[data-primary="true"] {
-    border-width: 1.5px;
+    outline-width: 1.5px;
   }
 
   .selection-group-outline {
-    border-style: dashed;
+    outline-style: dashed;
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
   }
 

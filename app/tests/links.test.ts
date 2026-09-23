@@ -6,7 +6,8 @@ import type { Link } from "../src/model/link";
 import { links, replaceLinks } from "../src/model/links.svelte";
 import { canCreateLinkPair } from "../src/links/rules";
 import { changeLinkShape, createBoardLink, cutLinks } from "../src/links/operations";
-import { pointAtAnchor, projectPointToAnchor, shapeEndpoints } from "../src/links/anchors";
+import { pointAtAnchor, pointOnCircleToward, projectPointToAnchor, shapeEndpoints } from "../src/links/anchors";
+import { clientToBoardPoint, clientToWorld } from "../src/links/coordinates";
 import { completeLinkGesture, nextTool, resolveCutRelease } from "../src/links/gestures";
 import { buildShape } from "../src/links/shapes";
 import {
@@ -51,6 +52,35 @@ describe("link anchors and line tool gestures", () => {
     );
     expect(endpoints.start).toEqual({ x: 56, y: 25 });
     expect(endpoints.startNormal).toEqual({ x: 1, y: 0 });
+  });
+
+  it("places an ME route start on the 3.6u beacon circle toward the target", () => {
+    const endpoint = pointOnCircleToward({ x: 0, y: 0 }, 3.6, { x: 8, y: 6 });
+    expect(endpoint.point.x).toBeCloseTo(2.88);
+    expect(endpoint.point.y).toBeCloseTo(2.16);
+    expect(Math.hypot(endpoint.point.x, endpoint.point.y)).toBeCloseTo(3.6);
+    expect(endpoint.normal).toEqual({ x: 0.8, y: 0.6 });
+  });
+
+  it("maps client pointers through the board rectangle and viewport into world coordinates", () => {
+    const cameraState = { x: 4, y: -3, zoom: 2 };
+    const viewportSize = { width: 900, height: 640 };
+    const pointer = { x: 742, y: 511 };
+    const boardRect = { left: 178, top: 93 };
+    const boardPoint = clientToBoardPoint(pointer, boardRect);
+
+    expect(boardPoint).toEqual({ x: 564, y: 418 });
+    const firstWorld = clientToWorld(pointer, boardRect, cameraState, viewportSize);
+    expect(firstWorld.x).toBeCloseTo(9.7);
+    expect(firstWorld.y).toBeCloseTo(1.9);
+    const secondWorld = clientToWorld(
+      { x: 1022, y: 799 },
+      { left: 458, top: 381 },
+      cameraState,
+      { width: 564, height: 418 },
+    );
+    expect(secondWorld.x).toBeCloseTo(18.1);
+    expect(secondWorld.y).toBeCloseTo(7.45);
   });
 
   it("creates on drag-release over an object, keeps click-click, and cancels outside", () => {

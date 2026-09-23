@@ -6,9 +6,10 @@
   import { onDestroy, onMount, tick, type Snippet } from "svelte";
   import { formatKey } from "../commands/keys";
 
-  let { label, bindings = [], children } = $props<{
+  let { label, bindings = [], secondaryHint, children } = $props<{
     label: string;
     bindings?: string[];
+    secondaryHint?: string;
     children: Snippet;
   }>();
 
@@ -46,6 +47,7 @@
   $effect(() => {
     label;
     bindings.join("|");
+    secondaryHint;
     if (!visible) return;
     void tick().then(positionBubble);
   });
@@ -97,7 +99,10 @@
     style:left={`${position.left}px`}
     style:top={`${position.top}px`}
   >
-    <span class="tooltip-label">{label}</span>
+    <span class="tooltip-copy">
+      <span class="tooltip-label">{label}</span>
+      {#if secondaryHint}<span class="tooltip-secondary">{secondaryHint}</span>{/if}
+    </span>
     {#if bindings.length > 0}
       <span class="tooltip-bindings">
         {#each bindings as binding, index (binding)}
@@ -134,8 +139,21 @@
     white-space: normal;
   }
 
+  .tooltip-copy {
+    display: inline-flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+  }
+
   .tooltip-label {
     overflow-wrap: anywhere;
+  }
+
+  .tooltip-secondary {
+    color: var(--text-dim);
+    font-size: 10px;
+    white-space: nowrap;
   }
 
   .tooltip-bindings {

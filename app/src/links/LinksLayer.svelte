@@ -12,8 +12,9 @@
   import { isLineTool, tool } from "../tools/tool.svelte";
   import { objectColor } from "./colors";
   import { strokeIntersectsPath } from "./lineGeometry";
-  import { buildShape, type ShapeResult } from "./shapes";
-  import { projectPointToAnchor, shapeEndpoints } from "./anchors";
+  import { buildArrowGeometry, buildShape, type ShapeResult } from "./shapes";
+  import { pointOnCircleToward, projectPointToAnchor, shapeEndpoints } from "./anchors";
+  import { clientToBoardPoint, clientToWorld } from "./coordinates";
   import { completeLinkGesture, resolveCutRelease, type LinkDraft } from "./gestures";
   import { cancelLineDraft, lineInteraction, setLineError } from "./interaction.svelte";
   import { createBoardLink, cutLinks } from "./operations";
@@ -21,12 +22,15 @@
 
   const CUT_DRAG_THRESHOLD_PX = 5;
   const CUT_TOLERANCE_PX = 4;
+  const ME_RADIUS = 3.6;
 
   interface RenderedLink {
     id: string;
     kind: Link["kind"];
     geometry: ShapeResult;
     path: string;
+    shaftPath: string;
+    headPath: string | null;
     selected: boolean;
     gradient: null | {
       id: string;
@@ -54,6 +58,7 @@
 
   interface PreviewLink {
     path: string;
+    headPath: string | null;
     kind: Link["kind"];
   }
 
@@ -88,12 +93,15 @@
           fromColor,
           toColor,
         };
+    const arrow = link.kind === "strong" ? buildArrowGeometry(link.shape, geometry) : null;
 
     return [{
       id: link.id,
       kind: link.kind,
       geometry,
       path: geometry.path,
+      shaftPath: arrow?.shaftPath ?? geometry.path,
+      headPath: arrow?.headPath ?? null,
       selected: selectedLink.id === link.id,
       gradient,
     }];
@@ -116,9 +124,12 @@
       sourceId === ME_OBJECT_ID,
       true,
     );
-    const geometry = buildShape(tool.lineShape, endpoints);
+    const route = sourceId === ME_OBJECT_ID ? circleSource(endpoints) : endpoints;
+    const geometry = buildShape(tool.lineShape, route);
+    const arrow = tool.active === "line-strong" ? buildArrowGeometry(tool.lineShape, geometry) : null;
     return {
-      path: geometry.path,
+      path: arrow?.shaftPath ?? geometry.path,
+      headPath: arrow?.headPath ?? null,
       kind: tool.active === "line-weak" ? "weak" : "strong",
     };
   });
@@ -130,7 +141,16 @@
 
     function localPoint(event: Pick<PointerEvent, "clientX" | "clientY">): Point {
       const rect = surface.getBoundingClientRect();
-      return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      return clientToBoardPoint({ x: event.clientX, y: event.clientY }, rect);
+    }
+
+    function worldPoint(event: Pick<PointerEvent, "clientX" | "clientY">): Point {
+      return clientToWorld(
+        { x: event.clientX, y: event.clientY },
+        surface.getBoundingClientRect(),
+        camera,
+        viewport,
+      );
     }
 
     function objectAt(point: Point, preferredTarget: EventTarget | null): string | null {
@@ -230,7 +250,7 @@
           lineInteraction.sourceId = objectId;
           lineInteraction.sourceAnchor = clickedAnchor ?? null;
         }
-        lineInteraction.preview = screenToWorld(camera, viewport, point);
+        lineInteraction.preview = worldPoint(event);
         return;
       }
 
@@ -260,10 +280,10 @@
             lineInteraction.cutStroke = [...lineInteraction.cutStroke, point];
           }
         } else {
-          lineInteraction.preview = screenToWorld(camera, viewport, point);
+          lineInteraction.preview = worldPoint(event);
         }
       } else if (lineInteraction.sourceId && (tool.active === "line-strong" || tool.active === "line-weak")) {
-        lineInteraction.preview = screenToWorld(camera, viewport, point);
+        lineInteraction.preview = worldPoint(event);
       }
     }
 
@@ -364,7 +384,7 @@
       if (result.kind === "start") {
         lineInteraction.sourceId = result.draft.sourceId;
         lineInteraction.sourceAnchor = result.draft.sourceAnchor ?? null;
-        lineInteraction.preview = screenToWorld(camera, viewport, point);
+        lineInteraction.preview = worldPoint(event);
         lastBodyClick = active.startedInBody ? { id: active.clickedId, at: performance.now() } : null;
       } else if (result.kind === "create") {
         lastBodyClick = null;
@@ -425,12 +445,17 @@
       link.from === ME_OBJECT_ID,
       link.to === ME_OBJECT_ID,
     );
-    return buildShape(link.shape, endpoints);
+    return buildShape(link.shape, link.from === ME_OBJECT_ID ? circleSource(endpoints) : endpoints);
+  }
+
+  function circleSource(endpoints: ReturnType<typeof shapeEndpoints>): ReturnType<typeof shapeEndpoints> {
+    const source = pointOnCircleToward(ME_POSITION, ME_RADIUS, endpoints.end);
+    return { ...endpoints, start: source.point, startNormal: source.normal };
   }
 
   function objectBounds(id: string): Bounds | null {
     if (id === ME_OBJECT_ID) {
-      return { x: ME_POSITION.x - 0.6, y: ME_POSITION.y - 0.6, width: 1.2, height: 1.2 };
+      return { x: ME_POSITION.x - ME_RADIUS, y: ME_POSITION.y - ME_RADIUS, width: ME_RADIUS * 2, height: ME_RADIUS * 2 };
     }
     const note = board.notes[id];
     return note ? noteBounds(note) : null;
@@ -441,15 +466,18 @@
       ? character
       : `_${character.codePointAt(0)?.toString(16) ?? "0"}_`).join("");
   }
+
+  function lineStrokeWidth(kind: Link["kind"], selected: boolean): number {
+    const base = selected ? 0.3 : kind === "weak" ? 0.2 : 0.25;
+    const minimumForOnePixel = 1 / (PX_PER_UNIT * Math.max(camera.zoom, 0.01));
+    return Math.max(base, minimumForOnePixel);
+  }
 </script>
 
 <div class="links-layer" bind:this={layer}>
   <div class="links-world" style:transform={worldTransform}>
     <svg class="links-svg" width="100%" height="100%" aria-hidden="true">
       <defs>
-        <marker id="hive-link-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto" markerUnits="strokeWidth">
-          <path d="M 0 1 L 9 5 L 0 9 z" />
-        </marker>
         {#each gradients as gradient (gradient.id)}
           <linearGradient
             id={gradient.id}
@@ -470,10 +498,17 @@
           <path
             class="link-line"
             class:weak={link.kind === "weak"}
-            d={link.path}
+            d={link.shaftPath}
             style:stroke={link.selected ? "var(--accent)" : link.gradient ? `url(#${link.gradient.id})` : undefined}
-            marker-end={link.kind === "strong" ? "url(#hive-link-arrow)" : undefined}
+            style:stroke-width={lineStrokeWidth(link.kind, link.selected)}
           />
+          {#if link.headPath}
+            <path
+              class="link-arrow"
+              d={link.headPath}
+              style:fill={link.selected ? "var(--accent)" : link.gradient ? link.gradient.toColor : undefined}
+            />
+          {/if}
         </g>
       {/each}
       {#if previewLink}
@@ -481,8 +516,11 @@
           class="link-line link-preview"
           class:weak={previewLink.kind === "weak"}
           d={previewLink.path}
-          marker-end={previewLink.kind === "strong" ? "url(#hive-link-arrow)" : undefined}
+          style:stroke-width={lineStrokeWidth(previewLink.kind, false)}
         />
+        {#if previewLink.headPath}
+          <path class="link-arrow link-preview" d={previewLink.headPath} />
+        {/if}
       {/if}
     </svg>
   </div>
@@ -542,18 +580,18 @@
   .link-line {
     fill: none;
     stroke: #a9a294;
-    stroke-width: 1.6px;
-    vector-effect: non-scaling-stroke;
+    stroke-width: 0.25px;
     pointer-events: none;
   }
 
   .link-line.weak {
-    stroke-dasharray: 5 4;
+    stroke-width: 0.2px;
+    stroke-dasharray: 2.4 1.2;
   }
 
   .link-line.link-preview {
     stroke: #c5ad72;
-    stroke-dasharray: 4 3;
+    stroke-dasharray: 2.4 1.2;
     opacity: 0.85;
   }
 
@@ -563,12 +601,16 @@
 
   .selected .link-line {
     stroke: var(--accent);
-    stroke-width: 2.2px;
+    stroke-width: 0.3px;
   }
 
-  marker path {
+  .link-arrow {
     fill: #a9a294;
-    fill: context-stroke;
+    pointer-events: none;
+  }
+
+  .link-arrow.link-preview {
+    fill: #c5ad72;
   }
 
   .cut-preview {

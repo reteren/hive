@@ -82,7 +82,7 @@
 
   function beginEditingFromDoubleClick(event: MouseEvent): void {
     if (editing.noteId === note.id || !(event.target instanceof Element)) return;
-    if (event.target.closest("[data-note-header], [data-text-link], input, button")) return;
+    if (event.target.closest(".note-header, [data-text-link], input, button")) return;
     tool.active = "select";
     startNoteEditing(note.id, { x: event.clientX, y: event.clientY });
   }
@@ -121,11 +121,14 @@
       <span class="note-name">{note.name}</span>
     {/if}
   </header>
-  <div
-    class="note-content"
-    data-note-body
-  >
-    <NoteBody {note} />
+  <div class="note-frame" class:fixed-height={note.height !== null}>
+    <div class="note-frame-edge note-frame-edge-top" data-note-header aria-hidden="true"></div>
+    <div class="note-frame-edge note-frame-edge-left" data-note-header aria-hidden="true"></div>
+    <div class="note-content" data-note-body>
+      <NoteBody {note} />
+    </div>
+    <div class="note-frame-edge note-frame-edge-right" data-note-header aria-hidden="true"></div>
+    <div class="note-frame-edge note-frame-edge-bottom" data-note-header aria-hidden="true"></div>
   </div>
 </article>
 
@@ -136,7 +139,7 @@
     flex-direction: column;
     overflow: hidden;
     color: var(--text);
-    background: var(--bg-panel-raised);
+    background: var(--note-frame);
     border: 1px solid #414141;
     border-radius: 5px;
     box-shadow: 0 3px 12px rgb(0 0 0 / 28%);
@@ -150,11 +153,47 @@
     align-items: center;
     padding: 0 8px;
     color: #e6e6e6;
-    background: #343434;
+    background: var(--note-frame);
     border-bottom: 1px solid #454545;
     font-size: 11px;
     font-weight: 600;
     user-select: none;
+  }
+
+  .note-frame {
+    display: grid;
+    min-height: 30px;
+    flex: 1 0 auto;
+    grid-template-columns: 6px minmax(0, 1fr) 6px;
+    grid-template-rows: 6px minmax(18px, 1fr) 6px;
+    background: var(--note-frame);
+  }
+
+  .note-frame.fixed-height {
+    min-height: 0;
+    flex: 1 1 auto;
+    grid-template-rows: 6px minmax(0, 1fr) 6px;
+  }
+
+  .note-frame-edge {
+    background: var(--note-frame);
+    user-select: none;
+  }
+
+  .note-frame-edge-top {
+    grid-area: 1 / 1 / 2 / 4;
+  }
+
+  .note-frame-edge-left {
+    grid-area: 2 / 1 / 3 / 2;
+  }
+
+  .note-frame-edge-right {
+    grid-area: 2 / 3 / 3 / 4;
+  }
+
+  .note-frame-edge-bottom {
+    grid-area: 3 / 1 / 4 / 4;
   }
 
   .note-name {
@@ -176,9 +215,11 @@
   }
 
   .note-content {
-    min-height: 20px;
-    flex: 1 0 auto;
+    min-width: 0;
+    min-height: 18px;
+    grid-area: 2 / 2;
     padding: 7px 8px 9px;
+    background: var(--note-body);
     overflow-wrap: anywhere;
     user-select: text;
   }

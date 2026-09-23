@@ -9,6 +9,11 @@ export interface ShapeEndpoints {
   endNormal: Point;
 }
 
+export interface CircleEndpoint {
+  point: Point;
+  normal: Point;
+}
+
 /** Project a point inside a note onto its nearest frame edge. */
 export function projectPointToAnchor(bounds: Bounds, point: Point): LinkAnchor {
   const x = clamp(point.x, bounds.x, bounds.x + bounds.width);
@@ -81,6 +86,16 @@ export function shapeEndpoints(
   };
 }
 
+/** Place a beacon attachment on its circular frame in the direction of the route. */
+export function pointOnCircleToward(center: Point, radius: number, toward: Point): CircleEndpoint {
+  const direction = normalize({ x: toward.x - center.x, y: toward.y - center.y });
+  const safeRadius = Number.isFinite(radius) ? Math.max(0, radius) : 0;
+  return {
+    point: { x: center.x + direction.x * safeRadius, y: center.y + direction.y * safeRadius },
+    normal: direction,
+  };
+}
+
 function framePointToward(bounds: Bounds, toward: Point): Point {
   const origin = center(bounds);
   let dx = toward.x - origin.x;
@@ -111,6 +126,13 @@ function frameNormal(bounds: Bounds, point: Point): Point {
 
 function center(bounds: Bounds): Point {
   return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+}
+
+function normalize(point: Point): Point {
+  const length = Math.hypot(point.x, point.y);
+  return Number.isFinite(length) && length > 1e-9
+    ? { x: point.x / length, y: point.y / length }
+    : { x: 1, y: 0 };
 }
 
 function clamp(value: number, min: number, max: number): number {
