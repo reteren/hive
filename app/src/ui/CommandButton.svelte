@@ -16,6 +16,12 @@
   let command = $derived(getCommand(commandId));
   let iconName = $derived(iconForCommand(commandId));
 
+  function preventMouseFocus(event: MouseEvent): void {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  }
+
   function iconForCommand(id: string): string {
     if (id === "view.home") return "home";
     if (id === "view.zoomIn") return "zoom-in";
@@ -39,6 +45,7 @@
       class:active={command.isActive?.() ?? false}
       aria-label={`${command.label}${command.keys.length ? `; ${command.keys.map(formatKey).join(", ")}` : ""}`}
       aria-pressed={command.isActive ? command.isActive() : undefined}
+      onmousedown={preventMouseFocus}
       onclick={() => runCommand(commandId)}
     >
       <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">

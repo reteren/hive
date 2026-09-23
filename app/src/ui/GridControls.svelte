@@ -23,6 +23,12 @@
     stepMenu.open = false;
   }
 
+  function preventMouseFocus(event: MouseEvent): void {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  }
+
   function applyCustomStep(event: SubmitEvent): void {
     event.preventDefault();
     const step = Number(stepDraft);
@@ -46,6 +52,7 @@
       aria-pressed={isGridShown}
       aria-label="Grid"
       title={commandTitle(showCommand)}
+      onmousedown={preventMouseFocus}
       onclick={() => runCommand(showCommand.id)}
     >Grid</button>
   {/if}
@@ -66,7 +73,7 @@
             oninput={() => (stepError = "")}
           />
           <span>u</span>
-          <button type="submit">Set</button>
+          <button type="submit" onmousedown={preventMouseFocus}>Set</button>
         </div>
         {#if stepError}
           <span class="error" role="alert">{stepError}</span>
@@ -78,6 +85,7 @@
             type="button"
             class:active={grid.step === step}
             aria-pressed={grid.step === step}
+            onmousedown={preventMouseFocus}
             onclick={() => choosePreset(step)}
           >{step}</button>
         {/each}
@@ -92,6 +100,7 @@
       aria-pressed={isSnapEnabled}
       aria-label="Snapgrid"
       title={commandTitle(snapCommand)}
+      onmousedown={preventMouseFocus}
       onclick={() => runCommand(snapCommand.id)}
     >Snap</button>
   {/if}

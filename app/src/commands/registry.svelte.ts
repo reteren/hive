@@ -17,6 +17,9 @@ export interface Command {
 export const commands: Map<string, Command> = new Map();
 
 export function registerCommand(command: Command): void {
+  if (command.keys.some((binding) => binding.split("+").at(-1)?.trim().toLowerCase() === "tab")) {
+    throw new Error("Tab is reserved for native focus navigation.");
+  }
   commands.set(command.id, command);
 }
 

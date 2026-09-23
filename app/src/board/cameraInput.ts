@@ -1,5 +1,6 @@
 import { camera, cameraSettings, refreshPointerWorld, setPointerScreen, viewport } from "./camera.svelte";
 import { pixelsPerUnit, zoomAt, type Point } from "./cameraMath";
+import { isTextEditingTarget } from "../commands/focus";
 
 const PAN_KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD"]);
 const SHIFT_SPEED_MULTIPLIER = 2.5;
@@ -227,9 +228,4 @@ function wheelDeltaScale(deltaMode: number, board: HTMLElement): number {
   if (deltaMode === WheelEvent.DOM_DELTA_LINE) return 16;
   if (deltaMode === WheelEvent.DOM_DELTA_PAGE) return Math.max(1, board.clientHeight);
   return 1;
-}
-
-function isTextEditingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || target.tagName === "INPUT" || target.tagName === "TEXTAREA";
 }

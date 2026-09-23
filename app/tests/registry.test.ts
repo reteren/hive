@@ -24,4 +24,13 @@ describe("command registry", () => {
 
     expect(run).toHaveBeenCalledOnce();
   });
+
+  it("rejects Tab-based bindings so they cannot disable focus traversal", () => {
+    expect(() => registerCommand({ id: "test.tab", label: "Tab", keys: ["Tab"], run: vi.fn() })).toThrow(
+      "Tab is reserved",
+    );
+    expect(() =>
+      registerCommand({ id: "test.shiftTab", label: "Reverse tab", keys: ["Shift+Tab"], run: vi.fn() }),
+    ).toThrow("Tab is reserved");
+  });
 });

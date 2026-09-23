@@ -82,7 +82,7 @@
     justify-content: flex-end;
   }
 
-  @media (max-width: 520px) {
+  @media (max-width: 420px) {
     .top-bar {
       grid-template-columns: minmax(0, 1fr) 32px;
       row-gap: 2px;

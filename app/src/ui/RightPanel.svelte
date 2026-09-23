@@ -21,7 +21,9 @@
 
 <style>
   .right-panel {
-    width: 186px;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     height: 100%;
     overflow: auto;
     padding: 4px 6px;
@@ -70,17 +72,4 @@
     letter-spacing: 0.04em;
   }
 
-  @media (max-width: 520px) {
-    .right-panel {
-      width: 158px;
-      padding-inline: 4px;
-    }
-  }
-
-  @media (max-width: 420px) {
-    .right-panel {
-      width: min(164px, calc(100vw - 44px));
-      padding: 4px;
-    }
-  }
 </style>

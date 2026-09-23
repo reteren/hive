@@ -76,10 +76,23 @@ export function formatKey(binding: string | KeyBinding): string {
 export function matchesKey(event: KeyboardEvent, binding: string | KeyBinding): boolean {
   const parsed = typeof binding === "string" ? parseKey(binding) : binding;
   return (
+    event.code !== "Tab" &&
     event.code === parsed.code &&
     event.ctrlKey === parsed.ctrl &&
     event.shiftKey === parsed.shift &&
     event.altKey === parsed.alt &&
     !event.metaKey
   );
+}
+
+/** Find the first command match while preserving native Tab traversal under every binding. */
+export function findMatchingCommand<T extends { keys: string[] }>(
+  event: KeyboardEvent,
+  candidates: Iterable<T>,
+): T | undefined {
+  if (event.code === "Tab") return undefined;
+  for (const candidate of candidates) {
+    if (candidate.keys.some((binding) => matchesKey(event, binding))) return candidate;
+  }
+  return undefined;
 }

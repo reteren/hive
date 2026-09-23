@@ -25,7 +25,7 @@ registerCommand({
 registerCommand({
   id: "grid.toggleSnap",
   label: "Toggle Snapgrid",
-  keys: ["Shift+Tab"],
+  keys: ["Alt+KeyS"],
   run: () => {
     grid.snap = !grid.snap;
   },

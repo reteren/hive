@@ -74,14 +74,16 @@
 
   .right {
     grid-area: right;
+    width: 100%;
+    min-width: 0;
     min-height: 0;
   }
 
   .overlay-bottom-right {
     position: absolute;
-    right: calc(var(--right-panel-size) + 8px);
+    right: 8px;
     bottom: 8px;
-    max-width: calc(100% - var(--right-panel-size) - 16px);
+    max-width: calc(100% - 16px);
     pointer-events: none;
   }
 
@@ -126,9 +128,9 @@
     }
 
     .overlay-bottom-right {
-      right: calc(var(--right-panel-size) + 6px);
+      right: calc(var(--right-panel-size) + 8px);
       left: 6px;
-      max-width: none;
+      max-width: calc(100% - var(--right-panel-size) - 14px);
     }
 
     .overlay-bottom-right :global(.coords) {
@@ -137,6 +139,24 @@
       gap: 4px;
       padding: 4px;
       white-space: normal;
+    }
+  }
+
+  @media (max-width: 320px) {
+    .overlay-bottom-right :global(.coords) {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      justify-items: start;
+    }
+
+    .overlay-bottom-right :global(.coords > .source),
+    .overlay-bottom-right :global(.coords > .zoom) {
+      display: none;
+    }
+
+    .overlay-bottom-right :global(.coords > span) {
+      min-width: 0;
+      overflow-wrap: anywhere;
     }
   }
 </style>

@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { formatKey, matchesKey, parseKey } from "../src/commands/keys";
+import { describe, expect, it, vi } from "vitest";
+import { findMatchingCommand, formatKey, matchesKey, parseKey } from "../src/commands/keys";
 
 function keyEvent(init: Partial<KeyboardEvent> = {}): KeyboardEvent {
   return {
@@ -42,5 +42,18 @@ describe("command key notation", () => {
     expect(matchesKey(keyEvent({ shiftKey: true }), "KeyG")).toBe(false);
     expect(matchesKey(keyEvent({ metaKey: true }), "KeyG")).toBe(false);
     expect(matchesKey(keyEvent({ code: "KeyH" }), "KeyG")).toBe(false);
+  });
+
+  it("never dispatches bare Tab or Shift+Tab bindings", () => {
+    const run = vi.fn();
+    const commands = [
+      { keys: ["Tab"], run },
+      { keys: ["Shift+Tab"], run },
+    ];
+
+    expect(findMatchingCommand(keyEvent({ code: "Tab" }), commands)).toBeUndefined();
+    expect(findMatchingCommand(keyEvent({ code: "Tab", shiftKey: true }), commands)).toBeUndefined();
+    expect(matchesKey(keyEvent({ code: "Tab", shiftKey: true }), "Shift+Tab")).toBe(false);
+    expect(run).not.toHaveBeenCalled();
   });
 });
