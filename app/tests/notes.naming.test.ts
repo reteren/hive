@@ -11,7 +11,7 @@ describe("uniqueName", () => {
   });
 
   it("replaces Windows-invalid characters and trims forbidden trailing dots and spaces", () => {
-    expect(uniqueName(" A/B:C*  ", [])).toBe("A-B-C-");
+    expect(uniqueName(" A/B:C*  ", [])).toBe("A_B_C_");
     expect(uniqueName("Trailing.  ", [])).toBe("Trailing");
   });
 

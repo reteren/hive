@@ -5,7 +5,7 @@ import { noteFileKey, sanitizeNoteName } from "../project/fileNames";
  * so uniqueness is checked with the same case-insensitive key the project uses on disk.
  */
 export function uniqueName(base: string, existing: readonly string[]): string {
-  const safeBase = sanitizeNoteName(base);
+  const safeBase = sanitizeNoteName(base.trim());
   const occupied = new Set(existing.map(noteFileKey));
 
   if (!occupied.has(noteFileKey(safeBase))) return safeBase;
