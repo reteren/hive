@@ -6,7 +6,6 @@
   import { grid } from "./grid.svelte";
 
   let canvas: HTMLCanvasElement;
-  let frame = 0;
   let devicePixelRatio = $state(1);
 
   onMount(() => {
@@ -26,16 +25,9 @@
     const showGrid = grid.showGrid;
     const ratio = devicePixelRatio;
 
-    if (frame) cancelAnimationFrame(frame);
-    frame = requestAnimationFrame(() => {
-      frame = 0;
-      drawGrid(canvas, currentCamera, currentViewport, currentStep, showGrid, ratio);
-    });
-
-    return () => {
-      if (frame) cancelAnimationFrame(frame);
-      frame = 0;
-    };
+    // Draw in the same update as the DOM layer (ME marker). Deferring to a separate
+    // animation frame starved the grid while WASD moved the camera every frame.
+    drawGrid(canvas, currentCamera, currentViewport, currentStep, showGrid, ratio);
   });
 
   function drawGrid(
