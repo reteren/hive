@@ -15,6 +15,8 @@ export interface Note {
   width: number;
   /** Manual height in u, or null while the note grows with its text. */
   height: number | null;
+  /** Creation time (ms since epoch); older projects may lack it. Used by search ordering (R2.4). */
+  createdAt?: number;
 }
 
 /** New note width from the roadmap examples. */
