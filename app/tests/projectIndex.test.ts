@@ -67,6 +67,45 @@ describe("project index", () => {
     expect(loaded.warnings).toEqual(["Invalid or dangling links in board.json were discarded."]);
   });
 
+  it("round trips anchored links from ME and ignores links that point into ME", () => {
+    const notes: Note[] = [
+      { id: "a", type: "note", name: "A", text: "", x: 0, y: 0, width: 10, height: null },
+    ];
+    const outgoing = {
+      id: "me-a",
+      from: "me",
+      to: "a",
+      kind: "strong" as const,
+      shape: "zigzag" as const,
+      toAnchor: { x: 0.25, y: 1 },
+    };
+    const roundTrip = parseProjectIndex(serializeProjectIndex(notes, undefined, [outgoing]));
+    expect(roundTrip.links).toEqual([outgoing]);
+
+    const parsed = parseProjectIndexWithWarnings(JSON.stringify({
+      version: 1,
+      notes: [{ id: "a", name: "A", x: 0, y: 0, width: 10 }],
+      links: [outgoing, { ...outgoing, id: "incoming", from: "a", to: "me" }],
+    }));
+    expect(parsed.index.links).toEqual([outgoing]);
+    expect(parsed.warnings).toEqual(["Invalid or dangling links in board.json were discarded."]);
+  });
+
+  it("discards links with invalid persisted anchors", () => {
+    const parsed = parseProjectIndexWithWarnings(JSON.stringify({
+      version: 1,
+      notes: [
+        { id: "a", name: "A", x: 0, y: 0, width: 10 },
+        { id: "b", name: "B", x: 20, y: 0, width: 10 },
+      ],
+      links: [{
+        id: "ab", from: "a", to: "b", kind: "strong", shape: "straight", fromAnchor: { x: 2, y: 0.5 },
+      }],
+    }));
+    expect(parsed.index.links).toEqual([]);
+    expect(parsed.warnings).toEqual(["Invalid or dangling links in board.json were discarded."]);
+  });
+
   it("merges Markdown bodies without taking geometry from the body response", () => {
     const index = parseProjectIndex(JSON.stringify({
       version: 1,
@@ -88,6 +127,7 @@ describe("project index", () => {
     ["missing notes", JSON.stringify({ version: 1 })],
     ["non-finite geometry", JSON.stringify({ version: 1, notes: [{ id: "a", name: "A", x: 0, y: 0, width: Infinity }] })],
     ["path traversal", JSON.stringify({ version: 1, notes: [{ id: "a", name: "A", file: "../A.md", x: 0, y: 0, width: 10 }] })],
+    ["reserved ME id", JSON.stringify({ version: 1, notes: [{ id: "me", name: "A", x: 0, y: 0, width: 10 }] })],
     ["duplicate ids", JSON.stringify({ version: 1, notes: [
       { id: "a", name: "A", x: 0, y: 0, width: 10 },
       { id: "a", name: "B", x: 1, y: 1, width: 10 },

@@ -1,16 +1,18 @@
 import { board } from "../model/board.svelte";
 import { addLink, canLink, links, removeLink, updateLink } from "../model/links.svelte";
-import type { Link } from "../model/link";
+import { ME_OBJECT_ID, type Link } from "../model/link";
 import { execute } from "../history/history.svelte";
 import { clearSelection } from "../selection/selection.svelte";
 import { clearSelectedLink, selectedLink, selectLink } from "./selection.svelte";
 
 export function createBoardLink(link: Link): boolean {
-  if (!canLink(link.from, link.to) || !board.notes[link.from] || !board.notes[link.to]) return false;
+  const source = link.from === ME_OBJECT_ID ? "ME" : board.notes[link.from]?.name;
+  const target = board.notes[link.to]?.name;
+  if (!canLink(link.from, link.to) || !source || !target) return false;
 
   execute({
     label: "Link",
-    target: `${board.notes[link.from].name} → ${board.notes[link.to].name}`,
+    target: `${source} → ${target}`,
     do: () => {
       addLink(link);
       clearSelection();
@@ -27,7 +29,7 @@ export function createBoardLink(link: Link): boolean {
 export function unlink(id: string): boolean {
   const link = links.byId[id];
   if (!link) return false;
-  const target = `${board.notes[link.from]?.name ?? "Note"} → ${board.notes[link.to]?.name ?? "Note"}`;
+  const target = `${objectName(link.from)} → ${objectName(link.to)}`;
 
   execute({
     label: "Unlink",
@@ -54,7 +56,7 @@ export function changeLinkShape(id: string, shape: Link["shape"]): boolean {
   if (!link || link.shape === shape) return false;
 
   const previousShape = link.shape;
-  const target = `${board.notes[link.from]?.name ?? "Note"} → ${board.notes[link.to]?.name ?? "Note"}`;
+  const target = `${objectName(link.from)} → ${objectName(link.to)}`;
   execute({
     label: "Line shape",
     target,
@@ -77,7 +79,7 @@ export function cutLinks(ids: readonly string[]): boolean {
 
   const selectedBeforeCut = selectedLink.id;
   const target = cut.length === 1
-    ? `${board.notes[cut[0].from]?.name ?? "Note"} → ${board.notes[cut[0].to]?.name ?? "Note"}`
+    ? `${objectName(cut[0].from)} → ${objectName(cut[0].to)}`
     : `${cut.length} lines`;
   const cutIds = new Set(cut.map((link) => link.id));
 
@@ -94,4 +96,8 @@ export function cutLinks(ids: readonly string[]): boolean {
     },
   });
   return true;
+}
+
+function objectName(id: string): string {
+  return id === ME_OBJECT_ID ? "ME" : board.notes[id]?.name ?? "Note";
 }

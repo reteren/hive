@@ -1,7 +1,9 @@
 import type { Point } from "../board/cameraMath";
+import type { LinkAnchor } from "../model/link";
 
 export const lineInteraction = $state({
   sourceId: null as string | null,
+  sourceAnchor: null as LinkAnchor | null,
   preview: null as Point | null,
   cutStroke: [] as Point[],
   error: null as { message: string; x: number; y: number } | null,
@@ -26,6 +28,7 @@ export function clearLineError(): void {
 
 export function cancelLineDraft(): void {
   lineInteraction.sourceId = null;
+  lineInteraction.sourceAnchor = null;
   lineInteraction.preview = null;
   lineInteraction.cutStroke = [];
   clearLineError();

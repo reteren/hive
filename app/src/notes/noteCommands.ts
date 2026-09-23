@@ -2,11 +2,13 @@ import { registerCommand } from "../commands/registry.svelte";
 import { execute } from "../history/history.svelte";
 import { addNote, board, removeNote } from "../model/board.svelte";
 import { DEFAULT_NOTE_WIDTH, newId, type Note } from "../model/note";
-import { camera, pointer } from "../board/camera.svelte";
+import { pointer } from "../board/camera.svelte";
+import { grid } from "../board/grid.svelte";
+import { notePositionAt } from "./creationPosition";
 import type { Point } from "../board/cameraMath";
 import { editing } from "./editing.svelte";
 import { MIN_NOTE_HEIGHT } from "./layout.svelte";
-import { creationMenu } from "./creation.svelte";
+import { closeCreationMenu, creationMenu, creationMenuTrigger, openCreationMenu } from "./creation.svelte";
 import { uniqueName } from "./naming";
 import { selection } from "../selection/selection.svelte";
 import { formatNoteMarkdownLink, formatPointAddress } from "../links-in-text/format";
@@ -14,22 +16,28 @@ import { closeLinkContextMenu, linkContext, showLinkStatus } from "../links-in-t
 
 export function toggleCreationMenu(): void {
   if (creationMenu.open) {
-    creationMenu.open = false;
-    creationMenu.pinned = false;
+    closeCreationMenu();
   } else {
-    creationMenu.open = true;
+    openCreationMenu(creationMenuTrigger());
   }
 }
 
 export function createNote(): string {
   const id = newId();
+  const position = notePositionAt(
+    creationMenu.origin,
+    DEFAULT_NOTE_WIDTH,
+    MIN_NOTE_HEIGHT,
+    grid.snap,
+    grid.step,
+  );
   const note: Note = {
     id,
     type: "note",
     name: uniqueName("Note", Object.values(board.notes).map((existing) => existing.name)),
     text: "",
-    x: camera.x - DEFAULT_NOTE_WIDTH / 2,
-    y: camera.y - MIN_NOTE_HEIGHT / 2,
+    x: position.x,
+    y: position.y,
     width: DEFAULT_NOTE_WIDTH,
     height: null,
     createdAt: Date.now(),

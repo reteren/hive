@@ -1,5 +1,6 @@
 import type { Note } from "../model/note";
-import { pairKey, type Link } from "../model/link";
+import { ME_OBJECT_ID, pairKey, type Link, type LinkAnchor } from "../model/link";
+import { isFrameAnchor } from "../links/anchors";
 import { noteFileKey, sanitizeNoteName } from "./fileNames";
 
 export interface IndexedNote {
@@ -111,7 +112,7 @@ function parseNote(value: unknown, index: number): IndexedNote {
   if (!isRecord(value)) throw new Error(`Project note ${index + 1} must be an object.`);
   const id = value.id;
   const name = value.name;
-  if (typeof id !== "string" || id.trim() === "" || id.length > 200 || id.includes("/") || id.includes("\\")) {
+  if (typeof id !== "string" || id.trim() === "" || id === ME_OBJECT_ID || id.length > 200 || id.includes("/") || id.includes("\\")) {
     throw new Error(`Project note ${index + 1} has an invalid id.`);
   }
   if (typeof name !== "string" || name.trim() === "" || name.length > 500) {
@@ -163,10 +164,15 @@ function sanitizeProjectLinks(value: unknown, noteIds: ReadonlySet<string>): { l
     }
     const { id, from, to, kind } = candidate;
     const shape = candidate.shape ?? "straight";
+    const fromAnchor = readAnchor(candidate, "fromAnchor");
+    const toAnchor = readAnchor(candidate, "toAnchor");
     if (typeof id !== "string" || id.trim() === "" || id.length > 200 ||
-      typeof from !== "string" || !noteIds.has(from) || typeof to !== "string" || !noteIds.has(to) ||
+      typeof from !== "string" || (from !== ME_OBJECT_ID && !noteIds.has(from)) ||
+      typeof to !== "string" || !noteIds.has(to) ||
       (kind !== "strong" && kind !== "weak") ||
-      (shape !== "straight" && shape !== "curved" && shape !== "orthogonal") || from === to || ids.has(id)) {
+      (shape !== "straight" && shape !== "curved" && shape !== "orthogonal" && shape !== "wave" && shape !== "zigzag") ||
+      ("fromAnchor" in candidate && !fromAnchor) || ("toAnchor" in candidate && !toAnchor) ||
+      from === to || ids.has(id)) {
       dropped = true;
       continue;
     }
@@ -177,13 +183,27 @@ function sanitizeProjectLinks(value: unknown, noteIds: ReadonlySet<string>): { l
     }
     ids.add(id);
     pairs.add(key);
-    links.push({ id, from, to, kind, shape });
+    links.push({
+      id,
+      from,
+      to,
+      kind,
+      shape,
+      ...(fromAnchor ? { fromAnchor } : {}),
+      ...(toAnchor ? { toAnchor } : {}),
+    });
   }
 
   return {
     links,
     warnings: dropped ? ["Invalid or dangling links in board.json were discarded."] : [],
   };
+}
+
+function readAnchor(value: Record<string, unknown>, field: "fromAnchor" | "toAnchor"): LinkAnchor | undefined {
+  const candidate = value[field];
+  if (!isFrameAnchor(candidate)) return undefined;
+  return { x: candidate.x, y: candidate.y };
 }
 
 function validateNoteFile(file: string, id: string): void {

@@ -46,6 +46,12 @@
     toggleSelected,
   } from "./selection.svelte";
   import { RESIZE_EDGES, resizeEdgeAxes, type ResizeEdge } from "./resize";
+  import {
+    createPrecisionDeltaTracker,
+    setPrecisionAlt,
+    updatePrecisionDelta,
+    type PrecisionDeltaTracker,
+  } from "./precision";
 
   interface Outline {
     id: string;
@@ -62,6 +68,7 @@
         kind: "move";
         pointerId: number;
         startScreen: Point;
+        precision: PrecisionDeltaTracker;
         started: boolean;
         captured: boolean;
         gesture: MoveGesture;
@@ -70,6 +77,7 @@
         kind: "resize";
         pointerId: number;
         startScreen: Point;
+        precision: PrecisionDeltaTracker;
         started: boolean;
         captured: boolean;
         gesture: ResizeGesture;
@@ -78,6 +86,7 @@
         kind: "group-scale";
         pointerId: number;
         startScreen: Point;
+        precision: PrecisionDeltaTracker;
         started: boolean;
         captured: boolean;
         gesture: GroupScaleGesture;
@@ -92,11 +101,23 @@
         additive: boolean;
       };
 
+  interface PendingAltContextPick {
+    pointerId: number;
+    startScreen: Point;
+    noteIds: string[];
+    point: Point;
+    selectedIds: string[];
+    primaryId: string | null;
+  }
+
   let layer: HTMLDivElement;
   let boardElement: HTMLElement | null = null;
   let activeGesture: ActivePointerGesture | null = null;
   let grabGesture: MoveGesture | null = null;
   let grabStartWorld: Point | null = null;
+  let grabPrecision: PrecisionDeltaTracker | null = null;
+  let pendingAltContextPick: PendingAltContextPick | null = null;
+  let altHeld = false;
   let suppressContextMenuUntil = 0;
 
   let outlines = $derived.by((): Outline[] => {
@@ -188,21 +209,36 @@
       if (grabGesture) {
         event.preventDefault();
         event.stopPropagation();
-        updateGrabAt(screenToWorld(camera, viewport, local), event.ctrlKey);
+        updateGrabAt(screenToWorld(camera, viewport, local), event.ctrlKey, event.altKey);
         commitGrab();
         return;
       }
 
       const world = screenToWorld(camera, viewport, local);
+      const groupHandle = target.closest<HTMLElement>("[data-group-scale-handle]");
+      const resizeHandle = target.closest<HTMLElement>("[data-resize-handle]");
+      const header = target.closest("[data-note-header]");
+      const canDragFromTarget = groupHandle !== null || resizeHandle !== null ||
+        (header !== null && !isTextEditingTarget(event.target));
+      pendingAltContextPick = null;
+
       if (event.altKey) {
         const hits = hitTestNotes(world, boardState.notes, boardState.order);
-        if (hits.length > 1) {
+        if (hits.length > 1 && canDragFromTarget && !event.ctrlKey) {
+          pendingAltContextPick = {
+            pointerId: event.pointerId,
+            startScreen: local,
+            noteIds: hits,
+            point: local,
+            selectedIds: [...selection.ids],
+            primaryId: selection.primaryId,
+          };
+        } else if (hits.length > 1) {
           event.preventDefault();
           event.stopPropagation();
           setContextPick(hits, local, viewport);
           return;
-        }
-        if (hits.length === 1) {
+        } else if (hits.length === 1 && !canDragFromTarget) {
           closeContextPick();
           selectOnly(hits[0]);
           return;
@@ -211,7 +247,6 @@
 
       closeContextPick();
 
-      const groupHandle = target.closest<HTMLElement>("[data-group-scale-handle]");
       if (groupHandle && selection.ids.length > 1 && groupBounds) {
         const edge = groupHandle.dataset.groupScaleHandle as ResizeEdge | undefined;
         const frames = framesForSelection();
@@ -219,7 +254,6 @@
         return;
       }
 
-      const resizeHandle = target.closest<HTMLElement>("[data-resize-handle]");
       if (resizeHandle) {
         const id = resizeHandle.dataset.noteId;
         const edge = resizeHandle.dataset.resizeHandle as ResizeEdge | undefined;
@@ -227,7 +261,6 @@
         return;
       }
 
-      const header = target.closest("[data-note-header]");
       if (header && !isTextEditingTarget(event.target)) {
         const noteRoot = header.closest<HTMLElement>("[data-note-id]");
         const id = noteRoot?.dataset.noteId;
@@ -265,6 +298,13 @@
       const local = localPoint(event);
       if (!local) return;
 
+      if (
+        pendingAltContextPick?.pointerId === event.pointerId &&
+        crossedGestureThreshold(pendingAltContextPick.startScreen, local)
+      ) {
+        pendingAltContextPick = null;
+      }
+
       if (activeGesture && activeGesture.pointerId === event.pointerId) {
         updatePointerGesture(event, local);
         return;
@@ -272,19 +312,29 @@
 
       // A middle-button pan remains owned by the camera while G move mode is active.
       if (grabGesture && event.buttons === 0 && isPointInsideBoard(local)) {
-        updateGrabAt(screenToWorld(camera, viewport, local), event.ctrlKey);
+        updateGrabAt(screenToWorld(camera, viewport, local), event.ctrlKey, event.altKey);
       }
     }
 
     function onPointerUp(event: PointerEvent): void {
-      if (activeGesture?.pointerId !== event.pointerId) return;
       const local = localPoint(event);
+      if (
+        pendingAltContextPick?.pointerId === event.pointerId && local &&
+        crossedGestureThreshold(pendingAltContextPick.startScreen, local)
+      ) {
+        pendingAltContextPick = null;
+      }
+      if (activeGesture?.pointerId !== event.pointerId) {
+        completePendingAltContextPick(event.pointerId, false);
+        return;
+      }
       if (local) updatePointerGesture(event, local, false);
       finishPointerGesture(event.pointerId, false);
     }
 
     function onPointerCancel(event: PointerEvent): void {
       if (activeGesture?.pointerId === event.pointerId) finishPointerGesture(event.pointerId, true);
+      else completePendingAltContextPick(event.pointerId, true);
     }
 
     function onLostPointerCapture(event: PointerEvent): void {
@@ -328,6 +378,19 @@
       if (grabGesture) cancelGrab();
     }
 
+    function onPrecisionKeyDown(event: KeyboardEvent): void {
+      if (!isAltKey(event)) return;
+      altHeld = true;
+      if (activeGesture || grabGesture) event.preventDefault();
+      rebasePrecision(true);
+    }
+
+    function onPrecisionKeyUp(event: KeyboardEvent): void {
+      if (!isAltKey(event)) return;
+      altHeld = event.altKey;
+      rebasePrecision(altHeld);
+    }
+
     boardEl.addEventListener("pointerdown", onPointerDown, true);
     window.addEventListener("pointermove", onPointerMove, true);
     window.addEventListener("pointerup", onPointerUp, true);
@@ -336,12 +399,15 @@
     boardEl.addEventListener("click", onClick, true);
     boardEl.addEventListener("dblclick", onDoubleClick, true);
     boardEl.addEventListener("contextmenu", onContextMenu, true);
+    window.addEventListener("keydown", onPrecisionKeyDown, true);
+    window.addEventListener("keyup", onPrecisionKeyUp, true);
 
     const detachController = attachSelectionController({ escape, startGrab });
 
     function onWindowBlur(): void {
       if (activeGesture) finishPointerGesture(activeGesture.pointerId, true);
       if (grabGesture) cancelGrab();
+      altHeld = false;
     }
 
     window.addEventListener("blur", onWindowBlur);
@@ -351,6 +417,8 @@
       if (grabGesture) cancelGrab();
       detachController();
       window.removeEventListener("blur", onWindowBlur);
+      window.removeEventListener("keydown", onPrecisionKeyDown, true);
+      window.removeEventListener("keyup", onPrecisionKeyUp, true);
       window.removeEventListener("pointermove", onPointerMove, true);
       window.removeEventListener("pointerup", onPointerUp, true);
       window.removeEventListener("pointercancel", onPointerCancel, true);
@@ -398,6 +466,7 @@
       kind: "move",
       pointerId: event.pointerId,
       startScreen: screen,
+      precision: createPrecisionDeltaTracker(world, event.altKey),
       started: false,
       captured: false,
       gesture: createMoveGesture(frames, anchorId, world),
@@ -418,6 +487,7 @@
       kind: "resize",
       pointerId: event.pointerId,
       startScreen: screen,
+      precision: createPrecisionDeltaTracker(world, event.altKey),
       started: false,
       captured: false,
       gesture: createResizeGesture(frameForNote(id), noteBounds(note).height, edge, world),
@@ -437,6 +507,7 @@
       kind: "group-scale",
       pointerId: event.pointerId,
       startScreen: screen,
+      precision: createPrecisionDeltaTracker(world, event.altKey),
       started: false,
       captured: false,
       gesture: createGroupScaleGesture(frames, bounds, edge, world),
@@ -447,34 +518,56 @@
     const gesture = activeGesture;
     if (!gesture) return;
 
+    const world = screenToWorld(camera, viewport, screen);
+
+    if (gesture.kind === "marquee") {
+      if (!gesture.started && !crossedGestureThreshold(gesture.startScreen, screen)) return;
+      if (!gesture.captured && captureForFollowup) {
+        capturePointer(event.pointerId);
+        gesture.captured = true;
+      }
+      gesture.started = true;
+      setMarquee(rectFromPoints(gesture.startWorld, world));
+      return;
+    }
+
+    // Keep the last pointer position current before the drag threshold too, so an
+    // Alt toggle during that interval rebases at the actual cursor location.
+    const precision = updatePrecisionDelta(gesture.precision, world, event.altKey);
+    gesture.precision = precision.tracker;
     if (!gesture.started && !crossedGestureThreshold(gesture.startScreen, screen)) return;
     if (!gesture.captured && captureForFollowup) {
       capturePointer(event.pointerId);
       gesture.captured = true;
     }
     gesture.started = true;
-    const world = screenToWorld(camera, viewport, screen);
-
-    if (gesture.kind === "marquee") {
-      setMarquee(rectFromPoints(gesture.startWorld, world));
-      return;
-    }
+    const adjustedWorld = addPoint(gesture.gesture.startWorld, precision.delta);
 
     if (gesture.kind === "move") {
-      gesture.gesture = updateMoveGesture(gesture.gesture, world, grid.snap || event.ctrlKey, grid.step);
+      gesture.gesture = updateMoveGesture(
+        gesture.gesture,
+        adjustedWorld,
+        grid.snap || event.ctrlKey,
+        grid.step,
+      );
       applyFrames(gesture.gesture.after);
       return;
     }
 
     if (gesture.kind === "resize") {
-      gesture.gesture = updateResizeGesture(gesture.gesture, world, grid.snap || event.ctrlKey, grid.step);
+      gesture.gesture = updateResizeGesture(
+        gesture.gesture,
+        adjustedWorld,
+        grid.snap || event.ctrlKey,
+        grid.step,
+      );
       applyFrames([gesture.gesture.after]);
       return;
     }
 
     gesture.gesture = updateGroupScaleGesture(
       gesture.gesture,
-      world,
+      adjustedWorld,
       grid.snap || event.ctrlKey,
       grid.step,
       event.shiftKey,
@@ -523,18 +616,29 @@
       if (change) recordGeometryChange("Scale", `${change.before.length} notes`, change);
     }
 
+    completePendingAltContextPick(pointerId, !cancelled);
+
     if (release) releasePointer(pointerId);
   }
 
-  function updateGrabAt(world: Point, ctrlHeld: boolean): void {
+  function updateGrabAt(world: Point, ctrlHeld: boolean, alt = altHeld): void {
     if (!grabGesture) return;
     if (!grabStartWorld) {
       grabStartWorld = { ...world };
       grabGesture = createMoveGesture(grabGesture.before, grabGesture.anchorId, world);
+      grabPrecision = createPrecisionDeltaTracker(world, alt);
       return;
     }
 
-    grabGesture = updateMoveGesture(grabGesture, world, grid.snap || ctrlHeld, grid.step);
+    if (!grabPrecision) grabPrecision = createPrecisionDeltaTracker(grabStartWorld, alt);
+    const precision = updatePrecisionDelta(grabPrecision, world, alt);
+    grabPrecision = precision.tracker;
+    grabGesture = updateMoveGesture(
+      grabGesture,
+      addPoint(grabGesture.startWorld, precision.delta),
+      grid.snap || ctrlHeld,
+      grid.step,
+    );
     applyFrames(grabGesture.after);
   }
 
@@ -547,6 +651,7 @@
       : frames[0].id;
     grabGesture = createMoveGesture(frames, anchorId, pointer.world ?? { x: frames[0].x, y: frames[0].y });
     grabStartWorld = pointer.world ? { ...pointer.world } : null;
+    grabPrecision = pointer.world ? createPrecisionDeltaTracker(pointer.world, altHeld) : null;
     selection.grabActive = true;
   }
 
@@ -556,6 +661,7 @@
     if (change) recordGeometryChange("Move", targetForMove(change.before, grabGesture.anchorId), change);
     grabGesture = null;
     grabStartWorld = null;
+    grabPrecision = null;
     selection.grabActive = false;
   }
 
@@ -564,6 +670,7 @@
     applyFrames(cancelMoveGesture(grabGesture));
     grabGesture = null;
     grabStartWorld = null;
+    grabPrecision = null;
     selection.grabActive = false;
   }
 
@@ -581,6 +688,29 @@
       return;
     }
     clearSelection();
+  }
+
+  function completePendingAltContextPick(pointerId: number, open: boolean): void {
+    const pending = pendingAltContextPick;
+    if (!pending || pending.pointerId !== pointerId) return;
+    pendingAltContextPick = null;
+    selection.ids = [...pending.selectedIds];
+    selection.primaryId = pending.primaryId;
+    if (open) setContextPick(pending.noteIds, pending.point, viewport);
+  }
+
+  function rebasePrecision(alt: boolean): void {
+    const gesture = activeGesture;
+    if (gesture && gesture.kind !== "marquee") gesture.precision = setPrecisionAlt(gesture.precision, alt);
+    if (grabPrecision) grabPrecision = setPrecisionAlt(grabPrecision, alt);
+  }
+
+  function isAltKey(event: KeyboardEvent): boolean {
+    return event.key === "Alt" || event.code === "AltLeft" || event.code === "AltRight";
+  }
+
+  function addPoint(point: Point, delta: Point): Point {
+    return { x: point.x + delta.x, y: point.y + delta.y };
   }
 
   function applyFrames(frames: readonly NoteFrame[]): void {

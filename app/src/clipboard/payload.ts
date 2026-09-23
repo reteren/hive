@@ -1,5 +1,6 @@
 import type { Point } from "../board/cameraMath";
-import type { Link } from "../model/link";
+import type { Link, LinkAnchor } from "../model/link";
+import { isFrameAnchor } from "../links/anchors";
 import { newId } from "../model/note";
 import type { Note } from "../model/note";
 import { uniqueName } from "../notes/naming";
@@ -28,6 +29,8 @@ export interface ClipboardLink {
   to: string;
   kind: Link["kind"];
   shape: Link["shape"];
+  fromAnchor?: LinkAnchor;
+  toAnchor?: LinkAnchor;
 }
 
 export interface HiveClipboardPayload {
@@ -62,7 +65,14 @@ export function serializeNotes(notes: readonly Note[], links: readonly Clipboard
       createdAt,
     })),
     links: links.flatMap((link) => noteIds.has(link.from) && noteIds.has(link.to)
-      ? [{ from: link.from, to: link.to, kind: link.kind, shape: link.shape }]
+      ? [{
+          from: link.from,
+          to: link.to,
+          kind: link.kind,
+          shape: link.shape,
+          ...(link.fromAnchor ? { fromAnchor: { ...link.fromAnchor } } : {}),
+          ...(link.toAnchor ? { toAnchor: { ...link.toAnchor } } : {}),
+        }]
       : []),
   };
   return JSON.stringify(payload);
@@ -111,7 +121,14 @@ export function parseNotesPayload(serialized: string): HiveClipboardPayload | nu
       : `${candidate.to}|${candidate.from}`;
     if (candidate.from === candidate.to || pairs.has(pair)) return null;
     pairs.add(pair);
-    links.push({ from: candidate.from, to: candidate.to, kind: candidate.kind, shape: candidate.shape });
+    links.push({
+      from: candidate.from,
+      to: candidate.to,
+      kind: candidate.kind,
+      shape: candidate.shape,
+      ...(candidate.fromAnchor ? { fromAnchor: candidate.fromAnchor } : {}),
+      ...(candidate.toAnchor ? { toAnchor: candidate.toAnchor } : {}),
+    });
   }
 
   return {
@@ -132,7 +149,15 @@ export function remapClipboardLinks(
     const from = idMap.get(link.from);
     const to = idMap.get(link.to);
     if (!from || !to || from === to) return [];
-    return [{ id: createId(), from, to, kind: link.kind, shape: link.shape }];
+    return [{
+      id: createId(),
+      from,
+      to,
+      kind: link.kind,
+      shape: link.shape,
+      ...(link.fromAnchor ? { fromAnchor: { ...link.fromAnchor } } : {}),
+      ...(link.toAnchor ? { toAnchor: { ...link.toAnchor } } : {}),
+    }];
   });
 }
 
@@ -188,7 +213,10 @@ function isClipboardLink(value: unknown): value is ClipboardLink {
   return isRecord(value) && typeof value.from === "string" && value.from.length > 0 &&
     typeof value.to === "string" && value.to.length > 0 &&
     (value.kind === "strong" || value.kind === "weak") &&
-    (value.shape === "straight" || value.shape === "curved" || value.shape === "orthogonal");
+    (value.shape === "straight" || value.shape === "curved" || value.shape === "orthogonal" ||
+      value.shape === "wave" || value.shape === "zigzag") &&
+    (!Object.hasOwn(value, "fromAnchor") || isFrameAnchor(value.fromAnchor)) &&
+    (!Object.hasOwn(value, "toAnchor") || isFrameAnchor(value.toAnchor));
 }
 
 function finite(value: unknown): value is number {

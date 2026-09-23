@@ -11,6 +11,11 @@ let activeEditor: { noteId: string; view: EditorView } | null = null;
 const destroyedEditors = new WeakSet<EditorView>();
 
 export function startNoteEditing(noteId: string, point: ScreenPoint): void {
+  if (editing.noteId === noteId) {
+    pendingClick = null;
+    return;
+  }
+
   pendingClick = { noteId, point };
   editing.noteId = noteId;
 }

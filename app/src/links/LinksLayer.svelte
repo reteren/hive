@@ -1,19 +1,22 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { camera, viewport } from "../board/camera.svelte";
+  import { camera, ME_POSITION, viewport } from "../board/camera.svelte";
   import { PX_PER_UNIT, screenToWorld, type Point } from "../board/cameraMath";
   import { isTextEditingTarget } from "../commands/focus";
   import { board } from "../model/board.svelte";
   import { links, canLink } from "../model/links.svelte";
-  import type { Link } from "../model/link";
+  import { ME_OBJECT_ID, type Link, type LinkAnchor } from "../model/link";
   import { newId } from "../model/note";
-  import { noteBounds } from "../notes/layout.svelte";
+  import { noteBounds, type Bounds } from "../notes/layout.svelte";
   import { clearSelection } from "../selection/selection.svelte";
-  import { tool } from "../tools/tool.svelte";
+  import { isLineTool, tool } from "../tools/tool.svelte";
   import { objectColor } from "./colors";
-  import { linePathBetweenFrames, pathData, scalePath, strokeIntersectsPath, type LinkPath } from "./lineGeometry";
+  import { strokeIntersectsPath } from "./lineGeometry";
+  import { buildShape, type ShapeResult } from "./shapes";
+  import { projectPointToAnchor, shapeEndpoints } from "./anchors";
+  import { completeLinkGesture, resolveCutRelease, type LinkDraft } from "./gestures";
   import { cancelLineDraft, lineInteraction, setLineError } from "./interaction.svelte";
-  import { changeLinkShape, createBoardLink, cutLinks } from "./operations";
+  import { createBoardLink, cutLinks } from "./operations";
   import { clearSelectedLink, selectLink, selectedLink } from "./selection.svelte";
 
   const CUT_DRAG_THRESHOLD_PX = 5;
@@ -22,7 +25,7 @@
   interface RenderedLink {
     id: string;
     kind: Link["kind"];
-    geometry: LinkPath;
+    geometry: ShapeResult;
     path: string;
     selected: boolean;
     gradient: null | {
@@ -37,8 +40,17 @@
   }
 
   type PointerGesture =
-    | { kind: "link"; id: number; fromId: string; continuation: boolean; start: Point }
-    | { kind: "cut"; id: number; start: Point; startLinkId: string | null };
+    | {
+        kind: "link";
+        id: number;
+        clickedId: string;
+        clickedAnchor?: LinkAnchor;
+        draft: LinkDraft | null;
+        startedInBody: boolean;
+        captured: boolean;
+        start: Point;
+      }
+    | { kind: "cut"; id: number; start: Point; startLinkId: string | null; captured: boolean };
 
   interface PreviewLink {
     path: string;
@@ -47,21 +59,20 @@
 
   let layer: HTMLDivElement;
   let gesture: PointerGesture | null = null;
+  let lastBodyClick: { id: string; at: number } | null = null;
+  let textSelectionElement: HTMLElement | null = null;
+  let previousUserSelect = "";
   let worldTransform = $derived(
     `translate3d(${viewport.width / 2}px, ${viewport.height / 2}px, 0) ` +
-      `scale(${camera.zoom}) ` +
-      `translate3d(${-camera.x * PX_PER_UNIT}px, ${-camera.y * PX_PER_UNIT}px, 0)`,
+      `scale(${camera.zoom * PX_PER_UNIT}) ` +
+      `translate3d(${-camera.x}px, ${-camera.y}px, 0)`,
   );
 
   let renderedLinks = $derived.by((): RenderedLink[] => Object.values(links.byId).flatMap((link) => {
-    const from = board.notes[link.from];
-    const to = board.notes[link.to];
-    if (!from || !to) return [];
-
-    const geometry = linePathBetweenFrames(link.shape, noteBounds(from), noteBounds(to));
-    const scaled = scalePath(geometry, PX_PER_UNIT);
-    const first = geometry.points[0];
-    const last = geometry.type === "cubic" ? geometry.points[3] : geometry.points.at(-1);
+    const geometry = geometryForLink(link);
+    if (!geometry) return [];
+    const first = geometry.polyline[0];
+    const last = geometry.polyline.at(-1);
     if (!first || !last) return [];
 
     const fromColor = objectColor(link.from);
@@ -70,10 +81,10 @@
       ? null
       : {
           id: `hive-link-${safeId(link.id)}`,
-          x1: first.x * PX_PER_UNIT,
-          y1: first.y * PX_PER_UNIT,
-          x2: last.x * PX_PER_UNIT,
-          y2: last.y * PX_PER_UNIT,
+          x1: first.x,
+          y1: first.y,
+          x2: last.x,
+          y2: last.y,
           fromColor,
           toColor,
         };
@@ -82,7 +93,7 @@
       id: link.id,
       kind: link.kind,
       geometry,
-      path: pathData(scaled),
+      path: geometry.path,
       selected: selectedLink.id === link.id,
       gradient,
     }];
@@ -91,14 +102,23 @@
   let gradients = $derived(renderedLinks.flatMap((link) => link.gradient ? [link.gradient] : []));
 
   let previewLink = $derived.by((): PreviewLink | null => {
-    const source = lineInteraction.sourceId ? board.notes[lineInteraction.sourceId] : undefined;
+    const sourceId = lineInteraction.sourceId;
+    const source = sourceId ? objectBounds(sourceId) : null;
     const point = lineInteraction.preview;
-    if (!source || !point || (tool.active !== "line-strong" && tool.active !== "line-weak")) return null;
+    if (!sourceId || !source || !point || !isLineTool()) return null;
 
     const target = { x: point.x, y: point.y, width: 0, height: 0 };
-    const geometry = linePathBetweenFrames(tool.lineShape, noteBounds(source), target);
+    const endpoints = shapeEndpoints(
+      source,
+      target,
+      lineInteraction.sourceAnchor ?? undefined,
+      undefined,
+      sourceId === ME_OBJECT_ID,
+      true,
+    );
+    const geometry = buildShape(tool.lineShape, endpoints);
     return {
-      path: pathData(scalePath(geometry, PX_PER_UNIT)),
+      path: geometry.path,
       kind: tool.active === "line-weak" ? "weak" : "strong",
     };
   });
@@ -113,13 +133,17 @@
       return { x: event.clientX - rect.left, y: event.clientY - rect.top };
     }
 
-    function noteAt(point: Point, preferredTarget: EventTarget | null): string | null {
+    function objectAt(point: Point, preferredTarget: EventTarget | null): string | null {
       const target = preferredTarget instanceof Element ? preferredTarget : null;
+      if (target?.closest(`[data-beacon-id="${ME_OBJECT_ID}"]`)) return ME_OBJECT_ID;
       const noteRoot = target?.closest<HTMLElement>("[data-note-id]");
       const directId = noteRoot?.dataset.noteId;
       if (directId && board.notes[directId]) return directId;
 
       const world = screenToWorld(camera, viewport, point);
+      const beacon = objectBounds(ME_OBJECT_ID);
+      if (beacon && world.x >= beacon.x && world.x <= beacon.x + beacon.width &&
+        world.y >= beacon.y && world.y <= beacon.y + beacon.height) return ME_OBJECT_ID;
       for (const id of [...board.order].reverse()) {
         const note = board.notes[id];
         if (!note) continue;
@@ -130,6 +154,12 @@
       return null;
     }
 
+    function anchorAt(id: string, point: Point): LinkAnchor | undefined {
+      if (id === ME_OBJECT_ID) return undefined;
+      const note = board.notes[id];
+      return note ? projectPointToAnchor(noteBounds(note), screenToWorld(camera, viewport, point)) : undefined;
+    }
+
     function linkAt(target: EventTarget | null): string | null {
       if (!(target instanceof Element)) return null;
       const id = target.closest<SVGGElement>("[data-link-id]")?.dataset.linkId;
@@ -137,37 +167,70 @@
     }
 
     function capturePointer(event: PointerEvent): void {
-      if (event.button !== 0 || isTextEditingTarget(event.target)) return;
+      if (isTextEditingTarget(event.target)) return;
       const point = localPoint(event);
 
-      if (tool.active === "line-strong" || tool.active === "line-weak") {
+      if (isLineTool() && event.button === 2) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        const noteId = noteAt(point, event.target);
-        if (!noteId) {
-          if (lineInteraction.sourceId) cancelLineDraft();
-          return;
-        }
-
-        const continuation = lineInteraction.sourceId !== null;
-        gesture = {
-          kind: "link",
-          id: event.pointerId,
-          fromId: lineInteraction.sourceId ?? noteId,
-          continuation,
-          start: point,
-        };
-        lineInteraction.preview = screenToWorld(camera, viewport, point);
-        try { surface.setPointerCapture(event.pointerId); } catch { /* Window handlers still track the gesture. */ }
+        gesture = { kind: "cut", id: event.pointerId, start: point, startLinkId: linkAt(event.target), captured: false };
+        lineInteraction.cutStroke = [point];
         return;
       }
 
-      if (tool.active === "line-cut") {
-        event.preventDefault();
+      if (event.button !== 0) return;
+
+      if (isLineTool()) {
+        const objectId = objectAt(point, event.target);
+        const noteBody = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-note-body]") : null;
+        const now = performance.now();
+        const isSecondBodyClick = Boolean(noteBody && objectId && (
+          event.detail >= 2 || (lastBodyClick?.id === objectId && now - lastBodyClick.at <= 500)
+        ));
+        if (isSecondBodyClick) {
+          tool.active = "select";
+          cancelLineDraft();
+          clearSelectedLink();
+          lastBodyClick = null;
+          return;
+        }
+
+        if (!noteBody) event.preventDefault();
         event.stopImmediatePropagation();
-        gesture = { kind: "cut", id: event.pointerId, start: point, startLinkId: linkAt(event.target) };
-        lineInteraction.cutStroke = [point];
-        try { surface.setPointerCapture(event.pointerId); } catch { /* Window handlers still track the gesture. */ }
+        if (!objectId) {
+          cancelLineDraft();
+          lastBodyClick = null;
+          return;
+        }
+
+        const clickedAnchor = anchorAt(objectId, point);
+        const draft: LinkDraft | null = lineInteraction.sourceId === null ? null : {
+          sourceId: lineInteraction.sourceId,
+          sourceAnchor: lineInteraction.sourceAnchor ?? undefined,
+        };
+        gesture = {
+          kind: "link",
+          id: event.pointerId,
+          clickedId: objectId,
+          clickedAnchor,
+          draft,
+          startedInBody: noteBody !== null,
+          captured: false,
+          start: point,
+        };
+        if (noteBody) {
+          const noteRoot = noteBody.closest<HTMLElement>("[data-note-id]");
+          if (noteRoot) {
+            textSelectionElement = noteRoot;
+            previousUserSelect = noteRoot.style.userSelect;
+            noteRoot.style.userSelect = "none";
+          }
+        }
+        if (!draft) {
+          lineInteraction.sourceId = objectId;
+          lineInteraction.sourceAnchor = clickedAnchor ?? null;
+        }
+        lineInteraction.preview = screenToWorld(camera, viewport, point);
         return;
       }
 
@@ -185,6 +248,12 @@
     function onPointerMove(event: PointerEvent): void {
       const point = localPoint(event);
       if (gesture?.id === event.pointerId) {
+        if (!gesture.captured && Math.hypot(point.x - gesture.start.x, point.y - gesture.start.y) >= CUT_DRAG_THRESHOLD_PX) {
+          try {
+            surface.setPointerCapture(event.pointerId);
+            gesture.captured = true;
+          } catch { /* Window handlers still track the gesture. */ }
+        }
         if (gesture.kind === "cut") {
           const lastPoint = lineInteraction.cutStroke.at(-1);
           if (!lastPoint || Math.hypot(point.x - lastPoint.x, point.y - lastPoint.y) >= 2) {
@@ -198,15 +267,29 @@
       }
     }
 
-    function tryCreate(fromId: string, toId: string, point: Point): boolean {
-      if (fromId === toId) {
-        setLineError("A note cannot link to itself", point);
+    function tryCreate(
+      fromId: string,
+      toId: string,
+      fromAnchor: LinkAnchor | undefined,
+      toAnchor: LinkAnchor | undefined,
+      point: Point,
+    ): boolean {
+      if (toId === ME_OBJECT_ID) {
+        setLineError("Beacons can have outgoing links only", point);
         lineInteraction.sourceId = fromId;
+        lineInteraction.sourceAnchor = fromAnchor ?? null;
+        return false;
+      }
+      if (fromId === toId) {
+        setLineError("An object cannot link to itself", point);
+        lineInteraction.sourceId = fromId;
+        lineInteraction.sourceAnchor = fromAnchor ?? null;
         return false;
       }
       if (!canLink(fromId, toId)) {
-        setLineError("These notes already have a link", point);
+        setLineError("These objects already have a link", point);
         lineInteraction.sourceId = fromId;
+        lineInteraction.sourceAnchor = fromAnchor ?? null;
         return false;
       }
       const link: Link = {
@@ -215,10 +298,13 @@
         to: toId,
         kind: tool.active === "line-weak" ? "weak" : "strong",
         shape: tool.lineShape,
+        ...(fromAnchor ? { fromAnchor } : {}),
+        ...(toAnchor ? { toAnchor } : {}),
       };
       if (!createBoardLink(link)) {
         setLineError("Could not create link", point);
         lineInteraction.sourceId = fromId;
+        lineInteraction.sourceAnchor = fromAnchor ?? null;
         return false;
       }
       cancelLineDraft();
@@ -232,15 +318,17 @@
       lineInteraction.cutStroke = [];
 
       const dragged = Math.hypot(point.x - active.start.x, point.y - active.start.y) >= CUT_DRAG_THRESHOLD_PX;
-      if (!dragged) {
+      const release = resolveCutRelease(dragged, active.startLinkId);
+      if (release === "cut-link") {
         if (active.startLinkId) cutLinks([active.startLinkId]);
         return;
       }
+      if (release !== "cut-stroke") return;
 
       const worldStroke = stroke.map((screenPoint) => screenToWorld(camera, viewport, screenPoint));
       const tolerance = CUT_TOLERANCE_PX / (PX_PER_UNIT * camera.zoom);
       const crossed = renderedLinks
-        .filter((link) => strokeIntersectsPath(worldStroke, link.geometry, tolerance))
+        .filter((link) => strokeIntersectsPath(worldStroke, { type: "polyline", points: link.geometry.polyline }, tolerance))
         .map((link) => link.id);
       if (crossed.length > 0) cutLinks(crossed);
     }
@@ -249,7 +337,13 @@
       if (!gesture || gesture.id !== event.pointerId) return;
       const active = gesture;
       gesture = null;
+      restoreTextSelection();
       const point = localPoint(event);
+
+      if (!isLineTool()) {
+        cancelLineDraft();
+        return;
+      }
 
       if (active.kind === "cut") {
         finishCut(active, point);
@@ -257,17 +351,26 @@
       }
 
       const moved = Math.hypot(point.x - active.start.x, point.y - active.start.y) > 5;
-      const toId = noteAt(point, event.target);
+      const targetId = objectAt(point, event.target);
+      const result = completeLinkGesture({
+        draft: active.draft,
+        clickedId: active.clickedId,
+        clickedAnchor: active.clickedAnchor,
+        moved,
+        targetId,
+        targetAnchor: targetId ? anchorAt(targetId, point) : undefined,
+      });
 
-      if (active.continuation) {
-        if (toId) tryCreate(active.fromId, toId, point);
-        else cancelLineDraft();
-      } else if (!moved) {
-        lineInteraction.sourceId = active.fromId;
+      if (result.kind === "start") {
+        lineInteraction.sourceId = result.draft.sourceId;
+        lineInteraction.sourceAnchor = result.draft.sourceAnchor ?? null;
         lineInteraction.preview = screenToWorld(camera, viewport, point);
-      } else if (toId) {
-        tryCreate(active.fromId, toId, point);
+        lastBodyClick = active.startedInBody ? { id: active.clickedId, at: performance.now() } : null;
+      } else if (result.kind === "create") {
+        lastBodyClick = null;
+        tryCreate(result.from, result.to, result.fromAnchor, result.toAnchor, point);
       } else {
+        lastBodyClick = null;
         cancelLineDraft();
       }
     }
@@ -275,23 +378,63 @@
     function onPointerCancel(event: PointerEvent): void {
       if (!gesture || gesture.id !== event.pointerId) return;
       gesture = null;
+      restoreTextSelection();
       cancelLineDraft();
     }
 
+    function onContextMenu(event: MouseEvent): void {
+      if (!isLineTool() || !surface.contains(event.target as Node | null)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+
+    function restoreTextSelection(): void {
+      if (!textSelectionElement) return;
+      textSelectionElement.style.userSelect = previousUserSelect;
+      textSelectionElement = null;
+      previousUserSelect = "";
+    }
+
     surface.addEventListener("pointerdown", capturePointer, true);
+    surface.addEventListener("contextmenu", onContextMenu, true);
     window.addEventListener("pointermove", onPointerMove, true);
     window.addEventListener("pointerup", finishPointer, true);
     window.addEventListener("pointercancel", onPointerCancel, true);
     surface.addEventListener("lostpointercapture", onPointerCancel, true);
     return () => {
       cancelLineDraft();
+      restoreTextSelection();
       surface.removeEventListener("pointerdown", capturePointer, true);
+      surface.removeEventListener("contextmenu", onContextMenu, true);
       surface.removeEventListener("lostpointercapture", onPointerCancel, true);
       window.removeEventListener("pointermove", onPointerMove, true);
       window.removeEventListener("pointerup", finishPointer, true);
       window.removeEventListener("pointercancel", onPointerCancel, true);
     };
   });
+
+  function geometryForLink(link: Link): ShapeResult | null {
+    const source = objectBounds(link.from);
+    const target = objectBounds(link.to);
+    if (!source || !target) return null;
+    const endpoints = shapeEndpoints(
+      source,
+      target,
+      link.fromAnchor,
+      link.toAnchor,
+      link.from === ME_OBJECT_ID,
+      link.to === ME_OBJECT_ID,
+    );
+    return buildShape(link.shape, endpoints);
+  }
+
+  function objectBounds(id: string): Bounds | null {
+    if (id === ME_OBJECT_ID) {
+      return { x: ME_POSITION.x - 0.6, y: ME_POSITION.y - 0.6, width: 1.2, height: 1.2 };
+    }
+    const note = board.notes[id];
+    return note ? noteBounds(note) : null;
+  }
 
   function safeId(value: string): string {
     return [...value].map((character) => /^[a-z\d_-]$/i.test(character)

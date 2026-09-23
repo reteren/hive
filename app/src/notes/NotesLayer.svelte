@@ -7,6 +7,7 @@
   import { measuredHeights } from "./layout.svelte";
   import NoteNode from "./NoteNode.svelte";
   import { copyCursorCoordinates, copyNoteLink } from "./noteCommands";
+  import { closeCreationMenu, creationMenu, markCreationMenuToolbarTrigger } from "./creation.svelte";
   import { closeLinkContextMenu, linkContext } from "../links-in-text/contextMenu.svelte";
   import { formatPointAddress } from "../links-in-text/format";
 
@@ -53,7 +54,21 @@
 
     function onWindowClick(event: MouseEvent): void {
       const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('button.command-button[aria-label^="New note"]')) {
+        markCreationMenuToolbarTrigger();
+        linkContext.commandNoteId = null;
+        linkContext.commandPoint = null;
+        closeLinkContextMenu();
+        return;
+      }
       if (target?.closest("[data-link-context-menu]")) return;
+      if (target?.closest("[data-create-menu]")) {
+        linkContext.commandNoteId = null;
+        linkContext.commandPoint = null;
+        closeLinkContextMenu();
+        return;
+      }
+      if (creationMenu.open && !creationMenu.pinned) closeCreationMenu();
       if (target?.closest(".command-result")) {
         closeLinkContextMenu();
         return;

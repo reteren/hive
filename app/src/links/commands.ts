@@ -5,12 +5,25 @@ import { links } from "../model/links.svelte";
 import { tool, type ToolId } from "../tools/tool.svelte";
 import { changeLinkShape, cutLinks } from "./operations";
 import { nextLineShape } from "./lineGeometry";
+import { nextTool } from "./gestures";
 
-export function toggleLineTool(id: Extract<ToolId, "line-strong" | "line-weak" | "line-cut">): void {
-  tool.active = tool.active === id ? "select" : id;
+export function toggleLineTool(id: Extract<ToolId, "line-strong" | "line-weak">): void {
+  tool.active = nextTool(tool.active, id) as ToolId;
   cancelLineDraft();
   clearSelectedLink();
 }
+
+registerCommand({
+  id: "tool.select",
+  label: "Select / Move Tool",
+  keys: ["Digit1"],
+  run: () => {
+    tool.active = "select";
+    cancelLineDraft();
+    clearSelectedLink();
+  },
+  isActive: () => tool.active === "select",
+});
 
 registerCommand({
   id: "tool.lineStrong",
@@ -26,14 +39,6 @@ registerCommand({
   keys: ["KeyV"],
   run: () => toggleLineTool("line-weak"),
   isActive: () => tool.active === "line-weak",
-});
-
-registerCommand({
-  id: "tool.lineCut",
-  label: "Cut Links",
-  keys: ["Shift+KeyC"],
-  run: () => toggleLineTool("line-cut"),
-  isActive: () => tool.active === "line-cut",
 });
 
 registerCommand({

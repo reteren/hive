@@ -14,10 +14,10 @@
 <nav class="left-toolbar" aria-label="Navigation tools">
   <CommandButton commandId="view.home" />
   <CommandButton commandId="notes.createMenu" />
+  <CommandButton commandId="tool.select" />
   <CommandButton commandId="select.move" />
   <CommandButton commandId="tool.lineStrong" />
   <CommandButton commandId="tool.lineWeak" />
-  <CommandButton commandId="tool.lineCut" />
   {#if isLineTool()}
     <Tooltip label={`Line shape: ${shapeLabel}`} bindings={shapeBindings}>
       <button
@@ -31,8 +31,12 @@
             <path d="M4 15 16 5" />
           {:else if tool.lineShape === "curved"}
             <path d="M4 15 C9 15 10 5 16 5" />
-          {:else}
+          {:else if tool.lineShape === "orthogonal"}
             <path d="M4 15 H10 V5 H16" />
+          {:else if tool.lineShape === "wave"}
+            <path d="M4 10 C6 4 8 4 10 10 C12 16 14 16 16 10" />
+          {:else}
+            <path d="M4 14 7 6 10 14 13 6 16 14" />
           {/if}
         </svg>
       </button>

@@ -13,7 +13,7 @@ export interface ClippedSegment {
   end: Point;
 }
 
-const SHAPES: readonly LineShape[] = ["straight", "curved", "orthogonal"];
+const SHAPES: readonly LineShape[] = ["straight", "curved", "orthogonal", "wave", "zigzag"];
 const EPSILON = 1e-9;
 
 /** Clip a centre-to-centre segment to the rectangular note frames. */

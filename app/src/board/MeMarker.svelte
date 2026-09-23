@@ -8,7 +8,7 @@
 </script>
 
 <div class="me" style:transform={`translate(${screen.x}px, ${screen.y}px) scale(${scale})`}>
-  <span class="dot"></span>
+  <span class="dot" data-beacon-id="me"></span>
   <span class="label">ME</span>
 </div>
 
@@ -31,6 +31,8 @@
     border-radius: 50%;
     background: var(--accent);
     box-shadow: 0 0 0 3px rgba(232, 176, 48, 0.25);
+    pointer-events: auto;
+    cursor: crosshair;
   }
 
   .label {

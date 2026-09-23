@@ -11,6 +11,7 @@
   import { uniqueName } from "./naming";
   import NoteBody from "../editor/NoteBody.svelte";
   import { startNoteEditing } from "../editor/editorSession";
+  import { tool } from "../tools/tool.svelte";
 
   let { note, measureHeight }: { note: Note; measureHeight: Action<HTMLElement, string> } = $props();
   let renaming = $state(false);
@@ -82,6 +83,7 @@
   function beginEditingFromDoubleClick(event: MouseEvent): void {
     if (editing.noteId === note.id || !(event.target instanceof Element)) return;
     if (event.target.closest("[data-note-header], [data-text-link], input, button")) return;
+    tool.active = "select";
     startNoteEditing(note.id, { x: event.clientX, y: event.clientY });
   }
 </script>

@@ -37,7 +37,10 @@ const noteB: Note = {
 describe("clipboard payload", () => {
   it("serializes a versioned Hive payload with only internal links", () => {
     const serialized = serializeNotes([noteA, noteB], [
-      { from: "note-a", to: "note-b", kind: "strong", shape: "straight" },
+      {
+        from: "note-a", to: "note-b", kind: "strong", shape: "wave",
+        fromAnchor: { x: 1, y: 0.4 }, toAnchor: { x: 0, y: 0.7 },
+      },
       { from: "note-a", to: "other", kind: "weak", shape: "straight" },
     ]);
     const value = JSON.parse(serialized);
@@ -45,7 +48,10 @@ describe("clipboard payload", () => {
     expect(value).toMatchObject({
       marker: HIVE_CLIPBOARD_MARKER,
       version: HIVE_CLIPBOARD_VERSION,
-      links: [{ from: "note-a", to: "note-b", kind: "strong", shape: "straight" }],
+      links: [{
+        from: "note-a", to: "note-b", kind: "strong", shape: "wave",
+        fromAnchor: { x: 1, y: 0.4 }, toAnchor: { x: 0, y: 0.7 },
+      }],
       nodes: [
         { sourceId: "note-a", type: "note", name: "Alpha", text: noteA.text },
         { sourceId: "note-b", type: "note", name: "Beta", text: "body" },
@@ -66,6 +72,11 @@ describe("clipboard payload", () => {
       nodes: [{ ...valid.nodes[0], width: Number.POSITIVE_INFINITY }],
     }))).toBeNull();
     expect(parseNotesPayload(JSON.stringify({ ...valid, links: [{ from: "a", to: "b" }] }))).toBeNull();
+    expect(parseNotesPayload(JSON.stringify({
+      ...valid,
+      nodes: [valid.nodes[0], { ...valid.nodes[0], sourceId: "note-b" }],
+      links: [{ from: "note-a", to: "note-b", kind: "strong", shape: "straight", toAnchor: { x: 1.1, y: 0.5 } }],
+    }))).toBeNull();
   });
 
   it("provides a readable plain-text representation for other apps", () => {
@@ -74,12 +85,12 @@ describe("clipboard payload", () => {
 
   it("remaps internal link endpoints to the newly pasted notes", () => {
     const copied = remapClipboardLinks([
-      { from: "note-a", to: "note-b", kind: "strong", shape: "straight" },
+      { from: "note-a", to: "note-b", kind: "strong", shape: "zigzag", fromAnchor: { x: 1, y: 0.5 } },
       { from: "note-a", to: "outside", kind: "weak", shape: "straight" },
     ], new Map([["note-a", "copy-a"], ["note-b", "copy-b"]]), () => "new-link");
 
     expect(copied).toEqual([{
-      id: "new-link", from: "copy-a", to: "copy-b", kind: "strong", shape: "straight",
+      id: "new-link", from: "copy-a", to: "copy-b", kind: "strong", shape: "zigzag", fromAnchor: { x: 1, y: 0.5 },
     }]);
   });
 });

@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Point } from "../src/board/cameraMath";
 import { clear, redo, undo } from "../src/history/history.svelte";
+import { replaceBoard } from "../src/model/board.svelte";
 import type { Link } from "../src/model/link";
 import { links, replaceLinks } from "../src/model/links.svelte";
 import { canCreateLinkPair } from "../src/links/rules";
-import { changeLinkShape, cutLinks } from "../src/links/operations";
+import { changeLinkShape, createBoardLink, cutLinks } from "../src/links/operations";
+import { pointAtAnchor, projectPointToAnchor, shapeEndpoints } from "../src/links/anchors";
+import { completeLinkGesture, nextTool, resolveCutRelease } from "../src/links/gestures";
+import { buildShape } from "../src/links/shapes";
 import {
   clipSegmentToFrames,
   flattenPath,
@@ -23,6 +27,88 @@ describe("link pair rules", () => {
     expect(canCreateLinkPair("b", "a", existing)).toBe(false);
     expect(canCreateLinkPair("a", "a", existing)).toBe(false);
     expect(canCreateLinkPair("c", "a", existing)).toBe(true);
+  });
+
+  it("allows ME as a source but never as a target", () => {
+    expect(canCreateLinkPair("me", "a", [])).toBe(true);
+    expect(canCreateLinkPair("a", "me", [])).toBe(false);
+  });
+});
+
+describe("link anchors and line tool gestures", () => {
+  it("projects note picks to a normalised frame edge and preserves them after move and scale", () => {
+    const initialBounds = { x: 10, y: 20, width: 30, height: 12 };
+    const anchor = projectPointToAnchor(initialBounds, { x: 39, y: 25 });
+    expect(anchor).toEqual({ x: 1, y: 5 / 12 });
+    expect(pointAtAnchor(initialBounds, anchor)).toEqual({ x: 40, y: 25 });
+
+    const resizedAndMoved = { x: -4, y: 15, width: 60, height: 24 };
+    expect(pointAtAnchor(resizedAndMoved, anchor)).toEqual({ x: 56, y: 25 });
+    const endpoints = shapeEndpoints(
+      resizedAndMoved,
+      { x: 100, y: 10, width: 20, height: 30 },
+      anchor,
+    );
+    expect(endpoints.start).toEqual({ x: 56, y: 25 });
+    expect(endpoints.startNormal).toEqual({ x: 1, y: 0 });
+  });
+
+  it("creates on drag-release over an object, keeps click-click, and cancels outside", () => {
+    const start = completeLinkGesture({
+      draft: null,
+      clickedId: "a",
+      clickedAnchor: { x: 1, y: 0.5 },
+      moved: false,
+      targetId: "a",
+    });
+    expect(start).toMatchObject({ kind: "start", draft: { sourceId: "a", sourceAnchor: { x: 1, y: 0.5 } } });
+
+    expect(completeLinkGesture({
+      draft: null,
+      clickedId: "a",
+      clickedAnchor: { x: 1, y: 0.5 },
+      moved: true,
+      targetId: "b",
+      targetAnchor: { x: 0, y: 0.25 },
+    })).toEqual({
+      kind: "create", from: "a", to: "b", fromAnchor: { x: 1, y: 0.5 }, toAnchor: { x: 0, y: 0.25 },
+    });
+
+    expect(completeLinkGesture({ draft: null, clickedId: "a", moved: true, targetId: null })).toEqual({ kind: "cancel" });
+    expect(completeLinkGesture({
+      draft: { sourceId: "a", sourceAnchor: { x: 1, y: 0.5 } },
+      clickedId: "b",
+      moved: false,
+      targetId: "b",
+      targetAnchor: { x: 0, y: 0.25 },
+    })).toMatchObject({ kind: "create", from: "a", to: "b" });
+  });
+
+  it("cycles an active line tool back to select and resolves right-button cuts", () => {
+    expect(nextTool("line-strong", "line-strong")).toBe("select");
+    expect(nextTool("line-weak", "line-strong")).toBe("line-strong");
+    expect(resolveCutRelease(false, "link-1")).toBe("cut-link");
+    expect(resolveCutRelease(false, null)).toBe("ignore");
+    expect(resolveCutRelease(true, null)).toBe("cut-stroke");
+  });
+
+  it.each(["straight", "curved", "orthogonal", "wave", "zigzag"] as const)("builds %s geometry on clipped frame endpoints", (shape) => {
+    const source = { x: 0, y: 0, width: 20, height: 10 };
+    const target = { x: 60, y: 30, width: 24, height: 20 };
+    const endpoints = shapeEndpoints(source, target);
+    const built = buildShape(shape, endpoints);
+
+    expect(built.path.startsWith("M ")).toBe(true);
+    expect(built.polyline[0]).toEqual(endpoints.start);
+    expect(built.polyline.at(-1)).toEqual(endpoints.end);
+    expect(built.polyline.length).toBeGreaterThanOrEqual(2);
+    expect(pointOnFrame(built.polyline[0], source)).toBe(true);
+    expect(pointOnFrame(built.polyline.at(-1)!, target)).toBe(true);
+    expect(Math.hypot(built.endTangent.x, built.endTangent.y)).toBeCloseTo(1);
+    expect(strokeIntersectsPath(perpendicularStroke(built.polyline), {
+      type: "polyline",
+      points: built.polyline,
+    })).toBe(true);
   });
 });
 
@@ -46,7 +132,9 @@ describe("line geometry", () => {
   it("cycles the line creation option through all supported shapes", () => {
     expect(nextLineShape("straight")).toBe("curved");
     expect(nextLineShape("curved")).toBe("orthogonal");
-    expect(nextLineShape("orthogonal")).toBe("straight");
+    expect(nextLineShape("orthogonal")).toBe("wave");
+    expect(nextLineShape("wave")).toBe("zigzag");
+    expect(nextLineShape("zigzag")).toBe("straight");
   });
 
   it.each(["straight", "curved", "orthogonal"] as const)("keeps %s endpoints clipped to note frames", (shape) => {
@@ -89,8 +177,11 @@ describe("line geometry", () => {
 
 describe("cutting links", () => {
   const original: Link[] = [
-    { id: "one", from: "a", to: "b", kind: "strong", shape: "curved" },
-    { id: "two", from: "c", to: "d", kind: "weak", shape: "orthogonal" },
+    {
+      id: "one", from: "a", to: "b", kind: "strong", shape: "wave",
+      fromAnchor: { x: 1, y: 0.4 }, toAnchor: { x: 0, y: 0.6 },
+    },
+    { id: "two", from: "c", to: "d", kind: "weak", shape: "zigzag" },
     { id: "three", from: "e", to: "f", kind: "strong", shape: "straight" },
   ];
 
@@ -105,7 +196,7 @@ describe("cutting links", () => {
     expect(changeLinkShape("one", "orthogonal")).toBe(true);
     expect(links.byId.one.shape).toBe("orthogonal");
     expect(undo()?.label).toBe("Line shape");
-    expect(links.byId.one.shape).toBe("curved");
+    expect(links.byId.one.shape).toBe("wave");
     expect(redo()?.label).toBe("Line shape");
     expect(links.byId.one.shape).toBe("orthogonal");
   });
@@ -116,6 +207,28 @@ describe("cutting links", () => {
 
     expect(undo()?.label).toBe("Cut lines");
     expect(Object.values(links.byId).sort(byId)).toEqual([...original].sort(byId));
+  });
+});
+
+describe("ME beacon link rules", () => {
+  afterEach(() => {
+    clear();
+    replaceBoard([]);
+    replaceLinks([]);
+  });
+
+  it("records outgoing ME links while refusing incoming ones", () => {
+    replaceBoard([{ id: "target", type: "note", name: "Target", text: "", x: 10, y: 0, width: 10, height: 8 }]);
+    replaceLinks([]);
+    const outgoing: Link = { id: "me-target", from: "me", to: "target", kind: "strong", shape: "curved" };
+
+    expect(createBoardLink(outgoing)).toBe(true);
+    expect(links.byId[outgoing.id]).toEqual(outgoing);
+    expect(createBoardLink({ ...outgoing, id: "target-me", from: "target", to: "me" })).toBe(false);
+    expect(undo()?.label).toBe("Link");
+    expect(links.byId[outgoing.id]).toBeUndefined();
+    expect(redo()?.label).toBe("Link");
+    expect(links.byId[outgoing.id]).toEqual(outgoing);
   });
 });
 

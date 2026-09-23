@@ -1,6 +1,14 @@
 <script lang="ts">
+  import { viewport } from "../board/camera.svelte";
   import { createNote } from "./noteCommands";
+  import { createMenuPosition } from "./creationPosition";
   import { creationMenu, closeCreationMenu } from "./creation.svelte";
+
+  const menuPosition = $derived(createMenuPosition(
+    creationMenu.screenAnchor,
+    viewport,
+    { width: 164, height: 74 },
+  ));
 
   function createNoteFromMenu(): void {
     createNote();
@@ -9,7 +17,14 @@
 </script>
 
 {#if creationMenu.open}
-  <aside class="create-menu" data-create-menu aria-label="Create list">
+  <aside
+    class="create-menu"
+    data-create-menu
+    data-selection-ignore
+    aria-label="Create list"
+    style:left={`${menuPosition.x}px`}
+    style:top={`${menuPosition.y}px`}
+  >
     <header class="menu-header">
       <span>Create</span>
       <div class="menu-actions">
@@ -51,8 +66,6 @@
   .create-menu {
     position: absolute;
     z-index: 30;
-    top: 8px;
-    left: 8px;
     width: 164px;
     overflow: hidden;
     color: var(--text);
