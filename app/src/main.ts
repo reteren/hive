@@ -1,6 +1,9 @@
 import { mount } from "svelte";
 import App from "./App.svelte";
 import "./styles/theme.css";
+import "./tasks/tasks.css";
+import "./modules/modules.css";
+import "./notes/noteKinds.css";
 import "./board/cameraCommands";
 import "./board/gridCommands";
 import "./clipboard/commands";
