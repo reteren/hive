@@ -69,10 +69,12 @@
   let lastBodyClick: { id: string; at: number } | null = null;
   let textSelectionElement: HTMLElement | null = null;
   let previousUserSelect = "";
+  // Applied as an SVG attribute so the browser re-renders the vectors at the current zoom;
+  // a CSS transform on the wrapper would rasterise once and stretch the bitmap (blurry lines).
   let worldTransform = $derived(
-    `translate3d(${viewport.width / 2}px, ${viewport.height / 2}px, 0) ` +
+    `translate(${viewport.width / 2} ${viewport.height / 2}) ` +
       `scale(${camera.zoom * PX_PER_UNIT}) ` +
-      `translate3d(${-camera.x}px, ${-camera.y}px, 0)`,
+      `translate(${-camera.x} ${-camera.y})`,
   );
 
   let renderedLinks = $derived.by((): RenderedLink[] => Object.values(links.byId).flatMap((link) => {
@@ -495,8 +497,9 @@
 </script>
 
 <div class="links-layer" bind:this={layer}>
-  <div class="links-world" style:transform={worldTransform}>
+  <div class="links-world">
     <svg class="links-svg" width="100%" height="100%" aria-hidden="true">
+      <g transform={worldTransform}>
       <defs>
         {#each gradients as gradient (gradient.id)}
           <linearGradient
@@ -566,6 +569,7 @@
           <path class="link-arrow link-preview" class:weak={previewLink.kind === "weak"} d={previewLink.headPath} />
         {/if}
       {/if}
+      </g>
     </svg>
   </div>
   {#if lineInteraction.cutStroke.length > 1}
@@ -596,9 +600,7 @@
     position: absolute;
     inset: 0;
     overflow: visible;
-    transform-origin: 0 0;
     pointer-events: none;
-    will-change: transform;
   }
 
   .links-svg {

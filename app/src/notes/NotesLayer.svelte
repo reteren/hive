@@ -126,10 +126,12 @@
     };
   };
 
+  // 2D transform without will-change: the layer is not promoted to a cached bitmap, so text and
+  // borders are re-rasterised at the current zoom instead of being stretched (blurry notes).
   const worldTransform = $derived(
-    `translate3d(${viewport.width / 2}px, ${viewport.height / 2}px, 0) ` +
+    `translate(${viewport.width / 2}px, ${viewport.height / 2}px) ` +
       `scale(${camera.zoom}) ` +
-      `translate3d(${-camera.x * PX_PER_UNIT}px, ${-camera.y * PX_PER_UNIT}px, 0)`,
+      `translate(${-camera.x * PX_PER_UNIT}px, ${-camera.y * PX_PER_UNIT}px)`,
   );
 </script>
 
@@ -202,7 +204,6 @@
     overflow: visible;
     transform-origin: 0 0;
     pointer-events: none;
-    will-change: transform;
   }
 
   .link-context-menu {
