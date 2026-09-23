@@ -6,6 +6,7 @@
 <nav class="left-toolbar" aria-label="Navigation tools">
   <CommandButton commandId="view.home" />
   <CommandButton commandId="notes.createMenu" />
+  <CommandButton commandId="select.move" />
 </nav>
 
 <style>

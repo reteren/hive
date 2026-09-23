@@ -33,6 +33,7 @@
     if (id === "grid.toggleSnap") return "snap";
     if (id === "grid.stepUp") return "step-up";
     if (id === "grid.stepDown") return "step-down";
+    if (id === "select.move") return "move";
     return "command";
   }
 </script>
@@ -75,6 +76,8 @@
           <path d="m4.5 12 5.5-5 5.5 5M10 7v9" />
         {:else if iconName === "step-down"}
           <path d="m4.5 8 5.5 5 5.5-5M10 4v9" />
+        {:else if iconName === "move"}
+          <path d="M10 3v14M3 10h14M7.5 5.5 10 3l2.5 2.5M7.5 14.5 10 17l2.5-2.5M5.5 7.5 3 10l2.5 2.5M14.5 7.5 17 10l-2.5 2.5" />
         {:else}
           <circle cx="10" cy="10" r="6.5" />
           <path d="M10 6.5v7M6.5 10h7" />

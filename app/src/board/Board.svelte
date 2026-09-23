@@ -12,6 +12,7 @@
   import { creationMenu } from "../notes/creation.svelte";
   import { isTextEditingTarget } from "../commands/focus";
   import { resolveBoardEscapeAction } from "../selection/escapePriority";
+  import { closeUndoLog, undoLogPanel } from "../history/history.svelte";
 
   let board: HTMLDivElement;
 
@@ -50,6 +51,7 @@
       textEditingTarget: isTextEditingTarget(event.target) || isTextEditingTarget(document.activeElement),
       editorOpen: editing.noteId !== null,
       createMenuOpen: creationMenu.open,
+      undoLogOpen: undoLogPanel.open,
     });
 
     if (action === "close-editor") {
@@ -58,6 +60,9 @@
     } else if (action === "close-create-menu") {
       creationMenu.open = false;
       creationMenu.pinned = false;
+      event.preventDefault();
+    } else if (action === "close-undo-log") {
+      closeUndoLog();
       event.preventDefault();
     }
   }

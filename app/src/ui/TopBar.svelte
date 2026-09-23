@@ -3,10 +3,18 @@
   import CommandButton from "./CommandButton.svelte";
   import GridControls from "./GridControls.svelte";
   import ConflictNotice from "./ConflictNotice.svelte";
-  import { runCommand } from "../commands/registry.svelte";
+  import { getCommand, runCommand } from "../commands/registry.svelte";
+  import { formatKey } from "../commands/keys";
   import { project } from "../project/project.svelte";
 
   let zoomPercent = $derived(Math.round(camera.zoom * 100));
+
+  /** Menu tooltip with the command's current (possibly user-changed) bindings. */
+  function commandTitle(id: string): string {
+    const command = getCommand(id);
+    if (!command) return "";
+    return command.keys.length ? `${command.label} · ${command.keys.map(formatKey).join(", ")}` : command.label;
+  }
 </script>
 
 <!-- Top toolbar (R0.4): general tools centred, Grid controls. -->
@@ -34,8 +42,8 @@
       {/if}
       {#if project.menuOpen}
         <div class="project-menu" role="menu" aria-label="Project">
-          <button role="menuitem" type="button" title="New Project · Ctrl+Shift+N" onclick={() => runCommand("project.new")}>New…</button>
-          <button role="menuitem" type="button" title="Open Project · Ctrl+O" onclick={() => runCommand("project.open")}>Open…</button>
+          <button role="menuitem" type="button" title={commandTitle("project.new")} onclick={() => runCommand("project.new")}>New…</button>
+          <button role="menuitem" type="button" title={commandTitle("project.open")} onclick={() => runCommand("project.open")}>Open…</button>
           {#if project.error}
             <div class="project-error" role="status">{project.error}</div>
           {/if}

@@ -7,6 +7,7 @@ describe("board Escape priority", () => {
       textEditingTarget: true,
       editorOpen: true,
       createMenuOpen: true,
+      undoLogOpen: true,
     })).toBe("defer-to-text-editor");
   });
 
@@ -15,6 +16,7 @@ describe("board Escape priority", () => {
       textEditingTarget: false,
       editorOpen: true,
       createMenuOpen: true,
+      undoLogOpen: true,
     })).toBe("close-editor");
   });
 
@@ -23,7 +25,17 @@ describe("board Escape priority", () => {
       textEditingTarget: false,
       editorOpen: false,
       createMenuOpen: true,
+      undoLogOpen: true,
     })).toBe("close-create-menu");
+  });
+
+  it("closes the undo log after the create menu", () => {
+    expect(resolveBoardEscapeAction({
+      textEditingTarget: false,
+      editorOpen: false,
+      createMenuOpen: false,
+      undoLogOpen: true,
+    })).toBe("close-undo-log");
   });
 
   it("passes Escape to later owners when the board has nothing to close", () => {
@@ -31,6 +43,7 @@ describe("board Escape priority", () => {
       textEditingTarget: false,
       editorOpen: false,
       createMenuOpen: false,
+      undoLogOpen: false,
     })).toBe("pass-through");
   });
 });
