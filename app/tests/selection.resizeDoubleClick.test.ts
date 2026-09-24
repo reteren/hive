@@ -1,0 +1,15 @@
+import { describe, expect, it } from "vitest";
+import { resizeDoubleClickAction } from "../src/selection/resizeDoubleClick";
+
+describe("resize handle double-click", () => {
+  it("opens editing when a top or bottom handle overlaps an editable body", () => {
+    expect(resizeDoubleClickAction("top", true)).toBe("edit");
+    expect(resizeDoubleClickAction("bottom", true)).toBe("edit");
+  });
+
+  it("keeps auto-height reset on the handle outside the body", () => {
+    expect(resizeDoubleClickAction("top", false)).toBe("auto-height");
+    expect(resizeDoubleClickAction("bottom", false)).toBe("auto-height");
+    expect(resizeDoubleClickAction("left", true)).toBe("none");
+  });
+});

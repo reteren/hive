@@ -135,7 +135,11 @@
   <div class="note-frame" class:fixed-height={note.height !== null}>
     <div class="note-frame-edge note-frame-edge-top" data-note-header aria-hidden="true"></div>
     <div class="note-frame-edge note-frame-edge-left" data-note-header aria-hidden="true"></div>
-    <div class="note-content" data-note-body>
+    <div
+      class="note-content"
+      class:empty-auto-body={note.height === null && note.text.trim() === "" && (note.type === "note" || note.type === "pro" || note.type === "con")}
+      data-note-body
+    >
       {#if note.type === "importance" || note.type === "purpose"}
         <ModuleNodeBody {note} />
       {:else if note.type === "mood"}
@@ -239,6 +243,10 @@
     background: var(--note-body);
     overflow-wrap: anywhere;
     user-select: text;
+  }
+
+  .note-content.empty-auto-body {
+    min-height: 40px;
   }
 
   .note-content :global(.note-body) {

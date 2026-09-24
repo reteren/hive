@@ -58,6 +58,9 @@
     shouldToggleSelectedHeaderAfterGesture,
   } from "./noteMoveIntent";
   import { RESIZE_EDGES, resizeEdgeAxes, type ResizeEdge } from "./resize";
+  import { resizeDoubleClickAction } from "./resizeDoubleClick";
+  import { startNoteEditing } from "../editor/editorSession";
+  import { tool } from "../tools/tool.svelte";
   import {
     createPrecisionDeltaTracker,
     setPrecisionAlt,
@@ -444,7 +447,24 @@
       if (handle) {
         const id = handle.dataset.noteId;
         const note = id ? boardState.notes[id] : undefined;
-        if (id && note && note.height !== null) {
+        if (!id || !note) return;
+
+        const body = Array.from(boardEl.querySelectorAll<HTMLElement>(".note-card[data-note-id]"))
+          .find((element) => element.dataset.noteId === id)
+          ?.querySelector<HTMLElement>("[data-note-body]");
+        const rect = body?.getBoundingClientRect();
+        const insideBody = rect !== undefined &&
+          event.clientX >= rect.left && event.clientX < rect.right &&
+          event.clientY >= rect.top && event.clientY < rect.bottom;
+        const canEdit = note.type === "note" || note.type === "pro" || note.type === "con";
+        const action = resizeDoubleClickAction(handle.dataset.resizeHandle as ResizeEdge, canEdit && insideBody);
+        if (action === "edit") {
+          event.preventDefault();
+          event.stopPropagation();
+          ensureEditingSelection(id);
+          tool.active = "select";
+          startNoteEditing(id, { x: event.clientX, y: event.clientY });
+        } else if (action === "auto-height" && note.height !== null) {
           event.preventDefault();
           event.stopPropagation();
           const before = frameForNote(id);
@@ -1152,53 +1172,53 @@
   }
 
   .resize-handle-top-left {
-    top: -8px;
-    left: -8px;
+    top: -16px;
+    left: -16px;
     cursor: nwse-resize;
   }
 
   .resize-handle-top {
-    top: -8px;
+    top: -16px;
     left: 50%;
     transform: translateX(-50%);
     cursor: ns-resize;
   }
 
   .resize-handle-top-right {
-    top: -8px;
-    right: -8px;
+    top: -16px;
+    right: -16px;
     cursor: nesw-resize;
   }
 
   .resize-handle-right {
     top: 50%;
-    right: -8px;
+    right: -16px;
     transform: translateY(-50%);
     cursor: ew-resize;
   }
 
   .resize-handle-bottom-right {
-    right: -8px;
-    bottom: -8px;
+    right: -16px;
+    bottom: -16px;
     cursor: nwse-resize;
   }
 
   .resize-handle-bottom {
-    bottom: -8px;
+    bottom: -16px;
     left: 50%;
     transform: translateX(-50%);
     cursor: ns-resize;
   }
 
   .resize-handle-bottom-left {
-    bottom: -8px;
-    left: -8px;
+    bottom: -16px;
+    left: -16px;
     cursor: nesw-resize;
   }
 
   .resize-handle-left {
     top: 50%;
-    left: -8px;
+    left: -16px;
     transform: translateY(-50%);
     cursor: ew-resize;
   }

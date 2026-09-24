@@ -20,6 +20,8 @@ import {
 import { linkRefusalReason } from "../src/links/rules";
 import { modulePicker, closeModulePicker, toggleModulePicker } from "../src/modules/pickerState.svelte";
 import { mergeLoadedNotes, parseProjectIndex, serializeProjectIndex } from "../src/project/index";
+import { tool } from "../src/tools/tool.svelte";
+import { parseNotesPayload, serializeNotes } from "../src/clipboard/payload";
 
 function note({ id, type = "note", ...overrides }: Partial<Note> & Pick<Note, "id"> & { type?: Note["type"] }): Note {
   return {
@@ -114,11 +116,17 @@ describe("Mood modules", () => {
     const target = note({ id: "target", moods: ["happiness", "sadness"] });
     replaceBoard([target]);
 
-    expect(extractModuleFromNote("target", "mood", "sadness", { x: 50, y: 15 })).toBe(true);
+    const previousShape = tool.lineShape;
+    try {
+      tool.lineShape = "wave";
+      expect(extractModuleFromNote("target", "mood", "sadness", { x: 50, y: 15 })).toBe(true);
+    } finally {
+      tool.lineShape = previousShape;
+    }
     expect(board.notes.target?.moods).toEqual(["happiness"]);
     const module = Object.values(board.notes).find((candidate) => candidate.type === "mood");
     expect(module).toMatchObject({ type: "mood", moods: ["sadness"], text: "" });
-    expect(Object.values(links.byId)[0]).toMatchObject({ from: module?.id, to: "target", kind: "strong" });
+    expect(Object.values(links.byId)[0]).toMatchObject({ from: module?.id, to: "target", kind: "strong", shape: "base" });
     expect(history.entries.at(-1)?.label).toBe("Extract Mood");
 
     undo();
@@ -154,6 +162,17 @@ describe("Mood modules", () => {
     expect(loaded).toMatchObject(values);
     expect(loaded[1]?.type).toBe("mood");
     expect(loaded[1]?.moods).toEqual(["curiosity"]);
+  });
+
+  it("round trips embedded and standalone Moods through the clipboard payload", () => {
+    const values = [
+      note({ id: "note", moods: ["joy", "relief"] }),
+      note({ id: "mood", type: "mood", moods: ["curiosity"] }),
+    ];
+    expect(parseNotesPayload(serializeNotes(values))?.nodes.map(({ type, moods }) => ({ type, moods }))).toEqual([
+      { type: "note", moods: ["joy", "relief"] },
+      { type: "mood", moods: ["curiosity"] },
+    ]);
   });
 
   it("records Mood multi-toggles in insertion order and restores them exactly", () => {

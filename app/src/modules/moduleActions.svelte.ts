@@ -11,7 +11,6 @@ import { noteBounds } from "../notes/layout.svelte";
 import { uniqueName } from "../notes/naming";
 import { notePositionAt } from "../notes/creationPosition";
 import { editing } from "../notes/editing.svelte";
-import { tool } from "../tools/tool.svelte";
 import {
   createImportanceCommand,
   createMoodSelectionCommand,
@@ -279,7 +278,7 @@ export function extractModuleFromNote(
     from: module.id,
     to: target.id,
     kind: "strong",
-    shape: tool.lineShape,
+    shape: "base",
   };
   const previousPatch = copyModulePatch(target);
   const previousEditing = editing.noteId;

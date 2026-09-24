@@ -13,9 +13,10 @@
     setImportance,
     setLinkedImportance,
     toggleModulePicker,
+    toggleMood,
     togglePurpose,
   } from "./moduleActions.svelte";
-  import { IMPORTANCE_OPTIONS, PURPOSE_OPTIONS, isImportanceLevel, isPurposeKind, moduleRowsFor } from "./moduleLogic";
+  import { IMPORTANCE_OPTIONS, MOOD_OPTIONS, PURPOSE_OPTIONS, isImportanceLevel, isMoodKind, isPurposeKind, moduleRowsFor } from "./moduleLogic";
   import { modulePicker } from "./pickerState.svelte";
   import ModuleChip from "./ModuleChip.svelte";
   import ModulePicker from "./ModulePicker.svelte";
@@ -37,11 +38,6 @@
       moduleFeedback.noteId === note.id ? moduleFeedback.message : null,
   );
   let rows = $derived(moduleRowsFor(shownImportance, shownPurposes, shownMoods));
-  let displayedRows = $derived(
-    modulePicker.noteId === note.id && modulePicker.kind === "mood" && !rows.includes("mood")
-      ? [...rows, "mood"]
-      : rows,
-  );
   let hasModules = $derived(rows.length > 0);
 
   function chooseImportance(id: string): void {
@@ -60,6 +56,10 @@
     if (isPurposeKind(id)) togglePurpose(note.id, id);
   }
 
+  function chooseMood(id: string): void {
+    if (isMoodKind(id)) toggleMood(note.id, id);
+  }
+
   function openPicker(kind: "importance" | "purpose"): void {
     toggleModulePicker(note.id, kind);
   }
@@ -68,7 +68,7 @@
 {#if isContentNote && (hasModules || pickerKind || isDropTarget || moduleFeedback.noteId === note.id)}
   <div
     class="note-modules"
-    data-module-rows={displayedRows.join(" ")}
+    data-module-rows={rows.join(" ")}
     data-module-drop-target={isDropTarget ? (moduleDropPreview.allowed ? "allowed" : "refused") : undefined}
   >
     {#if shownImportance}
@@ -115,7 +115,7 @@
       </div>
     {/if}
 
-    {#if shownMoods.length > 0 || modulePicker.noteId === note.id && modulePicker.kind === "mood"}
+    {#if shownMoods.length > 0}
       <MoodRow {note} />
     {/if}
 
@@ -146,6 +146,15 @@
         options={PURPOSE_OPTIONS}
         selected={note.purposes ?? []}
         onSelect={choosePurpose}
+        onClose={closeModulePicker}
+      />
+    {:else if pickerKind === "mood"}
+      <ModulePicker
+        title="Mood"
+        mode="multiple"
+        options={MOOD_OPTIONS}
+        selected={note.moods ?? []}
+        onSelect={chooseMood}
         onClose={closeModulePicker}
       />
     {/if}
