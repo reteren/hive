@@ -1,6 +1,7 @@
 import type { Point } from "../board/cameraMath";
+import type { Link } from "../model/link";
 
-export type LineShape = "straight" | "curved" | "orthogonal" | "wave" | "zigzag";
+export type LineShape = Link["shape"];
 
 export interface ShapeInput {
   start: Point;
@@ -59,7 +60,6 @@ export function buildShape(shape: LineShape, input: ShapeInput): ShapeResult {
     return result([start, end], direction);
   }
 
-  if (shape === "straight") return result([start, end], direction);
   if (length <= SHORT_LINE_LENGTH && shape !== "orthogonal") return result([start, end], direction);
 
   if (shape === "orthogonal") {
@@ -67,7 +67,7 @@ export function buildShape(shape: LineShape, input: ShapeInput): ShapeResult {
   }
 
   const curve = buildCurve(start, end, chord, input.startNormal, input.endNormal);
-  if (shape === "curved") {
+  if (shape === "base") {
     const points = sampleCurve(curve, adaptiveCount(length, SAMPLE_SPACING));
     return cubicResult(curve, points, normalized(subtract(end, curve.control2), direction));
   }
@@ -99,7 +99,7 @@ export function buildArrowGeometry(
   const halfWidth = Math.max(0, finite(headWidth)) / 2;
   const left = add(base, scale(normal, halfWidth));
   const right = subtract(base, scale(normal, halfWidth));
-  const smooth = shape === "curved" || shape === "wave";
+  const smooth = shape === "base" || shape === "wave";
 
   return {
     shaftPath: smooth ? smoothPath(shaftPoints) : pathFromPoints(shaftPoints),

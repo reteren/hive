@@ -7,7 +7,7 @@ import { clearSelection, includeSelected, selection } from "../src/selection/sel
 import { deleteSelection } from "../src/clipboard/commands";
 import { clearSelectedLink } from "../src/links/selection.svelte";
 
-const attachedLink = { id: "two-three", from: "two", to: "three", kind: "strong" as const, shape: "straight" as const };
+const attachedLink = { id: "two-three", from: "two", to: "three", kind: "strong" as const, shape: "base" as const };
 
 const notes: Note[] = [
   { id: "one", type: "note", name: "One", text: "first", x: 1, y: 2, width: 30, height: null },

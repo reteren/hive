@@ -1,7 +1,9 @@
 import {
   IMPORTANCE_LEVELS,
+  MOOD_KINDS,
   PURPOSE_KINDS,
   type ImportanceLevel,
+  type MoodKind,
   type Note,
   type NoteKind,
   type PurposeKind,
@@ -25,6 +27,7 @@ export interface IndexedNote {
   taskMemory: TaskState | null;
   importance: ImportanceLevel | null;
   purposes: PurposeKind[];
+  moods: MoodKind[];
   [key: string]: unknown;
 }
 
@@ -100,6 +103,7 @@ export function serializeProjectIndex(
       taskMemory: copyTaskState(note.taskMemory),
       importance: note.importance ?? null,
       purposes: [...new Set(note.purposes ?? [])],
+      moods: [...new Set(note.moods ?? [])],
     };
   });
   validateUniqueNotes(indexedNotes);
@@ -135,6 +139,7 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       taskMemory: copyTaskState(entry.taskMemory),
       importance: entry.importance,
       purposes: [...entry.purposes],
+      ...(entry.moods.length > 0 ? { moods: [...entry.moods] } : {}),
       ...(typeof entry.createdAt === "number" && Number.isFinite(entry.createdAt) && entry.createdAt >= 0
         ? { createdAt: entry.createdAt }
         : {}),
@@ -206,6 +211,11 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean): { n
     warnings.push(`Invalid purpose values for note ${id}; unknown values were discarded.`);
   } else if (requireV2Fields && value.purposes === undefined) warnings.push(`Missing purposes for note ${id}; defaulted to none.`);
 
+  const moods = parseMoods(value.moods);
+  if (value.moods !== undefined && !moods.valid) {
+    warnings.push(`Invalid mood values for note ${id}; unknown values were discarded.`);
+  }
+
   return {
     note: {
       ...value,
@@ -221,6 +231,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean): { n
       taskMemory,
       importance,
       purposes: purposes.values,
+      moods: moods.values,
     },
     warnings,
   };
@@ -240,7 +251,7 @@ function validateUniqueNotes(notes: readonly IndexedNote[]): void {
 
 function parseNoteKind(value: unknown): NoteKind | null {
   return value === "note" || value === "pro" || value === "con" ||
-    value === "importance" || value === "purpose"
+    value === "importance" || value === "purpose" || value === "mood"
     ? value
     : null;
 }
@@ -284,6 +295,22 @@ function parsePurposes(value: unknown): { values: PurposeKind[]; valid: boolean 
   return { values, valid };
 }
 
+function parseMoods(value: unknown): { values: MoodKind[]; valid: boolean } {
+  if (value === undefined) return { values: [], valid: true };
+  if (!Array.isArray(value)) return { values: [], valid: false };
+  const values: MoodKind[] = [];
+  let valid = true;
+  for (const item of value) {
+    if (typeof item !== "string" || !MOOD_KINDS.includes(item as MoodKind)) {
+      valid = false;
+      continue;
+    }
+    const mood = item as MoodKind;
+    if (!values.includes(mood)) values.push(mood);
+  }
+  return { values, valid };
+}
+
 function sanitizeTaskLog(value: unknown): { entries: TaskLogEntry[]; warnings: string[] } {
   if (value === undefined) return { entries: [], warnings: [] };
   if (!Array.isArray(value)) {
@@ -319,14 +346,19 @@ function sanitizeProjectLinks(value: unknown, noteIds: ReadonlySet<string>): { l
       continue;
     }
     const { id, from, to, kind } = candidate;
-    const shape = candidate.shape ?? "straight";
+    const rawShape = candidate.shape;
+    const shape: Link["shape"] | null = rawShape === undefined || rawShape === "straight" || rawShape === "curved" || rawShape === "base"
+      ? "base"
+      : rawShape === "orthogonal" || rawShape === "zigzag" || rawShape === "wave"
+        ? rawShape
+        : null;
     const fromAnchor = readAnchor(candidate, "fromAnchor");
     const toAnchor = readAnchor(candidate, "toAnchor");
     if (typeof id !== "string" || id.trim() === "" || id.length > 200 ||
       typeof from !== "string" || (from !== ME_OBJECT_ID && !noteIds.has(from)) ||
       typeof to !== "string" || !noteIds.has(to) ||
       (kind !== "strong" && kind !== "weak") ||
-      (shape !== "straight" && shape !== "curved" && shape !== "orthogonal" && shape !== "wave" && shape !== "zigzag") ||
+      shape === null ||
       ("fromAnchor" in candidate && !fromAnchor) || ("toAnchor" in candidate && !toAnchor) ||
       from === to || ids.has(id)) {
       dropped = true;

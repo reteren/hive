@@ -124,9 +124,14 @@
     position: fixed;
     z-index: 1000;
     display: inline-flex;
-    align-items: center;
+    box-sizing: border-box;
+    width: max-content;
+    max-width: min(320px, calc(100vw - 12px));
+    max-height: calc(100vh - 12px);
+    align-items: flex-start;
     gap: 9px;
-    max-width: calc(100vw - 12px);
+    flex-wrap: wrap;
+    overflow: auto;
     padding: 5px 7px;
     color: var(--text);
     background: #101010;
@@ -142,6 +147,7 @@
   .tooltip-copy {
     display: inline-flex;
     min-width: 0;
+    flex: 1 1 100px;
     flex-direction: column;
     gap: 2px;
   }
@@ -153,16 +159,19 @@
   .tooltip-secondary {
     color: var(--text-dim);
     font-size: 10px;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
 
   .tooltip-bindings {
     display: inline-flex;
-    flex: 0 0 auto;
-    align-items: center;
+    min-width: 0;
+    flex: 0 1 auto;
+    align-items: flex-start;
     gap: 4px;
+    flex-wrap: wrap;
     color: var(--text-dim);
-    white-space: nowrap;
+    white-space: normal;
   }
 
   kbd {

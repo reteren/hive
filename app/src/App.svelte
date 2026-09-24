@@ -1,5 +1,6 @@
 <script module lang="ts">
   import "./commands/appCommands.svelte";
+  import "./settings/commands.svelte";
 </script>
 
 <script lang="ts">
@@ -17,11 +18,13 @@
   import RightPanel from "./ui/RightPanel.svelte";
   import TopBar from "./ui/TopBar.svelte";
   import UndoLog from "./ui/UndoLog.svelte";
+  import TasksPanel from "./tasks/TasksPanel.svelte";
   import SequentialRename from "./notes/SequentialRename.svelte";
   import SearchPanel from "./search/SearchPanel.svelte";
   import ObjectsPanel from "./navigation/ObjectsPanel.svelte";
   import TransferNotice from "./transfer/TransferNotice.svelte";
   import { display } from "./settings/display.svelte";
+  import SettingsPanel from "./ui/SettingsPanel.svelte";
 
   let undoLogCommand = $derived(getCommand("ui.toggleUndoLog"));
   let undoLogKeys = $derived(undoLogCommand?.keys.map(formatKey).join(", ") ?? "");
@@ -36,9 +39,9 @@
     <KeymapEditor />
     <SequentialRename />
     <SearchPanel />
-    <ObjectsPanel />
     <TransferNotice />
-    <div class="upper-controls">
+    <div class="panel-dock" data-selection-ignore aria-label="Panels">
+      <CommandButton commandId="search.open" showLabel labelOverride="Search" className="dock-toggle" />
       <CommandButton commandId="ui.commandSearch" />
       <button
         class="undo-log-toggle"
@@ -60,10 +63,15 @@
         <span>Undo log</span>
         {#if undoLogKeys}<kbd>{undoLogKeys}</kbd>{/if}
       </button>
+      <CommandButton commandId="ui.toggleTasks" showLabel labelOverride="Tasks" className="dock-toggle" />
+      <CommandButton commandId="ui.toggleObjectsPanel" showLabel labelOverride="Objects" className="dock-toggle" />
     </div>
-    {#if undoLogPanel.open}
-      <UndoLog />
-    {/if}
+    <div class="panel-stack" data-selection-ignore aria-label="Open panels">
+      <TasksPanel />
+      {#if undoLogPanel.open}<UndoLog />{/if}
+      <ObjectsPanel />
+    </div>
+    <SettingsPanel />
     <div class="overlay-bottom-right">
       <HistoryToast />
       <CoordsIndicator />
@@ -130,14 +138,71 @@
     cursor: pointer;
   }
 
-  .upper-controls {
+  .panel-dock {
     display: flex;
     position: absolute;
-    z-index: 6;
+    z-index: 12;
     top: 8px;
     right: 8px;
     align-items: center;
     gap: 4px;
+    padding: 2px;
+    border: 1px solid #353535;
+    border-radius: 4px;
+    background: rgb(25 25 25 / 92%);
+    box-shadow: 0 3px 10px rgb(0 0 0 / 28%);
+  }
+
+  .panel-dock :global(.tooltip-trigger) {
+    display: inline-flex;
+  }
+
+  .panel-dock :global(.command-button) {
+    min-height: 30px;
+    border-color: #3e3e3e;
+    border-radius: 3px;
+    background: var(--bg-panel);
+  }
+
+  .panel-dock :global(.command-button.with-label) {
+    width: auto;
+    min-height: 30px;
+    padding-inline: 8px;
+  }
+
+  .panel-stack {
+    display: flex;
+    position: absolute;
+    z-index: 7;
+    top: 48px;
+    right: 8px;
+    width: min(300px, calc(100% - 16px));
+    max-height: calc(100% - 56px);
+    flex-direction: column;
+    gap: 6px;
+    overflow: auto;
+    pointer-events: none;
+    scrollbar-color: #505050 #1b1b1b;
+    scrollbar-width: thin;
+  }
+
+  .panel-stack :global(.tasks-panel),
+  .panel-stack :global(.history-panel),
+  .panel-stack :global(.objects-panel) {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    max-width: none;
+    max-height: min(420px, 60vh);
+    flex: 0 0 auto;
+    margin: 0;
+    pointer-events: auto;
+  }
+
+  .panel-stack :global(.tasks-tab),
+  .panel-stack :global(.objects-tab),
+  :global(.search-trigger) {
+    display: none !important;
   }
 
   .undo-log-toggle svg {
@@ -184,6 +249,13 @@
     pointer-events: none;
   }
 
+  :global(html[data-reduce-motion="true"] *) {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+
   @media (max-width: 520px) {
     .shell {
       --right-panel-size: 158px;
@@ -192,6 +264,27 @@
 
     .shell.panel-collapsed {
       grid-template-columns: 32px minmax(0, 1fr);
+    }
+
+    .panel-dock {
+      flex-direction: column;
+      align-items: stretch;
+      width: 108px;
+    }
+
+    .panel-dock :global(.tooltip-trigger) {
+      width: 100%;
+    }
+
+    .panel-dock :global(.command-button.with-label),
+    .panel-dock .undo-log-toggle {
+      width: 100%;
+      justify-content: flex-start;
+    }
+
+    .panel-stack {
+      top: 184px;
+      max-height: calc(100% - 192px);
     }
   }
 

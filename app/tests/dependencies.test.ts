@@ -24,11 +24,11 @@ function makeNote(id: string, task?: boolean, done = false, type: Note["type"] =
 }
 
 function strong(from: string, to: string, id = `${from}-${to}`): Link {
-  return { id, from, to, kind: "strong", shape: "straight" };
+  return { id, from, to, kind: "strong", shape: "base" };
 }
 
 function weak(from: string, to: string, id = `${from}-${to}`): Link {
-  return { id, from, to, kind: "weak", shape: "straight" };
+  return { id, from, to, kind: "weak", shape: "base" };
 }
 
 function asMap(notes: Note[]): Record<string, Note> {

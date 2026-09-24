@@ -42,7 +42,7 @@ function note({ id, type, ...overrides }: Partial<Note> & Pick<Note, "id" | "typ
 }
 
 function link(from: string, to: string, kind: Link["kind"] = "strong", id = `${from}-${to}`): Link {
-  return { id, from, to, kind, shape: "straight" };
+  return { id, from, to, kind, shape: "base" };
 }
 
 function resetStores(): void {
@@ -118,9 +118,9 @@ describe("standalone modules", () => {
 
     for (const moduleId of ["importance", "purpose"]) {
       expect(linkRefusalReason(moduleId, "content", "weak", [], notes))
-        .toBe("Importance and Purpose modules require strong links.");
+        .toBe("Importance, Purpose, and Mood modules require strong links.");
       expect(linkRefusalReason("content", moduleId, "weak", [], notes))
-        .toBe("Importance and Purpose modules require strong links.");
+        .toBe("Importance, Purpose, and Mood modules require strong links.");
       expect(canCreateLinkPair(moduleId, "content", [], "weak", notes)).toBe(false);
     }
     expect(canCreateLinkPair("purpose", "content", [], "strong", notes)).toBe(true);
@@ -182,7 +182,7 @@ describe("standalone modules", () => {
       .filter((item) => item.id.startsWith("module."))
       .map((item) => item.id);
 
-    expect(moduleItems("content")).toEqual(["module.importance", "module.purpose"]);
+    expect(moduleItems("content")).toEqual(["module.importance", "module.purpose", "module.mood"]);
     expect(moduleItems("importance")).toEqual([]);
     expect(moduleItems("purpose")).toEqual([]);
 

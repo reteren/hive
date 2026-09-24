@@ -1,8 +1,14 @@
-import type { LinkAnchor } from "../model/link";
+import type { Link, LinkAnchor } from "../model/link";
 
 export interface LinkDraft {
   sourceId: string;
   sourceAnchor?: LinkAnchor;
+}
+
+export function previewLinkKind(tool: "select" | "line-strong" | "line-weak"): Link["kind"] | null {
+  if (tool === "line-strong") return "strong";
+  if (tool === "line-weak") return "weak";
+  return null;
 }
 
 export interface LinkGestureInput {

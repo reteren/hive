@@ -2,7 +2,7 @@ import { camera, viewport } from "../board/camera.svelte";
 import type { Point } from "../board/cameraMath";
 import { execute } from "../history/history.svelte";
 import { addNote, board, orderIndex, removeNote, updateNote } from "../model/board.svelte";
-import { newId, type ImportanceLevel, type Note, type PurposeKind } from "../model/note";
+import { newId, type ImportanceLevel, type MoodKind, type Note, type PurposeKind } from "../model/note";
 import { addLink, links, linksOf, removeLink } from "../model/links.svelte";
 import type { Link } from "../model/link";
 import { grid } from "../board/grid.svelte";
@@ -14,19 +14,25 @@ import { editing } from "../notes/editing.svelte";
 import { tool } from "../tools/tool.svelte";
 import {
   createImportanceCommand,
+  createMoodSelectionCommand,
+  createMoodToggleCommand,
   createPurposeSelectionCommand,
   createPurposeToggleCommand,
   effectiveImportanceFor,
+  effectiveMoodsFor,
   effectivePurposesFor,
   linkedImportanceSourceFor,
+  linkedMoodsFor,
   linkedPurposesFor,
   MODULE_NOTE_HEIGHT,
   MODULE_NOTE_WIDTH,
+  type ExternalModuleKind,
+  type ModuleArrayKind,
   type ModuleDataPatch,
 } from "./moduleLogic";
-import { closeModulePicker, openModulePicker } from "./pickerState.svelte";
+import { closeModulePicker, openModulePicker, toggleModulePicker } from "./pickerState.svelte";
 
-export { closeModulePicker, openModulePicker };
+export { closeModulePicker, openModulePicker, toggleModulePicker };
 
 export const moduleDropPreview = $state({
   moduleId: null as string | null,
@@ -50,6 +56,10 @@ export function effectivePurposes(noteId: string): PurposeKind[] {
   return effectivePurposesFor(noteId, board.notes, Object.values(links.byId));
 }
 
+export function effectiveMoods(noteId: string): MoodKind[] {
+  return effectiveMoodsFor(noteId, board.notes, Object.values(links.byId));
+}
+
 export function isLinkedImportance(noteId: string): boolean {
   return linkedImportanceSourceFor(noteId, board.notes, Object.values(links.byId)) !== null;
 }
@@ -62,6 +72,10 @@ export function linkedImportanceSource(noteId: string): Note | null {
 
 export function linkedPurposes(noteId: string): PurposeKind[] {
   return linkedPurposesFor(noteId, board.notes, Object.values(links.byId));
+}
+
+export function linkedMoods(noteId: string): MoodKind[] {
+  return linkedMoodsFor(noteId, board.notes, Object.values(links.byId));
 }
 
 export function setImportance(noteId: string, level: ImportanceLevel | null): void {
@@ -122,10 +136,25 @@ export function togglePurpose(noteId: string, purpose: PurposeKind): void {
   if (command) execute(command);
 }
 
+export function toggleMood(noteId: string, mood: MoodKind): void {
+  const note = board.notes[noteId];
+  if (!note) return;
+  const command = createMoodToggleCommand(note, mood, writeModulePatch);
+  if (command) execute(command);
+}
+
 export function setStandalonePurpose(noteId: string, purpose: PurposeKind): void {
   const note = board.notes[noteId];
   if (!note || note.type !== "purpose") return;
   const command = createPurposeSelectionCommand(note, purpose, writeModulePatch);
+  if (command) execute(command);
+  closeModulePicker();
+}
+
+export function setStandaloneMood(noteId: string, mood: MoodKind): void {
+  const note = board.notes[noteId];
+  if (!note || note.type !== "mood") return;
+  const command = createMoodSelectionCommand(note, mood, writeModulePatch);
   if (command) execute(command);
   closeModulePicker();
 }
@@ -181,56 +210,29 @@ export function tryInsertModuleOnDrop(moduleId: string, worldPoint: Point): bool
   const linksToRemove = deleteModule ? attachedLinks : targetLinks;
   const moduleIndex = orderIndex(moduleId);
   const previousEditing = editing.noteId;
-  const previousImportance = target.importance;
-  const previousPurposes = target.purposes ? [...target.purposes] : target.purposes;
+  const previousPatch = copyModulePatch(target);
+  const nextPatch = valuePatchForInsertion(module, target);
+  if (!nextPatch) return false;
+  const moduleLabel = kindLabel(module.type as ExternalModuleKind);
 
-  if (module.type === "importance") {
-    const level = module.importance;
-    if (!level) return false;
-    execute({
-      label: "Insert Importance",
-      target: target.name,
-      do: () => {
-        writeModulePatch(target.id, { importance: level });
-        for (const link of linksToRemove) removeLink(link.id);
-        if (deleteModule) {
-          removeNote(module.id);
-          if (editing.noteId === module.id) editing.noteId = null;
-        }
-      },
-      undo: () => {
-        writeModulePatch(target.id, { importance: previousImportance });
-        if (deleteModule) addNote(moduleSnapshot, moduleIndex);
-        for (const link of linksToRemove) addLink(copyLink(link));
-        if (deleteModule && previousEditing === module.id) editing.noteId = previousEditing;
-      },
-    });
-  } else {
-    const purposes = module.purposes ?? [];
-    if (purposes.length === 0) return false;
-    const nextPurposes = [...(target.purposes ?? [])];
-    for (const purpose of purposes) {
-      if (!nextPurposes.includes(purpose)) nextPurposes.push(purpose);
-    }
-    execute({
-      label: "Insert Purpose",
-      target: target.name,
-      do: () => {
-        writeModulePatch(target.id, { purposes: nextPurposes });
-        for (const link of linksToRemove) removeLink(link.id);
-        if (deleteModule) {
-          removeNote(module.id);
-          if (editing.noteId === module.id) editing.noteId = null;
-        }
-      },
-      undo: () => {
-        writeModulePatch(target.id, { purposes: previousPurposes });
-        if (deleteModule) addNote(moduleSnapshot, moduleIndex);
-        for (const link of linksToRemove) addLink(copyLink(link));
-        if (deleteModule && previousEditing === module.id) editing.noteId = previousEditing;
-      },
-    });
-  }
+  execute({
+    label: `Insert ${moduleLabel}`,
+    target: target.name,
+    do: () => {
+      writeModulePatch(target.id, nextPatch);
+      for (const link of linksToRemove) removeLink(link.id);
+      if (deleteModule) {
+        removeNote(module.id);
+        if (editing.noteId === module.id) editing.noteId = null;
+      }
+    },
+    undo: () => {
+      writeModulePatch(target.id, previousPatch);
+      if (deleteModule) addNote(moduleSnapshot, moduleIndex);
+      for (const link of linksToRemove) addLink(copyLink(link));
+      if (deleteModule && previousEditing === module.id) editing.noteId = previousEditing;
+    },
+  });
 
   clearModuleDropPreview();
   return true;
@@ -239,8 +241,8 @@ export function tryInsertModuleOnDrop(moduleId: string, worldPoint: Point): bool
 /** Drag an embedded chip out to a new external module with its strong link to the old note. */
 export function extractModuleFromNote(
   noteId: string,
-  kind: "importance" | "purpose",
-  value: ImportanceLevel | PurposeKind,
+  kind: ExternalModuleKind,
+  value: ImportanceLevel | PurposeKind | MoodKind,
   worldPoint: Point,
 ): boolean {
   const target = board.notes[noteId];
@@ -257,12 +259,18 @@ export function extractModuleFromNote(
     const level = value as ImportanceLevel;
     nextPatch = { importance: null };
     module = createExternalModule("importance", level, worldPoint);
-  } else {
+  } else if (kind === "purpose") {
     const purpose = value as PurposeKind;
     const current = target.purposes ?? [];
     if (!current.includes(purpose)) return false;
     nextPatch = { purposes: current.filter((item) => item !== purpose) };
     module = createExternalModule("purpose", purpose, worldPoint);
+  } else {
+    const mood = value as MoodKind;
+    const current = target.moods ?? [];
+    if (!current.includes(mood)) return false;
+    nextPatch = { moods: current.filter((item) => item !== mood) };
+    module = createExternalModule("mood", mood, worldPoint);
   }
 
   const noteIndex = board.order.length;
@@ -273,12 +281,11 @@ export function extractModuleFromNote(
     kind: "strong",
     shape: tool.lineShape,
   };
-  const previousImportance = target.importance;
-  const previousPurposes = target.purposes ? [...target.purposes] : target.purposes;
+  const previousPatch = copyModulePatch(target);
   const previousEditing = editing.noteId;
 
   execute({
-    label: kind === "importance" ? "Extract Importance" : "Extract Purpose",
+    label: `Extract ${kindLabel(kind)}`,
     target: target.name,
     do: () => {
       writeModulePatch(target.id, nextPatch);
@@ -288,7 +295,7 @@ export function extractModuleFromNote(
     undo: () => {
       removeLink(link.id);
       removeNote(module.id);
-      writeModulePatch(target.id, { importance: previousImportance, purposes: previousPurposes });
+      writeModulePatch(target.id, previousPatch);
       editing.noteId = previousEditing;
     },
   });
@@ -314,14 +321,14 @@ export function showModuleFeedback(noteId: string, message: string): void {
 }
 
 function createExternalModule(
-  kind: "importance" | "purpose",
-  value: ImportanceLevel | PurposeKind,
+  kind: ExternalModuleKind,
+  value: ImportanceLevel | PurposeKind | MoodKind,
   worldPoint: Point,
 ): Note {
   const id = newId();
   const position = notePositionAt(worldPoint, MODULE_NOTE_WIDTH, MODULE_NOTE_HEIGHT, grid.snap, grid.step);
   const existingNames = Object.values(board.notes).map((note) => note.name);
-  const name = uniqueName(kind === "importance" ? "Importance" : "Purpose", existingNames);
+  const name = uniqueName(kindLabel(kind), existingNames);
   return {
     id,
     type: kind,
@@ -332,8 +339,47 @@ function createExternalModule(
     width: MODULE_NOTE_WIDTH,
     height: MODULE_NOTE_HEIGHT,
     createdAt: Date.now(),
-    ...(kind === "importance" ? { importance: value as ImportanceLevel } : { purposes: [value as PurposeKind] }),
+    ...(kind === "importance"
+      ? { importance: value as ImportanceLevel }
+      : kind === "purpose"
+        ? { purposes: [value as PurposeKind] }
+        : { moods: [value as MoodKind] }),
   };
+}
+
+function valuePatchForInsertion(module: Note, target: Note): ModuleDataPatch | null {
+  if (module.type === "importance") {
+    return module.importance ? { importance: module.importance } : null;
+  }
+  if (module.type === "purpose") {
+    const values = module.purposes ?? [];
+    if (values.length === 0) return null;
+    return { purposes: appendUnique(target.purposes ?? [], values) };
+  }
+  if (module.type === "mood") {
+    const values = module.moods ?? [];
+    if (values.length === 0) return null;
+    return { moods: appendUnique(target.moods ?? [], values) };
+  }
+  return null;
+}
+
+function appendUnique<T>(current: readonly T[], additions: readonly T[]): T[] {
+  const result = [...current];
+  for (const value of additions) if (!result.includes(value)) result.push(value);
+  return result;
+}
+
+function copyModulePatch(note: Note): ModuleDataPatch {
+  return {
+    importance: note.importance,
+    purposes: note.purposes ? [...note.purposes] : note.purposes,
+    moods: note.moods ? [...note.moods] : note.moods,
+  };
+}
+
+function kindLabel(kind: ExternalModuleKind): string {
+  return kind === "importance" ? "Importance" : kind === "purpose" ? "Purpose" : "Mood";
 }
 
 function targetAtPoint(point: Point, excludedId: string): Note | null {
@@ -354,6 +400,8 @@ function insertionRefusal(module: Note, target: Note): string | null {
     if (hasExternalImportance(target.id, module.id)) return "This note already has an Importance source.";
   } else if (module.type === "purpose" && !module.purposes?.length) {
     return "Purpose module has no label.";
+  } else if (module.type === "mood" && !module.moods?.length) {
+    return "Mood module has no value.";
   }
   return null;
 }
@@ -369,7 +417,7 @@ function hasExternalImportance(noteId: string, exceptModuleId?: string): boolean
 }
 
 function isExternalModule(note: Note): boolean {
-  return note.type === "importance" || note.type === "purpose";
+  return note.type === "importance" || note.type === "purpose" || note.type === "mood";
 }
 
 function isAssignableNote(note: Note): boolean {
@@ -388,6 +436,10 @@ function writeModulePatch(noteId: string, patch: ModuleDataPatch): void {
     if (patch.purposes === undefined) delete note.purposes;
     else updateNote(noteId, { purposes: [...patch.purposes] });
   }
+  if ("moods" in patch) {
+    if (patch.moods === undefined) delete note.moods;
+    else updateNote(noteId, { moods: [...patch.moods] });
+  }
 }
 
 function copyNote(note: Note): Note {
@@ -395,6 +447,7 @@ function copyNote(note: Note): Note {
     ...note,
     task: note.task ? { ...note.task } : note.task,
     purposes: note.purposes ? [...note.purposes] : note.purposes,
+    moods: note.moods ? [...note.moods] : note.moods,
   };
 }
 

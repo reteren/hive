@@ -67,6 +67,7 @@
     </div>
   </div>
   <div class="top-actions">
+    <CommandButton commandId="ui.settings" />
     <CommandButton commandId="ui.toggleRightPanel" />
   </div>
   <div class="conflict-status">
@@ -247,11 +248,12 @@
   .top-actions {
     display: flex;
     justify-content: flex-end;
+    gap: 2px;
   }
 
   @media (max-width: 420px) {
     .top-bar {
-      grid-template-columns: minmax(0, 1fr) 32px;
+      grid-template-columns: minmax(0, 1fr) 60px;
       row-gap: 2px;
       padding: 3px 4px;
     }

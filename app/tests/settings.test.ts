@@ -5,6 +5,7 @@ import {
   serializeViewSettings,
   VIEW_SETTINGS_VERSION,
 } from "../src/settings/viewSettings";
+import { setReduceMotionDataset } from "../src/settings/motion";
 
 describe("view settings serialization", () => {
   it("round-trips a versioned settings snapshot", () => {
@@ -14,6 +15,7 @@ describe("view settings serialization", () => {
       grid: { step: 25, showGrid: false, snap: true },
       display: { rightPanelOpen: false },
       history: { limit: 256 },
+      accessibility: { reduceAnimations: true },
       keyOverrides: { "view.home": ["Ctrl+Alt+KeyH"], "edit.undo": [] },
     };
 
@@ -73,6 +75,7 @@ describe("view settings serialization", () => {
       grid: { step: 10, showGrid: false, snap: false },
       display: { rightPanelOpen: false },
       history: { limit: 64 },
+      accessibility: DEFAULT_VIEW_SETTINGS.accessibility,
       keyOverrides: {},
     });
   });
@@ -84,5 +87,27 @@ describe("view settings serialization", () => {
     );
 
     expect(settings.camera).toEqual({ x: 0, y: -3, zoom: 1 });
+  });
+
+  it("defaults the new motion setting from the supplied OS preference and validates persisted values", () => {
+    const defaults = {
+      ...DEFAULT_VIEW_SETTINGS,
+      accessibility: { reduceAnimations: true },
+    };
+    const oldSettings = JSON.stringify({ version: 3, accessibility: {} });
+    const invalidSettings = JSON.stringify({ version: 4, accessibility: { reduceAnimations: "yes" } });
+
+    expect(parseViewSettings(oldSettings, defaults).accessibility.reduceAnimations).toBe(true);
+    expect(parseViewSettings(invalidSettings, defaults).accessibility.reduceAnimations).toBe(true);
+  });
+
+  it("sets and removes the reduced-motion dataset flag", () => {
+    const dataset: { reduceMotion?: string } = {};
+
+    setReduceMotionDataset(dataset, true);
+    expect(dataset.reduceMotion).toBe("true");
+
+    setReduceMotionDataset(dataset, false);
+    expect(dataset.reduceMotion).toBeUndefined();
   });
 });

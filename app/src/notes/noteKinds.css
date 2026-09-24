@@ -49,7 +49,8 @@
 }
 
 .note-card[data-kind="importance"],
-.note-card[data-kind="purpose"] {
+.note-card[data-kind="purpose"],
+.note-card[data-kind="mood"] {
   --note-frame: #292929;
   --note-body: #292929;
   min-height: 0;
@@ -57,14 +58,17 @@
 }
 
 .note-card[data-kind="importance"] .note-header,
-.note-card[data-kind="purpose"] .note-header {
+.note-card[data-kind="purpose"] .note-header,
+.note-card[data-kind="mood"] .note-header {
   display: none;
 }
 
 .note-card[data-kind="importance"] .note-frame,
 .note-card[data-kind="purpose"] .note-frame,
+.note-card[data-kind="mood"] .note-frame,
 .note-card[data-kind="importance"] .note-frame.fixed-height,
-.note-card[data-kind="purpose"] .note-frame.fixed-height {
+.note-card[data-kind="purpose"] .note-frame.fixed-height,
+.note-card[data-kind="mood"] .note-frame.fixed-height {
   display: flex;
   min-height: 0;
   flex: 1 1 auto;
@@ -74,12 +78,14 @@
 }
 
 .note-card[data-kind="importance"] .note-frame-edge,
-.note-card[data-kind="purpose"] .note-frame-edge {
+.note-card[data-kind="purpose"] .note-frame-edge,
+.note-card[data-kind="mood"] .note-frame-edge {
   display: none;
 }
 
 .note-card[data-kind="importance"] .note-content,
-.note-card[data-kind="purpose"] .note-content {
+.note-card[data-kind="purpose"] .note-content,
+.note-card[data-kind="mood"] .note-content {
   display: flex;
   min-height: 0;
   flex: 1 1 auto;
@@ -91,7 +97,8 @@
 }
 
 .note-card[data-kind="importance"]:has(.module-node-body .module-picker),
-.note-card[data-kind="purpose"]:has(.module-node-body .module-picker) {
+.note-card[data-kind="purpose"]:has(.module-node-body .module-picker),
+.note-card[data-kind="mood"]:has(.module-node-body .module-picker) {
   z-index: 35;
   overflow: visible;
 }

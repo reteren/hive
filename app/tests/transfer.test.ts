@@ -24,7 +24,7 @@ function makeNote(id: string, options: Partial<Note> = {}): Note {
 }
 
 function makeLink(id: string, from: string, to: string, kind: Link["kind"] = "strong", extra: Partial<Link> = {}): Link {
-  return { id, from, to, kind, shape: "straight", ...extra };
+  return { id, from, to, kind, shape: "base", ...extra };
 }
 
 describe("Text → Task transfer rules", () => {

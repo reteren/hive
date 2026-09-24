@@ -30,9 +30,7 @@
         onclick={() => runCommand("line.cycleShape")}
       >
         <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-          {#if tool.lineShape === "straight"}
-            <path d="M4 15 16 5" />
-          {:else if tool.lineShape === "curved"}
+          {#if tool.lineShape === "base"}
             <path d="M4 15 C9 15 10 5 16 5" />
           {:else if tool.lineShape === "orthogonal"}
             <path d="M4 15 H10 V5 H16" />

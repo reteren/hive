@@ -64,8 +64,30 @@ describe("project index", () => {
     }));
 
     expect(migrated.index.version).toBe(2);
-    expect(migrated.index.links).toEqual([link]);
+    expect(migrated.index.links).toEqual([{ ...link, shape: "base" }]);
     expect(migrated.index.taskLog).toEqual([]);
+    expect(migrated.warnings).toEqual([]);
+  });
+
+  it("migrates removed straight and renamed curved line shapes to base", () => {
+    const migrated = parseProjectIndexWithWarnings(JSON.stringify({
+      version: 1,
+      notes: [
+        { id: "a", name: "A", x: 0, y: 0, width: 10 },
+        { id: "b", name: "B", x: 20, y: 0, width: 10 },
+        { id: "c", name: "C", x: 40, y: 0, width: 10 },
+        { id: "d", name: "D", x: 60, y: 0, width: 10 },
+      ],
+      links: [
+        { id: "ab", from: "a", to: "b", kind: "strong", shape: "straight" },
+        { id: "cd", from: "c", to: "d", kind: "weak", shape: "curved" },
+      ],
+    }));
+
+    expect(migrated.index.links?.map(({ id, shape }) => ({ id, shape }))).toEqual([
+      { id: "ab", shape: "base" },
+      { id: "cd", shape: "base" },
+    ]);
     expect(migrated.warnings).toEqual([]);
   });
 
@@ -131,7 +153,7 @@ describe("project index", () => {
       { id: "a", type: "note", name: "A", text: "", x: 0, y: 0, width: 10, height: null },
       { id: "b", type: "note", name: "B", text: "", x: 20, y: 0, width: 10, height: null },
     ];
-    const link = { id: "ab", from: "a", to: "b", kind: "strong" as const, shape: "straight" as const };
+    const link = { id: "ab", from: "a", to: "b", kind: "strong" as const, shape: "base" as const };
     const roundTrip = parseProjectIndex(serializeProjectIndex(notes, undefined, [link]));
     expect(roundTrip.links).toEqual([link]);
 

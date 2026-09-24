@@ -25,7 +25,7 @@ const link: Link = {
   from: "source",
   to: "task",
   kind: "strong",
-  shape: "straight",
+  shape: "base",
 };
 
 function setup(): void {

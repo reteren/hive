@@ -8,7 +8,7 @@ export interface LinkAnchor {
   y: number;
 }
 
-export type LineShape = "straight" | "curved" | "orthogonal" | "wave" | "zigzag";
+export type LineShape = "base" | "orthogonal" | "zigzag" | "wave";
 
 /**
  * A line between two board objects (R2). At most one link exists per unordered pair

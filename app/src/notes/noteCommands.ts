@@ -39,7 +39,7 @@ export function createNote(): string {
 
 /** Create a note, plus/minus, or standalone module at the current creation origin. */
 export function createNoteKind(kind: NoteKind): string {
-  const isModule = kind === "importance" || kind === "purpose";
+  const isModule = kind === "importance" || kind === "purpose" || kind === "mood";
   const width = kind === "note" ? DEFAULT_NOTE_WIDTH : isModule ? MODULE_NOTE_WIDTH : DEFAULT_MINI_NOTE_WIDTH;
   const height = isModule ? MODULE_NOTE_HEIGHT : MIN_NOTE_HEIGHT;
   const id = newId();
@@ -83,7 +83,7 @@ export function addMiniNode(parentId: string, kind: MiniNoteKind): string | null
     from: parent.id,
     to: note.id,
     kind: "strong",
-    shape: tool.lineShape,
+    shape: "base",
   };
   if (!canLink(link.from, link.to)) return null;
 
@@ -117,13 +117,14 @@ function makeNote(kind: NoteKind, id: string, position: Point, createdAt: number
     y: position.y,
     width: kind === "note"
       ? DEFAULT_NOTE_WIDTH
-      : kind === "importance" || kind === "purpose"
+      : kind === "importance" || kind === "purpose" || kind === "mood"
         ? MODULE_NOTE_WIDTH
         : DEFAULT_MINI_NOTE_WIDTH,
-    height: kind === "importance" || kind === "purpose" ? MODULE_NOTE_HEIGHT : null,
+    height: kind === "importance" || kind === "purpose" || kind === "mood" ? MODULE_NOTE_HEIGHT : null,
     createdAt,
     ...(kind === "importance" ? { importance: "basic" as const } : {}),
     ...(kind === "purpose" ? { purposes: ["concept" as const] } : {}),
+    ...(kind === "mood" ? { moods: ["happiness" as const] } : {}),
   };
 }
 
@@ -132,6 +133,7 @@ function kindLabel(kind: NoteKind): string {
   if (kind === "con") return "Minus";
   if (kind === "importance") return "Importance";
   if (kind === "purpose") return "Purpose";
+  if (kind === "mood") return "Mood";
   return "Note";
 }
 

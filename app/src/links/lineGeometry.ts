@@ -13,7 +13,7 @@ export interface ClippedSegment {
   end: Point;
 }
 
-const SHAPES: readonly LineShape[] = ["straight", "curved", "orthogonal", "wave", "zigzag"];
+const SHAPES: readonly LineShape[] = ["base", "orthogonal", "zigzag", "wave"];
 const EPSILON = 1e-9;
 
 /** Clip a centre-to-centre segment to the rectangular note frames. */
@@ -40,7 +40,7 @@ export function linePathBetweenFrames(shape: LineShape, source: Bounds, target: 
   if (shape === "orthogonal") return orthogonalPath(source, target);
 
   const segment = clipSegmentToFrames(source, target);
-  if (shape === "straight") return { type: "polyline", points: [segment.start, segment.end] };
+  if (shape === "base") return curvedPath(source, target, segment);
   return curvedPath(source, target, segment);
 }
 
@@ -99,6 +99,26 @@ export function strokeIntersectsPath(stroke: readonly Point[], path: LinkPath, t
   }
 
   return false;
+}
+
+/** Whether any part of a rendered route touches the marquee rectangle. */
+export function marqueeIntersectsPath(bounds: Bounds, path: LinkPath): boolean {
+  const left = Math.min(bounds.x, bounds.x + bounds.width);
+  const right = Math.max(bounds.x, bounds.x + bounds.width);
+  const top = Math.min(bounds.y, bounds.y + bounds.height);
+  const bottom = Math.max(bounds.y, bounds.y + bounds.height);
+  const route = flattenPath(path);
+  const inside = (point: Point) => point.x >= left && point.x <= right && point.y >= top && point.y <= bottom;
+  if (route.some(inside)) return true;
+
+  const corners = [
+    { x: left, y: top },
+    { x: right, y: top },
+    { x: right, y: bottom },
+    { x: left, y: bottom },
+    { x: left, y: top },
+  ];
+  return strokeIntersectsPath(corners, { type: "polyline", points: route });
 }
 
 function center(bounds: Bounds): Point {

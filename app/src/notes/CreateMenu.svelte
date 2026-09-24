@@ -7,7 +7,7 @@
   const menuPosition = $derived(createMenuPosition(
     creationMenu.screenAnchor,
     viewport,
-    { width: 164, height: 202 },
+    { width: 164, height: 232 },
   ));
 
   function createNoteFromMenu(): void {
@@ -20,7 +20,7 @@
     if (!creationMenu.pinned) closeCreationMenu();
   }
 
-  function createModuleFromMenu(kind: "importance" | "purpose"): void {
+  function createModuleFromMenu(kind: "importance" | "purpose" | "mood"): void {
     createNoteKind(kind);
     if (!creationMenu.pinned) closeCreationMenu();
   }
@@ -85,6 +85,10 @@
           <svg viewBox="0 0 16 16"><path d="M8 2.5 13.5 8 8 13.5 2.5 8zM8 5v6M5 8h6" /></svg>
         </span>
         <span>Purpose</span>
+      </button>
+      <button class="create-item" type="button" onclick={() => createModuleFromMenu("mood")}>
+        <span class="module-icon mood-icon" aria-hidden="true"></span>
+        <span>Mood</span>
       </button>
     </div>
   </aside>
@@ -228,6 +232,15 @@
 
   .purpose-icon {
     color: #70b5a1;
+  }
+
+  .mood-icon::before {
+    width: 9px;
+    height: 9px;
+    border: 1px solid #fff0b0;
+    border-radius: 50%;
+    background: #f1c85b;
+    content: "";
   }
 
   .purpose-icon svg {

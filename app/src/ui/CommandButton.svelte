@@ -6,11 +6,13 @@
   let {
     commandId,
     showLabel = false,
+    labelOverride,
     className = "",
     secondaryHint,
   } = $props<{
     commandId: string;
     showLabel?: boolean;
+    labelOverride?: string;
     className?: string;
     secondaryHint?: string;
   }>();
@@ -31,6 +33,8 @@
     if (id === "view.zoomOut") return "zoom-out";
     if (id === "view.zoomReset") return "zoom-reset";
     if (id === "ui.toggleRightPanel") return "panel";
+    if (id === "ui.settings") return "settings";
+    if (id === "search.open") return "search";
     if (id === "grid.toggleShow") return "grid";
     if (id === "grid.toggleSnap") return "snap";
     if (id === "grid.stepUp") return "step-up";
@@ -67,6 +71,12 @@
         {:else if iconName === "panel"}
           <rect x="2.5" y="3" width="15" height="14" rx="1" />
           <path d="M11.5 3v14M14.5 7h1M14.5 10h1" />
+        {:else if iconName === "settings"}
+          <path d="M10 3.1 11.2 2l1.6.6.4 1.6 1.4.8 1.6-.4 1.1 1.3-.8 1.5.3 1.6 1.3 1v1.8l-1.5.8-.5 1.6.7 1.4-1.2 1.3-1.6-.5-1.4.8-.4 1.6-1.7.5-1-1.3-1.6-.2-1.4.8-1.4-1-.1-1.7-1.2-1-.1-1.7 1.3-1 .3-1.6-.9-1.4.9-1.5 1.7.1 1.2-1.1.1-1.7 1.6-.6z" transform="translate(0 -1) scale(1 .95)" />
+          <circle cx="10" cy="10" r="2.4" />
+        {:else if iconName === "search"}
+          <circle cx="8.5" cy="8.5" r="5.2" />
+          <path d="m12.4 12.4 4.3 4.3" />
         {:else if iconName === "grid"}
           <rect x="2.8" y="2.8" width="6.1" height="6.1" />
           <rect x="11.1" y="2.8" width="6.1" height="6.1" />
@@ -85,7 +95,7 @@
           <path d="M10 6.5v7M6.5 10h7" />
         {/if}
       </svg>
-      {#if showLabel}<span>{command.label}</span>{/if}
+      {#if showLabel}<span>{labelOverride ?? command.label}</span>{/if}
     </button>
   </Tooltip>
 {/if}

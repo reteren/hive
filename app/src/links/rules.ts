@@ -30,7 +30,7 @@ export function linkRefusalReason(
   const sourceIsModule = isModule(source);
   const targetIsModule = isModule(target);
   if ((sourceIsModule || targetIsModule) && kind !== "strong") {
-    return "Importance and Purpose modules require strong links.";
+    return "Importance, Purpose, and Mood modules require strong links.";
   }
   if (to === ME_OBJECT_ID) return "Beacons can have outgoing links only.";
   if (existing.some((link) => pairKey(link.from, link.to) === pairKey(from, to))) {
@@ -57,7 +57,7 @@ export function linkRefusalReason(
 }
 
 function isModule(note: ModuleNoteLookup[string]): boolean {
-  return note?.type === "importance" || note?.type === "purpose";
+  return note?.type === "importance" || note?.type === "purpose" || note?.type === "mood";
 }
 
 function isContentNote(note: ModuleNoteLookup[string]): note is ModuleNoteValue {

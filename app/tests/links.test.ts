@@ -1,19 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Point } from "../src/board/cameraMath";
-import { clear, redo, undo } from "../src/history/history.svelte";
+import { clear, history, redo, undo } from "../src/history/history.svelte";
 import { replaceBoard } from "../src/model/board.svelte";
 import type { Link } from "../src/model/link";
 import { links, replaceLinks } from "../src/model/links.svelte";
 import { canCreateLinkPair } from "../src/links/rules";
-import { changeLinkShape, createBoardLink, cutLinks } from "../src/links/operations";
+import { changeLinkShape, createBoardLink, cutLinks, cycleLinkShapes, unlinkSelected } from "../src/links/operations";
 import { pointAtAnchor, pointOnCircleToward, projectPointToAnchor, shapeEndpoints } from "../src/links/anchors";
 import { clientToBoardPoint, clientToWorld } from "../src/links/coordinates";
-import { completeLinkGesture, nextTool, resolveCutRelease } from "../src/links/gestures";
+import { completeLinkGesture, nextTool, previewLinkKind, resolveCutRelease } from "../src/links/gestures";
+import { clearSelectedLink, selectLinks, selectedLinkIds, toggleLinkSelection } from "../src/links/selection.svelte";
 import { buildShape } from "../src/links/shapes";
 import {
   clipSegmentToFrames,
   flattenPath,
   linePathBetweenFrames,
+  marqueeIntersectsPath,
   nextLineShape,
   strokeIntersectsPath,
   type LinkPath,
@@ -122,7 +124,13 @@ describe("link anchors and line tool gestures", () => {
     expect(resolveCutRelease(true, null)).toBe("cut-stroke");
   });
 
-  it.each(["straight", "curved", "orthogonal", "wave", "zigzag"] as const)("builds %s geometry on clipped frame endpoints", (shape) => {
+  it("uses a solid strong or dashed weak preview kind matching the active line tool", () => {
+    expect(previewLinkKind("line-strong")).toBe("strong");
+    expect(previewLinkKind("line-weak")).toBe("weak");
+    expect(previewLinkKind("select")).toBeNull();
+  });
+
+  it.each(["base", "orthogonal", "zigzag", "wave"] as const)("builds %s geometry on clipped frame endpoints", (shape) => {
     const source = { x: 0, y: 0, width: 20, height: 10 };
     const target = { x: 60, y: 30, width: 24, height: 20 };
     const endpoints = shapeEndpoints(source, target);
@@ -159,15 +167,14 @@ describe("line geometry", () => {
     expect(segment.end).toEqual({ x: 20, y: 20 });
   });
 
-  it("cycles the line creation option through all supported shapes", () => {
-    expect(nextLineShape("straight")).toBe("curved");
-    expect(nextLineShape("curved")).toBe("orthogonal");
-    expect(nextLineShape("orthogonal")).toBe("wave");
-    expect(nextLineShape("wave")).toBe("zigzag");
-    expect(nextLineShape("zigzag")).toBe("straight");
+  it("cycles the line creation option through base, orthogonal, zigzag, and wave", () => {
+    expect(nextLineShape("base")).toBe("orthogonal");
+    expect(nextLineShape("orthogonal")).toBe("zigzag");
+    expect(nextLineShape("zigzag")).toBe("wave");
+    expect(nextLineShape("wave")).toBe("base");
   });
 
-  it.each(["straight", "curved", "orthogonal"] as const)("keeps %s endpoints clipped to note frames", (shape) => {
+  it.each(["base", "orthogonal"] as const)("keeps %s endpoints clipped to note frames", (shape) => {
     const source = { x: 0, y: 0, width: 10, height: 8 };
     const target = { x: 24, y: 16, width: 12, height: 10 };
     const path = linePathBetweenFrames(shape, source, target);
@@ -177,10 +184,10 @@ describe("line geometry", () => {
     expect(pointOnFrame(end, target)).toBe(true);
   });
 
-  it("uses a cubic route for curved lines and axis-aligned elbows for orthogonal lines", () => {
+  it("uses a cubic route for base lines and axis-aligned elbows for orthogonal lines", () => {
     const source = { x: 0, y: 0, width: 10, height: 8 };
     const target = { x: 24, y: 16, width: 12, height: 10 };
-    const curved = linePathBetweenFrames("curved", source, target);
+    const curved = linePathBetweenFrames("base", source, target);
     const orthogonal = linePathBetweenFrames("orthogonal", source, target);
 
     expect(curved.type).toBe("cubic");
@@ -195,7 +202,19 @@ describe("line geometry", () => {
     }
   });
 
-  it.each(["straight", "curved", "orthogonal"] as const)("intersects a drawn cut stroke against %s geometry", (shape) => {
+  it("selects a polyline or curved route that touches or lies inside a marquee", () => {
+    const straightRoute: LinkPath = { type: "polyline", points: [{ x: 0, y: 5 }, { x: 20, y: 5 }] };
+    expect(marqueeIntersectsPath({ x: 8, y: 2, width: 2, height: 4 }, straightRoute)).toBe(true);
+    expect(marqueeIntersectsPath({ x: 7, y: 6, width: 4, height: 2 }, straightRoute)).toBe(false);
+    expect(marqueeIntersectsPath({ x: -1, y: 4, width: 22, height: 2 }, straightRoute)).toBe(true);
+    const curve: LinkPath = {
+      type: "cubic",
+      points: [{ x: 0, y: 0 }, { x: 0, y: 10 }, { x: 10, y: 10 }, { x: 10, y: 0 }],
+    };
+    expect(marqueeIntersectsPath({ x: 4, y: 7, width: 2, height: 2 }, curve)).toBe(true);
+  });
+
+  it.each(["base", "orthogonal"] as const)("intersects a drawn cut stroke against %s geometry", (shape) => {
     const path = linePathBetweenFrames(shape, { x: 0, y: 0, width: 10, height: 8 }, { x: 24, y: 16, width: 12, height: 10 });
     const route = flattenPath(path);
     const crossing = perpendicularStroke(route);
@@ -212,15 +231,29 @@ describe("cutting links", () => {
       fromAnchor: { x: 1, y: 0.4 }, toAnchor: { x: 0, y: 0.6 },
     },
     { id: "two", from: "c", to: "d", kind: "weak", shape: "zigzag" },
-    { id: "three", from: "e", to: "f", kind: "strong", shape: "straight" },
+    { id: "three", from: "e", to: "f", kind: "strong", shape: "base" },
   ];
 
   beforeEach(() => {
     clear();
     replaceLinks(original.map((link) => ({ ...link })));
+    clearSelectedLink();
   });
 
-  afterEach(() => clear());
+  afterEach(() => {
+    clear();
+    clearSelectedLink();
+  });
+
+  it("toggles links into and out of the multi-selection", () => {
+    toggleLinkSelection("one");
+    toggleLinkSelection("two");
+    expect(selectedLinkIds()).toEqual(["one", "two"]);
+    toggleLinkSelection("one");
+    expect(selectedLinkIds()).toEqual(["two"]);
+    toggleLinkSelection("two");
+    expect(selectedLinkIds()).toEqual([]);
+  });
 
   it("records a selected line shape change as a reversible history operation", () => {
     expect(changeLinkShape("one", "orthogonal")).toBe(true);
@@ -229,6 +262,36 @@ describe("cutting links", () => {
     expect(links.byId.one.shape).toBe("wave");
     expect(redo()?.label).toBe("Line shape");
     expect(links.byId.one.shape).toBe("orthogonal");
+  });
+
+  it("cycles several selected line shapes in one undoable operation", () => {
+    clearSelectedLink();
+    selectLinks(["one", "two"]);
+    expect(cycleLinkShapes(selectedLinkIds())).toBe(true);
+    expect(links.byId.one.shape).toBe("base");
+    expect(links.byId.two.shape).toBe("wave");
+    expect(history.entries).toHaveLength(1);
+
+    expect(undo()?.label).toBe("Line shape");
+    expect(links.byId.one.shape).toBe("wave");
+    expect(links.byId.two.shape).toBe("zigzag");
+    expect(redo()?.label).toBe("Line shape");
+    expect(links.byId.one.shape).toBe("base");
+    expect(links.byId.two.shape).toBe("wave");
+  });
+
+  it("deletes all selected links as one history operation and undo restores them", () => {
+    clearSelectedLink();
+    selectLinks(["one", "two"]);
+    expect(unlinkSelected()).toBe(true);
+    expect(Object.keys(links.byId).sort()).toEqual(["three"]);
+    expect(history.entries).toHaveLength(1);
+
+    expect(undo()?.label).toBe("Unlink lines");
+    expect(Object.values(links.byId).sort(byId)).toEqual([...original].sort(byId));
+    expect(selectedLinkIds()).toEqual(["one", "two"]);
+    expect(redo()?.label).toBe("Unlink lines");
+    expect(Object.keys(links.byId)).toEqual(["three"]);
   });
 
   it("cuts multiple links as one operation and undo restores the exact ids and fields", () => {
@@ -250,7 +313,7 @@ describe("ME beacon link rules", () => {
   it("records outgoing ME links while refusing incoming ones", () => {
     replaceBoard([{ id: "target", type: "note", name: "Target", text: "", x: 10, y: 0, width: 10, height: 8 }]);
     replaceLinks([]);
-    const outgoing: Link = { id: "me-target", from: "me", to: "target", kind: "strong", shape: "curved" };
+    const outgoing: Link = { id: "me-target", from: "me", to: "target", kind: "strong", shape: "base" };
 
     expect(createBoardLink(outgoing)).toBe(true);
     expect(links.byId[outgoing.id]).toEqual(outgoing);

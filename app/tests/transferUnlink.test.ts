@@ -48,7 +48,7 @@ function createBoard(): void {
     from: aId,
     to: taskId,
     kind: "strong",
-    shape: "straight",
+    shape: "base",
     transferDeclined: false,
   };
   const cLink: Link = {
@@ -56,7 +56,7 @@ function createBoard(): void {
     from: cId,
     to: taskId,
     kind: "strong",
-    shape: "straight",
+    shape: "base",
   };
   currentFixture = { aLink, cLink, aId, cId, taskId };
 

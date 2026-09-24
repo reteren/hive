@@ -1,56 +1,48 @@
 <script lang="ts">
-  import { onDestroy } from "svelte";
   import type { ImportanceLevel, Note, PurposeKind } from "../model/note";
-  import { noteBounds } from "../notes/layout.svelte";
   import {
     closeModulePicker,
     effectiveImportance,
+    effectiveMoods,
     effectivePurposes,
-    extractModuleFromNote,
     linkedImportanceSource,
     linkedPurposes,
     makeImportanceLocal,
     moduleDropPreview,
     moduleFeedback,
-    openModulePicker,
     setImportance,
     setLinkedImportance,
+    toggleModulePicker,
     togglePurpose,
-    worldPointFromClient,
   } from "./moduleActions.svelte";
-  import { IMPORTANCE_OPTIONS, PURPOSE_OPTIONS, isImportanceLevel, isPurposeKind } from "./moduleLogic";
+  import { IMPORTANCE_OPTIONS, PURPOSE_OPTIONS, isImportanceLevel, isPurposeKind, moduleRowsFor } from "./moduleLogic";
   import { modulePicker } from "./pickerState.svelte";
   import ModuleChip from "./ModuleChip.svelte";
   import ModulePicker from "./ModulePicker.svelte";
+  import MoodRow from "../moods/MoodRow.svelte";
   import "./commands";
 
   let { note }: { note: Note } = $props();
-  let pickerKind = $derived(modulePicker.noteId === note.id ? modulePicker.kind : null);
-  let shownImportance = $derived(effectiveImportance(note.id));
-  let shownPurposes = $derived(effectivePurposes(note.id));
-  let linkedImportance = $derived(linkedImportanceSource(note.id));
+  let isContentNote = $derived(note.type === "note" || note.type === "pro" || note.type === "con");
+  let pickerKind = $derived(isContentNote && modulePicker.noteId === note.id ? modulePicker.kind : null);
+  let shownImportance = $derived(isContentNote ? effectiveImportance(note.id) : null);
+  let shownPurposes = $derived(isContentNote ? effectivePurposes(note.id) : []);
+  let shownMoods = $derived(isContentNote ? effectiveMoods(note.id) : []);
+  let linkedImportance = $derived(isContentNote ? linkedImportanceSource(note.id) : null);
   let pickerImportance = $derived(linkedImportance?.importance ?? shownImportance);
-  let externalPurposes = $derived(linkedPurposes(note.id));
   let importanceIsExternal = $derived(linkedImportance !== null);
   let isDropTarget = $derived(moduleDropPreview.targetId === note.id);
   let dropMessage = $derived(
     moduleDropPreview.moduleId && isDropTarget ? moduleDropPreview.reason :
       moduleFeedback.noteId === note.id ? moduleFeedback.message : null,
   );
-  let hasModules = $derived(Boolean(shownImportance) || shownPurposes.length > 0);
-
-  interface ExtractionGesture {
-    pointerId: number;
-    startX: number;
-    startY: number;
-    kind: "importance" | "purpose";
-    value: ImportanceLevel | PurposeKind;
-    dragging: boolean;
-  }
-
-  let extractionGesture: ExtractionGesture | null = null;
-  let suppressNextClick = false;
-  let suppressClickTimer: ReturnType<typeof setTimeout> | undefined;
+  let rows = $derived(moduleRowsFor(shownImportance, shownPurposes, shownMoods));
+  let displayedRows = $derived(
+    modulePicker.noteId === note.id && modulePicker.kind === "mood" && !rows.includes("mood")
+      ? [...rows, "mood"]
+      : rows,
+  );
+  let hasModules = $derived(rows.length > 0);
 
   function chooseImportance(id: string): void {
     if (isImportanceLevel(id) && !importanceIsExternal) setImportance(note.id, id);
@@ -68,130 +60,64 @@
     if (isPurposeKind(id)) togglePurpose(note.id, id);
   }
 
-  function startExtraction(event: PointerEvent, kind: "importance" | "purpose", value: string): void {
-    if (event.button !== 0 || extractionGesture) return;
-    if (kind === "importance" ? !isImportanceLevel(value) : !isPurposeKind(value)) return;
-
-    extractionGesture = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      kind,
-      value: value as ImportanceLevel | PurposeKind,
-      dragging: false,
-    };
-    window.addEventListener("pointermove", onExtractionMove, true);
-    window.addEventListener("pointerup", onExtractionEnd, true);
-    window.addEventListener("pointercancel", onExtractionCancel, true);
-  }
-
-  function onExtractionMove(event: PointerEvent): void {
-    const gesture = extractionGesture;
-    if (!gesture || gesture.pointerId !== event.pointerId) return;
-    if (!gesture.dragging && Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) >= 6) {
-      gesture.dragging = true;
-    }
-    if (gesture.dragging) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-  }
-
-  function onExtractionEnd(event: PointerEvent): void {
-    const gesture = extractionGesture;
-    if (!gesture || gesture.pointerId !== event.pointerId) return;
-    removeExtractionListeners();
-    if (!gesture.dragging) return;
-
-    event.preventDefault();
-    event.stopPropagation();
-    suppressClickAfterDrag();
-    const point = worldPointFromClient(event.clientX, event.clientY);
-    const bounds = noteBounds(note);
-    if (!point || (point.x >= bounds.x && point.x <= bounds.x + bounds.width &&
-      point.y >= bounds.y && point.y <= bounds.y + bounds.height)) return;
-    extractModuleFromNote(note.id, gesture.kind, gesture.value, point);
-  }
-
-  function onExtractionCancel(event: PointerEvent): void {
-    if (extractionGesture?.pointerId !== event.pointerId) return;
-    removeExtractionListeners();
-  }
-
-  function removeExtractionListeners(): void {
-    extractionGesture = null;
-    window.removeEventListener("pointermove", onExtractionMove, true);
-    window.removeEventListener("pointerup", onExtractionEnd, true);
-    window.removeEventListener("pointercancel", onExtractionCancel, true);
-  }
-
-  function suppressClickAfterDrag(): void {
-    suppressNextClick = true;
-    if (suppressClickTimer !== undefined) clearTimeout(suppressClickTimer);
-    suppressClickTimer = setTimeout(() => {
-      suppressNextClick = false;
-      suppressClickTimer = undefined;
-    }, 120);
-  }
-
   function openPicker(kind: "importance" | "purpose"): void {
-    if (suppressNextClick) {
-      suppressNextClick = false;
-      if (suppressClickTimer !== undefined) clearTimeout(suppressClickTimer);
-      suppressClickTimer = undefined;
-      return;
-    }
-    openModulePicker(note.id, kind);
+    toggleModulePicker(note.id, kind);
   }
-
-  onDestroy(() => {
-    removeExtractionListeners();
-    if (suppressClickTimer !== undefined) clearTimeout(suppressClickTimer);
-  });
 </script>
 
-{#if hasModules || pickerKind || isDropTarget || moduleFeedback.noteId === note.id}
+{#if isContentNote && (hasModules || pickerKind || isDropTarget || moduleFeedback.noteId === note.id)}
   <div
     class="note-modules"
+    data-module-rows={displayedRows.join(" ")}
     data-module-drop-target={isDropTarget ? (moduleDropPreview.allowed ? "allowed" : "refused") : undefined}
   >
     {#if shownImportance}
       {@const option = IMPORTANCE_OPTIONS.find((item) => item.id === shownImportance)}
       {#if option}
-        <ModuleChip
-          label={option.label}
-          color={option.color}
-          rainbow={shownImportance === "absolute"}
-          linked={importanceIsExternal}
-          pressed={pickerKind === "importance"}
-          interactive={!importanceIsExternal || note.importance !== undefined && note.importance !== null}
-          onClick={() => openPicker("importance")}
-          dragKind={note.importance ? "importance" : undefined}
-          dragValue={note.importance ?? undefined}
-          onPointerDown={(event) => note.importance && startExtraction(event, "importance", note.importance)}
-        />
+        <div class="note-module-row" data-module-row="importance">
+          <ModuleChip
+            label={option.label}
+            color={option.color}
+            rainbow={shownImportance === "absolute"}
+            linked={importanceIsExternal}
+            pressed={pickerKind === "importance"}
+            interactive
+            onClick={() => openPicker("importance")}
+            dragKind={note.importance ? "importance" : undefined}
+            dragValue={note.importance ?? undefined}
+            dragNoteId={note.id}
+          />
+        </div>
       {/if}
     {/if}
 
-    {#each shownPurposes as purpose (purpose)}
-      {@const option = PURPOSE_OPTIONS.find((item) => item.id === purpose)}
-      {@const isExternal = externalPurposes.includes(purpose)}
-      {@const isEmbedded = note.purposes?.includes(purpose) ?? false}
-      {#if option}
-        <ModuleChip
-          label={option.label}
-          color={option.color}
-          iconPath={option.iconPath}
-          linked={isExternal}
-          pressed={pickerKind === "purpose"}
-          interactive={isEmbedded || !isExternal}
-          onClick={() => openPicker("purpose")}
-          dragKind={isEmbedded ? "purpose" : undefined}
-          dragValue={isEmbedded ? purpose : undefined}
-          onPointerDown={(event) => isEmbedded && startExtraction(event, "purpose", purpose)}
-        />
-      {/if}
-    {/each}
+    {#if shownPurposes.length > 0}
+      <div class="note-module-row" data-module-row="purpose">
+        {#each shownPurposes as purpose (purpose)}
+          {@const option = PURPOSE_OPTIONS.find((item) => item.id === purpose)}
+          {@const isExternal = linkedPurposes(note.id).includes(purpose)}
+          {@const isEmbedded = note.purposes?.includes(purpose) ?? false}
+          {#if option}
+            <ModuleChip
+              label={option.label}
+              color={option.color}
+              iconPath={option.iconPath}
+              linked={isExternal}
+              pressed={pickerKind === "purpose"}
+              interactive
+              onClick={() => openPicker("purpose")}
+              dragKind={isEmbedded ? "purpose" : undefined}
+              dragValue={isEmbedded ? purpose : undefined}
+              dragNoteId={note.id}
+            />
+          {/if}
+        {/each}
+      </div>
+    {/if}
+
+    {#if shownMoods.length > 0 || modulePicker.noteId === note.id && modulePicker.kind === "mood"}
+      <MoodRow {note} />
+    {/if}
 
     {#if dropMessage}
       <span class="module-drop-message" data-selection-ignore role="status">{dropMessage}</span>

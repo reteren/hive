@@ -11,14 +11,14 @@
   import { clearSelection } from "../selection/selection.svelte";
   import { isLineTool, tool } from "../tools/tool.svelte";
   import { objectColor } from "./colors";
-  import { strokeIntersectsPath } from "./lineGeometry";
+  import { marqueeIntersectsPath, strokeIntersectsPath } from "./lineGeometry";
   import { buildArrowGeometry, buildShape, buildShapeDashPaths, type ShapeResult } from "./shapes";
   import { pointOnCircleToward, projectPointToAnchor, shapeEndpoints } from "./anchors";
   import { clientToBoardPoint, clientToWorld } from "./coordinates";
-  import { completeLinkGesture, resolveCutRelease, type LinkDraft } from "./gestures";
+  import { completeLinkGesture, previewLinkKind, resolveCutRelease, type LinkDraft } from "./gestures";
   import { cancelLineDraft, lineInteraction, setLineError } from "./interaction.svelte";
   import { createBoardLink, cutLinks } from "./operations";
-  import { clearSelectedLink, selectLink, selectedLink } from "./selection.svelte";
+  import { clearSelectedLink, selectLink, selectedLinkIds, selectLinks, toggleLinkSelection } from "./selection.svelte";
 
   const CUT_DRAG_THRESHOLD_PX = 5;
   const CUT_TOLERANCE_PX = 4;
@@ -55,7 +55,8 @@
         captured: boolean;
         start: Point;
       }
-    | { kind: "cut"; id: number; start: Point; startLinkId: string | null; captured: boolean };
+    | { kind: "cut"; id: number; start: Point; startLinkId: string | null; captured: boolean }
+    | { kind: "marquee"; id: number; start: Point; captured: boolean };
 
   interface PreviewLink {
     path: string;
@@ -66,6 +67,7 @@
 
   let layer: HTMLDivElement;
   let gesture: PointerGesture | null = null;
+  let linkMarquee = $state<{ start: Point; end: Point } | null>(null);
   let lastBodyClick: { id: string; at: number } | null = null;
   let textSelectionElement: HTMLElement | null = null;
   let previousUserSelect = "";
@@ -111,7 +113,7 @@
       shaftPath: arrow.shaftPath,
       headPath: arrow.headPath,
       dashPaths,
-      selected: selectedLink.id === link.id,
+      selected: selectedLinkIds().includes(link.id),
       gradient,
     }];
   }));
@@ -139,7 +141,8 @@
       sourceBounds: sourceId === ME_OBJECT_ID ? undefined : source,
     });
     const arrow = buildArrowGeometry(tool.lineShape, geometry);
-    const kind = tool.active === "line-weak" ? "weak" : "strong";
+    const kind = previewLinkKind(tool.active);
+    if (!kind) return null;
     const shapeDashes = kind === "weak" && (tool.lineShape === "wave" || tool.lineShape === "zigzag")
       ? buildShapeDashPaths(tool.lineShape, geometry, arrow.shaftLength)
       : [];
@@ -218,6 +221,18 @@
       if (event.button !== 0) return;
 
       if (isLineTool()) {
+        const hitLinkId = linkAt(event.target);
+        if (hitLinkId) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          cancelLineDraft();
+          clearSelection();
+          if (event.ctrlKey || event.metaKey || event.shiftKey) toggleLinkSelection(hitLinkId);
+          else selectLink(hitLinkId);
+          lastBodyClick = null;
+          return;
+        }
+
         const objectId = objectAt(point, event.target);
         const noteBody = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-note-body]") : null;
         const now = performance.now();
@@ -236,6 +251,9 @@
         event.stopImmediatePropagation();
         if (!objectId) {
           cancelLineDraft();
+          clearSelection();
+          gesture = { kind: "marquee", id: event.pointerId, start: point, captured: false };
+          linkMarquee = { start: point, end: point };
           lastBodyClick = null;
           return;
         }
@@ -276,7 +294,8 @@
         event.preventDefault();
         event.stopImmediatePropagation();
         clearSelection();
-        selectLink(linkId);
+        if (event.ctrlKey || event.metaKey || event.shiftKey) toggleLinkSelection(linkId);
+        else selectLink(linkId);
         return;
       }
       clearSelectedLink();
@@ -296,6 +315,8 @@
           if (!lastPoint || Math.hypot(point.x - lastPoint.x, point.y - lastPoint.y) >= 2) {
             lineInteraction.cutStroke = [...lineInteraction.cutStroke, point];
           }
+        } else if (gesture.kind === "marquee") {
+          linkMarquee = { start: gesture.start, end: point };
         } else {
           lineInteraction.preview = worldPoint(event);
         }
@@ -372,6 +393,28 @@
       if (crossed.length > 0) cutLinks(crossed);
     }
 
+    function finishMarquee(active: Extract<PointerGesture, { kind: "marquee" }>, point: Point, event: PointerEvent): void {
+      linkMarquee = null;
+      const dragged = Math.hypot(point.x - active.start.x, point.y - active.start.y) >= CUT_DRAG_THRESHOLD_PX;
+      if (!dragged) {
+        if (!event.ctrlKey && !event.metaKey && !event.shiftKey) clearSelectedLink();
+        return;
+      }
+
+      const first = screenToWorld(camera, viewport, active.start);
+      const last = screenToWorld(camera, viewport, point);
+      const touched = renderedLinks
+        .filter((link) => marqueeIntersectsPath({
+          x: first.x,
+          y: first.y,
+          width: last.x - first.x,
+          height: last.y - first.y,
+        }, { type: "polyline", points: link.geometry.polyline }))
+        .map((link) => link.id);
+      const additive = event.ctrlKey || event.metaKey || event.shiftKey;
+      selectLinks(touched, additive);
+    }
+
     function finishPointer(event: PointerEvent): void {
       if (!gesture || gesture.id !== event.pointerId) return;
       const active = gesture;
@@ -380,12 +423,18 @@
       const point = localPoint(event);
 
       if (!isLineTool()) {
+        linkMarquee = null;
         cancelLineDraft();
         return;
       }
 
       if (active.kind === "cut") {
         finishCut(active, point);
+        return;
+      }
+      if (active.kind === "marquee") {
+        finishMarquee(active, point, event);
+        cancelLineDraft();
         return;
       }
 
@@ -417,6 +466,7 @@
     function onPointerCancel(event: PointerEvent): void {
       if (!gesture || gesture.id !== event.pointerId) return;
       gesture = null;
+      linkMarquee = null;
       restoreTextSelection();
       cancelLineDraft();
     }
@@ -579,6 +629,16 @@
       <polyline points={lineInteraction.cutStroke.map((point) => `${point.x},${point.y}`).join(" ")} />
     </svg>
   {/if}
+  {#if linkMarquee}
+    <div
+      class="link-selection-marquee"
+      data-selection-ignore
+      style:left="{Math.min(linkMarquee.start.x, linkMarquee.end.x)}px"
+      style:top="{Math.min(linkMarquee.start.y, linkMarquee.end.y)}px"
+      style:width="{Math.abs(linkMarquee.end.x - linkMarquee.start.x)}px"
+      style:height="{Math.abs(linkMarquee.end.y - linkMarquee.start.y)}px"
+    ></div>
+  {/if}
   {#if lineInteraction.error}
     <div
       class="line-error"
@@ -645,7 +705,6 @@
 
   .link-line.link-preview {
     stroke: #c5ad72;
-    stroke-dasharray: 2.4 1.2;
     opacity: 0.85;
   }
 
@@ -688,6 +747,14 @@
     pointer-events: none;
   }
 
+  .link-selection-marquee {
+    position: absolute;
+    z-index: 39;
+    border: 1px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    pointer-events: none;
+  }
+
   .cut-preview polyline {
     fill: none;
     stroke: #ffe17a;
@@ -700,14 +767,18 @@
   .line-error {
     position: absolute;
     z-index: 41;
-    max-width: 240px;
+    box-sizing: border-box;
+    width: max-content;
+    max-width: min(280px, calc(100vw - 16px));
     padding: 4px 7px;
     border: 1px solid #735b28;
     border-radius: 3px;
     color: var(--text);
     background: rgba(35, 32, 25, 0.96);
     font-size: 11px;
-    white-space: nowrap;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+    white-space: normal;
     pointer-events: none;
   }
 </style>

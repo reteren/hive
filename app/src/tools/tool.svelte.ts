@@ -8,7 +8,7 @@ export type ToolId = "select" | "line-strong" | "line-weak";
 
 export const tool: { active: ToolId; lineShape: LineShape } = $state({
   active: "select",
-  lineShape: "straight",
+  lineShape: "base",
 });
 
 export function isLineTool(id: ToolId = tool.active): boolean {

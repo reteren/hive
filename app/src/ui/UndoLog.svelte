@@ -4,7 +4,6 @@
     history,
     jumpTo,
     redo,
-    setHistoryLimit,
     toggleUndoLogPin,
     undo,
     undoLogPanel,
@@ -12,31 +11,10 @@
   import { formatKey } from "../commands/keys";
   import { getCommand } from "../commands/registry.svelte";
 
-  let limitDraft = $state(String(history.limit));
   let undoCommand = $derived(getCommand("edit.undo"));
   let redoCommand = $derived(getCommand("edit.redo"));
   let undoBindings = $derived(undoCommand?.keys.map(formatKey).join(", ") ?? "");
   let redoBindings = $derived(redoCommand?.keys.map(formatKey).join(", ") ?? "");
-  $effect(() => {
-    limitDraft = String(history.limit);
-  });
-
-  function changeLimit(event: Event): void {
-    const value = event.currentTarget;
-    if (!(value instanceof HTMLInputElement)) return;
-    setHistoryLimit(value.valueAsNumber);
-    limitDraft = String(history.limit);
-  }
-
-  function handleLimitKeydown(event: KeyboardEvent): void {
-    if (event.key === "Enter") {
-      (event.currentTarget as HTMLInputElement).blur();
-    } else if (event.key === "Escape") {
-      limitDraft = String(history.limit);
-      (event.currentTarget as HTMLInputElement).blur();
-    }
-  }
-
   function moveTo(index: number): void {
     try {
       jumpTo(index);
@@ -103,22 +81,6 @@
       title={`Redo${redoBindings ? ` · ${redoBindings}` : ""}`}
     >Redo {#if redoBindings}<kbd>{redoBindings}</kbd>{/if}</button>
   </div>
-
-  <label class="limit-setting">
-    <span>History limit</span>
-    <input
-      type="number"
-      min="8"
-      max="256"
-      step="1"
-      value={limitDraft}
-      aria-label="History limit in steps, from 8 to 256"
-      oninput={(event) => { limitDraft = event.currentTarget.value; }}
-      onchange={changeLimit}
-      onkeydown={handleLimitKeydown}
-    />
-    <span class="unit">steps</span>
-  </label>
 
   <ol class="history-list" aria-label="Recorded operations">
     <li class="history-row start" class:current={history.cursor === 0}>
@@ -201,8 +163,7 @@
 
   .panel-title > span,
   .entry-state,
-  .entry-target,
-  .unit {
+  .entry-target {
     color: var(--text-dim);
     font-family: var(--mono-font);
     font-size: 9px;
@@ -284,36 +245,6 @@
     color: var(--text-dim);
     font-family: var(--mono-font);
     font-size: 9px;
-  }
-
-  .limit-setting {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 9px;
-    border-block: 1px solid #393939;
-    color: var(--text-dim);
-    font-size: 10px;
-  }
-
-  .limit-setting input {
-    width: 56px;
-    height: 23px;
-    margin-left: auto;
-    padding: 2px 5px;
-    border: 1px solid #484848;
-    border-radius: 3px;
-    background: #181818;
-    color: var(--text);
-    font: inherit;
-    font-family: var(--mono-font);
-    font-variant-numeric: tabular-nums;
-    text-align: right;
-  }
-
-  .limit-setting input:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
   }
 
   .history-list {

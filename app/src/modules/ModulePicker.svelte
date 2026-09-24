@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy, onMount } from "svelte";
   import ModuleChip from "./ModuleChip.svelte";
   import type { ModuleOption } from "./moduleLogic";
 
@@ -34,6 +35,29 @@
 
   let draftId = $state<string | null>(null);
 
+  function onWindowPointerDown(event: PointerEvent): void {
+    const target = event.target;
+    if (!(target instanceof Element) || target.closest("[data-module-picker], [data-module-trigger]")) return;
+    onClose();
+  }
+
+  function onWindowKeydown(event: KeyboardEvent): void {
+    if (event.code !== "Escape") return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    onClose();
+  }
+
+  onMount(() => {
+    window.addEventListener("pointerdown", onWindowPointerDown, true);
+    window.addEventListener("keydown", onWindowKeydown, true);
+  });
+
+  onDestroy(() => {
+    window.removeEventListener("pointerdown", onWindowPointerDown, true);
+    window.removeEventListener("keydown", onWindowKeydown, true);
+  });
+
   $effect(() => {
     draftId = selected[0] ?? null;
   });
@@ -47,6 +71,7 @@
 
 <div
   class="module-picker"
+  data-module-picker
   data-selection-ignore
   role="group"
   aria-label={title}

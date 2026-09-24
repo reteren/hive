@@ -8,7 +8,7 @@ import {
   type ShapeInput,
 } from "../src/links/shapes";
 
-const shapes: LineShape[] = ["straight", "curved", "orthogonal", "wave", "zigzag"];
+const shapes: LineShape[] = ["base", "orthogonal", "zigzag", "wave"];
 
 function input(start = { x: 0, y: 0 }, end = { x: 20, y: 0 }): ShapeInput {
   return {
@@ -102,11 +102,11 @@ describe("buildShape", () => {
     }
   });
 
-  it("builds a smooth curved route that moves continuously with its endpoints", () => {
+  it("builds a smooth base route that moves continuously with its endpoints", () => {
     const original = input({ x: 0, y: 0 }, { x: 30, y: 12 });
     const moved = input({ x: 0.01, y: -0.01 }, { x: 30.01, y: 12.02 });
-    const before = buildShape("curved", original);
-    const after = buildShape("curved", moved);
+    const before = buildShape("base", original);
+    const after = buildShape("base", moved);
 
     expect(before.path).toContain(" C ");
     expect(distance(before.polyline[0], after.polyline[0])).toBeCloseTo(0.014, 2);

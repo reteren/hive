@@ -4,8 +4,10 @@ import { isFrameAnchor } from "../links/anchors";
 import { newId } from "../model/note";
 import {
   IMPORTANCE_LEVELS,
+  MOOD_KINDS,
   PURPOSE_KINDS,
   type ImportanceLevel,
+  type MoodKind,
   type Note,
   type NoteKind,
   type PurposeKind,
@@ -34,6 +36,7 @@ export interface ClipboardNode {
   taskMemory: TaskState | null;
   importance: ImportanceLevel | null;
   purposes: PurposeKind[];
+  moods: MoodKind[];
 }
 
 export interface ClipboardLink {
@@ -44,6 +47,10 @@ export interface ClipboardLink {
   fromAnchor?: LinkAnchor;
   toAnchor?: LinkAnchor;
 }
+
+type ClipboardLinkInput = Omit<ClipboardLink, "shape"> & {
+  shape: Link["shape"] | "straight" | "curved";
+};
 
 export interface HiveClipboardPayload {
   marker: typeof HIVE_CLIPBOARD_MARKER;
@@ -66,7 +73,7 @@ export function serializeNotes(notes: readonly Note[], links: readonly Clipboard
     marker: HIVE_CLIPBOARD_MARKER,
     version: HIVE_CLIPBOARD_VERSION,
     nodes: notes.map(({
-      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, importance, purposes,
+      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, importance, purposes, moods,
     }) => ({
       sourceId: id,
       type,
@@ -81,6 +88,7 @@ export function serializeNotes(notes: readonly Note[], links: readonly Clipboard
       taskMemory: taskMemory ? { ...taskMemory } : null,
       importance: importance ?? null,
       purposes: [...new Set(purposes ?? [])],
+      moods: [...new Set(moods ?? [])],
     })),
     links: links.flatMap((link) => noteIds.has(link.from) && noteIds.has(link.to)
       ? [{
@@ -134,7 +142,7 @@ export function parseNotesPayload(serialized: string): HiveClipboardPayload | nu
       from: candidate.from,
       to: candidate.to,
       kind: candidate.kind,
-      shape: candidate.shape,
+      shape: normalizeClipboardLineShape(candidate.shape),
       ...(candidate.fromAnchor ? { fromAnchor: candidate.fromAnchor } : {}),
       ...(candidate.toAnchor ? { toAnchor: candidate.toAnchor } : {}),
     });
@@ -217,7 +225,7 @@ export function placeNotes<T extends NoteGeometry>(
 function parseClipboardNode(value: unknown): ClipboardNode | null {
   if (!isRecord(value) || typeof value.sourceId !== "string" || value.sourceId.trim().length === 0 ||
     (value.type !== "note" && value.type !== "pro" && value.type !== "con" &&
-      value.type !== "importance" && value.type !== "purpose") ||
+      value.type !== "importance" && value.type !== "purpose" && value.type !== "mood") ||
     typeof value.name !== "string" || typeof value.text !== "string" ||
     !finite(value.x) || !finite(value.y) || !finite(value.width) || value.width <= 0 ||
     !(value.height === null || (finite(value.height) && value.height > 0)) ||
@@ -231,6 +239,8 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
   if (value.importance !== undefined && value.importance !== null && !importance) return null;
   const purposes = parsePurposes(value.purposes);
   if (!purposes) return null;
+  const moods = parseMoods(value.moods);
+  if (!moods) return null;
 
   return {
     sourceId: value.sourceId,
@@ -246,6 +256,7 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     taskMemory,
     importance,
     purposes,
+    moods,
   };
 }
 
@@ -276,14 +287,31 @@ function parsePurposes(value: unknown): PurposeKind[] | null {
   return purposes;
 }
 
-function isClipboardLink(value: unknown): value is ClipboardLink {
+function isClipboardLink(value: unknown): value is ClipboardLinkInput {
   return isRecord(value) && typeof value.from === "string" && value.from.length > 0 &&
     typeof value.to === "string" && value.to.length > 0 &&
     (value.kind === "strong" || value.kind === "weak") &&
-    (value.shape === "straight" || value.shape === "curved" || value.shape === "orthogonal" ||
-      value.shape === "wave" || value.shape === "zigzag") &&
+    (value.shape === "base" || value.shape === "straight" || value.shape === "curved" ||
+      value.shape === "orthogonal" || value.shape === "wave" || value.shape === "zigzag") &&
     (!Object.hasOwn(value, "fromAnchor") || isFrameAnchor(value.fromAnchor)) &&
     (!Object.hasOwn(value, "toAnchor") || isFrameAnchor(value.toAnchor));
+}
+
+function parseMoods(value: unknown): MoodKind[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return null;
+  const moods: MoodKind[] = [];
+  for (const candidate of value) {
+    if (typeof candidate !== "string" || !MOOD_KINDS.includes(candidate as MoodKind)) return null;
+    const mood = candidate as MoodKind;
+    if (!moods.includes(mood)) moods.push(mood);
+  }
+  return moods;
+}
+
+function normalizeClipboardLineShape(shape: unknown): Link["shape"] {
+  if (shape === "straight" || shape === "curved") return "base";
+  return shape as Link["shape"];
 }
 
 function finite(value: unknown): value is number {

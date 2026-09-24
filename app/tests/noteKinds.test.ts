@@ -24,7 +24,7 @@ beforeEach(() => {
   editing.noteId = null;
   selection.ids = [];
   clearSelection();
-  tool.lineShape = "straight";
+  tool.lineShape = "base";
 });
 
 afterEach(() => {
@@ -33,6 +33,7 @@ afterEach(() => {
   replaceLinks([]);
   editing.noteId = null;
   clearSelection();
+  tool.lineShape = "base";
 });
 
 describe("plus and minus mini-nodes", () => {
@@ -70,6 +71,7 @@ describe("plus and minus mini-nodes", () => {
   });
 
   it("quick-adds a nearby strong child link as one undo and redo step", () => {
+    tool.lineShape = "wave";
     replaceBoard([
       note("parent", "Parent"),
       note("blocker", "Blocker", 32, 20),
@@ -80,7 +82,7 @@ describe("plus and minus mini-nodes", () => {
     const [link] = Object.values(links.byId);
 
     expect(child).toMatchObject({ type: "pro", name: "Plus", x: 52, y: 0, width: DEFAULT_MINI_NOTE_WIDTH });
-    expect(link).toMatchObject({ from: "parent", to: childId, kind: "strong", shape: "straight" });
+    expect(link).toMatchObject({ from: "parent", to: childId, kind: "strong", shape: "base" });
     expect(history.entries).toHaveLength(1);
     expect(history.cursor).toBe(1);
     expect(history.entries[0]).toMatchObject({ label: "Add plus", target: "Parent → Plus" });

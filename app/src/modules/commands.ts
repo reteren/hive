@@ -1,12 +1,12 @@
 import { board } from "../model/board.svelte";
 import { registerNoteMenuItem } from "../notes/noteMenu";
-import { isLinkedImportance, setImportance, openModulePicker } from "./moduleActions.svelte";
+import { isLinkedImportance, setImportance, toggleModulePicker } from "./moduleActions.svelte";
 import { importanceMenuLabel } from "./moduleLogic";
 
 registerNoteMenuItem({
   id: "module.importance",
   label: (noteId) => importanceMenuLabel(board.notes[noteId], isLinkedImportance(noteId)),
-  run: (noteId) => openModulePicker(noteId, "importance"),
+  run: (noteId) => toggleModulePicker(noteId, "importance"),
   visible: (noteId) => isContentNote(noteId),
   order: 40,
 });
@@ -23,9 +23,17 @@ registerNoteMenuItem({
 registerNoteMenuItem({
   id: "module.purpose",
   label: () => "Add Purpose",
-  run: (noteId) => openModulePicker(noteId, "purpose"),
+  run: (noteId) => toggleModulePicker(noteId, "purpose"),
   visible: (noteId) => isContentNote(noteId),
   order: 42,
+});
+
+registerNoteMenuItem({
+  id: "module.mood",
+  label: () => "Add Mood",
+  run: (noteId) => toggleModulePicker(noteId, "mood"),
+  visible: (noteId) => isContentNote(noteId),
+  order: 43,
 });
 
 function isContentNote(noteId: string): boolean {

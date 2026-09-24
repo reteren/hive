@@ -2,8 +2,9 @@ import { isValidGridStep } from "../board/gridMath";
 import type { Camera } from "../board/cameraMath";
 import { sanitizeKeyOverrides, type KeyBindingOverrides } from "../commands/keymap";
 import { DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT, MIN_HISTORY_LIMIT } from "../history/historyStack";
+import { systemPrefersReducedMotion } from "./motion";
 
-export const VIEW_SETTINGS_VERSION = 3;
+export const VIEW_SETTINGS_VERSION = 4;
 
 export interface CameraSettings {
   minZoom: number;
@@ -26,12 +27,17 @@ export interface HistorySettings {
   limit: number;
 }
 
+export interface AccessibilitySettings {
+  reduceAnimations: boolean;
+}
+
 export interface ViewSettings {
   camera: Camera;
   cameraSettings: CameraSettings;
   grid: GridSettings;
   display: DisplaySettings;
   history: HistorySettings;
+  accessibility: AccessibilitySettings;
   keyOverrides: KeyBindingOverrides;
 }
 
@@ -46,6 +52,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
   grid: { step: 10, showGrid: true, snap: false },
   display: { rightPanelOpen: true },
   history: { limit: DEFAULT_HISTORY_LIMIT },
+  accessibility: { reduceAnimations: systemPrefersReducedMotion() },
   keyOverrides: {},
 };
 
@@ -76,6 +83,7 @@ export function parseViewSettings(serialized: string | null | undefined, default
   const gridInput = asRecord(parsed.grid);
   const displayInput = asRecord(parsed.display);
   const historyInput = asRecord(parsed.history);
+  const accessibilityInput = asRecord(parsed.accessibility);
 
   return {
     camera: {
@@ -97,6 +105,9 @@ export function parseViewSettings(serialized: string | null | undefined, default
     history: {
       limit: historyLimitOrDefault(historyInput.limit, defaults.history.limit),
     },
+    accessibility: {
+      reduceAnimations: booleanOrDefault(accessibilityInput.reduceAnimations, defaults.accessibility.reduceAnimations),
+    },
     keyOverrides: sanitizeKeyOverrides(parsed.keyOverrides),
   };
 }
@@ -115,6 +126,7 @@ export function serializeViewSettings(settings: ViewSettings): string {
     grid: { step: settings.grid.step, showGrid: settings.grid.showGrid, snap: settings.grid.snap },
     display: { rightPanelOpen: settings.display.rightPanelOpen },
     history: { limit: settings.history.limit },
+    accessibility: { reduceAnimations: settings.accessibility.reduceAnimations },
     keyOverrides: sanitizeKeyOverrides(settings.keyOverrides),
   });
 }
@@ -149,6 +161,7 @@ function cloneViewSettings(settings: ViewSettings): ViewSettings {
     grid: { ...settings.grid },
     display: { ...settings.display },
     history: { ...settings.history },
+    accessibility: { ...settings.accessibility },
     keyOverrides: sanitizeKeyOverrides(settings.keyOverrides),
   };
 }

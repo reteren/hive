@@ -42,7 +42,7 @@ describe("clipboard payload", () => {
         from: "note-a", to: "note-b", kind: "strong", shape: "wave",
         fromAnchor: { x: 1, y: 0.4 }, toAnchor: { x: 0, y: 0.7 },
       },
-      { from: "note-a", to: "other", kind: "weak", shape: "straight" },
+      { from: "note-a", to: "other", kind: "weak", shape: "base" },
     ]);
     const value = JSON.parse(serialized);
 
@@ -87,12 +87,27 @@ describe("clipboard payload", () => {
   it("remaps internal link endpoints to the newly pasted notes", () => {
     const copied = remapClipboardLinks([
       { from: "note-a", to: "note-b", kind: "strong", shape: "zigzag", fromAnchor: { x: 1, y: 0.5 } },
-      { from: "note-a", to: "outside", kind: "weak", shape: "straight" },
+      { from: "note-a", to: "outside", kind: "weak", shape: "base" },
     ], new Map([["note-a", "copy-a"], ["note-b", "copy-b"]]), () => "new-link");
 
     expect(copied).toEqual([{
       id: "new-link", from: "copy-a", to: "copy-b", kind: "strong", shape: "zigzag", fromAnchor: { x: 1, y: 0.5 },
     }]);
+  });
+
+  it("migrates legacy straight and curved shapes while parsing copied links", () => {
+    const payload = JSON.parse(serializeNotes([noteA, noteB], [
+      { from: "note-a", to: "note-b", kind: "strong", shape: "base" },
+    ])) as Record<string, unknown>;
+    payload.links = [
+      { from: "note-a", to: "note-b", kind: "strong", shape: "straight" },
+    ];
+
+    expect(parseNotesPayload(JSON.stringify(payload))?.links[0].shape).toBe("base");
+    payload.links = [
+      { from: "note-a", to: "note-b", kind: "strong", shape: "curved" },
+    ];
+    expect(parseNotesPayload(JSON.stringify(payload))?.links[0].shape).toBe("base");
   });
 
   it("round trips R3 fields and pastes completed tasks as open", () => {
@@ -104,6 +119,7 @@ describe("clipboard payload", () => {
       taskMemory: { done: false, doneAt: null },
       importance: "absolute",
       purposes: ["concept", "decision", "concept"],
+      moods: ["joy", "anger", "joy"],
     };
     const parsed = parseNotesPayload(serializeNotes([source]));
 
@@ -113,6 +129,7 @@ describe("clipboard payload", () => {
       task: { done: true, doneAt: 1_700_000_000_000 },
       importance: "absolute",
       purposes: ["concept", "decision"],
+      moods: ["joy", "anger"],
     });
     expect(parsed?.nodes[0].taskMemory).toEqual({ done: false, doneAt: null });
     expect(taskFieldsForPaste(parsed!.nodes[0])).toEqual({
@@ -127,7 +144,7 @@ describe("clipboard payload", () => {
   it("reads v1 clipboard data with default R3 fields", () => {
     const current = JSON.parse(serializeNotes([noteA])) as Record<string, unknown>;
     const nodes = current.nodes as Array<Record<string, unknown>>;
-    const legacyNodes = nodes.map(({ task: _task, importance: _importance, purposes: _purposes, ...node }) => node);
+    const legacyNodes = nodes.map(({ task: _task, importance: _importance, purposes: _purposes, moods: _moods, ...node }) => node);
     const parsed = parseNotesPayload(JSON.stringify({ ...current, version: 1, nodes: legacyNodes }));
 
     expect(parsed?.nodes[0]).toMatchObject({
@@ -135,13 +152,23 @@ describe("clipboard payload", () => {
     });
   });
 
-  it("round trips standalone Importance and Purpose node kinds", () => {
+  it("round trips standalone Importance, Purpose, and Mood node kinds", () => {
     const parsed = parseNotesPayload(serializeNotes([
       { ...noteA, id: "importance-1", type: "importance", importance: "important" },
       { ...noteB, id: "purpose-1", type: "purpose", purposes: ["quote"] },
+      { ...noteA, id: "mood-1", type: "mood", moods: ["happiness", "joy"] },
     ]));
 
-    expect(parsed?.nodes.map((node) => node.type)).toEqual(["importance", "purpose"]);
+    expect(parsed?.nodes.map((node) => node.type)).toEqual(["importance", "purpose", "mood"]);
+    expect(parsed?.nodes[2]?.moods).toEqual(["happiness", "joy"]);
+  });
+
+  it("rejects unknown Mood values instead of copying malformed module data", () => {
+    const valid = JSON.parse(serializeNotes([
+      { ...noteA, id: "mood-1", type: "mood", moods: ["happiness"] },
+    ]));
+    valid.nodes[0].moods = ["unknown"];
+    expect(parseNotesPayload(JSON.stringify(valid))).toBeNull();
   });
 });
 

@@ -1,9 +1,8 @@
 import { registerCommand } from "../commands/registry.svelte";
 import { cancelLineDraft } from "./interaction.svelte";
-import { clearSelectedLink, selectedLink } from "./selection.svelte";
-import { links } from "../model/links.svelte";
+import { clearSelectedLink, selectedLinkIds } from "./selection.svelte";
 import { tool, type ToolId } from "../tools/tool.svelte";
-import { changeLinkShape, cutLinks } from "./operations";
+import { cycleLinkShapes } from "./operations";
 import { nextLineShape } from "./lineGeometry";
 import { nextTool } from "./gestures";
 
@@ -47,8 +46,7 @@ registerCommand({
   keys: [],
   run: () => {
     tool.lineShape = nextLineShape(tool.lineShape);
-    const link = selectedLink.id ? links.byId[selectedLink.id] : undefined;
-    if (link) changeLinkShape(link.id, nextLineShape(link.shape));
+    cycleLinkShapes(selectedLinkIds());
   },
-  isActive: () => tool.lineShape !== "straight",
+  isActive: () => tool.lineShape !== "base",
 });

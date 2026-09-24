@@ -1,8 +1,10 @@
 import type { HistoryCommand } from "../history/historyStack";
 import {
   IMPORTANCE_LEVELS,
+  MOOD_KINDS,
   PURPOSE_KINDS,
   type ImportanceLevel,
+  type MoodKind,
   type Note,
   type PurposeKind,
 } from "../model/note";
@@ -34,12 +36,39 @@ export const PURPOSE_OPTIONS: readonly ModuleOption[] = [
   { id: "timeline", label: "Timeline", color: "#cf91ae", iconPath: "M2.5 8h11 M4 5.5v5 M8 3.5v9 M12 6v4" },
 ];
 
+/** Moods use color alone; the board deliberately uses no emoji or mood pictograms. */
+export const MOOD_OPTIONS: readonly ModuleOption[] = [
+  { id: "anger", label: "Anger", color: "#f06b68" },
+  { id: "happiness", label: "Happiness", color: "#f1c85b" },
+  { id: "sadness", label: "Sadness", color: "#79a9df" },
+  { id: "disgust", label: "Disgust", color: "#a5a84e" },
+  { id: "fear", label: "Fear", color: "#9c78c7" },
+  { id: "surprise", label: "Surprise", color: "#65c6c8" },
+  { id: "joy", label: "Joy", color: "#f0aa48" },
+  { id: "love", label: "Love", color: "#e780a8" },
+  { id: "excitement", label: "Excitement", color: "#ed8951" },
+  { id: "gratitude", label: "Gratitude", color: "#7ec5a0" },
+  { id: "pride", label: "Pride", color: "#c5a0e5" },
+  { id: "envy", label: "Envy", color: "#7fae62" },
+  { id: "guilt", label: "Guilt", color: "#c28362" },
+  { id: "shame", label: "Shame", color: "#bd7894" },
+  { id: "jealousy", label: "Jealousy", color: "#688e58" },
+  { id: "disappointment", label: "Disappointment", color: "#8494b2" },
+  { id: "confusion", label: "Confusion", color: "#b1a1d5" },
+  { id: "curiosity", label: "Curiosity", color: "#71b9ae" },
+  { id: "boredom", label: "Boredom", color: "#92979e" },
+  { id: "relief", label: "Relief", color: "#8dc9bd" },
+];
+
 export const MODULE_NOTE_WIDTH = 14;
 export const MODULE_NOTE_HEIGHT = 4;
 
-export type ModuleDataPatch = Partial<Pick<Note, "importance" | "purposes">>;
+export type ModuleArrayKind = "purpose" | "mood";
+export type ExternalModuleKind = "importance" | ModuleArrayKind;
+export type ModuleRowKind = ExternalModuleKind;
+export type ModuleDataPatch = Partial<Pick<Note, "importance" | "purposes" | "moods">>;
 export type ModuleDataWriter = (noteId: string, patch: ModuleDataPatch) => void;
-export type ModuleNoteValue = Pick<Note, "id" | "type" | "importance" | "purposes">;
+export type ModuleNoteValue = Pick<Note, "id" | "type" | "importance" | "purposes" | "moods">;
 export type ModuleNoteLookup = Readonly<Record<string, ModuleNoteValue | undefined>>;
 export type ModuleEdge = Pick<Link, "from" | "to" | "kind">;
 
@@ -73,18 +102,15 @@ export function effectivePurposesFor(
   notes: ModuleNoteLookup,
   edges: readonly ModuleEdge[],
 ): PurposeKind[] {
-  const note = notes[noteId];
-  if (!isAssignableNote(note)) return [];
+  return effectiveArrayValues(noteId, "purpose", "purposes", notes, edges, isPurposeKind);
+}
 
-  const result: PurposeKind[] = [];
-  const add = (value: string) => {
-    if (isPurposeKind(value) && !result.includes(value)) result.push(value);
-  };
-  for (const purpose of note.purposes ?? []) add(purpose);
-  for (const module of linkedModules(noteId, "purpose", notes, edges)) {
-    for (const purpose of module.purposes ?? []) add(purpose);
-  }
-  return result;
+export function effectiveMoodsFor(
+  noteId: string,
+  notes: ModuleNoteLookup,
+  edges: readonly ModuleEdge[],
+): MoodKind[] {
+  return effectiveArrayValues(noteId, "mood", "moods", notes, edges, isMoodKind);
 }
 
 export function linkedPurposesFor(
@@ -92,13 +118,15 @@ export function linkedPurposesFor(
   notes: ModuleNoteLookup,
   edges: readonly ModuleEdge[],
 ): PurposeKind[] {
-  const result: PurposeKind[] = [];
-  for (const module of linkedModules(noteId, "purpose", notes, edges)) {
-    for (const purpose of module.purposes ?? []) {
-      if (isPurposeKind(purpose) && !result.includes(purpose)) result.push(purpose);
-    }
-  }
-  return result;
+  return linkedArrayValues(noteId, "purpose", "purposes", notes, edges, isPurposeKind);
+}
+
+export function linkedMoodsFor(
+  noteId: string,
+  notes: ModuleNoteLookup,
+  edges: readonly ModuleEdge[],
+): MoodKind[] {
+  return linkedArrayValues(noteId, "mood", "moods", notes, edges, isMoodKind);
 }
 
 export function linkedImportanceSourcesFor(
@@ -118,12 +146,28 @@ export function importanceMenuLabel(
   return note?.importance || hasLinkedSource ? "Change Importance" : "Add Importance";
 }
 
+export function moduleRowsFor(
+  importance: ImportanceLevel | null,
+  purposes: readonly PurposeKind[],
+  moods: readonly MoodKind[],
+): ModuleRowKind[] {
+  const rows: ModuleRowKind[] = [];
+  if (importance) rows.push("importance");
+  if (purposes.length > 0) rows.push("purpose");
+  if (moods.length > 0) rows.push("mood");
+  return rows;
+}
+
 export function isImportanceLevel(value: string): value is ImportanceLevel {
   return IMPORTANCE_LEVELS.includes(value as ImportanceLevel);
 }
 
 export function isPurposeKind(value: string): value is PurposeKind {
   return PURPOSE_KINDS.includes(value as PurposeKind);
+}
+
+export function isMoodKind(value: string): value is MoodKind {
+  return MOOD_KINDS.includes(value as MoodKind);
 }
 
 export function createImportanceCommand(
@@ -147,19 +191,17 @@ export function createPurposeToggleCommand(
   purpose: PurposeKind,
   write: ModuleDataWriter,
 ): HistoryCommand | null {
-  const previous = note.purposes ? [...note.purposes] : note.purposes;
-  const current = note.purposes ?? [];
-  const adding = !current.includes(purpose);
-  const next = adding ? [...current, purpose] : current.filter((item) => item !== purpose);
-  if (sameValues(current, next) && note.purposes !== undefined) return null;
-
   const label = PURPOSE_OPTIONS.find((option) => option.id === purpose)?.label ?? purpose;
-  return {
-    label: `${adding ? "Add" : "Remove"} Purpose: ${label}`,
-    target: note.name,
-    do: () => write(note.id, { purposes: next }),
-    undo: () => write(note.id, { purposes: previous }),
-  };
+  return createArrayToggleCommand(note, "purposes", purpose, label, write);
+}
+
+export function createMoodToggleCommand(
+  note: Pick<Note, "id" | "name" | "moods">,
+  mood: MoodKind,
+  write: ModuleDataWriter,
+): HistoryCommand | null {
+  const label = MOOD_OPTIONS.find((option) => option.id === mood)?.label ?? mood;
+  return createArrayToggleCommand(note, "moods", mood, label, write);
 }
 
 export function createPurposeSelectionCommand(
@@ -167,17 +209,104 @@ export function createPurposeSelectionCommand(
   purpose: PurposeKind,
   write: ModuleDataWriter,
 ): HistoryCommand | null {
-  const previous = note.purposes ? [...note.purposes] : note.purposes;
-  const next = [purpose];
-  if (previous?.length === 1 && previous[0] === purpose) return null;
-
   const label = PURPOSE_OPTIONS.find((option) => option.id === purpose)?.label ?? purpose;
+  return createArraySelectionCommand(note, "purposes", purpose, label, "Purpose", write);
+}
+
+export function createMoodSelectionCommand(
+  note: Pick<Note, "id" | "name" | "moods">,
+  mood: MoodKind,
+  write: ModuleDataWriter,
+): HistoryCommand | null {
+  const label = MOOD_OPTIONS.find((option) => option.id === mood)?.label ?? mood;
+  return createArraySelectionCommand(note, "moods", mood, label, "Mood", write);
+}
+
+function createArrayToggleCommand<T extends PurposeKind | MoodKind>(
+  note: Pick<Note, "id" | "name"> & Partial<Pick<Note, "purposes" | "moods">>,
+  field: "purposes" | "moods",
+  value: T,
+  label: string,
+  write: ModuleDataWriter,
+): HistoryCommand | null {
+  const previous = note[field] ? [...note[field]!] : note[field];
+  const current = note[field] ?? [];
+  const adding = !current.includes(value as never);
+  const next = adding ? [...current, value] : current.filter((item) => item !== value);
+  if (sameValues(current, next) && note[field] !== undefined) return null;
+
   return {
-    label: `Purpose: ${label}`,
+    label: `${adding ? "Add" : "Remove"} ${field === "purposes" ? "Purpose" : "Mood"}: ${label}`,
     target: note.name,
-    do: () => write(note.id, { purposes: next }),
-    undo: () => write(note.id, { purposes: previous }),
+    do: () => write(note.id, { [field]: next }),
+    undo: () => write(note.id, { [field]: previous }),
   };
+}
+
+function createArraySelectionCommand<T extends PurposeKind | MoodKind>(
+  note: Pick<Note, "id" | "name"> & Partial<Pick<Note, "purposes" | "moods">>,
+  field: "purposes" | "moods",
+  value: T,
+  label: string,
+  title: "Purpose" | "Mood",
+  write: ModuleDataWriter,
+): HistoryCommand | null {
+  const previous = note[field] ? [...note[field]!] : note[field];
+  const next = [value];
+  if (previous?.length === 1 && previous[0] === value) return null;
+  return {
+    label: `${title}: ${label}`,
+    target: note.name,
+    do: () => write(note.id, { [field]: next }),
+    undo: () => write(note.id, { [field]: previous }),
+  };
+}
+
+function effectiveArrayValues<T extends PurposeKind | MoodKind>(
+  noteId: string,
+  moduleType: ModuleArrayKind,
+  field: "purposes" | "moods",
+  notes: ModuleNoteLookup,
+  edges: readonly ModuleEdge[],
+  isValue: (value: string) => value is T,
+): T[] {
+  const note = notes[noteId];
+  if (!isAssignableNote(note)) return [];
+  const result = validUniqueValues(note[field], isValue);
+  for (const module of linkedModules(noteId, moduleType, notes, edges)) {
+    for (const value of validUniqueValues(module[field], isValue)) {
+      if (!result.includes(value)) result.push(value);
+    }
+  }
+  return result;
+}
+
+function linkedArrayValues<T extends PurposeKind | MoodKind>(
+  noteId: string,
+  moduleType: ModuleArrayKind,
+  field: "purposes" | "moods",
+  notes: ModuleNoteLookup,
+  edges: readonly ModuleEdge[],
+  isValue: (value: string) => value is T,
+): T[] {
+  const result: T[] = [];
+  for (const module of linkedModules(noteId, moduleType, notes, edges)) {
+    for (const value of validUniqueValues(module[field], isValue)) {
+      if (!result.includes(value)) result.push(value);
+    }
+  }
+  return result;
+}
+
+function validUniqueValues<T extends PurposeKind | MoodKind>(
+  values: readonly string[] | undefined,
+  isValue: (value: string) => value is T,
+): T[] {
+  const result: T[] = [];
+  for (const value of values ?? []) {
+    if (isValue(value) && !result.includes(value)) result.push(value);
+  }
+  return result;
 }
 
 function sameValues(left: readonly string[], right: readonly string[]): boolean {
@@ -190,7 +319,7 @@ function isAssignableNote(note: ModuleNoteValue | undefined): note is ModuleNote
 
 function linkedModules(
   noteId: string,
-  type: "importance" | "purpose",
+  type: "importance" | ModuleArrayKind,
   notes: ModuleNoteLookup,
   edges: readonly ModuleEdge[],
 ): ModuleNoteValue[] {
