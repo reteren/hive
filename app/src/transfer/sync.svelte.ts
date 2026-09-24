@@ -8,9 +8,10 @@ import { editing } from "../notes/editing.svelte";
 import { editorForNote } from "../editor/editorSession";
 import { project } from "../project/project.svelte";
 import {
+  acceptedSourcesToDeactivate,
   classifyTransfer,
-  needsTransferConfirmation,
   selectActiveTransfers,
+  stabilizeActiveTransfers,
   type TransferLinkState,
 } from "./logic";
 import { registerTextEditParticipant } from "./textEditHooks";
@@ -103,7 +104,7 @@ function promptFor(state: TransferLinkState): TransferPrompt | null {
 function updatePromptState(states: readonly TransferLinkState[]): void {
   const prompts = states.flatMap((state) => {
     if (state.relation !== "transfer" || !state.source || !state.target) return [];
-    if (!needsTransferConfirmation(state.link, state.target)) return [];
+    if (state.status !== "awaiting-confirmation") return [];
     return [promptFor(state)].filter((prompt): prompt is TransferPrompt => prompt !== null);
   });
   transferUi.prompts = prompts;
@@ -113,24 +114,11 @@ function acceptEmptyTarget(state: TransferLinkState): void {
   const { link, source, target } = state;
   if (!source || !target) return;
 
-  const previousText = target.text;
   const sourceText = source.text;
-  if (sourceText.length === 0) {
-    // There is no visible text mutation to undo; remember that the empty destination was accepted.
-    updateLink(link.id, { transferDeclined: false });
-    return;
-  }
-
-  execute({
-    label: "Transfer text",
-    target: target.name,
-    do: () => {
-      updateLink(link.id, { transferDeclined: false });
-      setTaskText(target.id, sourceText);
-    },
-    // Keep the accepted live relation; undoing this copy behaves like a local task edit.
-    undo: () => setTaskText(target.id, previousText),
-  });
+  updateLink(link.id, { transferDeclined: false });
+  setTaskText(target.id, sourceText);
+  lastSourceText.set(link.id, sourceText);
+  activeLinkByTarget.set(target.id, link.id);
 }
 
 function runTransferChoice(linkId: string, choice: "replace" | "keep"): void {
@@ -156,18 +144,28 @@ function runTransferChoice(linkId: string, choice: "replace" | "keep"): void {
 
   const previousText = target.text;
   const nextText = source.text;
+  const previousActiveLinkId = activeLinkByTarget.get(target.id);
+  const supersededChoices = acceptedSourcesToDeactivate(link, Object.values(links.byId), board.notes)
+    .map((superseded) => ({ id: superseded.id, transferDeclined: superseded.transferDeclined }));
   execute({
     label: "Transfer text",
     target: target.name,
     do: () => {
+      for (const superseded of supersededChoices) updateLink(superseded.id, { transferDeclined: true });
       updateLink(linkId, { transferDeclined: false });
       setTaskText(target.id, nextText);
       lastSourceText.set(linkId, nextText);
+      activeLinkByTarget.set(target.id, linkId);
     },
     undo: () => {
       updateLink(linkId, { transferDeclined: previousChoice });
+      for (const superseded of supersededChoices) {
+        updateLink(superseded.id, { transferDeclined: superseded.transferDeclined });
+      }
       setTaskText(target.id, previousText);
       lastSourceText.delete(linkId);
+      if (previousActiveLinkId) activeLinkByTarget.set(target.id, previousActiveLinkId);
+      else activeLinkByTarget.delete(target.id);
     },
   });
 }
@@ -195,6 +193,11 @@ function resetTransferSession(): void {
   firstSnapshot = true;
 }
 
+/** Clear transfer notices and source memory when the project-scoped UI is reset. */
+export function resetTransferNotices(): void {
+  resetTransferSession();
+}
+
 function rememberSessionIdentity(): void {
   lastProjectPath = project.path;
   lastNotesRecord = board.notes;
@@ -203,7 +206,10 @@ function rememberSessionIdentity(): void {
 
 function ensureInitialChoices(states: readonly TransferLinkState[]): boolean {
   const emptyUnchosen = states.find(
-    (state) => state.relation === "transfer" && state.link.transferDeclined === undefined && state.target?.text.length === 0,
+    (state) => state.relation === "transfer" &&
+      state.link.transferDeclined === undefined &&
+      state.status !== "awaiting-confirmation" &&
+      state.target?.text.length === 0,
   );
   if (emptyUnchosen) {
     acceptEmptyTarget(emptyUnchosen);
@@ -221,7 +227,7 @@ function inactiveNotices(
       return [{
         id: state.link.id,
         targetId: state.target.id,
-        message: `Transfer from ${state.source.name} was declined; this line remains connected without copying text.`,
+        message: `Transfer from ${state.source.name} is inactive; unlink and draw a new strong line to choose it again.`,
       }];
     }
     if (state.status === "inactive-superseded" && state.source && state.target) {
@@ -254,18 +260,11 @@ function applyActiveTransfers(
     if (initializing) {
       lastSourceText.set(link.id, source.text);
     } else if (previousLinkId !== link.id) {
-      activeLinkByTarget.set(targetId, link.id);
       lastSourceText.set(link.id, source.text);
-      if (target.text !== source.text) {
-        const previousText = target.text;
-        const nextText = source.text;
-        execute({
-          label: "Transfer text",
-          target: target.name,
-          do: () => setTaskText(targetId, nextText),
-          undo: () => setTaskText(targetId, previousText),
-        });
-      }
+    } else if (previousSourceText === undefined) {
+      // An Undo may restore a removed link after its per-link baseline was discarded.
+      // Seed the baseline without reapplying text or creating history.
+      lastSourceText.set(link.id, source.text);
     } else if (previousSourceText !== undefined && previousSourceText !== source.text) {
       if (editing.noteId === targetId) showWarning(target, source);
       // Persistence can reload external Markdown here; it follows the source without recording
@@ -285,7 +284,6 @@ function applyActiveTransfers(
 
   for (const targetId of [...activeLinkByTarget.keys()]) {
     if (!currentTargets.has(targetId)) {
-      activeLinkByTarget.delete(targetId);
       lastTaskText.delete(targetId);
     }
   }
@@ -305,7 +303,19 @@ function syncTransfers(): void {
   const initialSelection = selectActiveTransfers(linkList, board.notes);
   if (ensureInitialChoices(initialSelection.states)) return;
 
-  const { activeByTarget, states } = selectActiveTransfers(Object.values(links.byId), board.notes);
+  const stabilization = stabilizeActiveTransfers(
+    initialSelection,
+    linkList,
+    board.notes,
+    activeLinkByTarget,
+  );
+  for (const inactive of stabilization.linksToDeactivate) {
+    updateLink(inactive.id, { transferDeclined: true });
+  }
+  const stabilized = stabilization.linksToDeactivate.length > 0
+    ? selectActiveTransfers(Object.values(links.byId), board.notes)
+    : { ...initialSelection, activeByTarget: stabilization.activeByTarget };
+  const { activeByTarget, states } = stabilized;
   updatePromptState(states);
   transferUi.inactive = inactiveNotices(states, activeByTarget);
   applyActiveTransfers(activeByTarget, firstSnapshot);

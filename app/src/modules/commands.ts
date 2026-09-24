@@ -1,11 +1,11 @@
 import { board } from "../model/board.svelte";
 import { registerNoteMenuItem } from "../notes/noteMenu";
-import { setImportance, openModulePicker } from "./moduleActions.svelte";
+import { isLinkedImportance, setImportance, openModulePicker } from "./moduleActions.svelte";
 import { importanceMenuLabel } from "./moduleLogic";
 
 registerNoteMenuItem({
   id: "module.importance",
-  label: (noteId) => importanceMenuLabel(board.notes[noteId]),
+  label: (noteId) => importanceMenuLabel(board.notes[noteId], isLinkedImportance(noteId)),
   run: (noteId) => openModulePicker(noteId, "importance"),
   visible: (noteId) => isContentNote(noteId),
   order: 40,
@@ -15,7 +15,8 @@ registerNoteMenuItem({
   id: "module.removeImportance",
   label: () => "Remove Importance",
   run: (noteId) => setImportance(noteId, null),
-  visible: (noteId) => isContentNote(noteId) && Boolean(board.notes[noteId]?.importance),
+  visible: (noteId) => isContentNote(noteId) && Boolean(board.notes[noteId]?.importance) &&
+    !isLinkedImportance(noteId),
   order: 41,
 });
 

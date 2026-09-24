@@ -10,6 +10,12 @@
     onSelect,
     onClose,
     onRemove,
+    deferred = false,
+    description,
+    confirmLabel,
+    onConfirm,
+    makeLocalLabel,
+    onMakeLocal,
   }: {
     title: string;
     mode: "single" | "multiple";
@@ -18,7 +24,24 @@
     onSelect: (id: string) => void;
     onClose: () => void;
     onRemove?: () => void;
+    deferred?: boolean;
+    description?: string;
+    confirmLabel?: string;
+    onConfirm?: (id: string) => void;
+    makeLocalLabel?: string;
+    onMakeLocal?: (id: string) => void;
   } = $props();
+
+  let draftId = $state<string | null>(null);
+
+  $effect(() => {
+    draftId = selected[0] ?? null;
+  });
+
+  function select(id: string): void {
+    if (deferred) draftId = id;
+    else onSelect(id);
+  }
 
 </script>
 
@@ -38,17 +61,36 @@
         label={option.label}
         color={option.color}
         iconPath={option.iconPath}
-        pressed={selected.includes(option.id)}
-        onClick={() => onSelect(option.id)}
+        pressed={deferred ? draftId === option.id : selected.includes(option.id)}
+        onClick={() => select(option.id)}
       />
     {/each}
   </div>
+  {#if description}
+    <p class="module-picker-description">{description}</p>
+  {/if}
   <div class="module-picker-actions">
     {#if onRemove}
       <button type="button" class="module-picker-remove" onclick={onRemove}>Remove</button>
     {/if}
     {#if mode === "multiple"}
       <button type="button" class="module-picker-done" onclick={onClose}>Done</button>
+    {/if}
+    {#if confirmLabel && onConfirm}
+      <button
+        type="button"
+        class="module-picker-done"
+        disabled={!draftId}
+        onclick={() => draftId && onConfirm(draftId)}
+      >{confirmLabel}</button>
+    {/if}
+    {#if makeLocalLabel && onMakeLocal}
+      <button
+        type="button"
+        class="module-picker-done"
+        disabled={!draftId}
+        onclick={() => draftId && onMakeLocal(draftId)}
+      >{makeLocalLabel}</button>
     {/if}
   </div>
 </div>

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { board, replaceBoard } from "../src/model/board.svelte";
 import { history, clear as clearHistory, undo, redo } from "../src/history/history.svelte";
 import { addLink, links, replaceLinks } from "../src/model/links.svelte";
@@ -12,10 +12,19 @@ import "../src/modules/commands";
 import {
   effectiveImportanceFor,
   effectivePurposesFor,
+  importanceMenuLabel,
   linkedImportanceSourceFor,
   linkedPurposesFor,
 } from "../src/modules/moduleLogic";
-import { extractModuleFromNote, tryInsertModuleOnDrop } from "../src/modules/moduleActions.svelte";
+import {
+  effectiveImportance,
+  extractModuleFromNote,
+  isLinkedImportance,
+  makeImportanceLocal,
+  setImportance,
+  setLinkedImportance,
+  tryInsertModuleOnDrop,
+} from "../src/modules/moduleActions.svelte";
 import { canCreateLinkPair, linkRefusalReason } from "../src/links/rules";
 
 function note({ id, type, ...overrides }: Partial<Note> & Pick<Note, "id" | "type">): Note {
@@ -44,7 +53,10 @@ function resetStores(): void {
 }
 
 beforeEach(resetStores);
-afterEach(resetStores);
+afterEach(() => {
+  resetStores();
+  vi.useRealTimers();
+});
 
 describe("standalone modules", () => {
   it("resolves linked Importance from strong links in either direction", () => {
@@ -59,6 +71,10 @@ describe("standalone modules", () => {
 
     expect(effectiveImportanceFor("target", notes, edges)).toBe("absolute");
     expect(linkedImportanceSourceFor("target", notes, edges)).toBe("source");
+    expect(effectiveImportanceFor("target", {
+      ...notes,
+      target: { ...target, importance: "medium" },
+    }, edges)).toBe("absolute");
     expect(effectiveImportanceFor("target", notes, [])).toBeNull();
   });
 
@@ -94,6 +110,68 @@ describe("standalone modules", () => {
     expect(canCreateLinkPair("first", "second", [], "strong", notes)).toBe(false);
   });
 
+  it("refuses weak links in either direction when an endpoint is an external module", () => {
+    const content = note({ id: "content", type: "note" });
+    const importance = note({ id: "importance", type: "importance", importance: "basic" });
+    const purpose = note({ id: "purpose", type: "purpose", purposes: ["concept"] });
+    const notes = { content, importance, purpose };
+
+    for (const moduleId of ["importance", "purpose"]) {
+      expect(linkRefusalReason(moduleId, "content", "weak", [], notes))
+        .toBe("Importance and Purpose modules require strong links.");
+      expect(linkRefusalReason("content", moduleId, "weak", [], notes))
+        .toBe("Importance and Purpose modules require strong links.");
+      expect(canCreateLinkPair(moduleId, "content", [], "weak", notes)).toBe(false);
+    }
+    expect(canCreateLinkPair("purpose", "content", [], "strong", notes)).toBe(true);
+  });
+
+  it("edits a linked Importance source or makes just this target local, with exact history", () => {
+    const target = note({ id: "target", type: "note", name: "Target" });
+    const other = note({ id: "other", type: "con", name: "Other" });
+    const module = note({ id: "module", type: "importance", name: "Shared priority", importance: "basic" });
+    const targetLink = link("module", "target", "strong", "target-link");
+    const otherLink = link("other", "module", "strong", "other-link");
+    replaceBoard([target, other, module]);
+    replaceLinks([targetLink, otherLink]);
+
+    expect(isLinkedImportance("target")).toBe(true);
+    expect(importanceMenuLabel(target, isLinkedImportance(target.id))).toBe("Change Importance");
+
+    vi.useFakeTimers();
+    setImportance("target", "important");
+    expect(board.notes.target?.importance).toBeUndefined();
+    expect(board.notes.module?.importance).toBe("basic");
+    expect(history.cursor).toBe(0);
+    vi.runOnlyPendingTimers();
+
+    expect(setLinkedImportance("target", "medium")).toBe(true);
+    expect(board.notes.module?.importance).toBe("medium");
+    expect(effectiveImportance("target")).toBe("medium");
+    expect(effectiveImportance("other")).toBe("medium");
+    expect(history.entries.at(-1)?.label).toBe("Importance: medium");
+    undo();
+    expect(board.notes.module?.importance).toBe("basic");
+    redo();
+    expect(board.notes.module?.importance).toBe("medium");
+
+    expect(makeImportanceLocal("target", "immediately")).toBe(true);
+    expect(board.notes.target?.importance).toBe("immediately");
+    expect(links.byId["target-link"]).toBeUndefined();
+    expect(links.byId["other-link"]).toEqual(otherLink);
+    expect(effectiveImportance("target")).toBe("immediately");
+    expect(effectiveImportance("other")).toBe("medium");
+    expect(history.entries.at(-1)?.label).toBe("Make Importance Local");
+
+    undo();
+    expect(board.notes.target?.importance).toBeUndefined();
+    expect(links.byId["target-link"]).toEqual(targetLink);
+    expect(effectiveImportance("target")).toBe("medium");
+    redo();
+    expect(board.notes.target?.importance).toBe("immediately");
+    expect(links.byId["target-link"]).toBeUndefined();
+  });
+
   it("offers embedded module actions only on note, plus, and minus targets", () => {
     replaceBoard([
       note({ id: "content", type: "note" }),
@@ -107,6 +185,11 @@ describe("standalone modules", () => {
     expect(moduleItems("content")).toEqual(["module.importance", "module.purpose"]);
     expect(moduleItems("importance")).toEqual([]);
     expect(moduleItems("purpose")).toEqual([]);
+
+    replaceLinks([link("importance", "content")]);
+    const importanceItem = noteMenuItems("content").find((item) => item.id === "module.importance");
+    expect(importanceItem?.label("content")).toBe("Change Importance");
+    expect(moduleItems("content")).not.toContain("module.removeImportance");
   });
 
   it("creates compact module nodes with default values and undoable ids", () => {
@@ -151,6 +234,7 @@ describe("standalone modules", () => {
     const attached = link("module", "target", "strong", "attached");
     replaceBoard([target, module]);
     replaceLinks([attached]);
+    const originalOrder = [...board.order];
 
     expect(tryInsertModuleOnDrop("module", { x: 5, y: 5 })).toBe(true);
     expect(board.notes.target?.importance).toBe("immediately");
@@ -160,13 +244,49 @@ describe("standalone modules", () => {
     expect(history.entries[0]?.label).toBe("Insert Importance");
 
     undo();
+    expect(board.order).toEqual(originalOrder);
     expect(board.notes.target?.importance).toBeUndefined();
     expect(board.notes.module).toMatchObject({ id: "module", name: "Urgent", x: 50, y: 12, importance: "immediately" });
     expect(links.byId.attached).toEqual(attached);
     redo();
+    expect(board.order).toEqual(["target"]);
     expect(board.notes.target?.importance).toBe("immediately");
     expect(board.notes.module).toBeUndefined();
     expect(links.byId.attached).toBeUndefined();
+  });
+
+  it("keeps a shared module and its other target link when inserting it into one target", () => {
+    const firstTarget = note({ id: "first-target", type: "note", name: "First", height: 20 });
+    const secondTarget = note({ id: "second-target", type: "con", name: "Second", x: 40, height: 20 });
+    const module = note({
+      id: "shared",
+      type: "importance",
+      name: "Shared",
+      x: 80,
+      importance: "important",
+    });
+    const firstLink = link("shared", "first-target", "strong", "first-link");
+    const secondLink = link("second-target", "shared", "strong", "second-link");
+    replaceBoard([firstTarget, secondTarget, module]);
+    replaceLinks([firstLink, secondLink]);
+
+    expect(tryInsertModuleOnDrop("shared", { x: 5, y: 5 })).toBe(true);
+    expect(board.notes["first-target"]?.importance).toBe("important");
+    expect(board.notes.shared?.importance).toBe("important");
+    expect(links.byId["first-link"]).toBeUndefined();
+    expect(links.byId["second-link"]).toEqual(secondLink);
+    expect(effectiveImportance("second-target")).toBe("important");
+    expect(history.cursor).toBe(1);
+
+    undo();
+    expect(board.notes["first-target"]?.importance).toBeUndefined();
+    expect(board.notes.shared?.x).toBe(80);
+    expect(links.byId["first-link"]).toEqual(firstLink);
+    expect(links.byId["second-link"]).toEqual(secondLink);
+    redo();
+    expect(board.notes.shared).toBeDefined();
+    expect(links.byId["second-link"]).toEqual(secondLink);
+    expect(links.byId["first-link"]).toBeUndefined();
   });
 
   it("merges duplicate Purpose values on insert and restores exact arrays through Undo/Redo", () => {

@@ -25,15 +25,18 @@ export function linkRefusalReason(
   notes: ModuleNoteLookup = board.notes,
 ): string | null {
   if (from === to) return "An object cannot link to itself.";
+  const source = notes[from];
+  const target = notes[to];
+  const sourceIsModule = isModule(source);
+  const targetIsModule = isModule(target);
+  if ((sourceIsModule || targetIsModule) && kind !== "strong") {
+    return "Importance and Purpose modules require strong links.";
+  }
   if (to === ME_OBJECT_ID) return "Beacons can have outgoing links only.";
   if (existing.some((link) => pairKey(link.from, link.to) === pairKey(from, to))) {
     return "These objects already have a link.";
   }
 
-  const source = notes[from];
-  const target = notes[to];
-  const sourceIsModule = isModule(source);
-  const targetIsModule = isModule(target);
   if (!sourceIsModule && !targetIsModule) return null;
   if (sourceIsModule && targetIsModule) return "Module nodes link only to notes, pluses, or minuses.";
 

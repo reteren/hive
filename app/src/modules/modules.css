@@ -133,6 +133,13 @@
   gap: 4px;
 }
 
+.module-picker-description {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
 .module-picker-close,
 .module-picker-actions button {
   min-height: 19px;
@@ -159,6 +166,11 @@
 .module-picker-actions .module-picker-remove {
   margin-right: auto;
   color: #e99b9b;
+}
+
+.module-picker-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .module-picker-close:hover,

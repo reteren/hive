@@ -7,12 +7,14 @@
     effectiveImportance,
     effectivePurposes,
     extractModuleFromNote,
-    isLinkedImportance,
+    linkedImportanceSource,
     linkedPurposes,
+    makeImportanceLocal,
     moduleDropPreview,
     moduleFeedback,
     openModulePicker,
     setImportance,
+    setLinkedImportance,
     togglePurpose,
     worldPointFromClient,
   } from "./moduleActions.svelte";
@@ -26,8 +28,10 @@
   let pickerKind = $derived(modulePicker.noteId === note.id ? modulePicker.kind : null);
   let shownImportance = $derived(effectiveImportance(note.id));
   let shownPurposes = $derived(effectivePurposes(note.id));
+  let linkedImportance = $derived(linkedImportanceSource(note.id));
+  let pickerImportance = $derived(linkedImportance?.importance ?? shownImportance);
   let externalPurposes = $derived(linkedPurposes(note.id));
-  let importanceIsExternal = $derived(isLinkedImportance(note.id));
+  let importanceIsExternal = $derived(linkedImportance !== null);
   let isDropTarget = $derived(moduleDropPreview.targetId === note.id);
   let dropMessage = $derived(
     moduleDropPreview.moduleId && isDropTarget ? moduleDropPreview.reason :
@@ -49,7 +53,15 @@
   let suppressClickTimer: ReturnType<typeof setTimeout> | undefined;
 
   function chooseImportance(id: string): void {
-    if (isImportanceLevel(id)) setImportance(note.id, id);
+    if (isImportanceLevel(id) && !importanceIsExternal) setImportance(note.id, id);
+  }
+
+  function changeLinkedImportance(id: string): void {
+    if (isImportanceLevel(id)) setLinkedImportance(note.id, id);
+  }
+
+  function localizeImportance(id: string): void {
+    if (isImportanceLevel(id)) makeImportanceLocal(note.id, id);
   }
 
   function choosePurpose(id: string): void {
@@ -190,10 +202,16 @@
         title="Importance"
         mode="single"
         options={IMPORTANCE_OPTIONS}
-        selected={shownImportance ? [shownImportance] : []}
+        selected={pickerImportance ? [pickerImportance] : []}
         onSelect={chooseImportance}
         onClose={closeModulePicker}
-        onRemove={() => setImportance(note.id, null)}
+        onRemove={importanceIsExternal ? undefined : () => setImportance(note.id, null)}
+        deferred={importanceIsExternal}
+        description={importanceIsExternal ? "Changing the linked module affects every connected note." : undefined}
+        confirmLabel={importanceIsExternal ? "Change shared module" : undefined}
+        onConfirm={importanceIsExternal ? changeLinkedImportance : undefined}
+        makeLocalLabel={importanceIsExternal ? "Make local" : undefined}
+        onMakeLocal={importanceIsExternal ? localizeImportance : undefined}
       />
     {:else if pickerKind === "purpose"}
       <ModulePicker

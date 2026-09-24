@@ -7,6 +7,7 @@ import { links, replaceLinks } from "../model/links.svelte";
 import type { Link } from "../model/link";
 import type { Note } from "../model/note";
 import { taskLog, type TaskLogEntry } from "../tasks/taskLog.svelte";
+import { resetTasksPanel } from "../tasks/tasksPanelState.svelte";
 import { clear as clearHistory, execute } from "../history/history.svelte";
 import { clearSelection } from "../selection/selection.svelte";
 import { clearSelectedLink } from "../links/selection.svelte";
@@ -14,6 +15,9 @@ import { cancelLineDraft } from "../links/interaction.svelte";
 import { clearNavigationHistory } from "../navigation/navigationHistory.svelte";
 import { resetObjectsPanelSearch } from "../navigation/panelState.svelte";
 import { resetSearch } from "../search/search.svelte";
+import { clearModuleDropPreview } from "../modules/moduleDrop.svelte";
+import { closeModulePicker } from "../modules/pickerState.svelte";
+import { resetTransferNotices } from "../transfer/sync.svelte";
 import { tool } from "../tools/tool.svelte";
 import { editing } from "../notes/editing.svelte";
 import {
@@ -179,6 +183,10 @@ export function resetProjectScopedState(): void {
   clearNavigationHistory();
   resetSearch();
   resetObjectsPanelSearch();
+  resetTasksPanel();
+  closeModulePicker();
+  clearModuleDropPreview();
+  resetTransferNotices();
 }
 
 function makeSnapshot(): ProjectSnapshot {

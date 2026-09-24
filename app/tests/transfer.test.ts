@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Link } from "../src/model/link";
 import type { Note } from "../src/model/note";
-import { classifyTransfer, needsTransferConfirmation, selectActiveTransfers } from "../src/transfer/logic";
+import {
+  acceptedSourcesToDeactivate,
+  classifyTransfer,
+  needsTransferConfirmation,
+  selectActiveTransfers,
+  stabilizeActiveTransfers,
+} from "../src/transfer/logic";
 
 function makeNote(id: string, options: Partial<Note> = {}): Note {
   return {
@@ -69,5 +75,59 @@ describe("Text → Task transfer rules", () => {
     const afterKeep = selectActiveTransfers([{ ...second, transferDeclined: true }, first], notes);
     expect(afterKeep.activeByTarget.get(task.id)?.id).toBe(first.id);
     expect(afterKeep.states.find((state) => state.link.id === second.id)?.status).toBe("declined");
+  });
+
+  it("requires a choice for a second source even when its task is empty", () => {
+    const task = makeNote("task", { task: { done: false, doneAt: null } });
+    const notes = { a: makeNote("a"), b: makeNote("b"), task };
+    const first = makeLink("first", "a", task.id, "strong", { transferDeclined: false });
+    const second = makeLink("second", "b", task.id);
+
+    const selected = selectActiveTransfers([first, second], notes);
+    expect(selected.activeByTarget.get(task.id)?.id).toBe(first.id);
+    expect(selected.states.find((state) => state.link.id === second.id)?.status).toBe("awaiting-confirmation");
+    expect(needsTransferConfirmation(second, task, true)).toBe(true);
+  });
+
+  it("deactivates older accepted sources so unlinking the selected one cannot revive them", () => {
+    const task = makeNote("task", { task: { done: false, doneAt: null }, text: "from C" });
+    const notes = { a: makeNote("a", { text: "from A" }), c: makeNote("c", { text: "from C" }), task };
+    const first = makeLink("first", "a", task.id, "strong", { transferDeclined: false });
+    const second = makeLink("second", "c", task.id, "strong", { transferDeclined: false });
+
+    expect(acceptedSourcesToDeactivate(second, [first, second], notes)).toEqual([first]);
+
+    const selected = selectActiveTransfers([first, second], notes);
+    const stabilizedSelection = stabilizeActiveTransfers(selected, [first, second], notes, new Map());
+    expect(stabilizedSelection.activeByTarget.get(task.id)?.id).toBe(second.id);
+    expect(stabilizedSelection.linksToDeactivate.map(({ id }) => id)).toEqual([first.id]);
+
+    const afterSelection = selectActiveTransfers([
+      { ...first, transferDeclined: true },
+      second,
+    ], notes);
+    expect(afterSelection.activeByTarget.get(task.id)?.id).toBe(second.id);
+
+    const linksAfterUnlink = [
+      { ...first, transferDeclined: true },
+    ];
+    const afterUnlink = stabilizeActiveTransfers(
+      selectActiveTransfers(linksAfterUnlink, notes),
+      linksAfterUnlink,
+      notes,
+      new Map([[task.id, second.id]]),
+    );
+    expect(afterUnlink.activeByTarget.size).toBe(0);
+    expect(afterUnlink.linksToDeactivate).toEqual([]);
+    expect(task.text).toBe("from C");
+
+    const linksAfterUndo = [{ ...first, transferDeclined: true }, second];
+    const afterUndo = stabilizeActiveTransfers(
+      selectActiveTransfers(linksAfterUndo, notes),
+      linksAfterUndo,
+      notes,
+      new Map([[task.id, second.id]]),
+    );
+    expect(afterUndo.activeByTarget.get(task.id)?.id).toBe(second.id);
   });
 });

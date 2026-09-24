@@ -43,8 +43,73 @@ export function classifyTransfer(link: Link, notes: Readonly<Record<string, Note
 }
 
 /** A non-empty B requires a decision until the link has an explicit choice. */
-export function needsTransferConfirmation(link: Link, target: Note): boolean {
-  return link.transferDeclined === undefined && target.text.length > 0;
+export function needsTransferConfirmation(
+  link: Link,
+  target: Note,
+  hasAcceptedSource = false,
+): boolean {
+  return link.transferDeclined === undefined && (target.text.length > 0 || hasAcceptedSource);
+}
+
+/** Accepted older sources become inactive when the user accepts a newer source. */
+export function acceptedSourcesToDeactivate(
+  selected: Link,
+  links: readonly Link[],
+  notes: Readonly<Record<string, Note>>,
+): Link[] {
+  if (classifyTransfer(selected, notes) !== "transfer") return [];
+  return links.filter((link) =>
+    link.id !== selected.id &&
+    link.to === selected.to &&
+    link.transferDeclined === false &&
+    classifyTransfer(link, notes) === "transfer",
+  );
+}
+
+/**
+ * Preserve the source already selected for each task. If it disappeared or stopped being a
+ * transfer link, do not choose an older candidate; return accepted links to persist as inactive.
+ */
+export function stabilizeActiveTransfers(
+  selected: ReturnType<typeof selectActiveTransfers>,
+  links: readonly Link[],
+  notes: Readonly<Record<string, Note>>,
+  previousActiveByTarget: ReadonlyMap<string, string>,
+): { activeByTarget: Map<string, Link>; linksToDeactivate: Link[] } {
+  const activeByTarget = new Map(selected.activeByTarget);
+  const linksToDeactivate = new Map<string, Link>();
+
+  for (const [targetId, previousLinkId] of previousActiveByTarget) {
+    const previousLink = links.find((link) => link.id === previousLinkId);
+    if (
+      previousLink &&
+      previousLink.transferDeclined === false &&
+      classifyTransfer(previousLink, notes) === "transfer"
+    ) {
+      activeByTarget.set(targetId, previousLink);
+      continue;
+    }
+
+    if (!activeByTarget.has(targetId)) continue;
+    activeByTarget.delete(targetId);
+    for (const candidate of links) {
+      if (
+        candidate.to === targetId &&
+        candidate.transferDeclined === false &&
+        classifyTransfer(candidate, notes) === "transfer"
+      ) {
+        linksToDeactivate.set(candidate.id, candidate);
+      }
+    }
+  }
+
+  for (const [targetId, activeLink] of activeByTarget) {
+    for (const superseded of acceptedSourcesToDeactivate(activeLink, links, notes)) {
+      linksToDeactivate.set(superseded.id, superseded);
+    }
+  }
+
+  return { activeByTarget, linksToDeactivate: [...linksToDeactivate.values()] };
 }
 
 /**
@@ -57,6 +122,11 @@ export function selectActiveTransfers(
 ): { activeByTarget: Map<string, Link>; states: TransferLinkState[] } {
   const states: TransferLinkState[] = [];
   const candidatesByTarget = new Map<string, TransferLinkState[]>();
+  const targetsWithAcceptedSources = new Set(
+    links.flatMap((link) =>
+      link.transferDeclined === false && classifyTransfer(link, notes) === "transfer" ? [link.to] : [],
+    ),
+  );
 
   for (const link of links) {
     const source = notes[link.from];
@@ -72,7 +142,10 @@ export function selectActiveTransfers(
     else if (relation === "dependency") status = "dependency";
     else if (relation !== "transfer") status = "none";
     else if (link.transferDeclined === true) status = "declined";
-    else if (link.transferDeclined !== false && needsTransferConfirmation(link, target)) status = "awaiting-confirmation";
+    else if (
+      link.transferDeclined !== false &&
+      needsTransferConfirmation(link, target, targetsWithAcceptedSources.has(target.id))
+    ) status = "awaiting-confirmation";
     else status = "inactive-superseded";
 
     const state = { link, source, target, relation, status };

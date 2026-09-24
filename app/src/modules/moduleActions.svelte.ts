@@ -3,7 +3,7 @@ import type { Point } from "../board/cameraMath";
 import { execute } from "../history/history.svelte";
 import { addNote, board, orderIndex, removeNote, updateNote } from "../model/board.svelte";
 import { newId, type ImportanceLevel, type Note, type PurposeKind } from "../model/note";
-import { addLink, links, linksOf, removeLink, replaceLinks } from "../model/links.svelte";
+import { addLink, links, linksOf, removeLink } from "../model/links.svelte";
 import type { Link } from "../model/link";
 import { grid } from "../board/grid.svelte";
 import { screenToWorld } from "../board/cameraMath";
@@ -54,6 +54,12 @@ export function isLinkedImportance(noteId: string): boolean {
   return linkedImportanceSourceFor(noteId, board.notes, Object.values(links.byId)) !== null;
 }
 
+export function linkedImportanceSource(noteId: string): Note | null {
+  const sourceId = linkedImportanceSourceFor(noteId, board.notes, Object.values(links.byId));
+  const source = sourceId ? board.notes[sourceId] : undefined;
+  return source?.type === "importance" ? source : null;
+}
+
 export function linkedPurposes(noteId: string): PurposeKind[] {
   return linkedPurposesFor(noteId, board.notes, Object.values(links.byId));
 }
@@ -61,9 +67,52 @@ export function linkedPurposes(noteId: string): PurposeKind[] {
 export function setImportance(noteId: string, level: ImportanceLevel | null): void {
   const note = board.notes[noteId];
   if (!note) return;
+  if (linkedImportanceSource(noteId)) {
+    showModuleFeedback(noteId, "Change the linked Importance or make it local first.");
+    return;
+  }
   const command = createImportanceCommand(note, level, writeModulePatch);
   if (command) execute(command);
   closeModulePicker();
+}
+
+/** Change the shared external source; every strongly linked target sees the new level. */
+export function setLinkedImportance(noteId: string, level: ImportanceLevel): boolean {
+  const source = linkedImportanceSource(noteId);
+  if (!source) return false;
+  const command = createImportanceCommand(source, level, writeModulePatch);
+  if (command) execute(command);
+  closeModulePicker();
+  return true;
+}
+
+/** Detach one target from its shared source and store the selected level on that target. */
+export function makeImportanceLocal(noteId: string, level: ImportanceLevel): boolean {
+  const target = board.notes[noteId];
+  const source = linkedImportanceSource(noteId);
+  if (!target || !source) return false;
+
+  const sourceLinks = linksOf(noteId).filter((link) =>
+    link.kind === "strong" && ((link.from === noteId && link.to === source.id) ||
+      (link.to === noteId && link.from === source.id)),
+  ).map(copyLink);
+  if (sourceLinks.length === 0) return false;
+
+  const previousImportance = target.importance;
+  execute({
+    label: "Make Importance Local",
+    target: target.name,
+    do: () => {
+      for (const link of sourceLinks) removeLink(link.id);
+      writeModulePatch(noteId, { importance: level });
+    },
+    undo: () => {
+      writeModulePatch(noteId, { importance: previousImportance });
+      for (const link of sourceLinks) addLink(copyLink(link));
+    },
+  });
+  closeModulePicker();
+  return true;
 }
 
 export function togglePurpose(noteId: string, purpose: PurposeKind): void {
@@ -117,7 +166,19 @@ export function tryInsertModuleOnDrop(moduleId: string, worldPoint: Point): bool
 
   const moduleSnapshot = copyNote(module);
   const attachedLinks = linksOf(moduleId).map(copyLink);
-  const allLinksBefore = Object.values(links.byId).map(copyLink);
+  const targetLinks = attachedLinks.filter((link) =>
+    (link.from === moduleId && link.to === target.id) ||
+    (link.to === moduleId && link.from === target.id),
+  );
+  const targetLinkIds = new Set(targetLinks.map((link) => link.id));
+  const remainingLinks = attachedLinks.filter((link) => !targetLinkIds.has(link.id));
+  const hasRemainingTargets = remainingLinks.some((link) => {
+    const otherId = link.from === moduleId ? link.to : link.from;
+    const other = board.notes[otherId];
+    return Boolean(other && isAssignableNote(other));
+  });
+  const deleteModule = !hasRemainingTargets;
+  const linksToRemove = deleteModule ? attachedLinks : targetLinks;
   const moduleIndex = orderIndex(moduleId);
   const previousEditing = editing.noteId;
   const previousImportance = target.importance;
@@ -131,15 +192,17 @@ export function tryInsertModuleOnDrop(moduleId: string, worldPoint: Point): bool
       target: target.name,
       do: () => {
         writeModulePatch(target.id, { importance: level });
-        for (const link of attachedLinks) removeLink(link.id);
-        removeNote(module.id);
-        if (editing.noteId === module.id) editing.noteId = null;
+        for (const link of linksToRemove) removeLink(link.id);
+        if (deleteModule) {
+          removeNote(module.id);
+          if (editing.noteId === module.id) editing.noteId = null;
+        }
       },
       undo: () => {
         writeModulePatch(target.id, { importance: previousImportance });
-        addNote(moduleSnapshot, moduleIndex);
-        replaceLinks(allLinksBefore.map(copyLink));
-        if (previousEditing === module.id) editing.noteId = previousEditing;
+        if (deleteModule) addNote(moduleSnapshot, moduleIndex);
+        for (const link of linksToRemove) addLink(copyLink(link));
+        if (deleteModule && previousEditing === module.id) editing.noteId = previousEditing;
       },
     });
   } else {
@@ -154,15 +217,17 @@ export function tryInsertModuleOnDrop(moduleId: string, worldPoint: Point): bool
       target: target.name,
       do: () => {
         writeModulePatch(target.id, { purposes: nextPurposes });
-        for (const link of attachedLinks) removeLink(link.id);
-        removeNote(module.id);
-        if (editing.noteId === module.id) editing.noteId = null;
+        for (const link of linksToRemove) removeLink(link.id);
+        if (deleteModule) {
+          removeNote(module.id);
+          if (editing.noteId === module.id) editing.noteId = null;
+        }
       },
       undo: () => {
         writeModulePatch(target.id, { purposes: previousPurposes });
-        addNote(moduleSnapshot, moduleIndex);
-        replaceLinks(allLinksBefore.map(copyLink));
-        if (previousEditing === module.id) editing.noteId = previousEditing;
+        if (deleteModule) addNote(moduleSnapshot, moduleIndex);
+        for (const link of linksToRemove) addLink(copyLink(link));
+        if (deleteModule && previousEditing === module.id) editing.noteId = previousEditing;
       },
     });
   }

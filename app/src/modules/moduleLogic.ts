@@ -50,11 +50,10 @@ export function effectiveImportanceFor(
 ): ImportanceLevel | null {
   const note = notes[noteId];
   if (!isAssignableNote(note)) return null;
-  if (note.importance && isImportanceLevel(note.importance)) return note.importance;
-
   for (const module of linkedModules(noteId, "importance", notes, edges)) {
     if (module.importance && isImportanceLevel(module.importance)) return module.importance;
   }
+  if (note.importance && isImportanceLevel(note.importance)) return note.importance;
   return null;
 }
 
@@ -64,7 +63,7 @@ export function linkedImportanceSourceFor(
   edges: readonly ModuleEdge[],
 ): string | null {
   const note = notes[noteId];
-  if (!isAssignableNote(note) || note.importance) return null;
+  if (!isAssignableNote(note)) return null;
   return linkedModules(noteId, "importance", notes, edges)
     .find((module) => module.importance && isImportanceLevel(module.importance))?.id ?? null;
 }
@@ -112,8 +111,11 @@ export function linkedImportanceSourcesFor(
     .map((module) => module.id);
 }
 
-export function importanceMenuLabel(note: Pick<Note, "importance"> | undefined): string {
-  return note?.importance ? "Change Importance" : "Add Importance";
+export function importanceMenuLabel(
+  note: Pick<Note, "importance"> | undefined,
+  hasLinkedSource = false,
+): string {
+  return note?.importance || hasLinkedSource ? "Change Importance" : "Add Importance";
 }
 
 export function isImportanceLevel(value: string): value is ImportanceLevel {
