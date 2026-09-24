@@ -1,11 +1,12 @@
 import type { Link, LinkAnchor } from "../model/link";
+import type { ToolId } from "../tools/tool.svelte";
 
 export interface LinkDraft {
   sourceId: string;
   sourceAnchor?: LinkAnchor;
 }
 
-export function previewLinkKind(tool: "select" | "line-strong" | "line-weak"): Link["kind"] | null {
+export function previewLinkKind(tool: ToolId): Link["kind"] | null {
   if (tool === "line-strong") return "strong";
   if (tool === "line-weak") return "weak";
   return null;
