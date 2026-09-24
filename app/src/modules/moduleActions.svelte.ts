@@ -13,9 +13,7 @@ import { notePositionAt } from "../notes/creationPosition";
 import { editing } from "../notes/editing.svelte";
 import {
   createImportanceCommand,
-  createMoodSelectionCommand,
   createMoodToggleCommand,
-  createPurposeSelectionCommand,
   createPurposeToggleCommand,
   effectiveImportanceFor,
   effectiveMoodsFor,
@@ -140,22 +138,6 @@ export function toggleMood(noteId: string, mood: MoodKind): void {
   if (!note) return;
   const command = createMoodToggleCommand(note, mood, writeModulePatch);
   if (command) execute(command);
-}
-
-export function setStandalonePurpose(noteId: string, purpose: PurposeKind): void {
-  const note = board.notes[noteId];
-  if (!note || note.type !== "purpose") return;
-  const command = createPurposeSelectionCommand(note, purpose, writeModulePatch);
-  if (command) execute(command);
-  closeModulePicker();
-}
-
-export function setStandaloneMood(noteId: string, mood: MoodKind): void {
-  const note = board.notes[noteId];
-  if (!note || note.type !== "mood") return;
-  const command = createMoodSelectionCommand(note, mood, writeModulePatch);
-  if (command) execute(command);
-  closeModulePicker();
 }
 
 /** Update the board-space target highlight while an external module is being dragged. */

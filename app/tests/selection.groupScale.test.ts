@@ -128,4 +128,36 @@ describe("group scale", () => {
       { id: "b", x: 25, y: 10, width: 45, height: 45 },
     ]);
   });
+
+  it("scales mixed group positions while keeping module width and clamping its height", () => {
+    const frames: NoteFrame[] = [
+      { id: "module", x: 10, y: 20, width: 14, height: 4 },
+      { id: "note", x: 50, y: 40, width: 30, height: 20 },
+    ];
+    const modules = new Set(["module"]);
+
+    expect(scaleGroupFrames(frames, groupBounds, "bottom-right", { x: 100, y: 200 }, false, 10, false, modules)).toEqual([
+      { id: "module", x: 20, y: 60, width: 14, height: 8 },
+      { id: "note", x: 100, y: 120, width: 60, height: 60 },
+    ]);
+    expect(scaleGroupFrames(frames, groupBounds, "bottom-right", { x: -50, y: -80 }, false, 10, false, modules)).toEqual([
+      { id: "module", x: 5, y: 6, width: 14, height: 4 },
+      { id: "note", x: 25, y: 12, width: 15, height: 6 },
+    ]);
+  });
+
+  it("lets a group of modules shrink and snaps positions without scaling their widths", () => {
+    const frames: NoteFrame[] = [
+      { id: "importance", x: 3, y: 3, width: 14, height: 4 },
+      { id: "mood", x: 43, y: 43, width: 14, height: 8 },
+    ];
+    const bounds = { x: 3, y: 3, width: 54, height: 48 };
+    const modules = new Set(["importance", "mood"]);
+    const scaled = scaleGroupFrames(frames, bounds, "top-left", { x: 25, y: 25 }, true, 10, false, modules);
+
+    expect(scaled.map((frame) => frame.width)).toEqual([14, 14]);
+    expect(scaled.map((frame) => frame.height)).toEqual([4, 4]);
+    expect(scaled[0].x).toBeGreaterThan(frames[0].x);
+    expect(scaled[0].y).toBeGreaterThan(frames[0].y);
+  });
 });

@@ -9,6 +9,11 @@ describe("module drops from move gestures", () => {
       clearPreview: true,
     });
     expect(resolveModuleDropDecision(["purpose"], false, true).commitMove).toBe(false);
+    expect(resolveModuleDropDecision(["mood"], false, true)).toEqual({
+      tryInsert: true,
+      commitMove: false,
+      clearPreview: true,
+    });
   });
 
   it("records an ordinary Move when the module drop hook declines the target", () => {

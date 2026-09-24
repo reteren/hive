@@ -17,6 +17,7 @@
     onConfirm,
     makeLocalLabel,
     onMakeLocal,
+    floating = false,
   }: {
     title: string;
     mode: "single" | "multiple";
@@ -31,9 +32,32 @@
     onConfirm?: (id: string) => void;
     makeLocalLabel?: string;
     onMakeLocal?: (id: string) => void;
+    floating?: boolean;
   } = $props();
 
   let draftId = $state<string | null>(null);
+  let pickerElement: HTMLDivElement;
+
+  function placeFloatingPicker(): void {
+    if (!floating || !pickerElement) return;
+    const board = pickerElement.closest<HTMLElement>(".board");
+    const host = pickerElement.parentElement;
+    if (!board || !host) return;
+
+    const boardRect = board.getBoundingClientRect();
+    const hostRect = host.getBoundingClientRect();
+    const panel = document.querySelector<HTMLElement>(".right-panel");
+    const panelLeft = panel && panel.getClientRects().length > 0
+      ? panel.getBoundingClientRect().left
+      : Number.POSITIVE_INFINITY;
+    const visibleLeft = boardRect.left + 8;
+    const visibleRight = Math.min(boardRect.right, panelLeft, window.innerWidth) - 8;
+    const width = pickerElement.getBoundingClientRect().width;
+    const maxLeft = Math.max(visibleLeft, visibleRight - width);
+    const left = Math.max(visibleLeft, Math.min(hostRect.left - 5, maxLeft));
+    const scale = host.offsetWidth > 0 ? hostRect.width / host.offsetWidth : 1;
+    pickerElement.style.left = `${(left - hostRect.left) / scale}px`;
+  }
 
   function onWindowPointerDown(event: PointerEvent): void {
     const target = event.target;
@@ -51,11 +75,16 @@
   onMount(() => {
     window.addEventListener("pointerdown", onWindowPointerDown, true);
     window.addEventListener("keydown", onWindowKeydown, true);
+    if (floating) {
+      placeFloatingPicker();
+      window.addEventListener("resize", placeFloatingPicker);
+    }
   });
 
   onDestroy(() => {
     window.removeEventListener("pointerdown", onWindowPointerDown, true);
     window.removeEventListener("keydown", onWindowKeydown, true);
+    window.removeEventListener("resize", placeFloatingPicker);
   });
 
   $effect(() => {
@@ -70,6 +99,7 @@
 </script>
 
 <div
+  bind:this={pickerElement}
   class="module-picker"
   data-module-picker
   data-selection-ignore

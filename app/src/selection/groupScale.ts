@@ -2,7 +2,7 @@ import type { Point } from "../board/cameraMath";
 import { snapToGrid } from "../board/gridMath";
 import type { Bounds } from "../notes/layout.svelte";
 import { MIN_NOTE_HEIGHT } from "../notes/layout.svelte";
-import { MIN_NOTE_WIDTH, resizeEdgeAxes, type ResizeEdge } from "./resize";
+import { clampModuleHeight, MIN_NOTE_WIDTH, resizeEdgeAxes, type ResizeEdge } from "./resize";
 import type { GeometryChange, NoteFrame } from "./gestures";
 
 export interface GroupScaleGesture {
@@ -11,6 +11,7 @@ export interface GroupScaleGesture {
   bounds: Bounds;
   edge: ResizeEdge;
   startWorld: Point;
+  moduleIds: ReadonlySet<string>;
 }
 
 /** Union of rendered note bounds, including measured heights for auto-height notes. */
@@ -29,6 +30,7 @@ export function createGroupScaleGesture(
   bounds: Bounds,
   edge: ResizeEdge,
   startWorld: Point,
+  moduleIds: ReadonlySet<string> = new Set(),
 ): GroupScaleGesture {
   const before = frames.map(copyFrame);
   return {
@@ -37,6 +39,7 @@ export function createGroupScaleGesture(
     bounds: { ...bounds },
     edge,
     startWorld: { ...startWorld },
+    moduleIds: new Set(moduleIds),
   };
 }
 
@@ -55,6 +58,7 @@ export function updateGroupScaleGesture(
     snap,
     step,
     preserveAspect,
+    gesture.moduleIds,
   );
   return { ...gesture, after };
 }
@@ -68,18 +72,19 @@ export function scaleGroupFrames(
   snap: boolean,
   step: number,
   preserveAspect = false,
+  moduleIds: ReadonlySet<string> = new Set(),
 ): NoteFrame[] {
   if (frames.length === 0) return [];
 
   const scales = edgeScales(bounds, edge, delta, snap, step);
   const axes = resizeEdgeAxes(edge);
-  let scaleX = clampScale(scales.x, minimumWidthScale(frames));
-  let scaleY = clampScale(scales.y, minimumHeightScale(frames));
+  let scaleX = clampScale(scales.x, minimumWidthScale(frames, moduleIds));
+  let scaleY = clampScale(scales.y, minimumHeightScale(frames, moduleIds));
 
   if (axes.horizontal !== null && axes.vertical !== null && preserveAspect) {
     // The axis with the larger proportional scale change drives the uniform factor.
     const xDominates = Math.abs(scales.x - 1) >= Math.abs(scales.y - 1);
-    const uniformMinimum = Math.max(minimumWidthScale(frames), minimumHeightScale(frames));
+    const uniformMinimum = Math.max(minimumWidthScale(frames, moduleIds), minimumHeightScale(frames, moduleIds));
     const uniform = clampScale(xDominates ? scales.x : scales.y, uniformMinimum);
     scaleX = uniform;
     scaleY = uniform;
@@ -93,8 +98,10 @@ export function scaleGroupFrames(
     y: axes.vertical === "top"
       ? bounds.y + bounds.height - (bounds.y + bounds.height - frame.y) * scaleY
       : bounds.y + (frame.y - bounds.y) * scaleY,
-    width: frame.width * scaleX,
-    height: frame.height === null ? null : frame.height * scaleY,
+    width: moduleIds.has(frame.id) ? frame.width : frame.width * scaleX,
+    height: moduleIds.has(frame.id)
+      ? clampModuleHeight((frame.height ?? MIN_NOTE_HEIGHT) * scaleY)
+      : frame.height === null ? null : frame.height * scaleY,
   }));
 }
 
@@ -144,12 +151,14 @@ function edgeScales(
   };
 }
 
-function minimumWidthScale(frames: readonly NoteFrame[]): number {
-  return Math.max(0, ...frames.map((frame) => MIN_NOTE_WIDTH / frame.width));
+function minimumWidthScale(frames: readonly NoteFrame[], moduleIds: ReadonlySet<string>): number {
+  return Math.max(0, ...frames.flatMap((frame) => moduleIds.has(frame.id) ? [] : [MIN_NOTE_WIDTH / frame.width]));
 }
 
-function minimumHeightScale(frames: readonly NoteFrame[]): number {
-  const manualHeights = frames.flatMap((frame) => frame.height === null ? [] : [MIN_NOTE_HEIGHT / frame.height]);
+function minimumHeightScale(frames: readonly NoteFrame[], moduleIds: ReadonlySet<string>): number {
+  const manualHeights = frames.flatMap((frame) => frame.height === null || moduleIds.has(frame.id)
+    ? []
+    : [MIN_NOTE_HEIGHT / frame.height]);
   return Math.max(0, ...manualHeights);
 }
 

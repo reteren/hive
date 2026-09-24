@@ -5,22 +5,25 @@ import { execute } from "../history/history.svelte";
 import { clearSelection } from "../selection/selection.svelte";
 import { clearSelectedLink, selectedLinkIds, selectLink, selectLinks } from "./selection.svelte";
 import { nextLineShape } from "./lineGeometry";
+import { effectiveLinkKind } from "./rules";
 
 export function createBoardLink(link: Link): boolean {
+  const actualKind = effectiveLinkKind(link.from, link.to, link.kind);
+  const createdLink = actualKind === link.kind ? link : { ...link, kind: actualKind };
   const source = link.from === ME_OBJECT_ID ? "ME" : board.notes[link.from]?.name;
   const target = board.notes[link.to]?.name;
-  if (!canLink(link.from, link.to) || !source || !target) return false;
+  if (!canLink(link.from, link.to, actualKind) || !source || !target) return false;
 
   execute({
     label: "Link",
     target: `${source} → ${target}`,
     do: () => {
-      addLink(link);
+      addLink(createdLink);
       clearSelection();
-      selectLink(link.id);
+      selectLink(createdLink.id);
     },
     undo: () => {
-      removeLink(link.id);
+      removeLink(createdLink.id);
       clearSelectedLink();
     },
   });

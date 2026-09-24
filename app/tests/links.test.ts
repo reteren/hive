@@ -11,6 +11,7 @@ import { clientToBoardPoint, clientToWorld } from "../src/links/coordinates";
 import { completeLinkGesture, nextTool, previewLinkKind, resolveCutRelease } from "../src/links/gestures";
 import { clearSelectedLink, selectLinks, selectedLinkIds, toggleLinkSelection } from "../src/links/selection.svelte";
 import { buildShape } from "../src/links/shapes";
+import { tool } from "../src/tools/tool.svelte";
 import {
   clipSegmentToFrames,
   flattenPath,
@@ -35,6 +36,36 @@ describe("link pair rules", () => {
   it("allows ME as a source but never as a target", () => {
     expect(canCreateLinkPair("me", "a", [])).toBe(true);
     expect(canCreateLinkPair("a", "me", [])).toBe(false);
+  });
+});
+
+describe("module links in weak line mode", () => {
+  it("stores a strong link and leaves the dashed-line tool selected", () => {
+    const previousTool = tool.active;
+    try {
+      clear();
+      replaceLinks([]);
+      replaceBoard([
+        { id: "mood", type: "mood", name: "Mood", text: "", x: 0, y: 0, width: 14, height: 4, moods: ["joy"] },
+        { id: "note", type: "note", name: "Note", text: "", x: 30, y: 0, width: 30, height: 20 },
+      ]);
+      tool.active = "line-weak";
+
+      expect(createBoardLink({ id: "module-link", from: "note", to: "mood", kind: "weak", shape: "base" })).toBe(true);
+      expect(links.byId["module-link"]?.kind).toBe("strong");
+      expect(tool.active).toBe("line-weak");
+      expect(history.entries).toHaveLength(1);
+      undo();
+      expect(links.byId["module-link"]).toBeUndefined();
+      redo();
+      expect(links.byId["module-link"]?.kind).toBe("strong");
+    } finally {
+      tool.active = previousTool;
+      replaceBoard([]);
+      replaceLinks([]);
+      clear();
+      clearSelectedLink();
+    }
   });
 });
 

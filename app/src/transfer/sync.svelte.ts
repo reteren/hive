@@ -1,12 +1,13 @@
 import { EditorSelection, Transaction } from "@codemirror/state";
 import { board, updateNote } from "../model/board.svelte";
-import { links, updateLink } from "../model/links.svelte";
+import { links, registerLinkLifecycle, updateLink } from "../model/links.svelte";
 import type { Link } from "../model/link";
 import type { Note } from "../model/note";
 import { execute } from "../history/history.svelte";
 import { editing } from "../notes/editing.svelte";
 import { editorForNote } from "../editor/editorSession";
 import { project } from "../project/project.svelte";
+import { preferences, recordTransferHintShown } from "../settings/preferences.svelte";
 import {
   acceptedSourcesToDeactivate,
   classifyTransfer,
@@ -15,11 +16,12 @@ import {
   type TransferLinkState,
 } from "./logic";
 import { registerTextEditParticipant } from "./textEditHooks";
+import { TransferHintTimers } from "./hints";
 
 /**
  * A04 choices: the last accepted connection (link insertion order) owns a task's live copy;
- * older sources remain linked and get an inactive notice. Breaking the link or changing either
- * endpoint's task status stops syncing without reverting the last copied text. External Markdown
+ * older sources remain linked and get an inactive notice. Breaking the active link restores the
+ * target's text from before the first accepted transfer. External Markdown
  * reloads propagate directly without a separate Undo entry; edits in the source editor carry task
  * text through the same text history command. Local task edits are allowed, warned once, then
  * replaced at the next source edit.
@@ -48,6 +50,16 @@ const lastSourceText = new Map<string, string>();
 const lastTaskText = new Map<string, string>();
 const activeLinkByTarget = new Map<string, string>();
 const warnedTaskIds = new Set<string>();
+const seenInactiveIds = new Set<string>();
+const removedTaskText = new Map<string, string>();
+const hintTimers = new TransferHintTimers(
+  () => preferences.transferHintsShown,
+  recordTransferHintShown,
+  (key) => {
+    transferUi.warnings = transferUi.warnings.filter((notice) => `warning:${notice.id}` !== key);
+    transferUi.inactive = transferUi.inactive.filter((notice) => `inactive:${notice.id}` !== key);
+  },
+);
 
 let started = false;
 let firstSnapshot = true;
@@ -86,7 +98,17 @@ function warningFor(note: Note, source: Note): TransferNotice {
 function showWarning(note: Note, source: Note): void {
   if (warnedTaskIds.has(note.id)) return;
   warnedTaskIds.add(note.id);
-  transferUi.warnings = [...transferUi.warnings, warningFor(note, source)];
+  if (hintTimers.show(`warning:${note.id}`)) {
+    transferUi.warnings = [...transferUi.warnings, warningFor(note, source)];
+  }
+}
+
+function showInactiveNotice(notice: TransferNotice): void {
+  if (seenInactiveIds.has(notice.id)) return;
+  seenInactiveIds.add(notice.id);
+  if (hintTimers.show(`inactive:${notice.id}`)) {
+    transferUi.inactive = [...transferUi.inactive, notice];
+  }
 }
 
 function promptFor(state: TransferLinkState): TransferPrompt | null {
@@ -115,7 +137,7 @@ function acceptEmptyTarget(state: TransferLinkState): void {
   if (!source || !target) return;
 
   const sourceText = source.text;
-  updateLink(link.id, { transferDeclined: false });
+  updateLink(link.id, { transferDeclined: false, transferOriginalText: target.text });
   setTaskText(target.id, sourceText);
   lastSourceText.set(link.id, sourceText);
   activeLinkByTarget.set(target.id, link.id);
@@ -144,7 +166,12 @@ function runTransferChoice(linkId: string, choice: "replace" | "keep"): void {
 
   const previousText = target.text;
   const nextText = source.text;
-  const previousActiveLinkId = activeLinkByTarget.get(target.id);
+  const previousActiveLinkId = activeLinkByTarget.get(target.id) ??
+    selectActiveTransfers(Object.values(links.byId), board.notes).activeByTarget.get(target.id)?.id;
+  const originalText = previousActiveLinkId
+    ? links.byId[previousActiveLinkId]?.transferOriginalText ?? previousText
+    : previousText;
+  const previousOriginalText = link.transferOriginalText;
   const supersededChoices = acceptedSourcesToDeactivate(link, Object.values(links.byId), board.notes)
     .map((superseded) => ({ id: superseded.id, transferDeclined: superseded.transferDeclined }));
   execute({
@@ -152,13 +179,13 @@ function runTransferChoice(linkId: string, choice: "replace" | "keep"): void {
     target: target.name,
     do: () => {
       for (const superseded of supersededChoices) updateLink(superseded.id, { transferDeclined: true });
-      updateLink(linkId, { transferDeclined: false });
+      updateLink(linkId, { transferDeclined: false, transferOriginalText: originalText });
       setTaskText(target.id, nextText);
       lastSourceText.set(linkId, nextText);
       activeLinkByTarget.set(target.id, linkId);
     },
     undo: () => {
-      updateLink(linkId, { transferDeclined: previousChoice });
+      updateLink(linkId, { transferDeclined: previousChoice, transferOriginalText: previousOriginalText });
       for (const superseded of supersededChoices) {
         updateLink(superseded.id, { transferDeclined: superseded.transferDeclined });
       }
@@ -179,7 +206,7 @@ export function keepTaskText(linkId: string): void {
 }
 
 export function dismissTransferWarning(targetId: string): void {
-  transferUi.warnings = transferUi.warnings.filter((warning) => warning.targetId !== targetId);
+  hintTimers.dismiss(`warning:${targetId}`);
 }
 
 function resetTransferSession(): void {
@@ -187,6 +214,9 @@ function resetTransferSession(): void {
   lastTaskText.clear();
   activeLinkByTarget.clear();
   warnedTaskIds.clear();
+  seenInactiveIds.clear();
+  removedTaskText.clear();
+  hintTimers.clear();
   transferUi.prompts = [];
   transferUi.warnings = [];
   transferUi.inactive = [];
@@ -317,7 +347,16 @@ function syncTransfers(): void {
     : { ...initialSelection, activeByTarget: stabilization.activeByTarget };
   const { activeByTarget, states } = stabilized;
   updatePromptState(states);
-  transferUi.inactive = inactiveNotices(states, activeByTarget);
+  const inactive = inactiveNotices(states, activeByTarget);
+  const inactiveIds = new Set(inactive.map((notice) => notice.id));
+  for (const visible of transferUi.inactive) {
+    if (!inactiveIds.has(visible.id)) hintTimers.dismiss(`inactive:${visible.id}`);
+  }
+  if (firstSnapshot) {
+    for (const notice of inactive) seenInactiveIds.add(notice.id);
+  } else {
+    for (const notice of inactive) showInactiveNotice(notice);
+  }
   applyActiveTransfers(activeByTarget, firstSnapshot);
   firstSnapshot = false;
 
@@ -333,6 +372,24 @@ function syncTransfers(): void {
     if (!currentLinkIds.has(linkId)) lastSourceText.delete(linkId);
   }
 }
+
+registerLinkLifecycle({
+  onRemoved(link) {
+    hintTimers.dismiss(`inactive:${link.id}`);
+    const target = board.notes[link.to];
+    if (!target || link.transferDeclined !== false || link.transferOriginalText === undefined) return;
+    const active = selectActiveTransfers(Object.values(links.byId), board.notes).activeByTarget.get(link.to);
+    if (active?.id !== link.id) return;
+    removedTaskText.set(link.id, target.text);
+    setTaskText(link.to, link.transferOriginalText);
+  },
+  onRestored(link) {
+    const text = removedTaskText.get(link.id);
+    if (text === undefined || link.transferDeclined !== false || !board.notes[link.to]) return;
+    setTaskText(link.to, text);
+    removedTaskText.delete(link.id);
+  },
+});
 
 registerTextEditParticipant({
   id: "text-to-task",

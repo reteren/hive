@@ -18,6 +18,7 @@
   import { completeLinkGesture, previewLinkKind, resolveCutRelease, type LinkDraft } from "./gestures";
   import { cancelLineDraft, lineInteraction, setLineError } from "./interaction.svelte";
   import { createBoardLink, cutLinks } from "./operations";
+  import { effectiveLinkKind } from "./rules";
   import { clearSelectedLink, selectLink, selectedLinkIds, selectLinks, toggleLinkSelection } from "./selection.svelte";
 
   const CUT_DRAG_THRESHOLD_PX = 5;
@@ -141,8 +142,21 @@
       sourceBounds: sourceId === ME_OBJECT_ID ? undefined : source,
     });
     const arrow = buildArrowGeometry(tool.lineShape, geometry);
-    const kind = previewLinkKind(tool.active);
-    if (!kind) return null;
+    const requestedKind = previewLinkKind(tool.active);
+    if (!requestedKind) return null;
+    let hoveredId: string | null = null;
+    for (let index = board.order.length - 1; index >= 0; index -= 1) {
+      const id = board.order[index];
+      const note = board.notes[id];
+      if (!note) continue;
+      const bounds = noteBounds(note);
+      if (point.x >= bounds.x && point.x <= bounds.x + bounds.width &&
+        point.y >= bounds.y && point.y <= bounds.y + bounds.height) {
+        hoveredId = id;
+        break;
+      }
+    }
+    const kind = effectiveLinkKind(sourceId, hoveredId ?? "", requestedKind);
     const shapeDashes = kind === "weak" && (tool.lineShape === "wave" || tool.lineShape === "zigzag")
       ? buildShapeDashPaths(tool.lineShape, geometry, arrow.shaftLength)
       : [];
@@ -344,7 +358,7 @@
         lineInteraction.sourceAnchor = fromAnchor ?? null;
         return false;
       }
-      const kind = tool.active === "line-weak" ? "weak" : "strong";
+      const kind = effectiveLinkKind(fromId, toId, tool.active === "line-weak" ? "weak" : "strong");
       const refusal = linkRefusalReason(fromId, toId, kind);
       if (refusal || !canLink(fromId, toId, kind)) {
         setLineError(refusal ?? "Could not create link", point);

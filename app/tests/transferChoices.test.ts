@@ -41,14 +41,17 @@ describe("Text → Task confirmation choices", () => {
     replaceTransferText(link.id);
     expect(historyState().taskText).toBe("new source text");
     expect(historyState().choice).toBe(false);
+    expect(links.byId[link.id]?.transferOriginalText).toBe("my draft");
 
     undo();
     expect(historyState().taskText).toBe("my draft");
     expect(historyState().choice).toBeUndefined();
+    expect(links.byId[link.id]?.transferOriginalText).toBeUndefined();
 
     redo();
     expect(historyState().taskText).toBe("new source text");
     expect(historyState().choice).toBe(false);
+    expect(links.byId[link.id]?.transferOriginalText).toBe("my draft");
   });
 
   it("Keep preserves task text, persists the declined choice, and supports Undo/Redo", () => {

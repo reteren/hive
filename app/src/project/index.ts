@@ -379,6 +379,8 @@ function sanitizeProjectLinks(value: unknown, noteIds: ReadonlySet<string>): { l
       shape,
       ...(fromAnchor ? { fromAnchor } : {}),
       ...(toAnchor ? { toAnchor } : {}),
+      ...(typeof candidate.transferDeclined === "boolean" ? { transferDeclined: candidate.transferDeclined } : {}),
+      ...(typeof candidate.transferOriginalText === "string" ? { transferOriginalText: candidate.transferOriginalText } : {}),
     });
   }
 

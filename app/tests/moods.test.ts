@@ -15,9 +15,12 @@ import {
 import {
   effectiveMoods,
   extractModuleFromNote,
+  moduleDropPreview,
+  toggleMood,
   tryInsertModuleOnDrop,
+  updateModuleDropPreview,
 } from "../src/modules/moduleActions.svelte";
-import { linkRefusalReason } from "../src/links/rules";
+import { effectiveLinkKind, linkRefusalReason } from "../src/links/rules";
 import { modulePicker, closeModulePicker, toggleModulePicker } from "../src/modules/pickerState.svelte";
 import { mergeLoadedNotes, parseProjectIndex, serializeProjectIndex } from "../src/project/index";
 import { tool } from "../src/tools/tool.svelte";
@@ -84,6 +87,20 @@ describe("Mood modules", () => {
     expect(modulePicker).toMatchObject({ noteId: "other", kind: "mood" });
   });
 
+  it("keeps a standalone Mood picker open through several reversible selections", () => {
+    replaceBoard([note({ id: "mood", type: "mood", moods: ["fear"] })]);
+    toggleModulePicker("mood", "mood");
+    toggleMood("mood", "joy");
+    toggleMood("mood", "love");
+
+    expect(board.notes.mood?.moods).toEqual(["fear", "joy", "love"]);
+    expect(modulePicker).toMatchObject({ noteId: "mood", kind: "mood" });
+    expect(history.cursor).toBe(2);
+    undo();
+    expect(board.notes.mood?.moods).toEqual(["fear", "joy"]);
+    expect(modulePicker.kind).toBe("mood");
+  });
+
   it("reports only populated rows in Importance, Purpose, Mood order", () => {
     expect(moduleRowsFor(null, [], [])).toEqual([]);
     expect(moduleRowsFor("basic", [], ["joy"])).toEqual(["importance", "mood"]);
@@ -112,6 +129,30 @@ describe("Mood modules", () => {
     expect(effectiveMoods("target")).toEqual(["joy", "curiosity"]);
   });
 
+  it("previews and inserts one shared Mood target while preserving the other target", () => {
+    const first = note({ id: "first", moods: ["joy"] });
+    const second = note({ id: "second", x: 40 });
+    const module = note({ id: "shared", type: "mood", moods: ["fear", "joy"], x: 80 });
+    const firstLink = link("shared", "first", "first-link");
+    const secondLink = link("shared", "second", "second-link");
+    replaceBoard([first, second, module]);
+    replaceLinks([firstLink, secondLink]);
+
+    updateModuleDropPreview("shared", { x: 5, y: 5 });
+    expect(moduleDropPreview).toMatchObject({ targetId: "first", allowed: true });
+    expect(tryInsertModuleOnDrop("shared", { x: 5, y: 5 })).toBe(true);
+    expect(board.notes.first?.moods).toEqual(["joy", "fear"]);
+    expect(board.notes.shared?.moods).toEqual(["fear", "joy"]);
+    expect(links.byId["first-link"]).toBeUndefined();
+    expect(links.byId["second-link"]).toEqual(secondLink);
+    expect(history.entries).toHaveLength(1);
+
+    undo();
+    expect(board.notes.first?.moods).toEqual(["joy"]);
+    expect(links.byId["first-link"]).toEqual(firstLink);
+    expect(links.byId["second-link"]).toEqual(secondLink);
+  });
+
   it("extracts an embedded Mood with a strong edge and restores it through Undo/Redo", () => {
     const target = note({ id: "target", moods: ["happiness", "sadness"] });
     replaceBoard([target]);
@@ -136,14 +177,14 @@ describe("Mood modules", () => {
     expect(board.notes.target?.moods).toEqual(["happiness"]);
   });
 
-  it("refuses weak links in either direction to a Mood module", () => {
+  it("accepts a weak-tool request as a strong Mood link in either direction", () => {
     const content = note({ id: "content" });
     const mood = note({ id: "mood", type: "mood", moods: ["fear"] });
     const notes = { content, mood };
-    expect(linkRefusalReason("mood", "content", "weak", [], notes))
-      .toBe("Importance, Purpose, and Mood modules require strong links.");
-    expect(linkRefusalReason("content", "mood", "weak", [], notes))
-      .toBe("Importance, Purpose, and Mood modules require strong links.");
+    expect(linkRefusalReason("mood", "content", "weak", [], notes)).toBeNull();
+    expect(linkRefusalReason("content", "mood", "weak", [], notes)).toBeNull();
+    expect(effectiveLinkKind("mood", "content", "weak", notes)).toBe("strong");
+    expect(effectiveLinkKind("content", "mood", "weak", notes)).toBe("strong");
   });
 
   it("round trips Mood values and standalone kind through the v2 project index", () => {

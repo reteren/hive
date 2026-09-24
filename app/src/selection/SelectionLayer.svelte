@@ -7,6 +7,7 @@
   import { grid } from "../board/grid.svelte";
   import { execute, record, type HistoryCommand } from "../history/history.svelte";
   import { editing } from "../notes/editing.svelte";
+  import type { NoteKind } from "../model/note";
   import { noteBounds, type Bounds } from "../notes/layout.svelte";
   import { isTextEditingTarget } from "../commands/focus";
   import {
@@ -57,7 +58,7 @@
     notePressIntent,
     shouldToggleSelectedHeaderAfterGesture,
   } from "./noteMoveIntent";
-  import { RESIZE_EDGES, resizeEdgeAxes, type ResizeEdge } from "./resize";
+  import { hasResizeHandle, isStandaloneModuleKind, RESIZE_EDGES, resizeEdgeAxes, type ResizeEdge } from "./resize";
   import { resizeDoubleClickAction } from "./resizeDoubleClick";
   import { startNoteEditing } from "../editor/editorSession";
   import { tool } from "../tools/tool.svelte";
@@ -77,6 +78,7 @@
     width: number;
     height: number;
     primary: boolean;
+    kind: NoteKind;
   }
 
   type ActivePointerGesture =
@@ -168,6 +170,7 @@
           width: bounds.width * ppu,
           height: bounds.height * ppu,
           primary: selection.primaryId === id,
+          kind: note.type,
         },
       ];
     });
@@ -308,7 +311,9 @@
       if (resizeHandle) {
         const id = resizeHandle.dataset.noteId;
         const edge = resizeHandle.dataset.resizeHandle as ResizeEdge | undefined;
-        if (id && edge && id === selection.primaryId) startResize(event, id, edge, local, world);
+        if (id && edge && id === selection.primaryId && hasResizeHandle(boardState.notes[id]?.type, edge)) {
+          startResize(event, id, edge, local, world);
+        }
         return;
       }
 
@@ -457,7 +462,11 @@
           event.clientX >= rect.left && event.clientX < rect.right &&
           event.clientY >= rect.top && event.clientY < rect.bottom;
         const canEdit = note.type === "note" || note.type === "pro" || note.type === "con";
-        const action = resizeDoubleClickAction(handle.dataset.resizeHandle as ResizeEdge, canEdit && insideBody);
+        const action = resizeDoubleClickAction(
+          handle.dataset.resizeHandle as ResizeEdge,
+          canEdit && insideBody,
+          !isStandaloneModuleKind(note.type),
+        );
         if (action === "edit") {
           event.preventDefault();
           event.stopPropagation();
@@ -638,7 +647,9 @@
       precision: createPrecisionDeltaTracker(world, event.altKey),
       started: false,
       captured: false,
-      gesture: createResizeGesture(frameForNote(id), noteBounds(note).height, edge, world),
+      gesture: createResizeGesture(
+        frameForNote(id), noteBounds(note).height, edge, world, isStandaloneModuleKind(note.type),
+      ),
     };
   }
 
@@ -658,7 +669,13 @@
       precision: createPrecisionDeltaTracker(world, event.altKey),
       started: false,
       captured: false,
-      gesture: createGroupScaleGesture(frames, bounds, edge, world),
+      gesture: createGroupScaleGesture(
+        frames,
+        bounds,
+        edge,
+        world,
+        new Set(frames.filter((frame) => isStandaloneModuleKind(boardState.notes[frame.id]?.type)).map((frame) => frame.id)),
+      ),
     };
   }
 
@@ -957,7 +974,7 @@
   function updateModulePreview(frames: readonly NoteFrame[], worldPoint: Point): void {
     if (frames.length !== 1) return;
     const note = boardState.notes[frames[0].id];
-    if (note?.type === "importance" || note?.type === "purpose") {
+    if (note?.type === "importance" || note?.type === "purpose" || note?.type === "mood") {
       updateModuleDropPreview(note.id, worldPoint);
     }
   }
@@ -1001,7 +1018,10 @@
     return axes.horizontal !== null && axes.vertical !== null;
   }
 
-  function resizeHandleTitle(edge: ResizeEdge): string {
+  function resizeHandleTitle(edge: ResizeEdge, standaloneModule = false): string {
+    if (standaloneModule) {
+      return `Resize height from ${edge.startsWith("top") ? "top" : "bottom"}`;
+    }
     const base = `Resize from ${handleLabel(edge)}`;
     return edge === "top" || edge === "bottom" ? `${base}; double-click for auto height` : base;
   }
@@ -1027,16 +1047,19 @@
       aria-label="Selected {outline.name}"
     >
       {#if selection.ids.length === 1 && outline.primary}
-        {#each RESIZE_EDGES as edge (edge)}
+        {#each RESIZE_EDGES.filter((edge) => hasResizeHandle(outline.kind, edge)) as edge (edge)}
           <button
             class={`resize-handle resize-handle-${edge}`}
             class:resize-handle-corner={isCornerHandle(edge)}
             class:resize-handle-side={!isCornerHandle(edge)}
+            class:module-vertical-handle={isStandaloneModuleKind(outline.kind) && isCornerHandle(edge)}
             type="button"
             data-resize-handle={edge}
             data-note-id={outline.id}
-            aria-label="Resize {outline.name} from {handleLabel(edge)}"
-            title={resizeHandleTitle(edge)}
+            aria-label={isStandaloneModuleKind(outline.kind)
+              ? `Resize ${outline.name} height from ${edge.startsWith("top") ? "top" : "bottom"}`
+              : `Resize ${outline.name} from ${handleLabel(edge)}`}
+            title={resizeHandleTitle(edge, isStandaloneModuleKind(outline.kind))}
           ></button>
         {/each}
       {/if}
@@ -1221,6 +1244,10 @@
     left: -16px;
     transform: translateY(-50%);
     cursor: ew-resize;
+  }
+
+  .module-vertical-handle {
+    cursor: ns-resize;
   }
 
   .marquee {

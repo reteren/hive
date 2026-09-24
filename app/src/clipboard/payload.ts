@@ -40,6 +40,7 @@ export interface ClipboardNode {
 }
 
 export interface ClipboardLink {
+  /** Transfer choices and original text are omitted: pasted links start a new transfer decision. */
   from: string;
   to: string;
   kind: Link["kind"];

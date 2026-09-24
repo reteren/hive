@@ -26,26 +26,32 @@
   border: 4px solid transparent;
   background:
     linear-gradient(var(--note-frame), var(--note-frame)) padding-box,
-    linear-gradient(135deg, #f08383 0%, #efc96b 24%, #83c58b 48%, #78b9e5 72%, #b589dd 100%) border-box;
-  background-size: 100% 100%, 300% 100%;
-  animation: importance-rainbow-flow 5s linear infinite;
+    repeating-linear-gradient(90deg,
+      #e78b91 0px,
+      #e4c47d 48px,
+      #8bbd92 96px,
+      #83b7d9 144px,
+      #af95cf 192px,
+      #e78b91 240px) border-box;
+  background-size: 100% 100%, 240px 100%;
+  animation: importance-rainbow-flow 8s linear infinite;
   box-shadow: 0 3px 12px rgb(0 0 0 / 28%), 0 0 9px rgb(176 139 220 / 16%);
 }
 
 @keyframes importance-rainbow-flow {
-  from { background-position: 0 0, 0% 50%; }
-  to { background-position: 0 0, 100% 50%; }
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 0 0, -240px 0; }
 }
 
 :root[data-reduce-motion="true"] .note-card[data-importance="absolute"] {
   animation: none;
-  background-position: 0 0, 50% 50%;
+  background-position: 0 0, 0 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .note-card[data-importance="absolute"] {
     animation: none;
-    background-position: 0 0, 50% 50%;
+    background-position: 0 0, 0 0;
   }
 }
 
@@ -254,7 +260,7 @@
   align-items: center;
 }
 
-.module-node-body .module-chip-display {
+.module-node-body > .module-chip {
   min-height: 20px;
   max-width: 100%;
   overflow: hidden;

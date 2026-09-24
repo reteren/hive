@@ -4,7 +4,7 @@ import { sanitizeKeyOverrides, type KeyBindingOverrides } from "../commands/keym
 import { DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT, MIN_HISTORY_LIMIT } from "../history/historyStack";
 import { systemPrefersReducedMotion } from "./motion";
 
-export const VIEW_SETTINGS_VERSION = 4;
+export const VIEW_SETTINGS_VERSION = 5;
 
 export interface CameraSettings {
   minZoom: number;
@@ -39,6 +39,7 @@ export interface ViewSettings {
   history: HistorySettings;
   accessibility: AccessibilitySettings;
   keyOverrides: KeyBindingOverrides;
+  transferHintsShown: number;
 }
 
 export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
@@ -54,6 +55,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
   history: { limit: DEFAULT_HISTORY_LIMIT },
   accessibility: { reduceAnimations: systemPrefersReducedMotion() },
   keyOverrides: {},
+  transferHintsShown: 0,
 };
 
 const MIN_ALLOWED_ZOOM_LIMIT = 0.001;
@@ -109,6 +111,7 @@ export function parseViewSettings(serialized: string | null | undefined, default
       reduceAnimations: booleanOrDefault(accessibilityInput.reduceAnimations, defaults.accessibility.reduceAnimations),
     },
     keyOverrides: sanitizeKeyOverrides(parsed.keyOverrides),
+    transferHintsShown: hintCountOrDefault(parsed.transferHintsShown, defaults.transferHintsShown),
   };
 }
 
@@ -128,6 +131,7 @@ export function serializeViewSettings(settings: ViewSettings): string {
     history: { limit: settings.history.limit },
     accessibility: { reduceAnimations: settings.accessibility.reduceAnimations },
     keyOverrides: sanitizeKeyOverrides(settings.keyOverrides),
+    transferHintsShown: hintCountOrDefault(settings.transferHintsShown, 0),
   });
 }
 
@@ -163,6 +167,7 @@ function cloneViewSettings(settings: ViewSettings): ViewSettings {
     history: { ...settings.history },
     accessibility: { ...settings.accessibility },
     keyOverrides: sanitizeKeyOverrides(settings.keyOverrides),
+    transferHintsShown: settings.transferHintsShown,
   };
 }
 
@@ -193,6 +198,12 @@ function booleanOrDefault(value: unknown, fallback: boolean): boolean {
 function historyLimitOrDefault(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isInteger(value) &&
     value >= MIN_HISTORY_LIMIT && value <= MAX_HISTORY_LIMIT
+    ? value
+    : fallback;
+}
+
+function hintCountOrDefault(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 5
     ? value
     : fallback;
 }

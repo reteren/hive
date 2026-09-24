@@ -65,6 +65,7 @@ export interface ResizeGesture {
   edge: ResizeEdge;
   startWorld: Point;
   visualHeight: number;
+  standaloneModule: boolean;
 }
 
 export function createResizeGesture(
@@ -72,9 +73,10 @@ export function createResizeGesture(
   visualHeight: number,
   edge: ResizeEdge,
   startWorld: Point,
+  standaloneModule = false,
 ): ResizeGesture {
   const before = copyFrame(frame);
-  return { before, after: copyFrame(frame), edge, startWorld: { ...startWorld }, visualHeight };
+  return { before, after: copyFrame(frame), edge, startWorld: { ...startWorld }, visualHeight, standaloneModule };
 }
 
 export function updateResizeGesture(
@@ -90,6 +92,7 @@ export function updateResizeGesture(
     { x: cursorWorld.x - gesture.startWorld.x, y: cursorWorld.y - gesture.startWorld.y },
     snap,
     step,
+    gesture.standaloneModule,
   );
   return { ...gesture, after: { ...gesture.before, ...afterGeometry } };
 }

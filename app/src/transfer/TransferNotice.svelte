@@ -2,7 +2,7 @@
 <script lang="ts">
   import { board } from "../model/board.svelte";
   import { camera, viewport } from "../board/camera.svelte";
-  import { PX_PER_UNIT, worldToScreen } from "../board/cameraMath";
+  import { worldToScreen } from "../board/cameraMath";
   import { noteBounds } from "../notes/layout.svelte";
   import {
     dismissTransferWarning,
@@ -15,7 +15,7 @@
     | { key: string; kind: "prompt"; targetId: string; linkId: string; sourceName: string; targetName: string }
     | { key: string; kind: "warning" | "inactive"; targetId: string; message: string };
 
-  let items = $derived.by((): VisualItem[] => [
+  let items = $derived.by((): VisualItem[] => ([
     ...transferUi.prompts.map((prompt) => ({
       key: `prompt:${prompt.linkId}`,
       kind: "prompt" as const,
@@ -36,7 +36,7 @@
       targetId: notice.targetId,
       message: notice.message,
     })),
-  ]);
+  ]).filter((item) => Boolean(board.notes[item.targetId])));
 
   function positionFor(item: VisualItem): { left: number; top: number } {
     const note = board.notes[item.targetId];
@@ -48,8 +48,9 @@
     });
     const sameTarget = items.filter((candidate) => candidate.targetId === item.targetId);
     const index = Math.max(0, sameTarget.findIndex((candidate) => candidate.key === item.key));
-    const left = Math.max(8, Math.min(screen.x + 8, viewport.width - 344));
-    const top = Math.max(8, Math.min(screen.y + index * 66, viewport.height - 88));
+    const width = item.kind === "prompt" ? 328 : 260;
+    const left = Math.max(8, Math.min(screen.x + 8, viewport.width - width - 8));
+    const top = Math.max(8, Math.min(screen.y + index * 82, viewport.height - 88));
     return { left, top };
   }
 </script>
@@ -162,6 +163,8 @@
 
   .notice {
     align-items: center;
+    width: min(260px, calc(100% - 16px));
+    max-width: 260px;
     border-color: #4a4a4a;
     background: #242424;
     color: var(--text-dim);
@@ -175,6 +178,7 @@
 
   .notice > span {
     overflow-wrap: anywhere;
+    white-space: normal;
   }
 
   .notice button {

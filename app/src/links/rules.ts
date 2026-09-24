@@ -5,6 +5,18 @@ import type { ModuleEdge, ModuleNoteLookup, ModuleNoteValue } from "../modules/m
 export type LinkKind = Link["kind"];
 export type ExistingLink = Pick<Link, "from" | "to"> & Partial<Pick<Link, "kind">>;
 
+/** Module links always carry their effect, even when the dashed-line tool is active. */
+export function effectiveLinkKind(
+  from: string,
+  to: string,
+  requested: LinkKind,
+  notes: ModuleNoteLookup = board.notes,
+): LinkKind {
+  return requested === "weak" && (isModule(notes[from]) || isModule(notes[to]))
+    ? "strong"
+    : requested;
+}
+
 /** Pair occupancy is direction and kind independent; this deliberately permits cycles. */
 export function canCreateLinkPair(
   from: string,
@@ -29,9 +41,7 @@ export function linkRefusalReason(
   const target = notes[to];
   const sourceIsModule = isModule(source);
   const targetIsModule = isModule(target);
-  if ((sourceIsModule || targetIsModule) && kind !== "strong") {
-    return "Importance, Purpose, and Mood modules require strong links.";
-  }
+  const actualKind = effectiveLinkKind(from, to, kind, notes);
   if (to === ME_OBJECT_ID) return "Beacons can have outgoing links only.";
   if (existing.some((link) => pairKey(link.from, link.to) === pairKey(from, to))) {
     return "These objects already have a link.";
@@ -43,7 +53,7 @@ export function linkRefusalReason(
   const module = sourceIsModule ? source : target;
   const content = sourceIsModule ? target : source;
   if (!isContentNote(content)) return "Module nodes link only to notes, pluses, or minuses.";
-  if (module?.type !== "importance" || kind !== "strong") return null;
+  if (module?.type !== "importance" || actualKind !== "strong") return null;
 
   if (content.importance) return "This note already has an Importance source.";
   const occupiedByExternalImportance = existing.some((link) => {

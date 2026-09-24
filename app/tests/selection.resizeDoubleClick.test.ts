@@ -12,4 +12,9 @@ describe("resize handle double-click", () => {
     expect(resizeDoubleClickAction("bottom", false)).toBe("auto-height");
     expect(resizeDoubleClickAction("left", true)).toBe("none");
   });
+
+  it("does not switch standalone modules to auto height", () => {
+    expect(resizeDoubleClickAction("top", false, false)).toBe("none");
+    expect(resizeDoubleClickAction("bottom", false, false)).toBe("none");
+  });
 });

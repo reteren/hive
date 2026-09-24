@@ -24,5 +24,5 @@ export function resolveModuleDropDecision(
 }
 
 function isStandaloneModule(type: NoteKind | undefined): boolean {
-  return type === "importance" || type === "purpose";
+  return type === "importance" || type === "purpose" || type === "mood";
 }

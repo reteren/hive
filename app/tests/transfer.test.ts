@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Link } from "../src/model/link";
 import type { Note } from "../src/model/note";
+import { parseProjectIndex, serializeProjectIndex } from "../src/project/index";
 import {
   acceptedSourcesToDeactivate,
   classifyTransfer,
@@ -28,6 +29,17 @@ function makeLink(id: string, from: string, to: string, kind: Link["kind"] = "st
 }
 
 describe("Text → Task transfer rules", () => {
+  it("round-trips the accepted choice and original task text in board.json", () => {
+    const source = makeNote("source", { text: "current source" });
+    const task = makeNote("task", { text: "current source", task: { done: false, doneAt: null } });
+    const link = makeLink("accepted", source.id, task.id, "strong", {
+      transferDeclined: false,
+      transferOriginalText: "draft before transfer",
+    });
+    const parsed = parseProjectIndex(serializeProjectIndex([source, task], undefined, [link]));
+    expect(parsed.links).toEqual([link]);
+  });
+
   it("applies only to strong non-task-to-task links", () => {
     const ordinary = makeNote("ordinary");
     const plus = makeNote("plus", { type: "pro" });

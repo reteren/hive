@@ -204,24 +204,6 @@ export function createMoodToggleCommand(
   return createArrayToggleCommand(note, "moods", mood, label, write);
 }
 
-export function createPurposeSelectionCommand(
-  note: Pick<Note, "id" | "name" | "purposes">,
-  purpose: PurposeKind,
-  write: ModuleDataWriter,
-): HistoryCommand | null {
-  const label = PURPOSE_OPTIONS.find((option) => option.id === purpose)?.label ?? purpose;
-  return createArraySelectionCommand(note, "purposes", purpose, label, "Purpose", write);
-}
-
-export function createMoodSelectionCommand(
-  note: Pick<Note, "id" | "name" | "moods">,
-  mood: MoodKind,
-  write: ModuleDataWriter,
-): HistoryCommand | null {
-  const label = MOOD_OPTIONS.find((option) => option.id === mood)?.label ?? mood;
-  return createArraySelectionCommand(note, "moods", mood, label, "Mood", write);
-}
-
 function createArrayToggleCommand<T extends PurposeKind | MoodKind>(
   note: Pick<Note, "id" | "name"> & Partial<Pick<Note, "purposes" | "moods">>,
   field: "purposes" | "moods",
@@ -237,25 +219,6 @@ function createArrayToggleCommand<T extends PurposeKind | MoodKind>(
 
   return {
     label: `${adding ? "Add" : "Remove"} ${field === "purposes" ? "Purpose" : "Mood"}: ${label}`,
-    target: note.name,
-    do: () => write(note.id, { [field]: next }),
-    undo: () => write(note.id, { [field]: previous }),
-  };
-}
-
-function createArraySelectionCommand<T extends PurposeKind | MoodKind>(
-  note: Pick<Note, "id" | "name"> & Partial<Pick<Note, "purposes" | "moods">>,
-  field: "purposes" | "moods",
-  value: T,
-  label: string,
-  title: "Purpose" | "Mood",
-  write: ModuleDataWriter,
-): HistoryCommand | null {
-  const previous = note[field] ? [...note[field]!] : note[field];
-  const next = [value];
-  if (previous?.length === 1 && previous[0] === value) return null;
-  return {
-    label: `${title}: ${label}`,
     target: note.name,
     do: () => write(note.id, { [field]: next }),
     undo: () => write(note.id, { [field]: previous }),

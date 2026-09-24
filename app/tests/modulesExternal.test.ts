@@ -24,8 +24,10 @@ import {
   setImportance,
   setLinkedImportance,
   tryInsertModuleOnDrop,
+  togglePurpose,
 } from "../src/modules/moduleActions.svelte";
-import { canCreateLinkPair, linkRefusalReason } from "../src/links/rules";
+import { canCreateLinkPair, effectiveLinkKind, linkRefusalReason } from "../src/links/rules";
+import { closeModulePicker, modulePicker, toggleModulePicker } from "../src/modules/pickerState.svelte";
 
 function note({ id, type, ...overrides }: Partial<Note> & Pick<Note, "id" | "type">): Note {
   return {
@@ -94,6 +96,21 @@ describe("standalone modules", () => {
     expect(linkedPurposesFor("target", notes, edges)).toEqual(["concept", "quote", "decision"]);
   });
 
+  it("keeps a standalone Purpose picker open through multiple selections", () => {
+    replaceBoard([note({ id: "purpose", type: "purpose", purposes: ["quote"] })]);
+    try {
+      toggleModulePicker("purpose", "purpose");
+      togglePurpose("purpose", "concept");
+      togglePurpose("purpose", "decision");
+
+      expect(board.notes.purpose?.purposes).toEqual(["quote", "concept", "decision"]);
+      expect(modulePicker).toMatchObject({ noteId: "purpose", kind: "purpose" });
+      expect(history.cursor).toBe(2);
+    } finally {
+      closeModulePicker();
+    }
+  });
+
   it("enforces one embedded or strong-linked Importance source per target", () => {
     const target = note({ id: "target", type: "note" });
     const first = note({ id: "first", type: "importance", importance: "basic" });
@@ -110,20 +127,24 @@ describe("standalone modules", () => {
     expect(canCreateLinkPair("first", "second", [], "strong", notes)).toBe(false);
   });
 
-  it("refuses weak links in either direction when an endpoint is an external module", () => {
+  it("accepts a weak-tool request as a strong module link in either direction", () => {
     const content = note({ id: "content", type: "note" });
     const importance = note({ id: "importance", type: "importance", importance: "basic" });
     const purpose = note({ id: "purpose", type: "purpose", purposes: ["concept"] });
     const notes = { content, importance, purpose };
 
     for (const moduleId of ["importance", "purpose"]) {
-      expect(linkRefusalReason(moduleId, "content", "weak", [], notes))
-        .toBe("Importance, Purpose, and Mood modules require strong links.");
-      expect(linkRefusalReason("content", moduleId, "weak", [], notes))
-        .toBe("Importance, Purpose, and Mood modules require strong links.");
-      expect(canCreateLinkPair(moduleId, "content", [], "weak", notes)).toBe(false);
+      expect(linkRefusalReason(moduleId, "content", "weak", [], notes)).toBeNull();
+      expect(linkRefusalReason("content", moduleId, "weak", [], notes)).toBeNull();
+      expect(canCreateLinkPair(moduleId, "content", [], "weak", notes)).toBe(true);
+      expect(effectiveLinkKind(moduleId, "content", "weak", notes)).toBe("strong");
+      expect(effectiveLinkKind("content", moduleId, "weak", notes)).toBe("strong");
     }
     expect(canCreateLinkPair("purpose", "content", [], "strong", notes)).toBe(true);
+    expect(linkRefusalReason("importance", "content", "weak", [], {
+      ...notes,
+      content: { ...content, importance: "medium" },
+    })).toBe("This note already has an Importance source.");
   });
 
   it("edits a linked Importance source or makes just this target local, with exact history", () => {

@@ -17,6 +17,7 @@ describe("view settings serialization", () => {
       history: { limit: 256 },
       accessibility: { reduceAnimations: true },
       keyOverrides: { "view.home": ["Ctrl+Alt+KeyH"], "edit.undo": [] },
+      transferHintsShown: 3,
     };
 
     const serialized = serializeViewSettings(settings);
@@ -77,6 +78,7 @@ describe("view settings serialization", () => {
       history: { limit: 64 },
       accessibility: DEFAULT_VIEW_SETTINGS.accessibility,
       keyOverrides: {},
+      transferHintsShown: 0,
     });
   });
 
@@ -109,5 +111,13 @@ describe("view settings serialization", () => {
 
     setReduceMotionDataset(dataset, false);
     expect(dataset.reduceMotion).toBeUndefined();
+  });
+
+  it("persists the transfer hint count and rejects invalid counters", () => {
+    const saved = serializeViewSettings({ ...DEFAULT_VIEW_SETTINGS, transferHintsShown: 5 });
+    expect(parseViewSettings(saved, DEFAULT_VIEW_SETTINGS).transferHintsShown).toBe(5);
+    expect(parseViewSettings('{"transferHintsShown":-1}', DEFAULT_VIEW_SETTINGS).transferHintsShown).toBe(0);
+    expect(parseViewSettings('{"transferHintsShown":6}', DEFAULT_VIEW_SETTINGS).transferHintsShown).toBe(0);
+    expect(parseViewSettings('{"transferHintsShown":2.5}', DEFAULT_VIEW_SETTINGS).transferHintsShown).toBe(0);
   });
 });

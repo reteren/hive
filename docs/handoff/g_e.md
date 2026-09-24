@@ -1,0 +1,4 @@
+TASK debug-1.0.7-module-resize — size limits for standalone module nodes. Browser port: 1445.
+YOUR FILES: src/selection/** (resize + group scale), tests/selection*.test.ts. Read-only: src/modules/**.
+User: "Nodes of type importance, purpose, mood must not be scalable more than 2× their base size in HEIGHT, and not scalable in WIDTH at all."
+Base size = the size a module node is created with (see src/notes/noteCommands.ts / creation code for kinds importance/purpose/mood). Single resize: for these kinds hide the left/right handles (and make corner handles act vertically only), clamp height to [base height, 2 × base height]. Group scale containing module nodes: module nodes keep their width and clamp height within the same range (positions still scale). Snap/Alt precision still apply. Tests for the clamps in single and group resize.

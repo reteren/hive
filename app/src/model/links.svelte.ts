@@ -10,6 +10,19 @@ export const links = $state({
   byId: {} as Record<string, Link>,
 });
 
+export interface LinkLifecycleListener {
+  onRemoved?(link: Link): void;
+  onRestored?(link: Link): void;
+}
+
+const lifecycleListeners = new Set<LinkLifecycleListener>();
+
+/** Observe raw link mutations while they are still inside their owning history command. */
+export function registerLinkLifecycle(listener: LinkLifecycleListener): () => void {
+  lifecycleListeners.add(listener);
+  return () => lifecycleListeners.delete(listener);
+}
+
 export function linkBetween(a: string, b: string): Link | undefined {
   const key = pairKey(a, b);
   return Object.values(links.byId).find((link) => pairKey(link.from, link.to) === key);
@@ -26,11 +39,15 @@ export function linkRefusalReason(a: string, b: string, kind: Link["kind"] = act
 
 export function addLink(link: Link): void {
   links.byId[link.id] = link;
+  for (const listener of lifecycleListeners) listener.onRestored?.(link);
 }
 
 export function removeLink(id: string): Link | undefined {
   const link = links.byId[id];
-  if (link) delete links.byId[id];
+  if (link) {
+    for (const listener of lifecycleListeners) listener.onRemoved?.(link);
+    delete links.byId[id];
+  }
   return link;
 }
 

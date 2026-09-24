@@ -6,7 +6,7 @@ import { history as undoHistory, setHistoryLimit } from "../history/history.svel
 import { getCommandKeyOverrides, setCommandKeyOverrides } from "../commands/registry.svelte";
 import { display } from "./display.svelte";
 import { applyReduceMotionPreference } from "./motion";
-import { preferences, setReduceAnimations } from "./preferences.svelte";
+import { preferences, setReduceAnimations, setTransferHintsShown } from "./preferences.svelte";
 import { parseViewSettings, serializeViewSettings, type ViewSettings } from "./viewSettings";
 
 const SAVE_DEBOUNCE_MS = 400;
@@ -97,6 +97,7 @@ function currentSettings(): ViewSettings {
     history: { limit: undoHistory.limit },
     accessibility: { reduceAnimations: preferences.reduceAnimations },
     keyOverrides: getCommandKeyOverrides(),
+    transferHintsShown: preferences.transferHintsShown,
   };
 }
 
@@ -115,4 +116,5 @@ function applySettings(settings: ViewSettings): void {
   setHistoryLimit(settings.history.limit);
   setReduceAnimations(settings.accessibility.reduceAnimations);
   setCommandKeyOverrides(settings.keyOverrides);
+  setTransferHintsShown(settings.transferHintsShown);
 }

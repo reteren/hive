@@ -31,6 +31,8 @@ export interface Link {
   toAnchor?: LinkAnchor;
   /** Text → Task transfer declined by the user for this link (R3.7, H10 "Keep"). */
   transferDeclined?: boolean;
+  /** Task text before the first accepted transfer in this source chain, including an empty string. */
+  transferOriginalText?: string;
 }
 
 /** Order-independent key of the pair a link occupies. */

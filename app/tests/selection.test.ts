@@ -17,7 +17,7 @@ import {
   updateMoveGesture,
   updateResizeGesture,
 } from "../src/selection/gestures";
-import { MIN_NOTE_WIDTH, resizeNote } from "../src/selection/resize";
+import { hasResizeHandle, MIN_NOTE_WIDTH, resizeNote } from "../src/selection/resize";
 
 const noteA: Note = {
   id: "a",
@@ -146,6 +146,38 @@ describe("selection move and resize gestures", () => {
       y: 11,
       width: 20,
       height: 17,
+    });
+  });
+
+  it("keeps standalone module width fixed and bounds corner resizing to 1–2× base height", () => {
+    const frame = { id: "module", x: 10, y: 20, width: 14, height: 4 };
+
+    for (const kind of ["importance", "purpose", "mood"] as const) {
+      expect(hasResizeHandle(kind, "left")).toBe(false);
+      expect(hasResizeHandle(kind, "right")).toBe(false);
+      expect(hasResizeHandle(kind, "top-left")).toBe(true);
+      expect(hasResizeHandle(kind, "bottom-right")).toBe(true);
+    }
+    expect(hasResizeHandle("note", "right")).toBe(true);
+
+    expect(resizeNote(frame, 4, "bottom-right", { x: 50, y: 100 }, false, 10, true)).toEqual({
+      x: 10, y: 20, width: 14, height: 8,
+    });
+    expect(resizeNote(frame, 4, "top-left", { x: -50, y: 100 }, false, 10, true)).toEqual({
+      x: 10, y: 20, width: 14, height: 4,
+    });
+    expect(resizeNote(frame, 4, "top-right", { x: 50, y: -100 }, false, 10, true)).toEqual({
+      x: 10, y: 16, width: 14, height: 8,
+    });
+    expect(resizeNote(frame, 4, "right", { x: 50, y: 0 }, false, 10, true)).toEqual({
+      x: 10, y: 20, width: 14, height: 4,
+    });
+  });
+
+  it("snaps a standalone module's dragged vertical edge before clamping", () => {
+    const frame = { id: "module", x: 3, y: 3, width: 14, height: 4 };
+    expect(resizeNote(frame, 4, "bottom", { x: 0, y: 5 }, true, 5, true)).toEqual({
+      x: 3, y: 3, width: 14, height: 7,
     });
   });
 
