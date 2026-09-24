@@ -13,6 +13,7 @@
   import TaskCheckbox from "../tasks/TaskCheckbox.svelte";
   import NoteModules from "../modules/NoteModules.svelte";
   import ModuleNodeBody from "../modules/ModuleNodeBody.svelte";
+  import MoodNodeBody from "../moods/MoodNodeBody.svelte";
   import { effectiveImportance } from "../modules/moduleActions.svelte";
   import { startNoteEditing } from "../editor/editorSession";
   import { tool } from "../tools/tool.svelte";
@@ -86,7 +87,7 @@
 
   function beginEditingFromDoubleClick(event: MouseEvent): void {
     if (editing.noteId === note.id || !(event.target instanceof Element)) return;
-    if (note.type === "importance" || note.type === "purpose") return;
+    if (note.type === "importance" || note.type === "purpose" || note.type === "mood") return;
     if (event.target.closest(".note-header, [data-text-link], input, button")) return;
     tool.active = "select";
     startNoteEditing(note.id, { x: event.clientX, y: event.clientY });
@@ -137,6 +138,8 @@
     <div class="note-content" data-note-body>
       {#if note.type === "importance" || note.type === "purpose"}
         <ModuleNodeBody {note} />
+      {:else if note.type === "mood"}
+        <MoodNodeBody {note} />
       {:else}
         <NoteBody {note} />
       {/if}

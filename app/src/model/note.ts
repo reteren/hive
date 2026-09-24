@@ -1,9 +1,9 @@
 /**
  * "note" — ordinary text node; "pro"/"con" — the green/red plus/minus mini-nodes (R3.5);
- * "importance"/"purpose" — a standalone (external) module on the board (R3.6): no text, its value
- * lives in `importance` / `purposes`, and it applies to the notes it links to.
+ * "importance"/"purpose"/"mood" — a standalone (external) module on the board (R3.6): no text, its
+ * value lives in `importance` / `purposes` / `moods`, and it applies to the notes it links to.
  */
-export type NoteKind = "note" | "pro" | "con" | "importance" | "purpose";
+export type NoteKind = "note" | "pro" | "con" | "importance" | "purpose" | "mood";
 
 /** Importance levels (R3.3): white / yellow / red / purple / rainbow. */
 export const IMPORTANCE_LEVELS = ["basic", "medium", "important", "immediately", "absolute"] as const;
@@ -21,6 +21,31 @@ export const PURPOSE_KINDS = [
   "timeline",
 ] as const;
 export type PurposeKind = (typeof PURPOSE_KINDS)[number];
+
+/** Mood labels (user idea after R3): describe the mood of a note; a note may carry several. */
+export const MOOD_KINDS = [
+  "anger",
+  "happiness",
+  "sadness",
+  "disgust",
+  "fear",
+  "surprise",
+  "joy",
+  "love",
+  "excitement",
+  "gratitude",
+  "pride",
+  "envy",
+  "guilt",
+  "shame",
+  "jealousy",
+  "disappointment",
+  "confusion",
+  "curiosity",
+  "boredom",
+  "relief",
+] as const;
+export type MoodKind = (typeof MOOD_KINDS)[number];
 
 /** Task state (R3.1); absent/null means the note is not a task. */
 export interface TaskState {
@@ -56,6 +81,8 @@ export interface Note {
   importance?: ImportanceLevel | null;
   /** Purpose labels inserted into this note (R3.4). */
   purposes?: PurposeKind[];
+  /** Mood labels inserted into this note (rows: Importance, then Purpose, then Mood). */
+  moods?: MoodKind[];
 }
 
 /** New note width from the roadmap examples. */

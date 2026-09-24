@@ -14,7 +14,7 @@ const destroyedEditors = new WeakSet<EditorView>();
 export function startNoteEditing(noteId: string, point: ScreenPoint): void {
   // Standalone Importance/Purpose modules have no text to edit (R3.6).
   const type = board.notes[noteId]?.type;
-  if (type === "importance" || type === "purpose") return;
+  if (type === "importance" || type === "purpose" || type === "mood") return;
   if (editing.noteId === noteId) {
     pendingClick = null;
     return;
