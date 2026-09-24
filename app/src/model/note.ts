@@ -1,9 +1,10 @@
 /**
  * "note" — ordinary text node; "pro"/"con" — the green/red plus/minus mini-nodes (R3.5);
  * "importance"/"purpose"/"mood" — a standalone (external) module on the board (R3.6): no text, its
- * value lives in `importance` / `purposes` / `moods`, and it applies to the notes it links to.
+ * value lives in `importance` / `purposes` / `moods`, and it applies to the notes it links to;
+ * "beacon" — an organising beacon (R4): fixed 7.2 u circle, name + `color`, only outgoing links.
  */
-export type NoteKind = "note" | "pro" | "con" | "importance" | "purpose" | "mood";
+export type NoteKind = "note" | "pro" | "con" | "importance" | "purpose" | "mood" | "beacon";
 
 /** Importance levels (R3.3): white / yellow / red / purple / rainbow. */
 export const IMPORTANCE_LEVELS = ["basic", "medium", "important", "immediately", "absolute"] as const;
@@ -83,7 +84,14 @@ export interface Note {
   purposes?: PurposeKind[];
   /** Mood labels inserted into this note (rows: Importance, then Purpose, then Mood). */
   moods?: MoodKind[];
+  /** Beacon colour (kind "beacon"), hex "#rrggbb". */
+  color?: string;
+  /** Zone this object belongs to (R4.3); kept to resolve equal-area ties in favour of the previous zone (H19). */
+  zoneId?: string | null;
 }
+
+/** Beacon diameter in u (fixed size, ROADMAP R4.0). */
+export const BEACON_SIZE = 7.2;
 
 /** New note width from the roadmap examples. */
 export const DEFAULT_NOTE_WIDTH = 30;

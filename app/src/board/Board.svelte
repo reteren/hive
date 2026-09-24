@@ -4,6 +4,8 @@
   import { viewport } from "./camera.svelte";
   import { attachCameraInput } from "./cameraInput";
   import GridLayer from "./GridLayer.svelte";
+  import ZonesLayer from "../zones/ZonesLayer.svelte";
+  import BeaconsLayer from "../beacons/BeaconsLayer.svelte";
   import LinksLayer from "../links/LinksLayer.svelte";
   import "../links/commands";
   import MeMarker from "./MeMarker.svelte";
@@ -108,8 +110,10 @@
   role="application"
 >
   <GridLayer />
+  <ZonesLayer />
   <LinksLayer />
   <MeMarker />
+  <BeaconsLayer />
   <NotesLayer />
   <SelectionLayer />
   <CreateMenu />
