@@ -1,6 +1,8 @@
 import type { Note } from "../model/note";
 import { noteBounds, type Bounds } from "../notes/layout.svelte";
 import type { Point } from "../board/cameraMath";
+import { zoneBounds, type Zone } from "../model/zone";
+import { zoneTouchesRect } from "../zones/geometry";
 
 /** A rectangle with board-space coordinates and non-negative dimensions. */
 export function rectFromPoints(first: Point, second: Point): Bounds {
@@ -37,12 +39,13 @@ export function hitTestNotes(
   notes: Readonly<Record<string, Note>>,
   paintOrder: readonly string[],
   getBounds: (note: Note) => Bounds = noteBounds,
+  include: (id: string) => boolean = () => true,
 ): string[] {
   const hits: string[] = [];
   for (let index = paintOrder.length - 1; index >= 0; index -= 1) {
     const id = paintOrder[index];
     const note = notes[id];
-    if (note && pointInBounds(point, getBounds(note))) hits.push(id);
+    if (note && include(id) && pointInBounds(point, getBounds(note))) hits.push(id);
   }
   return hits;
 }
@@ -53,9 +56,37 @@ export function notesTouchingMarquee(
   notes: Readonly<Record<string, Note>>,
   paintOrder: readonly string[],
   getBounds: (note: Note) => Bounds = noteBounds,
+  include: (id: string) => boolean = () => true,
 ): string[] {
   return paintOrder.filter((id) => {
     const note = notes[id];
-    return note !== undefined && boundsTouch(marquee, getBounds(note));
+    return note !== undefined && include(id) && boundsTouch(marquee, getBounds(note));
   });
+}
+
+/** Zones use the same touch rule as notes, respecting contours and holes. */
+export function zonesTouchingMarquee(
+  marquee: Bounds,
+  zones: Readonly<Record<string, Zone>>,
+  paintOrder: readonly string[],
+): string[] {
+  return paintOrder.filter((id) => {
+    const zone = zones[id];
+    return zone !== undefined && boundsTouch(marquee, zoneBounds(zone)) && zoneTouchesRect(zone, marquee);
+  });
+}
+
+/** Topmost zone at a world point, used when the zone surface has no DOM hit target. */
+export function hitTestZones(
+  point: Point,
+  zones: Readonly<Record<string, Zone>>,
+  paintOrder: readonly string[],
+): string | null {
+  for (let index = paintOrder.length - 1; index >= 0; index -= 1) {
+    const id = paintOrder[index];
+    const zone = zones[id];
+    if (zone && pointInBounds(point, zoneBounds(zone)) &&
+      zoneTouchesRect(zone, { x: point.x, y: point.y, width: 0, height: 0 })) return id;
+  }
+  return null;
 }

@@ -3,29 +3,36 @@ import { DEFAULT_NOTE_WIDTH, newId, type Note } from "../model/note";
 import { board, addNote, removeNote } from "../model/board.svelte";
 import { addLink, links, removeLink } from "../model/links.svelte";
 import type { Link } from "../model/link";
+import { addZone, removeZone, zones } from "../model/zones.svelte";
+import type { Zone } from "../model/zone";
 import { execute, historyFeedback, type HistoryCommand } from "../history/history.svelte";
 import { MIN_NOTE_HEIGHT } from "../notes/layout.svelte";
 import { uniqueName } from "../notes/naming";
-import { clearSelection, includeSelected, selection, setPrimary } from "../selection/selection.svelte";
+import { clearSelection, clearZoneSelection, includeSelected, selection, setPrimary, toggleZoneSelected } from "../selection/selection.svelte";
 import { registerCommand, runCommand } from "../commands/registry.svelte";
 import { isTextEditingTarget } from "../commands/focus";
 import { clearSelectedLink, selectedLink } from "../links/selection.svelte";
 import { unlinkSelected } from "../links/operations";
+import { deleteZonesAction } from "../zones/zoneGestures";
+import { beaconPaletteColor } from "../beacons/beaconPalette";
 import {
   HIVE_CLIPBOARD_MIME,
   HIVE_CLIPBOARD_WEB_MIME,
   notesAsPlainText,
   parseNotesPayload,
-  placeNotes,
+  placementOffset,
+  findNonOverlappingZoneOffset,
   remapClipboardLinks,
   serializeNotes,
   taskFieldsForPaste,
   uniqueCopyNames,
   type ClipboardLink,
+  type ClipboardZone,
 } from "./payload";
 
 interface SelectionSnapshot {
   ids: string[];
+  zoneIds: string[];
   primaryId: string | null;
   linkId: string | null;
 }
@@ -44,7 +51,8 @@ let feedbackTimer: number | undefined;
 
 export async function copySelection(): Promise<void> {
   const notes = selectedNotes();
-  if (notes.length === 0) {
+  const selectedZonesNow = selectedZones();
+  if (notes.length === 0 && selectedZonesNow.length === 0) {
     showClipboardFeedback("Nothing selected to copy");
     return;
   }
@@ -52,9 +60,9 @@ export async function copySelection(): Promise<void> {
 
   clipboardBusy = true;
   try {
-    const result = await writeNotesToClipboard(notes);
+    const result = await writeSelectionToClipboard(notes, selectedZonesNow);
     showClipboardFeedback(result === "hive"
-      ? `Copied ${notes.length} ${noteNoun(notes.length)}`
+      ? `Copied ${selectionNoun(notes.length, selectedZonesNow.length)}`
       : "Copied as text; Hive clipboard format is unavailable");
   } catch (error) {
     showClipboardFeedback(clipboardErrorMessage(error));
@@ -65,27 +73,32 @@ export async function copySelection(): Promise<void> {
 
 export async function cutSelection(): Promise<void> {
   const notes = selectedNotes();
-  if (notes.length === 0) {
+  const selectedZonesNow = selectedZones();
+  if (notes.length === 0 && selectedZonesNow.length === 0) {
     showClipboardFeedback("Nothing selected to cut");
     return;
   }
   if (clipboardBusy) return;
 
   const selectionAtStart = notes.map((note) => note.id);
+  const selectedZoneIdsAtStart = selectedZonesNow.map((zone) => zone.id);
   clipboardBusy = true;
   try {
-    const result = await writeNotesToClipboard(notes);
+    const result = await writeSelectionToClipboard(notes, selectedZonesNow);
     if (result !== "hive") {
       showClipboardFeedback("Cut cancelled; Hive clipboard format is unavailable");
       return;
     }
 
     const currentNotes = selectedNotes();
-    if (!sameNotes(notes, currentNotes) || !sameStrings(selectionAtStart, currentNotes.map((note) => note.id))) {
+    const currentZones = selectedZones();
+    if (!sameNotes(notes, currentNotes) || !sameZones(selectedZonesNow, currentZones) ||
+      !sameStrings(selectionAtStart, currentNotes.map((note) => note.id)) ||
+      !sameStrings(selectedZoneIdsAtStart, currentZones.map((zone) => zone.id))) {
       showClipboardFeedback("Cut cancelled because the selection changed");
       return;
     }
-    deleteNotes(notes, "Cut");
+    deleteSelectionItems(notes, selectedZoneIdsAtStart, "Cut");
   } catch (error) {
     showClipboardFeedback(clipboardErrorMessage(error));
   } finally {
@@ -95,27 +108,34 @@ export async function cutSelection(): Promise<void> {
 
 export function deleteSelection(): void {
   const notes = selectedNotes();
-  if (notes.length === 0) {
+  const selectedZoneIdsNow = selectedZones().map((zone) => zone.id);
+  if (notes.length === 0 && selectedZoneIdsNow.length === 0) {
     if (unlinkSelected()) return;
     showClipboardFeedback("Nothing selected to delete");
     return;
   }
-  deleteNotes(notes, "Delete");
+  deleteSelectionItems(notes, selectedZoneIdsNow, "Delete");
 }
 
 export function duplicateSelection(): void {
   const originals = selectedNotes();
-  if (originals.length === 0) {
+  const originalZones = selectedZones();
+  if (originals.length === 0 && originalZones.length === 0) {
     showClipboardFeedback("Nothing selected to duplicate");
     return;
   }
 
   const copies = createCopies(
     originals.map((note) => ({ ...note, sourceId: note.id })),
+    originalZones,
     pointer.world ? { ...pointer.world } : null,
     linksBetween(originals),
   );
-  addCopies(copies.notes, copies.links, "Duplicate", originals.length === 1 ? copies.notes[0]?.name : `${copies.notes.length} notes`);
+  if (!copies) {
+    showClipboardFeedback("Can't place copied zones without overlap");
+    return;
+  }
+  addCopies(copies.notes, copies.zones, copies.links, "Duplicate", selectionNoun(copies.notes.length, copies.zones.length));
   runCommand("select.move");
 }
 
@@ -129,8 +149,12 @@ export async function pasteFromClipboard(): Promise<void> {
   try {
     const source = await readClipboard();
     if (source.kind === "hive") {
-      const copies = createCopies(source.payload.nodes, destination, source.payload.links);
-      addCopies(copies.notes, copies.links, "Paste", copies.notes.length === 1 ? copies.notes[0]?.name : `${copies.notes.length} notes`);
+      const copies = createCopies(source.payload.nodes, source.payload.zones, destination, source.payload.links);
+      if (!copies) {
+        showClipboardFeedback("Can't place copied zones without overlap");
+        return;
+      }
+      addCopies(copies.notes, copies.zones, copies.links, "Paste", selectionNoun(copies.notes.length, copies.zones.length));
       return;
     }
 
@@ -152,7 +176,7 @@ export async function pasteFromClipboard(): Promise<void> {
       height: null,
       createdAt: Date.now(),
     };
-    addCopies([note], [], "Paste", note.name);
+    addCopies([note], [], [], "Paste", note.name);
   } catch (error) {
     showClipboardFeedback(clipboardErrorMessage(error));
   } finally {
@@ -167,10 +191,27 @@ function selectedNotes(): Note[] {
   });
 }
 
+function selectedZones(): Zone[] {
+  return selectedZoneIds().flatMap((id) => {
+    const zone = zones.byId[id];
+    return zone ? [copyZone(zone)] : [];
+  });
+}
+
+function selectedZoneIds(): string[] {
+  return selection.zoneIds;
+}
+
+function setZoneIds(ids: readonly string[]): void {
+  clearZoneSelection();
+  for (const id of ids) toggleZoneSelected(id);
+}
+
 function selectionSnapshot(): SelectionSnapshot {
   const ids = selection.ids.filter((id) => Boolean(board.notes[id]));
   return {
     ids,
+    zoneIds: selectedZoneIds().filter((id) => Boolean(zones.byId[id])),
     primaryId: selection.primaryId && ids.includes(selection.primaryId) ? selection.primaryId : ids.at(-1) ?? null,
     linkId: selectedLink.id && links.byId[selectedLink.id] ? selectedLink.id : null,
   };
@@ -182,30 +223,39 @@ function restoreSelection(snapshot: SelectionSnapshot): void {
   for (const id of ids) includeSelected(id);
   if (snapshot.primaryId && ids.includes(snapshot.primaryId)) setPrimary(snapshot.primaryId);
   selectedLink.id = snapshot.linkId && links.byId[snapshot.linkId] ? snapshot.linkId : null;
+  setZoneIds(snapshot.zoneIds.filter((id) => Boolean(zones.byId[id])));
 }
 
-function selectIds(ids: readonly string[]): void {
+function selectIds(ids: readonly string[], zoneIds: readonly string[] = []): void {
   clearSelection();
   clearSelectedLink();
+  setZoneIds([]);
   for (const id of ids) includeSelected(id);
   if (ids.length > 0) setPrimary(ids[ids.length - 1]);
+  setZoneIds(zoneIds.filter((id) => Boolean(zones.byId[id])));
 }
 
 type CopySource = Pick<Note,
   "type" | "name" | "text" | "x" | "y" | "width" | "height" | "createdAt" |
   "task" | "taskMemory" | "importance" | "purposes"
-> & { sourceId: string };
+> & { color?: string | null; zoneId?: string | null; sourceId: string };
 
 function createCopies(
   sourceNotes: readonly CopySource[],
+  sourceZoneValues: readonly (Zone | ClipboardZone)[],
   destination: { x: number; y: number } | null,
   sourceLinks: readonly ClipboardLink[],
-): { notes: Note[]; links: Link[] } {
+): { notes: Note[]; zones: Zone[]; links: Link[] } | null {
+  const sourceZones = sourceZoneValues.map((zone) => normalizeSourceZone(zone));
   const existingNames = Object.values(board.notes).map((note) => note.name);
   const names = uniqueCopyNames(sourceNotes.map((note) => note.name), existingNames);
-  const positioned = placeNotes(sourceNotes, destination);
+  const sourceZoneNames = zones.order.flatMap((id) => zones.byId[id]?.name ?? []);
+  const zoneNames = uniqueCopyNames(sourceZones.map((zone) => zone.name), sourceZoneNames);
+  const offset = placementOffset(sourceNotes, sourceZones, destination);
   const idMap = new Map<string, string>();
-  const notes = positioned.map((note, index) => {
+  const zoneIdMap = new Map<string, string>();
+  sourceZones.forEach((zone) => zoneIdMap.set(zone.id, newId()));
+  const notes = sourceNotes.map((note, index) => {
     const id = newId();
     idMap.set(note.sourceId, id);
     return {
@@ -213,66 +263,92 @@ function createCopies(
       type: note.type,
       name: names[index],
       text: note.text,
-      x: note.x,
-      y: note.y,
+      x: note.x + offset.x,
+      y: note.y + offset.y,
       width: note.width,
       height: note.height,
       createdAt: note.createdAt ?? Date.now(),
       ...taskFieldsForPaste(note),
       importance: note.importance ?? null,
       purposes: [...new Set(note.purposes ?? [])],
+      ...(note.type === "beacon" ? { color: note.color ?? beaconPaletteColor(0) } : note.color ? { color: note.color } : {}),
+      zoneId: note.zoneId ? zoneIdMap.get(note.zoneId) ?? null : null,
     };
   });
-  return { notes, links: remapClipboardLinks(sourceLinks, idMap) };
+  const translatedZones = sourceZones.map((zone, index) => ({
+    ...translateZone(zone, offset),
+    id: zoneIdMap.get(zone.id)!,
+    name: zoneNames[index],
+    createdAt: Date.now(),
+  }));
+  const existingZones = zones.order.flatMap((id) => zones.byId[id] ? [zones.byId[id]] : []);
+  const nonOverlappingOffset = findNonOverlappingZoneOffset(translatedZones, existingZones);
+  if (!nonOverlappingOffset) return null;
+  const copiedZones = translatedZones.map((zone) => translateZone(zone, nonOverlappingOffset));
+  const copiedNotes = nonOverlappingOffset.x === 0 && nonOverlappingOffset.y === 0
+    ? notes
+    : notes.map((note) => ({ ...note, x: note.x + nonOverlappingOffset.x, y: note.y + nonOverlappingOffset.y }));
+  return { notes: copiedNotes, zones: copiedZones, links: remapClipboardLinks(sourceLinks, idMap) };
 }
 
-function addCopies(notes: readonly Note[], copiedLinks: readonly Link[], label: "Paste" | "Duplicate", target?: string): void {
-  if (notes.length === 0) return;
+function addCopies(
+  notes: readonly Note[], copiedZones: readonly Zone[], copiedLinks: readonly Link[],
+  label: "Paste" | "Duplicate", target?: string,
+): void {
+  if (notes.length === 0 && copiedZones.length === 0) return;
   const previousSelection = selectionSnapshot();
   const startIndex = board.order.length;
   const ids = notes.map((note) => note.id);
+  const zoneIds = copiedZones.map((zone) => zone.id);
 
   const command: HistoryCommand = {
     label,
     target,
     do: () => {
       notes.forEach((note, index) => addNote(note, startIndex + index));
+      copiedZones.forEach(addZone);
       copiedLinks.forEach(addLink);
-      selectIds(ids);
+      selectIds(ids, zoneIds);
     },
     undo: () => {
       copiedLinks.forEach((link) => removeLink(link.id));
       for (const id of ids) removeNote(id);
+      for (const id of zoneIds) removeZone(id);
       restoreSelection(previousSelection);
     },
   };
   execute(command);
 }
 
-function deleteNotes(notes: readonly Note[], label: "Cut" | "Delete"): void {
+function deleteSelectionItems(notes: readonly Note[], zoneIds: readonly string[], label: "Cut" | "Delete"): void {
   const indexed: IndexedNote[] = notes.flatMap((note) => {
     const index = board.order.indexOf(note.id);
     return index < 0 ? [] : [{ note: { ...note }, index }];
   });
-  if (indexed.length === 0) return;
+  const zoneAction = deleteZonesAction(zoneIds);
+  const existingZoneIds = zoneIds.filter((id) => Boolean(zones.byId[id]));
+  if (indexed.length === 0 && existingZoneIds.length === 0) return;
 
   const previousSelection = selectionSnapshot();
   const deletedIds = new Set(indexed.map(({ note }) => note.id));
   const attachedLinks = Object.values(links.byId).filter((link) => deletedIds.has(link.from) || deletedIds.has(link.to));
-  const target = indexed.length === 1 ? indexed[0].note.name : `${indexed.length} notes`;
+  const target = selectionNoun(indexed.length, existingZoneIds.length);
   const command: HistoryCommand = {
     label,
     target,
     do: () => {
       attachedLinks.forEach((link) => removeLink(link.id));
       for (const { note } of indexed) removeNote(note.id);
+      zoneAction.do();
       clearSelection();
+      setZoneIds([]);
       clearSelectedLink();
     },
     undo: () => {
       for (const { note, index } of [...indexed].sort((first, second) => first.index - second.index)) {
         addNote({ ...note }, index);
       }
+      zoneAction.undo();
       attachedLinks.forEach(addLink);
       restoreSelection(previousSelection);
     },
@@ -287,12 +363,14 @@ function linksBetween(notes: readonly Note[]): ClipboardLink[] {
     : []);
 }
 
-async function writeNotesToClipboard(notes: readonly Note[]): Promise<ClipboardWriteResult> {
+async function writeSelectionToClipboard(notes: readonly Note[], copiedZones: readonly Zone[]): Promise<ClipboardWriteResult> {
   const clipboard = navigator.clipboard;
-  const plainText = notesAsPlainText(notes);
+  const noteText = notesAsPlainText(notes);
+  const zoneText = copiedZones.map((zone) => `Zone: ${zone.name}`).join("\n\n");
+  const plainText = [noteText, zoneText].filter(Boolean).join("\n\n");
   if (!clipboard) throw new Error("Clipboard access is unavailable in this window.");
 
-  const serialized = serializeNotes(notes, linksBetween(notes));
+  const serialized = serializeNotes(notes, linksBetween(notes), copiedZones);
   if (!clipboard.write || typeof ClipboardItem === "undefined") {
     await clipboard.writeText(plainText);
     return "text";
@@ -379,14 +457,57 @@ function sameNotes(first: readonly Note[], second: readonly Note[]): boolean {
     const other = second[index];
     return other && note.id === other.id && note.name === other.name && note.text === other.text &&
       note.type === other.type && note.x === other.x && note.y === other.y && note.width === other.width &&
-      note.height === other.height && JSON.stringify(note.task ?? null) === JSON.stringify(other.task ?? null) &&
+      note.height === other.height && note.createdAt === other.createdAt &&
+      JSON.stringify(note.task ?? null) === JSON.stringify(other.task ?? null) &&
+      JSON.stringify(note.taskMemory ?? null) === JSON.stringify(other.taskMemory ?? null) &&
       note.importance === other.importance &&
-      JSON.stringify(note.purposes ?? []) === JSON.stringify(other.purposes ?? []);
+      JSON.stringify(note.purposes ?? []) === JSON.stringify(other.purposes ?? []) &&
+      JSON.stringify(note.moods ?? []) === JSON.stringify(other.moods ?? []) &&
+      note.color === other.color && note.zoneId === other.zoneId;
+  });
+}
+
+function sameZones(first: readonly Zone[], second: readonly Zone[]): boolean {
+  return first.length === second.length && first.every((zone, index) => {
+    const other = second[index];
+    return other && zone.id === other.id && zone.name === other.name && zone.color === other.color &&
+      zone.createdAt === other.createdAt && JSON.stringify(zone.parts) === JSON.stringify(other.parts) &&
+      JSON.stringify(zone.holes) === JSON.stringify(other.holes);
   });
 }
 
 function sameStrings(first: readonly string[], second: readonly string[]): boolean {
   return first.length === second.length && first.every((value, index) => value === second[index]);
+}
+
+function normalizeSourceZone(zone: Zone | ClipboardZone): Zone {
+  if ("sourceId" in zone) {
+    return {
+      id: zone.sourceId,
+      name: zone.name,
+      color: zone.color,
+      parts: zone.parts.map((part) => part.map((point) => ({ ...point }))),
+      holes: zone.holes.map((hole) => hole.map((point) => ({ ...point }))),
+      ...(zone.createdAt === undefined ? {} : { createdAt: zone.createdAt }),
+    };
+  }
+  return copyZone(zone);
+}
+
+function copyZone(zone: Zone): Zone {
+  return {
+    ...zone,
+    parts: zone.parts.map((part) => part.map((point) => ({ ...point }))),
+    holes: zone.holes.map((hole) => hole.map((point) => ({ ...point }))),
+  };
+}
+
+function translateZone(zone: Zone, offset: { x: number; y: number }): Zone {
+  return {
+    ...zone,
+    parts: zone.parts.map((part) => part.map((point) => ({ x: point.x + offset.x, y: point.y + offset.y }))),
+    holes: zone.holes.map((hole) => hole.map((point) => ({ x: point.x + offset.x, y: point.y + offset.y }))),
+  };
 }
 
 function isNoteEditingFocus(): boolean {
@@ -397,6 +518,12 @@ function isNoteEditingFocus(): boolean {
 
 function noteNoun(count: number): string {
   return count === 1 ? "note" : "notes";
+}
+
+function selectionNoun(noteCount: number, zoneCount: number): string {
+  if (noteCount === 0) return `${zoneCount} ${zoneCount === 1 ? "zone" : "zones"}`;
+  if (zoneCount === 0) return `${noteCount} ${noteNoun(noteCount)}`;
+  return `${noteCount} ${noteNoun(noteCount)} and ${zoneCount} ${zoneCount === 1 ? "zone" : "zones"}`;
 }
 
 function showClipboardFeedback(message: string): void {
@@ -424,7 +551,7 @@ registerCommand({
   label: "Copy",
   keys: ["Ctrl+KeyC"],
   run: runAsync(copySelection),
-  isActive: () => selection.ids.length > 0,
+  isActive: () => selection.ids.length > 0 || selectedZoneIds().length > 0,
 });
 
 registerCommand({
@@ -432,7 +559,7 @@ registerCommand({
   label: "Cut",
   keys: ["Ctrl+KeyX"],
   run: runAsync(cutSelection),
-  isActive: () => selection.ids.length > 0,
+  isActive: () => selection.ids.length > 0 || selectedZoneIds().length > 0,
 });
 
 registerCommand({
@@ -440,7 +567,7 @@ registerCommand({
   label: "Paste",
   keys: ["Ctrl+KeyV"],
   run: runAsync(pasteFromClipboard),
-  isActive: () => selection.ids.length > 0,
+  isActive: () => selection.ids.length > 0 || selectedZoneIds().length > 0,
 });
 
 registerCommand({
@@ -448,7 +575,7 @@ registerCommand({
   label: "Delete",
   keys: ["Delete", "Backspace"],
   run: deleteSelection,
-  isActive: () => selection.ids.length > 0 || selectedLink.id !== null,
+  isActive: () => selection.ids.length > 0 || selectedZoneIds().length > 0 || selectedLink.id !== null,
 });
 
 registerCommand({
@@ -456,5 +583,5 @@ registerCommand({
   label: "Duplicate",
   keys: ["Shift+KeyD"],
   run: duplicateSelection,
-  isActive: () => selection.ids.length > 0,
+  isActive: () => selection.ids.length > 0 || selectedZoneIds().length > 0,
 });

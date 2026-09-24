@@ -153,7 +153,7 @@
   <div class="notes-world" style:transform={worldTransform}>
     {#each board.order as noteId (noteId)}
       {@const note = board.notes[noteId]}
-      {#if note}
+      {#if note && note.type !== "beacon"}
         <NoteNode {note} measureHeight={observeAutoHeight} />
       {/if}
     {/each}

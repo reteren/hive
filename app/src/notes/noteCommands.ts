@@ -1,7 +1,7 @@
 import { registerCommand } from "../commands/registry.svelte";
 import { execute } from "../history/history.svelte";
 import { addNote, board, removeNote } from "../model/board.svelte";
-import { DEFAULT_NOTE_WIDTH, newId, type Note, type NoteKind } from "../model/note";
+import { BEACON_SIZE, DEFAULT_NOTE_WIDTH, newId, type Note, type NoteKind } from "../model/note";
 import { addLink, canLink, removeLink } from "../model/links.svelte";
 import type { Link } from "../model/link";
 import { pointer } from "../board/camera.svelte";
@@ -20,6 +20,7 @@ import { selection } from "../selection/selection.svelte";
 import { formatNoteMarkdownLink, formatPointAddress } from "../links-in-text/format";
 import { closeLinkContextMenu, linkContext, showLinkStatus } from "../links-in-text/contextMenu.svelte";
 import { MODULE_NOTE_HEIGHT, MODULE_NOTE_WIDTH } from "../modules/moduleLogic";
+import { beaconPaletteColor } from "../beacons/beaconPalette";
 
 export const DEFAULT_MINI_NOTE_WIDTH = 18;
 
@@ -40,8 +41,8 @@ export function createNote(): string {
 /** Create a note, plus/minus, or standalone module at the current creation origin. */
 export function createNoteKind(kind: NoteKind): string {
   const isModule = kind === "importance" || kind === "purpose" || kind === "mood";
-  const width = kind === "note" ? DEFAULT_NOTE_WIDTH : isModule ? MODULE_NOTE_WIDTH : DEFAULT_MINI_NOTE_WIDTH;
-  const height = isModule ? MODULE_NOTE_HEIGHT : MIN_NOTE_HEIGHT;
+  const width = kind === "beacon" ? BEACON_SIZE : kind === "note" ? DEFAULT_NOTE_WIDTH : isModule ? MODULE_NOTE_WIDTH : DEFAULT_MINI_NOTE_WIDTH;
+  const height = kind === "beacon" ? BEACON_SIZE : isModule ? MODULE_NOTE_HEIGHT : MIN_NOTE_HEIGHT;
   const id = newId();
   const position = notePositionAt(
     creationMenu.origin,
@@ -59,7 +60,7 @@ export function createNoteKind(kind: NoteKind): string {
     target: note.name,
     do: () => {
       addNote(note, index);
-      if (!isModule) editing.noteId = id;
+      if (!isModule && kind !== "beacon") editing.noteId = id;
     },
     undo: () => {
       removeNote(id);
@@ -115,16 +116,19 @@ function makeNote(kind: NoteKind, id: string, position: Point, createdAt: number
     text: "",
     x: position.x,
     y: position.y,
-    width: kind === "note"
+    width: kind === "beacon"
+      ? BEACON_SIZE
+      : kind === "note"
       ? DEFAULT_NOTE_WIDTH
       : kind === "importance" || kind === "purpose" || kind === "mood"
         ? MODULE_NOTE_WIDTH
         : DEFAULT_MINI_NOTE_WIDTH,
-    height: kind === "importance" || kind === "purpose" || kind === "mood" ? MODULE_NOTE_HEIGHT : null,
+    height: kind === "beacon" ? BEACON_SIZE : kind === "importance" || kind === "purpose" || kind === "mood" ? MODULE_NOTE_HEIGHT : null,
     createdAt,
     ...(kind === "importance" ? { importance: "basic" as const } : {}),
     ...(kind === "purpose" ? { purposes: ["concept" as const] } : {}),
     ...(kind === "mood" ? { moods: ["happiness" as const] } : {}),
+    ...(kind === "beacon" ? { color: beaconPaletteColor(Object.values(board.notes).filter((existing) => existing.type === "beacon").length) } : {}),
   };
 }
 
@@ -134,6 +138,7 @@ function kindLabel(kind: NoteKind): string {
   if (kind === "importance") return "Importance";
   if (kind === "purpose") return "Purpose";
   if (kind === "mood") return "Mood";
+  if (kind === "beacon") return "Beacon";
   return "Note";
 }
 

@@ -9,8 +9,11 @@ export interface ContextPickState {
 }
 
 export const selection = $state({
-  /** Selection order follows user additions; primaryId owns the resize handles. */
+  /** Note and beacon ids only; other commands rely on this distinction. */
   ids: [] as string[],
+  /** Zone selection remains separate from note and beacon selection. */
+  zoneIds: [] as string[],
+  /** Selection order follows user additions; primaryId owns note resize handles. */
   primaryId: null as string | null,
   marquee: null as Bounds | null,
   contextPick: null as ContextPickState | null,
@@ -33,7 +36,27 @@ export function attachSelectionController(next: SelectionController): () => void
 
 export function selectOnly(id: string): void {
   selection.ids = [id];
+  selection.zoneIds = [];
   selection.primaryId = id;
+}
+
+export function selectZonesOnly(ids: readonly string[]): void {
+  selection.ids = [];
+  selection.primaryId = null;
+  selection.zoneIds = [...new Set(ids)];
+}
+
+export function toggleZoneSelected(id: string): boolean {
+  if (selection.zoneIds.includes(id)) {
+    selection.zoneIds = selection.zoneIds.filter((selectedId) => selectedId !== id);
+    return false;
+  }
+  selection.zoneIds = [...selection.zoneIds, id];
+  return true;
+}
+
+export function clearZoneSelection(): void {
+  selection.zoneIds = [];
 }
 
 /** Select an id without changing other members; clicking it also makes it primary. */
@@ -57,9 +80,10 @@ export function toggleSelected(id: string): boolean {
   return true;
 }
 
-export function selectMarquee(ids: readonly string[], additive: boolean): void {
+export function selectMarquee(ids: readonly string[], additive: boolean, zoneIds: readonly string[] = []): void {
   if (!additive) {
     selection.ids = [...ids];
+    selection.zoneIds = [...zoneIds];
     selection.primaryId = ids.at(-1) ?? null;
     return;
   }
@@ -69,11 +93,13 @@ export function selectMarquee(ids: readonly string[], additive: boolean): void {
     if (!merged.includes(id)) merged.push(id);
   }
   selection.ids = merged;
+  selection.zoneIds = [...new Set([...selection.zoneIds, ...zoneIds])];
   if (ids.length > 0) selection.primaryId = ids.at(-1) ?? null;
 }
 
 export function clearSelection(): void {
   selection.ids = [];
+  selection.zoneIds = [];
   selection.primaryId = null;
   selection.marquee = null;
   selection.contextPick = null;

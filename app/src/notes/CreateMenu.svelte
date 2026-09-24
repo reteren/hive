@@ -7,7 +7,7 @@
   const menuPosition = $derived(createMenuPosition(
     creationMenu.screenAnchor,
     viewport,
-    { width: 164, height: 232 },
+    { width: 164, height: 268 },
   ));
 
   function createNoteFromMenu(): void {
@@ -22,6 +22,11 @@
 
   function createModuleFromMenu(kind: "importance" | "purpose" | "mood"): void {
     createNoteKind(kind);
+    if (!creationMenu.pinned) closeCreationMenu();
+  }
+
+  function createBeaconFromMenu(): void {
+    createNoteKind("beacon");
     if (!creationMenu.pinned) closeCreationMenu();
   }
 </script>
@@ -89,6 +94,10 @@
       <button class="create-item" type="button" onclick={() => createModuleFromMenu("mood")}>
         <span class="module-icon mood-icon" aria-hidden="true"></span>
         <span>Mood</span>
+      </button>
+      <button class="create-item" type="button" onclick={createBeaconFromMenu}>
+        <span class="beacon-icon" aria-hidden="true"></span>
+        <span>Beacon</span>
       </button>
     </div>
   </aside>
@@ -251,5 +260,14 @@
     stroke-linecap: round;
     stroke-linejoin: round;
     stroke-width: 1.4;
+  }
+
+  .beacon-icon {
+    width: 13px;
+    height: 13px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: #e8b030;
+    box-shadow: 0 0 0 2px rgb(232 176 48 / 18%);
   }
 </style>

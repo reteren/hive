@@ -1,14 +1,20 @@
 <script lang="ts">
   import { camera, viewport, ME_POSITION } from "./camera.svelte";
   import { pixelsPerUnit, worldToScreen } from "./cameraMath";
+  import { isDimmed } from "../beacons/focus.svelte";
+  import { isMarked } from "../beacons/marks.svelte";
+  import { zoneOf } from "../zones/membership.svelte";
+  import { zones } from "../model/zones.svelte";
 
   const screen = $derived(worldToScreen(camera, viewport, ME_POSITION));
   // A beacon has a fixed size on the board, like a note: it scales together with the camera zoom.
   const scale = $derived(pixelsPerUnit(camera) / 10);
+  const memberZone = $derived(zones.byId[zoneOf("me") ?? ""]);
 </script>
 
-<div class="me" style:transform={`translate(${screen.x}px, ${screen.y}px) scale(${scale})`}>
-  <span class="dot" data-beacon-id="me"></span>
+<div class="me" data-dimmed={isDimmed("me")} data-member-zone-id={memberZone?.id} style:transform={`translate(${screen.x}px, ${screen.y}px) scale(${scale})`}>
+  <span class="dot" class:in-zone={Boolean(memberZone)} style:--zone-color={memberZone?.color ?? "transparent"} data-beacon-id="me"></span>
+  {#if isMarked("me")}<span class="mark" aria-label="Marked beacon"></span>{/if}
   <span class="label">ME</span>
 </div>
 
@@ -44,5 +50,21 @@
     font-weight: 600;
     letter-spacing: 0.04em;
     white-space: nowrap;
+  }
+
+  .dot.in-zone {
+    outline: 3px solid var(--zone-color);
+    outline-offset: 3px;
+  }
+
+  .mark {
+    position: absolute;
+    left: 26px;
+    top: -38px;
+    width: 14px;
+    height: 14px;
+    border: 2px solid #1c1c1c;
+    border-radius: 50%;
+    background: #f7d269;
   }
 </style>

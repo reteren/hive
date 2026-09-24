@@ -25,6 +25,7 @@ export function isStandaloneModuleKind(kind: NoteKind | undefined): boolean {
 }
 
 export function hasResizeHandle(kind: NoteKind | undefined, edge: ResizeEdge): boolean {
+  if (kind === "beacon") return false;
   return !isStandaloneModuleKind(kind) || (edge !== "left" && edge !== "right");
 }
 

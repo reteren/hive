@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Note } from "../src/model/note";
+import { rectContour, type Zone } from "../src/model/zone";
 import {
   boundsTouch,
   hitTestNotes,
+  hitTestZones,
   notesTouchingMarquee,
   rectFromPoints,
+  zonesTouchingMarquee,
 } from "../src/selection/hitTesting";
 import {
   cancelMoveGesture,
@@ -18,6 +21,15 @@ import {
   updateResizeGesture,
 } from "../src/selection/gestures";
 import { hasResizeHandle, MIN_NOTE_WIDTH, resizeNote } from "../src/selection/resize";
+import {
+  clearSelection,
+  selectMarquee,
+  selectOnly,
+  selectZonesOnly,
+  selection,
+  toggleSelected,
+  toggleZoneSelected,
+} from "../src/selection/selection.svelte";
 
 const noteA: Note = {
   id: "a",
@@ -39,6 +51,48 @@ const noteB: Note = {
 };
 
 describe("selection hit testing", () => {
+  it("keeps zones in a separate selection list while allowing mixed Ctrl and marquee selection", () => {
+    clearSelection();
+    selectZonesOnly(["zone"]);
+    expect(selection.ids).toEqual([]);
+    expect(selection.zoneIds).toEqual(["zone"]);
+    toggleSelected("note");
+    expect(selection.ids).toEqual(["note"]);
+    expect(selection.zoneIds).toEqual(["zone"]);
+    toggleZoneSelected("other-zone");
+    selectMarquee(["beacon"], true, ["zone", "third-zone"]);
+    expect(selection.ids).toEqual(["note", "beacon"]);
+    expect(selection.zoneIds).toEqual(["zone", "other-zone", "third-zone"]);
+    selectOnly("note");
+    expect(selection.zoneIds).toEqual([]);
+    clearSelection();
+  });
+
+  it("excludes dimmed notes from point and marquee hit tests", () => {
+    const include = (id: string) => id !== "b";
+    const bounds = (note: Note) => ({ x: note.x, y: note.y, width: note.width, height: note.height ?? 0 });
+    expect(hitTestNotes({ x: 15, y: 7 }, { a: noteA, b: noteB }, ["a", "b"], bounds, include)).toEqual(["a"]);
+    expect(notesTouchingMarquee({ x: 15, y: 7, width: 1, height: 1 }, { a: noteA, b: noteB }, ["a", "b"], bounds, include)).toEqual(["a"]);
+  });
+  it("selects zones by marquee touch and gives the topmost zone a shared boundary", () => {
+    const first: Zone = { id: "z1", name: "One", color: "#445566", parts: [rectContour(0, 0, 10, 10)], holes: [] };
+    const second: Zone = { id: "z2", name: "Two", color: "#667788", parts: [rectContour(10, 0, 10, 10)], holes: [] };
+    const byId = { z1: first, z2: second };
+
+    expect(zonesTouchingMarquee({ x: -2, y: 4, width: 2, height: 2 }, byId, ["z1", "z2"])).toEqual(["z1"]);
+    expect(hitTestZones({ x: 10, y: 5 }, byId, ["z1", "z2"])).toBe("z2");
+  });
+
+  it("does not hit a zone inside a hole or outside its contour", () => {
+    const hollow: Zone = {
+      id: "hollow", name: "Hollow", color: "#445566",
+      parts: [rectContour(0, 0, 10, 10)], holes: [rectContour(3, 3, 4, 4)],
+    };
+    expect(hitTestZones({ x: 5, y: 5 }, { hollow }, ["hollow"])).toBeNull();
+    expect(hitTestZones({ x: 2, y: 2 }, { hollow }, ["hollow"])).toBe("hollow");
+    expect(zonesTouchingMarquee({ x: 4, y: 4, width: 1, height: 1 }, { hollow }, ["hollow"])).toEqual([]);
+  });
+
   it("returns overlapping notes from topmost to bottommost", () => {
     expect(hitTestNotes({ x: 15, y: 7 }, { a: noteA, b: noteB }, ["a", "b"])).toEqual(["b", "a"]);
   });
@@ -172,6 +226,12 @@ describe("selection move and resize gestures", () => {
     expect(resizeNote(frame, 4, "right", { x: 50, y: 0 }, false, 10, true)).toEqual({
       x: 10, y: 20, width: 14, height: 4,
     });
+  });
+
+  it("never offers resize handles for fixed-size beacons", () => {
+    for (const edge of ["top-left", "top", "top-right", "right", "bottom-right", "bottom", "bottom-left", "left"] as const) {
+      expect(hasResizeHandle("beacon", edge)).toBe(false);
+    }
   });
 
   it("snaps a standalone module's dragged vertical edge before clamping", () => {

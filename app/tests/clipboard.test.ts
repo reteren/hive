@@ -1,16 +1,20 @@
 import { describe, expect, it } from "vitest";
 import type { Note } from "../src/model/note";
+import { rectContour, type Zone } from "../src/model/zone";
 import {
   FALLBACK_PASTE_OFFSET,
   HIVE_CLIPBOARD_MARKER,
   HIVE_CLIPBOARD_VERSION,
   notesAsPlainText,
   parseNotesPayload,
+  findNonOverlappingZoneOffset,
+  placementOffset,
   placeNotes,
   remapClipboardLinks,
   serializeNotes,
   taskFieldsForPaste,
   uniqueCopyNames,
+  zonesOverlap,
 } from "../src/clipboard/payload";
 
 const noteA: Note = {
@@ -64,7 +68,7 @@ describe("clipboard payload", () => {
   it("rejects malformed, unknown, duplicate-id, and invalid-geometry payloads", () => {
     expect(parseNotesPayload("{")).toBeNull();
     expect(parseNotesPayload(JSON.stringify({ marker: "other", version: 1, nodes: [], links: [] }))).toBeNull();
-    expect(parseNotesPayload(JSON.stringify({ marker: HIVE_CLIPBOARD_MARKER, version: 3, nodes: [], links: [] }))).toBeNull();
+    expect(parseNotesPayload(JSON.stringify({ marker: HIVE_CLIPBOARD_MARKER, version: 4, nodes: [], links: [] }))).toBeNull();
 
     const valid = JSON.parse(serializeNotes([noteA]));
     expect(parseNotesPayload(JSON.stringify({ ...valid, nodes: [valid.nodes[0], valid.nodes[0]] }))).toBeNull();
@@ -123,7 +127,7 @@ describe("clipboard payload", () => {
     };
     const parsed = parseNotesPayload(serializeNotes([source]));
 
-    expect(parsed?.version).toBe(2);
+    expect(parsed?.version).toBe(3);
     expect(parsed?.nodes[0]).toMatchObject({
       type: "pro",
       task: { done: true, doneAt: 1_700_000_000_000 },
@@ -144,12 +148,33 @@ describe("clipboard payload", () => {
   it("reads v1 clipboard data with default R3 fields", () => {
     const current = JSON.parse(serializeNotes([noteA])) as Record<string, unknown>;
     const nodes = current.nodes as Array<Record<string, unknown>>;
-    const legacyNodes = nodes.map(({ task: _task, importance: _importance, purposes: _purposes, moods: _moods, ...node }) => node);
+    const legacyNodes = nodes.map((source) => {
+      const node = { ...source };
+      for (const field of ["task", "importance", "purposes", "moods", "color", "zoneId"]) delete node[field];
+      return node;
+    });
     const parsed = parseNotesPayload(JSON.stringify({ ...current, version: 1, nodes: legacyNodes }));
 
     expect(parsed?.nodes[0]).toMatchObject({
       type: "note", task: null, taskMemory: null, importance: null, purposes: [],
     });
+  });
+
+  it("reads v2 clipboard data and defaults zone fields", () => {
+    const current = JSON.parse(serializeNotes([noteA])) as Record<string, unknown>;
+    const nodes = (current.nodes as Array<Record<string, unknown>>).map((source) => {
+      const node = { ...source };
+      delete node.color;
+      delete node.zoneId;
+      return node;
+    });
+    const legacy: Record<string, unknown> = { ...current, version: 2, nodes };
+    delete legacy.zones;
+
+    const parsed = parseNotesPayload(JSON.stringify(legacy));
+    expect(parsed?.version).toBe(3);
+    expect(parsed?.zones).toEqual([]);
+    expect(parsed?.nodes[0]).toMatchObject({ color: null, zoneId: null });
   });
 
   it("round trips standalone Importance, Purpose, and Mood node kinds", () => {
@@ -169,6 +194,32 @@ describe("clipboard payload", () => {
     ]));
     valid.nodes[0].moods = ["unknown"];
     expect(parseNotesPayload(JSON.stringify(valid))).toBeNull();
+  });
+
+  it("copies a beacon's colour and membership with zone-only and mixed selections", () => {
+    const zone: Zone = {
+      id: "zone-a", name: "Work", color: "#608ac1", parts: [rectContour(0, 0, 10, 8)], holes: [], createdAt: 42,
+    };
+    const beacon: Note = { ...noteA, id: "beacon-a", type: "beacon", color: "#69b7a5", zoneId: zone.id };
+
+    const zoneOnly = parseNotesPayload(serializeNotes([], [], [zone]));
+    expect(zoneOnly?.nodes).toEqual([]);
+    expect(zoneOnly?.zones).toEqual([{ sourceId: zone.id, ...zone, id: undefined }].map(({ id: _id, ...value }) => value));
+
+    const mixed = parseNotesPayload(serializeNotes([beacon], [], [zone]));
+    expect(mixed?.nodes[0]).toMatchObject({ type: "beacon", color: "#69b7a5", zoneId: "zone-a" });
+    expect(mixed?.zones[0]).toMatchObject({ sourceId: "zone-a", name: "Work", parts: zone.parts });
+  });
+
+  it("keeps mixed note and zone positions together and moves colliding zones clear", () => {
+    const copied: Zone = { id: "copy", name: "Copy", color: "#608ac1", parts: [rectContour(0, 0, 10, 8)], holes: [] };
+    const existing: Zone = { ...copied, id: "existing", name: "Existing" };
+    const offset = placementOffset([noteA], [copied], { x: 100, y: 100 });
+    expect(offset).toEqual({ x: 95, y: 96 });
+    expect(zonesOverlap(copied, existing)).toBe(true);
+    expect(zonesOverlap(copied, { ...existing, parts: [rectContour(10, 0, 10, 8)] })).toBe(false);
+    expect(findNonOverlappingZoneOffset([copied], [existing])).toEqual({ x: 12, y: 0 });
+    expect(findNonOverlappingZoneOffset([copied], [])).toEqual({ x: 0, y: 0 });
   });
 });
 

@@ -9,6 +9,21 @@
   import { editing } from "../notes/editing.svelte";
   import type { NoteKind } from "../model/note";
   import { noteBounds, type Bounds } from "../notes/layout.svelte";
+  import { zoneBounds, type Zone } from "../model/zone";
+  import { zones, updateZone } from "../model/zones.svelte";
+  import { zoneMembers } from "../zones/membership.svelte";
+  import { isDimmed } from "../beacons/focus.svelte";
+  import {
+    createZoneMoveGesture,
+    createZoneResizeGesture,
+    isRectZone,
+    updateZoneMoveGesture,
+    updateZoneResizeGesture,
+    zoneGestureChanged,
+    type MemberPosition,
+    type ZoneMoveGesture,
+    type ZoneResizeGesture,
+  } from "../zones/zoneGestures";
   import { isTextEditingTarget } from "../commands/focus";
   import {
     clearModuleDropPreview,
@@ -31,7 +46,7 @@
     type NoteFrame,
     type ResizeGesture,
   } from "./gestures";
-  import { hitTestNotes, notesTouchingMarquee, rectFromPoints } from "./hitTesting";
+  import { hitTestNotes, hitTestZones, notesTouchingMarquee, rectFromPoints, zonesTouchingMarquee } from "./hitTesting";
   import {
     cancelGroupScaleGesture,
     createGroupScaleGesture,
@@ -46,11 +61,13 @@
     closeContextPick,
     selectMarquee,
     selectOnly,
+    selectZonesOnly,
     selection,
     setContextPick,
     setMarquee,
     setPrimary,
     toggleSelected,
+    toggleZoneSelected,
   } from "./selection.svelte";
   import { selectionForEditing } from "./editingSelection";
   import {
@@ -79,6 +96,18 @@
     height: number;
     primary: boolean;
     kind: NoteKind;
+  }
+
+  interface ZoneOutline {
+    id: string;
+    name: string;
+    color: string;
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    primary: boolean;
+    resizable: boolean;
   }
 
   type ActivePointerGesture =
@@ -124,6 +153,24 @@
         gesture: GroupScaleGesture;
       }
     | {
+        kind: "zone-move";
+        pointerId: number;
+        startScreen: Point;
+        precision: PrecisionDeltaTracker;
+        started: boolean;
+        captured: boolean;
+        gesture: ZoneMoveGesture;
+      }
+    | {
+        kind: "zone-resize";
+        pointerId: number;
+        startScreen: Point;
+        precision: PrecisionDeltaTracker;
+        started: boolean;
+        captured: boolean;
+        gesture: ZoneResizeGesture;
+      }
+    | {
         kind: "marquee";
         pointerId: number;
         startScreen: Point;
@@ -152,6 +199,7 @@
   let altHeld = false;
   let suppressContextMenuUntil = 0;
   let suppressBodyClickUntil = 0;
+  let zoneCollisionHint = $state(false);
 
   let outlines = $derived.by((): Outline[] => {
     const ppu = pixelsPerUnit(camera);
@@ -189,8 +237,25 @@
     };
   });
 
+  let zoneOutlines = $derived.by((): ZoneOutline[] => {
+    const ppu = pixelsPerUnit(camera);
+    return selection.zoneIds.flatMap((id) => {
+      const zone = zones.byId[id];
+      if (!zone) return [];
+      const bounds = zoneBounds(zone);
+      const screen = worldToScreen(camera, viewport, { x: bounds.x, y: bounds.y });
+      return [{
+        id, name: zone.name, color: zone.color,
+        left: screen.x, top: screen.y,
+        width: bounds.width * ppu, height: bounds.height * ppu,
+        primary: selection.zoneIds.at(-1) === id,
+        resizable: isRectZone(zone),
+      }];
+    });
+  });
+
   let groupBounds = $derived.by(() => {
-    if (selection.ids.length < 2) return null;
+    if (selection.ids.length < 2 || selection.zoneIds.length > 0) return null;
     const bounds = selection.ids.flatMap((id) => {
       const note = boardState.notes[id];
       return note ? [noteBounds(note)] : [];
@@ -255,9 +320,12 @@
         return;
       }
 
+      if (tool.active === "zone") return;
+
       const world = screenToWorld(camera, viewport, local);
       const groupHandle = target.closest<HTMLElement>("[data-group-scale-handle]");
       const resizeHandle = target.closest<HTMLElement>("[data-resize-handle]");
+      const zoneResizeHandle = target.closest<HTMLElement>("[data-zone-resize-handle]");
       const header = target.closest("[data-note-header]");
       const noteRoot = target.closest<HTMLElement>("[data-note-id]");
       const noteId = noteRoot?.dataset.noteId ?? null;
@@ -277,7 +345,7 @@
       pendingAltContextPick = null;
 
       if (event.altKey) {
-        const hits = hitTestNotes(world, boardState.notes, boardState.order);
+        const hits = hitTestNotes(world, boardState.notes, boardState.order, noteBounds, (id) => !isDimmed(id));
         if (hits.length > 1 && canDragFromTarget && !event.ctrlKey) {
           pendingAltContextPick = {
             pointerId: event.pointerId,
@@ -301,6 +369,15 @@
 
       closeContextPick();
 
+      if (zoneResizeHandle) {
+        const id = zoneResizeHandle.dataset.zoneId;
+        const edge = zoneResizeHandle.dataset.zoneResizeHandle as ResizeEdge | undefined;
+        if (id && edge && id === selection.zoneIds.at(-1) && zones.byId[id]) {
+          startZoneResize(event, id, edge, local, world);
+        }
+        return;
+      }
+
       if (groupHandle && selection.ids.length > 1 && groupBounds) {
         const edge = groupHandle.dataset.groupScaleHandle as ResizeEdge | undefined;
         const frames = framesForSelection();
@@ -317,9 +394,9 @@
         return;
       }
 
-      if (header && !isTextEditingTarget(event.target)) {
+      if (header && !isTextEditingTarget(event.target) && !(noteId && isDimmed(noteId))) {
         const id = noteRoot?.dataset.noteId;
-        if (!id || !boardState.notes[id]) return;
+        if (!id || !boardState.notes[id] || isDimmed(id)) return;
 
         let toggleOnClickId: string | null = null;
         if (event.ctrlKey) {
@@ -342,13 +419,28 @@
         return;
       }
 
-      if (noteRoot) {
+      if (noteRoot && !(noteId && isDimmed(noteId))) {
         if (isTextEditingTarget(event.target)) return;
         const intent = notePressIntent(noteBody ? "body" : "frame", noteId, editing.noteId);
         if (intent === "move-candidate" && noteId && boardState.notes[noteId]) {
           startBodyMove(event, local, world, noteId, noteRoot);
         }
         return;
+      }
+
+      // Zones remain selectable during beacon focus; they are never dimmed objects.
+      if (tool.active === "select" && !target.closest("[data-link-id], [data-beacon-id]")) {
+        const zoneId = target.closest<HTMLElement>("[data-zone-id]")?.dataset.zoneId ??
+          hitTestZones(world, zones.byId, zones.order);
+        if (zoneId && zones.byId[zoneId]) {
+          if (event.ctrlKey) toggleZoneSelected(zoneId);
+          else {
+            if (!selection.zoneIds.includes(zoneId)) selectZonesOnly([zoneId]);
+            else selection.zoneIds = [...selection.zoneIds.filter((id) => id !== zoneId), zoneId];
+            startZoneMove(event, zoneId, local, world, event.shiftKey);
+          }
+          return;
+        }
       }
 
       activeGesture = {
@@ -429,7 +521,7 @@
       const body = target.closest("[data-note-body]");
       const noteRoot = body?.closest<HTMLElement>("[data-note-id]") ?? target.closest<HTMLElement>("[data-note-id]");
       const id = noteRoot?.dataset.noteId;
-      if (!id || !boardState.notes[id]) return;
+      if (!id || !boardState.notes[id] || isDimmed(id)) return;
 
       if (editing.noteId === id) {
         ensureEditingSelection(id);
@@ -675,6 +767,57 @@
         edge,
         world,
         new Set(frames.filter((frame) => isStandaloneModuleKind(boardState.notes[frame.id]?.type)).map((frame) => frame.id)),
+        new Set(frames.filter((frame) => boardState.notes[frame.id]?.type === "beacon").map((frame) => frame.id)),
+      ),
+    };
+  }
+
+  function startZoneMove(
+    event: PointerEvent,
+    id: string,
+    screen: Point,
+    world: Point,
+    carryMembers: boolean,
+  ): void {
+    const zone = zones.byId[id];
+    if (!zone) return;
+    const members: MemberPosition[] = carryMembers
+      ? zoneMembers(id).flatMap((memberId) => {
+        const note = boardState.notes[memberId];
+        return note ? [{ id: memberId, x: note.x, y: note.y }] : [];
+      })
+      : [];
+    activeGesture = {
+      kind: "zone-move",
+      pointerId: event.pointerId,
+      startScreen: screen,
+      precision: createPrecisionDeltaTracker(world, event.altKey),
+      started: false,
+      captured: false,
+      gesture: createZoneMoveGesture(
+        zone, Object.values(zones.byId).filter((other) => other.id !== id), members, world,
+      ),
+    };
+  }
+
+  function startZoneResize(
+    event: PointerEvent,
+    id: string,
+    edge: ResizeEdge,
+    screen: Point,
+    world: Point,
+  ): void {
+    const zone = zones.byId[id];
+    if (!zone || !isRectZone(zone)) return;
+    activeGesture = {
+      kind: "zone-resize",
+      pointerId: event.pointerId,
+      startScreen: screen,
+      precision: createPrecisionDeltaTracker(world, event.altKey),
+      started: false,
+      captured: false,
+      gesture: createZoneResizeGesture(
+        zone, Object.values(zones.byId).filter((other) => other.id !== id), edge, world,
       ),
     };
   }
@@ -739,6 +882,24 @@
 
     const adjustedWorld = addPoint(gesture.gesture.startWorld, precision.delta);
 
+    if (gesture.kind === "zone-move") {
+      gesture.gesture = updateZoneMoveGesture(
+        gesture.gesture, adjustedWorld, grid.snap || event.ctrlKey, grid.step,
+      );
+      applyZoneMove(gesture.gesture.afterZone, gesture.gesture.afterMembers);
+      zoneCollisionHint = gesture.gesture.blocked;
+      return;
+    }
+
+    if (gesture.kind === "zone-resize") {
+      gesture.gesture = updateZoneResizeGesture(
+        gesture.gesture, adjustedWorld, grid.snap || event.ctrlKey, grid.step,
+      );
+      applyZoneGeometry(gesture.gesture.afterZone);
+      zoneCollisionHint = gesture.gesture.blocked;
+      return;
+    }
+
     if (gesture.kind === "move") {
       gesture.gesture = updateMoveGesture(
         gesture.gesture,
@@ -776,14 +937,16 @@
     const gesture = activeGesture;
     if (!gesture || gesture.pointerId !== pointerId) return;
     activeGesture = null;
+    zoneCollisionHint = false;
 
     if (gesture.kind === "marquee") {
       const marquee = selection.marquee;
       if (cancelled) {
         setMarquee(null);
       } else if (gesture.started && marquee) {
-        const ids = notesTouchingMarquee(marquee, boardState.notes, boardState.order);
-        selectMarquee(ids, gesture.additive);
+        const zoneIds = zonesTouchingMarquee(marquee, zones.byId, zones.order);
+        const ids = notesTouchingMarquee(marquee, boardState.notes, boardState.order, noteBounds, (id) => !isDimmed(id));
+        selectMarquee(ids, gesture.additive, zoneIds);
         setMarquee(null);
       } else {
         setMarquee(null);
@@ -821,6 +984,34 @@
           const note = boardState.notes[change.before[0].id];
           recordGeometryChange("Resize", note?.name ?? "", change);
         }
+      }
+    } else if (gesture.kind === "zone-move") {
+      if (cancelled) {
+        applyZoneMove(gesture.gesture.beforeZone, gesture.gesture.beforeMembers);
+      } else if (gesture.started && zoneGestureChanged(gesture.gesture.beforeZone, gesture.gesture.afterZone)) {
+        const beforeZone = gesture.gesture.beforeZone;
+        const afterZone = gesture.gesture.afterZone;
+        const beforeMembers = gesture.gesture.beforeMembers;
+        const afterMembers = gesture.gesture.afterMembers;
+        record({
+          label: "Move zone",
+          target: beforeZone.name,
+          do: () => applyZoneMove(afterZone, afterMembers),
+          undo: () => applyZoneMove(beforeZone, beforeMembers),
+        });
+      }
+    } else if (gesture.kind === "zone-resize") {
+      if (cancelled) {
+        applyZoneGeometry(gesture.gesture.beforeZone);
+      } else if (gesture.started && zoneGestureChanged(gesture.gesture.beforeZone, gesture.gesture.afterZone)) {
+        const beforeZone = gesture.gesture.beforeZone;
+        const afterZone = gesture.gesture.afterZone;
+        record({
+          label: "Resize zone",
+          target: beforeZone.name,
+          do: () => applyZoneGeometry(afterZone),
+          undo: () => applyZoneGeometry(beforeZone),
+        });
       }
     } else if (cancelled) {
       applyFrames(cancelGroupScaleGesture(gesture.gesture));
@@ -947,6 +1138,18 @@
     }
   }
 
+  function applyZoneGeometry(zone: Zone): void {
+    updateZone(zone.id, {
+      parts: zone.parts.map((part) => part.map((point) => ({ ...point }))),
+      holes: zone.holes.map((hole) => hole.map((point) => ({ ...point }))),
+    });
+  }
+
+  function applyZoneMove(zone: Zone, members: readonly MemberPosition[]): void {
+    applyZoneGeometry(zone);
+    for (const member of members) updateNote(member.id, { x: member.x, y: member.y });
+  }
+
   function commitMoveGesture(gesture: MoveGesture, worldPoint: Point): void {
     const movedTypes = gesture.before.map((frame) => boardState.notes[frame.id]?.type ?? "note");
     const initialDecision = resolveModuleDropDecision(movedTypes, false);
@@ -1033,6 +1236,38 @@
 </script>
 
 <div class="selection-layer" bind:this={layer} aria-hidden="false">
+  {#each zoneOutlines as outline (outline.id)}
+    <div
+      class="selection-outline selection-zone-outline"
+      role="group"
+      data-selected="true"
+      data-primary={outline.primary ? "true" : undefined}
+      data-zone-id={outline.id}
+      style:left="{outline.left}px"
+      style:top="{outline.top}px"
+      style:width="{outline.width}px"
+      style:height="{outline.height}px"
+      style:outline-color={outline.color}
+      style={`--zone-handle-color: ${outline.color}`}
+      aria-label="Selected zone {outline.name}"
+    >
+      {#if outline.primary && outline.resizable}
+        {#each RESIZE_EDGES as edge (edge)}
+          <button
+            class={`resize-handle resize-handle-${edge} zone-resize-handle`}
+            class:resize-handle-corner={isCornerHandle(edge)}
+            class:resize-handle-side={!isCornerHandle(edge)}
+            type="button"
+            data-zone-resize-handle={edge}
+            data-zone-id={outline.id}
+            aria-label="Resize zone {outline.name} from {handleLabel(edge)}"
+            title="Resize zone from {handleLabel(edge)}"
+          ></button>
+        {/each}
+      {/if}
+    </div>
+  {/each}
+
   {#each outlines as outline (outline.id)}
     <div
       class="selection-outline"
@@ -1046,7 +1281,7 @@
       style:height="{outline.height}px"
       aria-label="Selected {outline.name}"
     >
-      {#if selection.ids.length === 1 && outline.primary}
+      {#if selection.ids.length === 1 && selection.zoneIds.length === 0 && outline.primary}
         {#each RESIZE_EDGES.filter((edge) => hasResizeHandle(outline.kind, edge)) as edge (edge)}
           <button
             class={`resize-handle resize-handle-${edge}`}
@@ -1107,6 +1342,10 @@
     <div class="grab-hint" role="status">Move selection · click to place · Esc or right-click to cancel</div>
   {/if}
 
+  {#if zoneCollisionHint}
+    <div class="zone-collision-hint" role="status">Zone stopped by another zone</div>
+  {/if}
+
   {#if selection.contextPick}
     <div
       class="selection-context-pick"
@@ -1158,6 +1397,10 @@
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
   }
 
+  .selection-zone-outline {
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+  }
+
   .resize-handle {
     position: absolute;
     z-index: 1;
@@ -1187,6 +1430,10 @@
 
   .resize-handle-corner::before {
     border-radius: 0;
+  }
+
+  .zone-resize-handle::before {
+    background: var(--zone-handle-color);
   }
 
   .resize-handle:hover::before,
@@ -1268,6 +1515,20 @@
     color: var(--text);
     font-size: 11px;
     white-space: nowrap;
+    pointer-events: none;
+  }
+
+  .zone-collision-hint {
+    position: absolute;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 4px 8px;
+    border: 1px solid #765d2b;
+    border-radius: 3px;
+    background: rgba(35, 35, 35, 0.9);
+    color: var(--text);
+    font-size: 11px;
     pointer-events: none;
   }
 

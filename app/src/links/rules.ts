@@ -39,15 +39,18 @@ export function linkRefusalReason(
   if (from === to) return "An object cannot link to itself.";
   const source = notes[from];
   const target = notes[to];
+  const sourceIsBeacon = from === ME_OBJECT_ID || source?.type === "beacon";
+  const targetIsBeacon = to === ME_OBJECT_ID || target?.type === "beacon";
   const sourceIsModule = isModule(source);
   const targetIsModule = isModule(target);
   const actualKind = effectiveLinkKind(from, to, kind, notes);
-  if (to === ME_OBJECT_ID) return "Beacons can have outgoing links only.";
+  if (sourceIsBeacon && targetIsBeacon) return "Beacons cannot link to other beacons.";
+  if (targetIsBeacon) return "Beacons can have outgoing links only.";
   if (existing.some((link) => pairKey(link.from, link.to) === pairKey(from, to))) {
     return "These objects already have a link.";
   }
 
-  if (!sourceIsModule && !targetIsModule) return null;
+  if (sourceIsBeacon || (!sourceIsModule && !targetIsModule)) return null;
   if (sourceIsModule && targetIsModule) return "Module nodes link only to notes, pluses, or minuses.";
 
   const module = sourceIsModule ? source : target;

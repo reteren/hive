@@ -12,6 +12,7 @@ export interface GroupScaleGesture {
   edge: ResizeEdge;
   startWorld: Point;
   moduleIds: ReadonlySet<string>;
+  beaconIds: ReadonlySet<string>;
 }
 
 /** Union of rendered note bounds, including measured heights for auto-height notes. */
@@ -31,6 +32,7 @@ export function createGroupScaleGesture(
   edge: ResizeEdge,
   startWorld: Point,
   moduleIds: ReadonlySet<string> = new Set(),
+  beaconIds: ReadonlySet<string> = new Set(),
 ): GroupScaleGesture {
   const before = frames.map(copyFrame);
   return {
@@ -40,6 +42,7 @@ export function createGroupScaleGesture(
     edge,
     startWorld: { ...startWorld },
     moduleIds: new Set(moduleIds),
+    beaconIds: new Set(beaconIds),
   };
 }
 
@@ -59,6 +62,7 @@ export function updateGroupScaleGesture(
     step,
     preserveAspect,
     gesture.moduleIds,
+    gesture.beaconIds,
   );
   return { ...gesture, after };
 }
@@ -73,18 +77,19 @@ export function scaleGroupFrames(
   step: number,
   preserveAspect = false,
   moduleIds: ReadonlySet<string> = new Set(),
+  beaconIds: ReadonlySet<string> = new Set(),
 ): NoteFrame[] {
   if (frames.length === 0) return [];
 
   const scales = edgeScales(bounds, edge, delta, snap, step);
   const axes = resizeEdgeAxes(edge);
-  let scaleX = clampScale(scales.x, minimumWidthScale(frames, moduleIds));
-  let scaleY = clampScale(scales.y, minimumHeightScale(frames, moduleIds));
+  let scaleX = clampScale(scales.x, minimumWidthScale(frames, moduleIds, beaconIds));
+  let scaleY = clampScale(scales.y, minimumHeightScale(frames, moduleIds, beaconIds));
 
   if (axes.horizontal !== null && axes.vertical !== null && preserveAspect) {
     // The axis with the larger proportional scale change drives the uniform factor.
     const xDominates = Math.abs(scales.x - 1) >= Math.abs(scales.y - 1);
-    const uniformMinimum = Math.max(minimumWidthScale(frames, moduleIds), minimumHeightScale(frames, moduleIds));
+    const uniformMinimum = Math.max(minimumWidthScale(frames, moduleIds, beaconIds), minimumHeightScale(frames, moduleIds, beaconIds));
     const uniform = clampScale(xDominates ? scales.x : scales.y, uniformMinimum);
     scaleX = uniform;
     scaleY = uniform;
@@ -98,8 +103,8 @@ export function scaleGroupFrames(
     y: axes.vertical === "top"
       ? bounds.y + bounds.height - (bounds.y + bounds.height - frame.y) * scaleY
       : bounds.y + (frame.y - bounds.y) * scaleY,
-    width: moduleIds.has(frame.id) ? frame.width : frame.width * scaleX,
-    height: moduleIds.has(frame.id)
+    width: moduleIds.has(frame.id) || beaconIds.has(frame.id) ? frame.width : frame.width * scaleX,
+    height: beaconIds.has(frame.id) ? frame.height : moduleIds.has(frame.id)
       ? clampModuleHeight((frame.height ?? MIN_NOTE_HEIGHT) * scaleY)
       : frame.height === null ? null : frame.height * scaleY,
   }));
@@ -151,12 +156,12 @@ function edgeScales(
   };
 }
 
-function minimumWidthScale(frames: readonly NoteFrame[], moduleIds: ReadonlySet<string>): number {
-  return Math.max(0, ...frames.flatMap((frame) => moduleIds.has(frame.id) ? [] : [MIN_NOTE_WIDTH / frame.width]));
+function minimumWidthScale(frames: readonly NoteFrame[], moduleIds: ReadonlySet<string>, beaconIds: ReadonlySet<string>): number {
+  return Math.max(0, ...frames.flatMap((frame) => moduleIds.has(frame.id) || beaconIds.has(frame.id) ? [] : [MIN_NOTE_WIDTH / frame.width]));
 }
 
-function minimumHeightScale(frames: readonly NoteFrame[], moduleIds: ReadonlySet<string>): number {
-  const manualHeights = frames.flatMap((frame) => frame.height === null || moduleIds.has(frame.id)
+function minimumHeightScale(frames: readonly NoteFrame[], moduleIds: ReadonlySet<string>, beaconIds: ReadonlySet<string>): number {
+  const manualHeights = frames.flatMap((frame) => frame.height === null || moduleIds.has(frame.id) || beaconIds.has(frame.id)
     ? []
     : [MIN_NOTE_HEIGHT / frame.height]);
   return Math.max(0, ...manualHeights);

@@ -27,7 +27,7 @@ describe("project index", () => {
 
     const parsed = parseProjectIndex(serializeProjectIndex([note], template));
 
-    expect(parsed.version).toBe(2);
+    expect(parsed.version).toBe(3);
     expect(parsed.futureIndexSetting).toEqual({ enabled: true });
     expect(parsed.notes[0]).toMatchObject({
       id: "note-1",
@@ -45,7 +45,7 @@ describe("project index", () => {
       notes: [{ id: "legacy", name: "Old note", x: 4, y: 9, width: 24 }],
     }));
 
-    expect(migrated.version).toBe(2);
+    expect(migrated.version).toBe(3);
     expect(migrated.notes[0]).toMatchObject({
       file: "Old note.md", height: null, type: "note", task: null, taskMemory: null,
       importance: null, purposes: [],
@@ -63,10 +63,81 @@ describe("project index", () => {
       links: [link],
     }));
 
-    expect(migrated.index.version).toBe(2);
+    expect(migrated.index.version).toBe(3);
     expect(migrated.index.links).toEqual([{ ...link, shape: "base" }]);
     expect(migrated.index.taskLog).toEqual([]);
     expect(migrated.warnings).toEqual([]);
+  });
+
+  it("migrates a v2 board with links and task history to v3 project state", () => {
+    const migrated = parseProjectIndexWithWarnings(JSON.stringify({
+      version: 2,
+      notes: [{
+        id: "legacy", name: "Legacy", x: 0, y: 0, width: 10, height: null,
+        type: "note", task: null, taskMemory: null, importance: null, purposes: [], moods: [],
+      }],
+      taskLog: [],
+      links: [],
+      futureIndexField: { kept: true },
+    }));
+
+    expect(migrated.index.version).toBe(3);
+    expect(migrated.index.zones).toEqual([]);
+    expect(migrated.index.beaconMarks).toEqual([]);
+    expect(migrated.index.futureIndexField).toEqual({ kept: true });
+    expect(migrated.warnings).toEqual([]);
+  });
+
+  it("round trips beacon colour, zone membership, zones and ordered marks", () => {
+    const zone = {
+      id: "zone-a",
+      name: "Research",
+      color: "#608ac1",
+      parts: [[{ x: -10, y: -8 }, { x: 20, y: -8 }, { x: 20, y: 18 }, { x: -10, y: 18 }]],
+      holes: [[{ x: 2, y: 2 }, { x: 8, y: 2 }, { x: 8, y: 8 }, { x: 2, y: 8 }]],
+      createdAt: 1_700_000_000_000,
+    };
+    const beacon: Note = {
+      id: "beacon-a", type: "beacon", name: "North", text: "", x: 0, y: 0, width: 7.2, height: 7.2,
+      color: "#69b7a5", zoneId: "zone-a",
+    };
+    const parsed = parseProjectIndex(serializeProjectIndex([beacon], undefined, [], [], [zone], ["beacon-a", "me"]));
+    const loaded = mergeLoadedNotes(parsed, [{
+      id: beacon.id, name: beacon.name, file: "North.md", text: "", x: beacon.x, y: beacon.y,
+      width: beacon.width, height: beacon.height,
+    }]);
+
+    expect(loaded).toEqual([{ ...beacon, task: null, taskMemory: null, importance: null, purposes: [] }]);
+    expect(parsed.zones).toEqual([zone]);
+    expect(parsed.beaconMarks).toEqual(["beacon-a", "me"]);
+  });
+
+  it("defaults invalid colours and removes invalid polygons with warnings", () => {
+    const parsed = parseProjectIndexWithWarnings(JSON.stringify({
+      version: 3,
+      notes: [{
+        id: "beacon", name: "Beacon", x: 0, y: 0, width: 7.2, height: 7.2, type: "beacon",
+        task: null, taskMemory: null, importance: null, purposes: [], moods: [], color: "ultraviolet", zoneId: "good",
+      }],
+      taskLog: [],
+      beaconMarks: ["beacon", "missing", "beacon", "me"],
+      zones: [
+        { id: "good", name: "Good", color: "bad", parts: [[{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }]], holes: [], createdAt: -1 },
+        { id: "bad", name: "Bad", color: "#608ac1", parts: [[{ x: 0, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }, { x: 10, y: 0 }]], holes: [] },
+      ],
+    }));
+
+    expect(parsed.index.notes[0]).toMatchObject({ color: "#e8b030", zoneId: "good" });
+    expect(parsed.index.zones[0]).toMatchObject({ id: "good", color: "#608ac1" });
+    expect(parsed.index.zones[0]?.createdAt).toBeUndefined();
+    expect(parsed.index.beaconMarks).toEqual(["beacon", "me"]);
+    expect(parsed.warnings).toEqual(expect.arrayContaining([
+      "Invalid beacon colour for note beacon; default colour was used.",
+      "Invalid zones or polygons in board.json were discarded.",
+      "Invalid zone colours were replaced with the default colour.",
+      "Invalid zone creation times were cleared.",
+      "Invalid beacon marks were discarded.",
+    ]));
   });
 
   it("migrates removed straight and renamed curved line shapes to base", () => {
@@ -223,7 +294,7 @@ describe("project index", () => {
   it.each([
     ["invalid JSON", "{"],
     ["non-object root", "[]"],
-    ["unsupported version", JSON.stringify({ version: 3, notes: [] })],
+    ["unsupported version", JSON.stringify({ version: 4, notes: [] })],
     ["missing notes", JSON.stringify({ version: 1 })],
     ["non-finite geometry", JSON.stringify({ version: 1, notes: [{ id: "a", name: "A", x: 0, y: 0, width: Infinity }] })],
     ["path traversal", JSON.stringify({ version: 1, notes: [{ id: "a", name: "A", file: "../A.md", x: 0, y: 0, width: 10 }] })],

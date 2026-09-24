@@ -5,6 +5,9 @@ import { registerCloseFlush } from "../lifecycle/closeFlush";
 import { replaceBoard, board, updateNote } from "../model/board.svelte";
 import { links, replaceLinks } from "../model/links.svelte";
 import type { Link } from "../model/link";
+import { replaceZones, zones } from "../model/zones.svelte";
+import type { Zone } from "../model/zone";
+import { beaconState, resetBeaconViewState } from "../beacons/beaconState.svelte";
 import type { Note } from "../model/note";
 import { taskLog, type TaskLogEntry } from "../tasks/taskLog.svelte";
 import { resetTasksPanel } from "../tasks/tasksPanelState.svelte";
@@ -53,6 +56,8 @@ interface ProjectSnapshot {
   notes: Note[];
   links: Link[];
   taskLog: TaskLogEntry[];
+  zones: Zone[];
+  beaconMarks: string[];
 }
 
 interface ChangedFile {
@@ -140,7 +145,9 @@ function applyProject(loaded: ProjectLoad): void {
   const { index: parsedIndex, warnings: indexWarnings } = parseProjectIndexWithWarnings(loaded.indexJson);
   const notes = mergeLoadedNotes(parsedIndex, loaded.notes);
   const missingFiles = new Set(loaded.missingFiles ?? []);
-  const normalizedIndex = serializeProjectIndex(notes, parsedIndex, parsedIndex.links, parsedIndex.taskLog);
+  const normalizedIndex = serializeProjectIndex(
+    notes, parsedIndex, parsedIndex.links, parsedIndex.taskLog, parsedIndex.zones, parsedIndex.beaconMarks,
+  );
   const sourceVersion = JSON.parse(loaded.indexJson) as { version?: unknown };
 
   // A different project must not inherit the previous one's editor, selection or Undo steps.
@@ -160,7 +167,7 @@ function applyProject(loaded: ProjectLoad): void {
     loaded.notes.filter((note) => missingFiles.has(note.file)).map((note) => note.id),
   );
   externalDeleteWarnings = new Map();
-  lastSavedIndex = sourceVersion.version === 2 && indexWarnings.length === 0
+  lastSavedIndex = sourceVersion.version === 3 && indexWarnings.length === 0
     ? normalizedIndex
     : loaded.indexJson;
   taskLog.entries = parsedIndex.taskLog.map((entry) => ({ ...entry }));
@@ -172,6 +179,8 @@ function applyProject(loaded: ProjectLoad): void {
   project.ready = true;
   replaceBoard(notes);
   replaceLinks(parsedIndex.links ?? []);
+  replaceZones(parsedIndex.zones.map(copyZone));
+  resetBeaconViewState(parsedIndex.beaconMarks);
   loading = false;
 }
 
@@ -184,6 +193,8 @@ export function resetProjectScopedState(): void {
   resetSearch();
   resetObjectsPanelSearch();
   resetTasksPanel();
+  replaceZones([]);
+  resetBeaconViewState();
   closeModulePicker();
   clearModuleDropPreview();
   resetTransferNotices();
@@ -196,11 +207,15 @@ function makeSnapshot(): ProjectSnapshot {
   });
   const currentLinks = Object.values(links.byId).map((link) => ({ ...link }));
   const currentTaskLog = taskLog.entries.map((entry) => ({ ...entry }));
+  const currentZones = zones.order.flatMap((id) => zones.byId[id] ? [copyZone(zones.byId[id])] : []);
+  const beaconMarks = [...beaconState.marked];
   return {
-    indexJson: serializeProjectIndex(notes, indexTemplate, currentLinks, currentTaskLog),
+    indexJson: serializeProjectIndex(notes, indexTemplate, currentLinks, currentTaskLog, currentZones, beaconMarks),
     notes,
     links: currentLinks,
     taskLog: currentTaskLog,
+    zones: currentZones,
+    beaconMarks,
   };
 }
 
@@ -542,4 +557,12 @@ function scheduleIfDirty(): void {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function copyZone(zone: Zone): Zone {
+  return {
+    ...zone,
+    parts: zone.parts.map((part) => part.map((point) => ({ ...point }))),
+    holes: zone.holes.map((hole) => hole.map((point) => ({ ...point }))),
+  };
 }

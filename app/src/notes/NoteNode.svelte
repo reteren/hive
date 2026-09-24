@@ -17,11 +17,15 @@
   import { effectiveImportance } from "../modules/moduleActions.svelte";
   import { startNoteEditing } from "../editor/editorSession";
   import { tool } from "../tools/tool.svelte";
+  import { zones } from "../model/zones.svelte";
+  import { zoneOf } from "../zones/membership.svelte";
+  import { isDimmed } from "../beacons/focus.svelte";
 
   let { note, measureHeight }: { note: Note; measureHeight: Action<HTMLElement, string> } = $props();
   let renaming = $state(false);
   let draftName = $state("");
   let renameInput = $state<HTMLInputElement>();
+  let memberZone = $derived(zones.byId[zoneOf(note.id) ?? ""]);
 
   function beginRename(): void {
     draftName = note.name;
@@ -97,10 +101,12 @@
 <article
   class="note-card"
   data-note-id={note.id}
+  data-dimmed={isDimmed(note.id)}
   data-editing={editing.noteId === note.id ? "true" : "false"}
   data-kind={note.type}
   data-task={note.task ? (note.task.done ? "done" : "open") : undefined}
   data-importance={effectiveImportance(note.id) ?? undefined}
+  data-member-zone-id={memberZone?.id}
   style:left={`${note.x * PX_PER_UNIT}px`}
   style:top={`${note.y * PX_PER_UNIT}px`}
   style:width={`${note.width * PX_PER_UNIT}px`}
@@ -109,6 +115,9 @@
   use:measureHeight={note.id}
   ondblclick={beginEditingFromDoubleClick}
 >
+  {#if memberZone}
+    <div class="zone-marker" data-zone-marker title={memberZone.name} aria-label={`Zone: ${memberZone.name}`} style:--zone-color={memberZone.color}></div>
+  {/if}
   <header
     class="note-header"
     data-note-header
@@ -243,6 +252,17 @@
     background: var(--note-body);
     overflow-wrap: anywhere;
     user-select: text;
+  }
+
+  .zone-marker {
+    position: absolute;
+    z-index: 1;
+    top: 0;
+    right: 3px;
+    left: 3px;
+    height: 3px;
+    border-radius: 0 0 2px 2px;
+    background: var(--zone-color);
   }
 
   .note-content.empty-auto-body {

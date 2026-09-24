@@ -1,0 +1,9 @@
+TASK R4.4 + R4.5 — Zone selection, move (Shift carries members), resize, collisions. Browser port: 1445.
+YOUR FILES: src/selection/** (zones join the selection model), new src/zones/zoneGestures.ts (+ tests) — coordinate: src/zones/** otherwise belongs to the zones-core worker; tests/selection*.test.ts, tests/zoneGestures*.test.ts. Use zoneMembers() from src/zones/membership.svelte.ts (implemented in parallel; code against the signature).
+Rules (M004–M010, M019–M020, H20; ROADMAP R4.4/R4.5):
+1. Selecting a zone: click on an empty part of a zone (not on a note/link/beacon) selects the zone (outline + resize handles on its bounding rect, same 8-handle style as notes). Ctrl+click / marquee can mix zones with notes (M010: Ctrl multi-select incl. zones — marquee selects a zone only if the marquee fully contains it? propose: touching like notes, document). Delete removes selected zones (content stays).
+2. Move: dragging the zone moves ONLY the zone (M006) — members don't move and membership is simply recomputed. With Shift held at gesture start: the zone moves together with the set of its members captured AT GESTURE START (H20) — objects it passes over are not picked up. One history step.
+3. Resize (rect zones only for now): 8 handles; members keep their coordinates and sizes (M008); membership recomputes (M004/M005). One history step.
+4. Collisions: zones may touch but never overlap by area. Moving or resizing stops at the obstacle — the zone simply doesn't go further even if the mouse continues (M019), sliding along if the other axis is free. Show a subtle hint why. Also: moving a zone can't push notes (they're independent).
+5. Alt precision and Snapgrid apply like for notes. Escape cancels.
+Tests: capture-at-start semantics, collision clamping (move + resize, sliding), mixed selection delete.

@@ -10,6 +10,8 @@ import { tasksPanel } from "../src/tasks/tasksPanelState.svelte";
 import { modulePicker } from "../src/modules/pickerState.svelte";
 import { moduleDropPreview } from "../src/modules/moduleActions.svelte";
 import { transferUi } from "../src/transfer/sync.svelte";
+import { beaconState } from "../src/beacons/beaconState.svelte";
+import { addZone, zones } from "../src/model/zones.svelte";
 
 describe("project-scoped state reset", () => {
   afterEach(() => {
@@ -63,6 +65,14 @@ describe("project-scoped state reset", () => {
       targetId: "old-project-note",
       message: "Old inactive transfer",
     }];
+    beaconState.focused = ["old-beacon"];
+    beaconState.marked = ["old-beacon", "me"];
+    beaconState.menuOpen = true;
+    beaconState.markCursor = 1;
+    addZone({
+      id: "old-zone", name: "Old zone", color: "#608ac1",
+      parts: [[{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 4 }, { x: 0, y: 4 }]], holes: [],
+    });
 
     resetProjectScopedState();
 
@@ -80,5 +90,7 @@ describe("project-scoped state reset", () => {
     expect(transferUi.prompts).toEqual([]);
     expect(transferUi.warnings).toEqual([]);
     expect(transferUi.inactive).toEqual([]);
+    expect(zones.order).toEqual([]);
+    expect(beaconState).toMatchObject({ focused: [], marked: [], menuOpen: false, markCursor: 0 });
   });
 });

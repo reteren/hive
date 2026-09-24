@@ -11,6 +11,9 @@ import {
 } from "../model/note";
 import { ME_OBJECT_ID, pairKey, type Link, type LinkAnchor } from "../model/link";
 import { isFrameAnchor } from "../links/anchors";
+import type { Zone } from "../model/zone";
+import type { Point } from "../board/cameraMath";
+import { beaconPaletteColor, normalizeBeaconColor } from "../beacons/beaconPalette";
 import { noteFileKey, sanitizeNoteName } from "./fileNames";
 import type { TaskLogEntry } from "../tasks/taskLog.svelte";
 
@@ -28,19 +31,24 @@ export interface IndexedNote {
   importance: ImportanceLevel | null;
   purposes: PurposeKind[];
   moods: MoodKind[];
+  color?: string | null;
+  zoneId?: string | null;
   [key: string]: unknown;
 }
 
 export interface ProjectIndex {
-  version: 2;
+  version: 3;
   notes: IndexedNote[];
   links?: Link[];
+  zones: Zone[];
+  /** Ordered board marks are view state; beacon focus is intentionally transient. */
+  beaconMarks: string[];
   /** Completion history stays with the project snapshot and is separate from Undo. */
   taskLog: TaskLogEntry[];
   [key: string]: unknown;
 }
 
-/** Parse v1 indexes, including v1 indexes with links, and migrate them to v2. */
+/** Parse v1/v2 indexes and migrate their project data to v3. */
 export function parseProjectIndex(contents: string): ProjectIndex {
   return parseProjectIndexWithWarnings(contents).index;
 }
@@ -55,26 +63,48 @@ export function parseProjectIndexWithWarnings(contents: string): { index: Projec
 
   if (!isRecord(parsed)) throw new Error("Project index must be an object.");
   const version = parsed.version;
-  if (version !== undefined && version !== 0 && version !== 1 && version !== 2) {
+  if (version !== undefined && version !== 0 && version !== 1 && version !== 2 && version !== 3) {
     throw new Error(`Unsupported project index version: ${String(version)}.`);
   }
   if (!Array.isArray(parsed.notes)) throw new Error("Project index must contain a notes array.");
 
+  const zonesResult = sanitizeZones(parsed.zones, version === 3);
   const noteWarnings: string[] = [];
   const notes = parsed.notes.map((value, index) => {
-    const result = parseNote(value, index, version === 2);
+    const result = parseNote(value, index, version === 2 || version === 3, version === 3,
+      new Set(zonesResult.zones.map((zone) => zone.id)));
     noteWarnings.push(...result.warnings);
     return result.note;
   });
   validateUniqueNotes(notes);
-  const parsedLinks = sanitizeProjectLinks(parsed.links, new Set(notes.map((note) => note.id)));
+  const noteIds = new Set(notes.map((note) => note.id));
+  const uniqueZones = zonesResult.zones.filter((zone) => !noteIds.has(zone.id));
+  if (uniqueZones.length !== zonesResult.zones.length) zonesResult.warnings.push("Zones with ids colliding with notes were discarded.");
+  const validZoneIds = new Set(uniqueZones.map((zone) => zone.id));
+  for (const note of notes) {
+    if (note.zoneId && !validZoneIds.has(note.zoneId)) {
+      noteWarnings.push(`Invalid zone membership for note ${note.id}; membership was cleared.`);
+      note.zoneId = null;
+    }
+  }
+  const parsedLinks = sanitizeProjectLinks(parsed.links, noteIds);
   const parsedTaskLog = sanitizeTaskLog(parsed.taskLog);
-  if (version === 2 && parsed.taskLog === undefined) {
+  if ((version === 2 || version === 3) && parsed.taskLog === undefined) {
     parsedTaskLog.warnings.push("Missing task log in board.json; defaulted to an empty log.");
   }
+  const marks = sanitizeBeaconMarks(parsed.beaconMarks, notes);
+  if (version === 3 && parsed.beaconMarks === undefined) marks.warnings.push("Missing beacon marks in board.json; defaulted to none.");
   return {
-    index: { ...parsed, version: 2, notes, links: parsedLinks.links, taskLog: parsedTaskLog.entries },
-    warnings: [...noteWarnings, ...parsedLinks.warnings, ...parsedTaskLog.warnings],
+    index: {
+      ...parsed,
+      version: 3,
+      notes,
+      links: parsedLinks.links,
+      zones: uniqueZones,
+      beaconMarks: marks.values,
+      taskLog: parsedTaskLog.entries,
+    },
+    warnings: [...noteWarnings, ...zonesResult.warnings, ...parsedLinks.warnings, ...parsedTaskLog.warnings, ...marks.warnings],
   };
 }
 
@@ -84,8 +114,12 @@ export function serializeProjectIndex(
   previous?: ProjectIndex,
   nextLinks?: readonly Link[],
   nextTaskLog?: readonly TaskLogEntry[],
+  nextZones?: readonly Zone[],
+  nextBeaconMarks?: readonly string[],
 ): string {
   const extrasById = new Map(previous?.notes.map((note) => [note.id, note]) ?? []);
+  const serializedZones = (nextZones ?? previous?.zones ?? []).map(copyZone);
+  const validZoneIds = new Set(serializedZones.map((zone) => zone.id));
   const indexedNotes = notes.map((note) => {
     const previousNote = extrasById.get(note.id);
     return {
@@ -104,15 +138,19 @@ export function serializeProjectIndex(
       importance: note.importance ?? null,
       purposes: [...new Set(note.purposes ?? [])],
       moods: [...new Set(note.moods ?? [])],
+      color: note.type === "beacon" ? normalizeBeaconColor(note.color ?? "") ?? beaconPaletteColor(0) : note.color ?? null,
+      zoneId: note.zoneId && validZoneIds.has(note.zoneId) ? note.zoneId : null,
     };
   });
   validateUniqueNotes(indexedNotes);
   return JSON.stringify({
     ...previous,
-    version: 2,
+    version: 3,
     notes: indexedNotes,
     links: [...(nextLinks ?? previous?.links ?? [])],
     taskLog: [...(nextTaskLog ?? previous?.taskLog ?? [])].map((entry) => ({ ...entry })),
+    zones: serializedZones,
+    beaconMarks: sanitizeBeaconMarks(nextBeaconMarks ?? previous?.beaconMarks ?? [], indexedNotes).values,
   });
 }
 
@@ -140,6 +178,8 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       importance: entry.importance,
       purposes: [...entry.purposes],
       ...(entry.moods.length > 0 ? { moods: [...entry.moods] } : {}),
+      ...(entry.color ? { color: entry.color } : {}),
+      ...(entry.zoneId ? { zoneId: entry.zoneId } : {}),
       ...(typeof entry.createdAt === "number" && Number.isFinite(entry.createdAt) && entry.createdAt >= 0
         ? { createdAt: entry.createdAt }
         : {}),
@@ -158,7 +198,8 @@ export interface LoadedProjectNote {
   height: number | null;
 }
 
-function parseNote(value: unknown, index: number, requireV2Fields: boolean): { note: IndexedNote; warnings: string[] } {
+function parseNote(value: unknown, index: number, requireV2Fields: boolean, requireV3Fields: boolean,
+  validZoneIds: ReadonlySet<string>): { note: IndexedNote; warnings: string[] } {
   if (!isRecord(value)) throw new Error(`Project note ${index + 1} must be an object.`);
   const id = value.id;
   const name = value.name;
@@ -216,6 +257,18 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean): { n
     warnings.push(`Invalid mood values for note ${id}; unknown values were discarded.`);
   }
 
+  const color = typeof value.color === "string" ? normalizeBeaconColor(value.color) : null;
+  if (value.color !== undefined && color === null && (value.color !== null || type === "beacon")) {
+    warnings.push(`Invalid beacon colour for note ${id}; default colour was used.`);
+  } else if (requireV3Fields && type === "beacon" && value.color === undefined) {
+    warnings.push(`Missing beacon colour for note ${id}; default colour was used.`);
+  }
+  const zoneId = value.zoneId === undefined || value.zoneId === null ? null
+    : typeof value.zoneId === "string" && validZoneIds.has(value.zoneId) ? value.zoneId : null;
+  if (value.zoneId !== undefined && value.zoneId !== null && zoneId === null) {
+    warnings.push(`Invalid zone membership for note ${id}; membership was cleared.`);
+  }
+
   return {
     note: {
       ...value,
@@ -232,6 +285,8 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean): { n
       importance,
       purposes: purposes.values,
       moods: moods.values,
+      color: type === "beacon" ? color ?? beaconPaletteColor(0) : color,
+      zoneId,
     },
     warnings,
   };
@@ -251,9 +306,176 @@ function validateUniqueNotes(notes: readonly IndexedNote[]): void {
 
 function parseNoteKind(value: unknown): NoteKind | null {
   return value === "note" || value === "pro" || value === "con" ||
-    value === "importance" || value === "purpose" || value === "mood"
+    value === "importance" || value === "purpose" || value === "mood" || value === "beacon"
     ? value
     : null;
+}
+
+const DEFAULT_ZONE_COLOR = "#608ac1";
+const MAX_ZONES = 10_000;
+const MAX_ZONE_CONTOURS = 100;
+const MAX_ZONE_POINTS = 512;
+
+function sanitizeZones(value: unknown, requireV3Field: boolean): { zones: Zone[]; warnings: string[] } {
+  if (value === undefined) {
+    return {
+      zones: [],
+      warnings: requireV3Field ? ["Missing zones in board.json; defaulted to none."] : [],
+    };
+  }
+  if (!Array.isArray(value)) return { zones: [], warnings: ["Invalid zones in board.json were discarded."] };
+  if (value.length > MAX_ZONES) return { zones: [], warnings: ["Too many zones in board.json; all zones were discarded."] };
+
+  const zones: Zone[] = [];
+  const ids = new Set<string>();
+  let dropped = false;
+  let invalidColour = false;
+  let invalidMetadata = false;
+  for (const candidate of value) {
+    if (!isRecord(candidate)) {
+      dropped = true;
+      continue;
+    }
+    const { id, name } = candidate;
+    if (typeof id !== "string" || !id.trim() || id.length > 200 || id === ME_OBJECT_ID ||
+      id.includes("/") || id.includes("\\") || ids.has(id) ||
+      typeof name !== "string" || !name.trim() || name.length > 500) {
+      dropped = true;
+      continue;
+    }
+    const parts = parsePolygons(candidate.parts);
+    const holes = parsePolygons(candidate.holes, true);
+    if (!parts || !holes) {
+      dropped = true;
+      continue;
+    }
+
+    let color = typeof candidate.color === "string" ? normalizeBeaconColor(candidate.color) : null;
+    if (color === null) {
+      color = DEFAULT_ZONE_COLOR;
+      invalidColour = true;
+    }
+    let createdAt: number | undefined;
+    if (candidate.createdAt !== undefined) {
+      if (finiteNonnegative(candidate.createdAt)) createdAt = candidate.createdAt;
+      else invalidMetadata = true;
+    }
+    const zoneExtras = { ...candidate };
+    delete zoneExtras.createdAt;
+    const zone = {
+      ...zoneExtras,
+      id,
+      name,
+      color,
+      parts,
+      holes,
+      ...(createdAt === undefined ? {} : { createdAt }),
+    } as Zone;
+    zones.push(zone);
+    ids.add(id);
+  }
+  const warnings: string[] = [];
+  if (dropped) warnings.push("Invalid zones or polygons in board.json were discarded.");
+  if (invalidColour) warnings.push("Invalid zone colours were replaced with the default colour.");
+  if (invalidMetadata) warnings.push("Invalid zone creation times were cleared.");
+  return { zones, warnings };
+}
+
+function parsePolygons(value: unknown, allowEmpty = false): Point[][] | null {
+  if (!Array.isArray(value) || (!allowEmpty && value.length === 0) || value.length > MAX_ZONE_CONTOURS) return null;
+  const polygons: Point[][] = [];
+  for (const candidate of value) {
+    if (!Array.isArray(candidate) || candidate.length < 3 || candidate.length > MAX_ZONE_POINTS) return null;
+    const points: Point[] = [];
+    for (const point of candidate) {
+      if (!isRecord(point) || !finite(point.x) || !finite(point.y)) return null;
+      points.push({ x: point.x, y: point.y });
+    }
+    if (!isValidPolygon(points)) return null;
+    polygons.push(points);
+  }
+  return polygons;
+}
+
+function isValidPolygon(points: readonly Point[]): boolean {
+  let twiceArea = 0;
+  for (let index = 0; index < points.length; index += 1) {
+    const current = points[index];
+    const next = points[(index + 1) % points.length];
+    if (current.x === next.x && current.y === next.y) return false;
+    twiceArea += current.x * next.y - next.x * current.y;
+  }
+  if (Math.abs(twiceArea) < 1e-8) return false;
+  for (let first = 0; first < points.length; first += 1) {
+    const a = points[first];
+    const b = points[(first + 1) % points.length];
+    for (let second = first + 1; second < points.length; second += 1) {
+      if (second === first || second === first + 1 || (first === 0 && second === points.length - 1)) continue;
+      const c = points[second];
+      const d = points[(second + 1) % points.length];
+      if (segmentsIntersect(a, b, c, d)) return false;
+    }
+  }
+  return true;
+}
+
+function segmentsIntersect(a: Point, b: Point, c: Point, d: Point): boolean {
+  const abC = crossProduct(a, b, c);
+  const abD = crossProduct(a, b, d);
+  const cdA = crossProduct(c, d, a);
+  const cdB = crossProduct(c, d, b);
+  const epsilon = 1e-8;
+  const sign = (value: number): -1 | 0 | 1 => value > epsilon ? 1 : value < -epsilon ? -1 : 0;
+  const firstC = sign(abC);
+  const firstD = sign(abD);
+  const secondA = sign(cdA);
+  const secondB = sign(cdB);
+  if (firstC !== firstD && secondA !== secondB && firstC !== 0 && firstD !== 0 && secondA !== 0 && secondB !== 0) return true;
+  return (firstC === 0 && pointOnSegment(a, b, c)) || (firstD === 0 && pointOnSegment(a, b, d)) ||
+    (secondA === 0 && pointOnSegment(c, d, a)) || (secondB === 0 && pointOnSegment(c, d, b));
+}
+
+function pointOnSegment(a: Point, b: Point, point: Point): boolean {
+  const epsilon = 1e-8;
+  return point.x >= Math.min(a.x, b.x) - epsilon && point.x <= Math.max(a.x, b.x) + epsilon &&
+    point.y >= Math.min(a.y, b.y) - epsilon && point.y <= Math.max(a.y, b.y) + epsilon;
+}
+
+function crossProduct(a: Point, b: Point, c: Point): number {
+  return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+}
+
+function sanitizeBeaconMarks(value: unknown, notes: readonly IndexedNote[]): { values: string[]; warnings: string[] } {
+  if (value === undefined) return { values: [], warnings: [] };
+  if (!Array.isArray(value)) return { values: [], warnings: ["Invalid beacon marks were discarded."] };
+  const validIds = new Set(notes.filter((note) => note.type === "beacon").map((note) => note.id));
+  validIds.add(ME_OBJECT_ID);
+  const values: string[] = [];
+  let invalid = false;
+  for (const candidate of value) {
+    if (typeof candidate !== "string" || !validIds.has(candidate) || values.includes(candidate)) {
+      invalid = true;
+      continue;
+    }
+    values.push(candidate);
+  }
+  return { values, warnings: invalid ? ["Invalid beacon marks were discarded."] : [] };
+}
+
+function copyZone(zone: Zone): Zone {
+  return {
+    ...zone,
+    parts: zone.parts.map((part) => part.map((point) => ({ ...point }))),
+    holes: zone.holes.map((hole) => hole.map((point) => ({ ...point }))),
+  };
+}
+
+function finite(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function finiteNonnegative(value: unknown): value is number {
+  return finite(value) && value >= 0;
 }
 
 function parseTaskState(value: unknown): TaskState | null {

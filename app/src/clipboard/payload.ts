@@ -14,9 +14,12 @@ import {
   type TaskState,
 } from "../model/note";
 import { uniqueName } from "../notes/naming";
+import type { Zone } from "../model/zone";
+import { zoneBounds } from "../model/zone";
+import { normalizeBeaconColor } from "../beacons/beaconPalette";
 
 export const HIVE_CLIPBOARD_MARKER = "hive/nodes";
-export const HIVE_CLIPBOARD_VERSION = 2;
+export const HIVE_CLIPBOARD_VERSION = 3;
 export const HIVE_CLIPBOARD_MIME = "application/x-hive-nodes+json";
 export const HIVE_CLIPBOARD_WEB_MIME = `web ${HIVE_CLIPBOARD_MIME}`;
 export const FALLBACK_PASTE_OFFSET: Point = { x: 2, y: 2 };
@@ -37,6 +40,12 @@ export interface ClipboardNode {
   importance: ImportanceLevel | null;
   purposes: PurposeKind[];
   moods: MoodKind[];
+  color?: string | null;
+  zoneId?: string | null;
+}
+
+export interface ClipboardZone extends Omit<Zone, "id"> {
+  sourceId: string;
 }
 
 export interface ClipboardLink {
@@ -59,6 +68,7 @@ export interface HiveClipboardPayload {
   nodes: ClipboardNode[];
   /** Only links whose two endpoints are included in nodes are copied. */
   links: ClipboardLink[];
+  zones: ClipboardZone[];
 }
 
 export interface NoteGeometry {
@@ -68,13 +78,15 @@ export interface NoteGeometry {
   height: number | null;
 }
 
-export function serializeNotes(notes: readonly Note[], links: readonly ClipboardLink[] = []): string {
+export function serializeNotes(
+  notes: readonly Note[], links: readonly ClipboardLink[] = [], zones: readonly Zone[] = [],
+): string {
   const noteIds = new Set(notes.map((note) => note.id));
   const payload: HiveClipboardPayload = {
     marker: HIVE_CLIPBOARD_MARKER,
     version: HIVE_CLIPBOARD_VERSION,
     nodes: notes.map(({
-      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, importance, purposes, moods,
+      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, importance, purposes, moods, color, zoneId,
     }) => ({
       sourceId: id,
       type,
@@ -90,6 +102,8 @@ export function serializeNotes(notes: readonly Note[], links: readonly Clipboard
       importance: importance ?? null,
       purposes: [...new Set(purposes ?? [])],
       moods: [...new Set(moods ?? [])],
+      color: color ?? null,
+      zoneId: zoneId ?? null,
     })),
     links: links.flatMap((link) => noteIds.has(link.from) && noteIds.has(link.to)
       ? [{
@@ -101,6 +115,14 @@ export function serializeNotes(notes: readonly Note[], links: readonly Clipboard
           ...(link.toAnchor ? { toAnchor: { ...link.toAnchor } } : {}),
         }]
       : []),
+    zones: zones.map((zone) => ({
+      sourceId: zone.id,
+      name: zone.name,
+      color: zone.color,
+      parts: copyPolygons(zone.parts),
+      holes: copyPolygons(zone.holes),
+      ...(zone.createdAt === undefined ? {} : { createdAt: zone.createdAt }),
+    })),
   };
   return JSON.stringify(payload);
 }
@@ -115,11 +137,14 @@ export function parseNotesPayload(serialized: string): HiveClipboardPayload | nu
   }
 
   if (!isRecord(value) || value.marker !== HIVE_CLIPBOARD_MARKER ||
-    (value.version !== 1 && value.version !== HIVE_CLIPBOARD_VERSION)) {
+    (value.version !== 1 && value.version !== 2 && value.version !== HIVE_CLIPBOARD_VERSION)) {
     return null;
   }
-  if (!Array.isArray(value.nodes) || value.nodes.length === 0 || value.nodes.length > 10_000) return null;
+  if (!Array.isArray(value.nodes) || value.nodes.length > 10_000) return null;
   if (!Array.isArray(value.links) || value.links.length > 10_000) return null;
+  if (value.version === 3 && (!Array.isArray(value.zones) || value.zones.length > 10_000)) return null;
+  const rawZones = Array.isArray(value.zones) ? value.zones : [];
+  if (value.nodes.length === 0 && rawZones.length === 0) return null;
 
   const ids = new Set<string>();
   const nodes: ClipboardNode[] = [];
@@ -128,6 +153,15 @@ export function parseNotesPayload(serialized: string): HiveClipboardPayload | nu
     if (!node || ids.has(node.sourceId)) return null;
     ids.add(node.sourceId);
     nodes.push(node);
+  }
+
+  const zones: ClipboardZone[] = [];
+  const zoneIds = new Set<string>();
+  for (const candidate of rawZones) {
+    const zone = parseClipboardZone(candidate);
+    if (!zone || ids.has(zone.sourceId) || zoneIds.has(zone.sourceId)) return null;
+    zoneIds.add(zone.sourceId);
+    zones.push(zone);
   }
 
   const links: ClipboardLink[] = [];
@@ -154,6 +188,7 @@ export function parseNotesPayload(serialized: string): HiveClipboardPayload | nu
     version: HIVE_CLIPBOARD_VERSION,
     nodes,
     links,
+    zones,
   };
 }
 
@@ -223,10 +258,81 @@ export function placeNotes<T extends NoteGeometry>(
   return notes.map((note) => ({ ...note, x: note.x + deltaX, y: note.y + deltaY }));
 }
 
+/** Translate copied notes and zones together so their relative offsets survive paste. */
+export function placementOffset(
+  notes: readonly NoteGeometry[],
+  zones: readonly Zone[],
+  destination: Point | null,
+  fallbackOffset: Point = FALLBACK_PASTE_OFFSET,
+): Point {
+  if (!destination || (notes.length === 0 && zones.length === 0)) return { ...fallbackOffset };
+  const bounds = [
+    ...notes.map((note) => ({
+      x: note.x,
+      y: note.y,
+      right: note.x + note.width,
+      bottom: note.y + (note.height ?? AUTO_NOTE_HEIGHT_UNITS),
+    })),
+    ...zones.map((zone) => {
+      const zoneBox = zoneBounds(zone);
+      return { x: zoneBox.x, y: zoneBox.y, right: zoneBox.x + zoneBox.width, bottom: zoneBox.y + zoneBox.height };
+    }),
+  ];
+  const minX = Math.min(...bounds.map((item) => item.x));
+  const minY = Math.min(...bounds.map((item) => item.y));
+  const maxX = Math.max(...bounds.map((item) => item.right));
+  const maxY = Math.max(...bounds.map((item) => item.bottom));
+  return { x: destination.x - (minX + maxX) / 2, y: destination.y - (minY + maxY) / 2 };
+}
+
+/** Find a deterministic displacement that avoids occupied zone areas. */
+export function findNonOverlappingZoneOffset(
+  copiedZones: readonly Zone[],
+  existingZones: readonly Zone[],
+  maxAttempts = 10_000,
+): Point | null {
+  if (copiedZones.length === 0 || !copiedZones.some((zone) => existingZones.some((other) => zonesOverlap(zone, other)))) {
+    return { x: 0, y: 0 };
+  }
+  const step = Math.max(2, ...copiedZones.map((zone) => zoneBounds(zone).width)) + 2;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const offset = { x: step * attempt, y: 0 };
+    if (!copiedZones.some((zone) => existingZones.some((other) => zonesOverlap(translateZone(zone, offset), other)))) {
+      return offset;
+    }
+  }
+  return null;
+}
+
+/** Area overlap check; shared edges and corners are allowed. */
+export function zonesOverlap(first: Zone, second: Zone): boolean {
+  const a = zoneBounds(first);
+  const b = zoneBounds(second);
+  if (a.x >= b.x + b.width || b.x >= a.x + a.width || a.y >= b.y + b.height || b.y >= a.y + a.height) return false;
+  for (const polygonA of first.parts) {
+    for (const polygonB of second.parts) {
+      if (polygonEdgesCross(polygonA, polygonB) ||
+        polygonA.some((point) => pointStrictlyInZone(point, second)) ||
+        polygonB.some((point) => pointStrictlyInZone(point, first)) ||
+        pointStrictlyInZone(polygonAverage(polygonA), second) ||
+        pointStrictlyInZone(polygonAverage(polygonB), first)) return true;
+    }
+  }
+  return false;
+}
+
+function polygonAverage(polygon: readonly Point[]): Point {
+  return polygon.reduce((point, next) => ({
+    x: point.x + next.x / polygon.length,
+    y: point.y + next.y / polygon.length,
+  }), { x: 0, y: 0 });
+}
+
 function parseClipboardNode(value: unknown): ClipboardNode | null {
   if (!isRecord(value) || typeof value.sourceId !== "string" || value.sourceId.trim().length === 0 ||
+    value.sourceId === "me" ||
     (value.type !== "note" && value.type !== "pro" && value.type !== "con" &&
-      value.type !== "importance" && value.type !== "purpose" && value.type !== "mood") ||
+      value.type !== "importance" && value.type !== "purpose" && value.type !== "mood" && value.type !== "beacon") ||
     typeof value.name !== "string" || typeof value.text !== "string" ||
     !finite(value.x) || !finite(value.y) || !finite(value.width) || value.width <= 0 ||
     !(value.height === null || (finite(value.height) && value.height > 0)) ||
@@ -242,6 +348,14 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
   if (!purposes) return null;
   const moods = parseMoods(value.moods);
   if (!moods) return null;
+  const color = value.color === undefined || value.color === null
+    ? null
+    : typeof value.color === "string" ? normalizeBeaconColor(value.color) : null;
+  if (value.color !== undefined && value.color !== null && color === null) return null;
+  const zoneId = value.zoneId === undefined || value.zoneId === null
+    ? null
+    : typeof value.zoneId === "string" && value.zoneId.trim() ? value.zoneId : null;
+  if (value.zoneId !== undefined && value.zoneId !== null && zoneId === null) return null;
 
   return {
     sourceId: value.sourceId,
@@ -258,7 +372,44 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     importance,
     purposes,
     moods,
+    color,
+    zoneId,
   };
+}
+
+function parseClipboardZone(value: unknown): ClipboardZone | null {
+  if (!isRecord(value) || typeof value.sourceId !== "string" || !value.sourceId.trim() || value.sourceId.length > 200 ||
+    value.sourceId === "me" || value.sourceId.includes("/") || value.sourceId.includes("\\") ||
+    typeof value.name !== "string" || !value.name.trim() || value.name.length > 500 ||
+    typeof value.color !== "string" || normalizeBeaconColor(value.color) === null ||
+    (value.createdAt !== undefined && (!finite(value.createdAt) || value.createdAt < 0))) return null;
+  const parts = parseClipboardPolygons(value.parts, false);
+  const holes = parseClipboardPolygons(value.holes, true);
+  if (!parts || !holes) return null;
+  return {
+    sourceId: value.sourceId,
+    name: value.name,
+    color: normalizeBeaconColor(value.color)!,
+    parts,
+    holes,
+    ...(value.createdAt === undefined ? {} : { createdAt: value.createdAt }),
+  };
+}
+
+function parseClipboardPolygons(value: unknown, allowEmpty: boolean): Point[][] | null {
+  if (!Array.isArray(value) || (!allowEmpty && value.length === 0) || value.length > 100) return null;
+  const polygons: Point[][] = [];
+  for (const candidate of value) {
+    if (!Array.isArray(candidate) || candidate.length < 3 || candidate.length > 512) return null;
+    const points: Point[] = [];
+    for (const point of candidate) {
+      if (!isRecord(point) || !finite(point.x) || !finite(point.y)) return null;
+      points.push({ x: point.x, y: point.y });
+    }
+    if (!hasPolygonArea(points) || polygonSelfIntersects(points)) return null;
+    polygons.push(points);
+  }
+  return polygons;
 }
 
 function parseTaskState(value: unknown): TaskState | null {
@@ -313,6 +464,105 @@ function parseMoods(value: unknown): MoodKind[] | null {
 function normalizeClipboardLineShape(shape: unknown): Link["shape"] {
   if (shape === "straight" || shape === "curved") return "base";
   return shape as Link["shape"];
+}
+
+function copyPolygons(polygons: readonly Point[][]): Point[][] {
+  return polygons.map((polygon) => polygon.map((point) => ({ ...point })));
+}
+
+function translateZone(zone: Zone, offset: Point): Zone {
+  return {
+    ...zone,
+    parts: zone.parts.map((polygon) => polygon.map((point) => ({ x: point.x + offset.x, y: point.y + offset.y }))),
+    holes: zone.holes.map((polygon) => polygon.map((point) => ({ x: point.x + offset.x, y: point.y + offset.y }))),
+  };
+}
+
+function polygonEdgesCross(first: readonly Point[], second: readonly Point[]): boolean {
+  for (let firstIndex = 0; firstIndex < first.length; firstIndex += 1) {
+    const a = first[firstIndex];
+    const b = first[(firstIndex + 1) % first.length];
+    for (let secondIndex = 0; secondIndex < second.length; secondIndex += 1) {
+      const c = second[secondIndex];
+      const d = second[(secondIndex + 1) % second.length];
+      const crossA = crossProduct(a, b, c);
+      const crossB = crossProduct(a, b, d);
+      const crossC = crossProduct(c, d, a);
+      const crossD = crossProduct(c, d, b);
+      if (((crossA > 1e-8 && crossB < -1e-8) || (crossA < -1e-8 && crossB > 1e-8)) &&
+        ((crossC > 1e-8 && crossD < -1e-8) || (crossC < -1e-8 && crossD > 1e-8))) return true;
+    }
+  }
+  return false;
+}
+
+function pointStrictlyInZone(point: Point, zone: Zone): boolean {
+  return zone.parts.some((part) => pointStrictlyInPolygon(point, part)) &&
+    !zone.holes.some((hole) => pointStrictlyInPolygon(point, hole));
+}
+
+function pointStrictlyInPolygon(point: Point, polygon: readonly Point[]): boolean {
+  let inside = false;
+  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
+    const a = polygon[previous];
+    const b = polygon[index];
+    if (Math.abs(crossProduct(a, b, point)) < 1e-8 &&
+      point.x >= Math.min(a.x, b.x) && point.x <= Math.max(a.x, b.x) &&
+      point.y >= Math.min(a.y, b.y) && point.y <= Math.max(a.y, b.y)) return false;
+    if ((a.y > point.y) !== (b.y > point.y) &&
+      point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+function hasPolygonArea(points: readonly Point[]): boolean {
+  let twiceArea = 0;
+  for (let index = 0; index < points.length; index += 1) {
+    const point = points[index];
+    const next = points[(index + 1) % points.length];
+    if (point.x === next.x && point.y === next.y) return false;
+    twiceArea += point.x * next.y - next.x * point.y;
+  }
+  return Math.abs(twiceArea) > 1e-8;
+}
+
+function polygonSelfIntersects(points: readonly Point[]): boolean {
+  for (let first = 0; first < points.length; first += 1) {
+    const a = points[first];
+    const b = points[(first + 1) % points.length];
+    for (let second = first + 1; second < points.length; second += 1) {
+      if (second === first + 1 || (first === 0 && second === points.length - 1)) continue;
+      const c = points[second];
+      const d = points[(second + 1) % points.length];
+      if (segmentsIntersect(a, b, c, d)) return true;
+    }
+  }
+  return false;
+}
+
+function segmentsIntersect(a: Point, b: Point, c: Point, d: Point): boolean {
+  const crossA = crossProduct(a, b, c);
+  const crossB = crossProduct(a, b, d);
+  const crossC = crossProduct(c, d, a);
+  const crossD = crossProduct(c, d, b);
+  const sign = (value: number): -1 | 0 | 1 => value > 1e-8 ? 1 : value < -1e-8 ? -1 : 0;
+  const firstC = sign(crossA);
+  const firstD = sign(crossB);
+  const secondA = sign(crossC);
+  const secondB = sign(crossD);
+  if (firstC !== firstD && secondA !== secondB && firstC !== 0 && firstD !== 0 && secondA !== 0 && secondB !== 0) return true;
+  return (firstC === 0 && pointOnSegment(a, b, c)) || (firstD === 0 && pointOnSegment(a, b, d)) ||
+    (secondA === 0 && pointOnSegment(c, d, a)) || (secondB === 0 && pointOnSegment(c, d, b));
+}
+
+function pointOnSegment(a: Point, b: Point, point: Point): boolean {
+  const epsilon = 1e-8;
+  return point.x >= Math.min(a.x, b.x) - epsilon && point.x <= Math.max(a.x, b.x) + epsilon &&
+    point.y >= Math.min(a.y, b.y) - epsilon && point.y <= Math.max(a.y, b.y) + epsilon;
+}
+
+function crossProduct(a: Point, b: Point, c: Point): number {
+  return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
 }
 
 function finite(value: unknown): value is number {

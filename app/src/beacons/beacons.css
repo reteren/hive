@@ -1,0 +1,108 @@
+.beacons-layer,
+.beacons-world {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.beacons-world { transform-origin: 0 0; }
+
+.beacon-object {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.beacon-circle {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--beacon-color);
+  box-shadow: 0 0 0 10px color-mix(in srgb, var(--beacon-color) 24%, transparent);
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.beacon-circle:active { cursor: grabbing; }
+.beacon-circle:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
+.beacon-circle.in-zone { outline: 3px solid var(--zone-color); outline-offset: 3px; }
+.beacon-circle.in-zone:focus-visible { outline-color: #fff; }
+
+.beacon-mark {
+  position: absolute;
+  z-index: 1;
+  top: -2px;
+  right: -4px;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 2px solid #1c1c1c;
+  border-radius: 50%;
+  background: #f7d269;
+  pointer-events: none;
+}
+
+.beacon-label {
+  position: absolute;
+  top: 6px;
+  left: 82px;
+  font-size: 40px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.beacon-editor {
+  position: absolute;
+  z-index: 50;
+  top: 80px;
+  left: 0;
+  width: 210px;
+  padding: 10px;
+  border: 1px solid #555;
+  border-radius: 5px;
+  background: #292929;
+  box-shadow: 0 5px 18px rgb(0 0 0 / 45%);
+  color: #eee;
+  font-size: 13px;
+  pointer-events: auto;
+}
+
+.beacon-editor label { display: block; margin-bottom: 6px; }
+.beacon-editor input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 5px 7px;
+  border: 1px solid #666;
+  border-radius: 3px;
+  background: #1e1e1e;
+  color: #eee;
+  font: inherit;
+}
+.beacon-editor input[aria-invalid="true"] { border-color: #d87a75; }
+.beacon-palette { display: flex; gap: 7px; margin-bottom: 9px; }
+.beacon-swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.beacon-swatch[aria-pressed="true"] { border-color: white; }
+.beacon-editor-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 9px; }
+.beacon-editor-actions button {
+  padding: 4px 8px;
+  border: 1px solid #555;
+  border-radius: 3px;
+  background: #383838;
+  color: #eee;
+  cursor: pointer;
+}
+.beacon-editor-actions button:hover { background: #484848; }

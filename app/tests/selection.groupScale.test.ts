@@ -12,6 +12,18 @@ import type { Bounds } from "../src/notes/layout.svelte";
 const groupBounds: Bounds = { x: 0, y: 0, width: 100, height: 100 };
 
 describe("group scale", () => {
+  it("scales beacon positions while preserving their fixed size", () => {
+    const frames: NoteFrame[] = [
+      { id: "beacon", x: 20, y: 30, width: 7.2, height: 7.2 },
+      { id: "note", x: 60, y: 70, width: 20, height: 20 },
+    ];
+    const gesture = createGroupScaleGesture(frames, groupBounds, "bottom-right", { x: 0, y: 0 }, new Set(), new Set(["beacon"]));
+    const scaled = updateGroupScaleGesture(gesture, { x: 100, y: 100 }, false, 10);
+    expect(scaled.after).toEqual([
+      { id: "beacon", x: 40, y: 60, width: 7.2, height: 7.2 },
+      { id: "note", x: 120, y: 140, width: 40, height: 40 },
+    ]);
+  });
   it("scales note positions and sizes proportionally from the group origin", () => {
     const frames: NoteFrame[] = [
       { id: "a", x: 0, y: 0, width: 20, height: 20 },

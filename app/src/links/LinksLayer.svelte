@@ -6,7 +6,7 @@
   import { board } from "../model/board.svelte";
   import { links, canLink, linkRefusalReason } from "../model/links.svelte";
   import { ME_OBJECT_ID, type Link, type LinkAnchor } from "../model/link";
-  import { newId } from "../model/note";
+  import { BEACON_SIZE, newId } from "../model/note";
   import { noteBounds, type Bounds } from "../notes/layout.svelte";
   import { clearSelection } from "../selection/selection.svelte";
   import { isLineTool, tool } from "../tools/tool.svelte";
@@ -20,10 +20,11 @@
   import { createBoardLink, cutLinks } from "./operations";
   import { effectiveLinkKind } from "./rules";
   import { clearSelectedLink, selectLink, selectedLinkIds, selectLinks, toggleLinkSelection } from "./selection.svelte";
+  import { isDimmed } from "../beacons/focus.svelte";
 
   const CUT_DRAG_THRESHOLD_PX = 5;
   const CUT_TOLERANCE_PX = 4;
-  const ME_RADIUS = 3.6;
+  const ME_RADIUS = BEACON_SIZE / 2;
 
   interface RenderedLink {
     id: string;
@@ -128,18 +129,19 @@
     if (!sourceId || !source || !point || !isLineTool()) return null;
 
     const target = { x: point.x, y: point.y, width: 0, height: 0 };
+    const circularSource = isBeacon(sourceId);
     const endpoints = shapeEndpoints(
       source,
       target,
-      lineInteraction.sourceAnchor ?? undefined,
+      circularSource ? undefined : lineInteraction.sourceAnchor ?? undefined,
       undefined,
-      sourceId === ME_OBJECT_ID,
+      circularSource,
       true,
     );
-    const route = sourceId === ME_OBJECT_ID ? circleSource(endpoints) : endpoints;
+    const route = circularSource ? circleSource(endpoints, source) : endpoints;
     const geometry = buildShape(tool.lineShape, {
       ...route,
-      sourceBounds: sourceId === ME_OBJECT_ID ? undefined : source,
+      sourceBounds: circularSource ? undefined : source,
     });
     const arrow = buildArrowGeometry(tool.lineShape, geometry);
     const requestedKind = previewLinkKind(tool.active);
@@ -209,7 +211,7 @@
     }
 
     function anchorAt(id: string, point: Point): LinkAnchor | undefined {
-      if (id === ME_OBJECT_ID) return undefined;
+      if (isBeacon(id)) return undefined;
       const note = board.notes[id];
       return note ? projectPointToAnchor(noteBounds(note), screenToWorld(camera, viewport, point)) : undefined;
     }
@@ -385,6 +387,12 @@
       return true;
     }
 
+    // Links outside the beacon focus are not interactive (M060), including for cut and marquee.
+    function isLinkDimmed(id: string): boolean {
+      const link = links.byId[id];
+      return !!link && (isDimmed(link.from) || isDimmed(link.to));
+    }
+
     function finishCut(active: Extract<PointerGesture, { kind: "cut" }>, point: Point): void {
       const stroke = [...lineInteraction.cutStroke];
       const last = stroke.at(-1);
@@ -402,6 +410,7 @@
       const worldStroke = stroke.map((screenPoint) => screenToWorld(camera, viewport, screenPoint));
       const tolerance = CUT_TOLERANCE_PX / (PX_PER_UNIT * camera.zoom);
       const crossed = renderedLinks
+        .filter((link) => !isLinkDimmed(link.id))
         .filter((link) => strokeIntersectsPath(worldStroke, { type: "polyline", points: link.geometry.polyline }, tolerance))
         .map((link) => link.id);
       if (crossed.length > 0) cutLinks(crossed);
@@ -418,6 +427,7 @@
       const first = screenToWorld(camera, viewport, active.start);
       const last = screenToWorld(camera, viewport, point);
       const touched = renderedLinks
+        .filter((link) => !isLinkDimmed(link.id))
         .filter((link) => marqueeIntersectsPath({
           x: first.x,
           y: first.y,
@@ -520,25 +530,39 @@
     const source = objectBounds(link.from);
     const target = objectBounds(link.to);
     if (!source || !target) return null;
+    const circularSource = isBeacon(link.from);
+    const circularTarget = isBeacon(link.to);
     const endpoints = shapeEndpoints(
       source,
       target,
-      link.fromAnchor,
-      link.toAnchor,
-      link.from === ME_OBJECT_ID,
-      link.to === ME_OBJECT_ID,
+      circularSource ? undefined : link.fromAnchor,
+      circularTarget ? undefined : link.toAnchor,
+      circularSource,
+      circularTarget,
     );
-    const route = link.from === ME_OBJECT_ID ? circleSource(endpoints) : endpoints;
+    const sourceRoute = circularSource ? circleSource(endpoints, source) : endpoints;
+    const route = circularTarget ? circleTarget(sourceRoute, target) : sourceRoute;
     return buildShape(link.shape, {
       ...route,
-      sourceBounds: link.from === ME_OBJECT_ID ? undefined : source,
-      targetBounds: target,
+      sourceBounds: circularSource ? undefined : source,
+      targetBounds: circularTarget ? undefined : target,
     });
   }
 
-  function circleSource(endpoints: ReturnType<typeof shapeEndpoints>): ReturnType<typeof shapeEndpoints> {
-    const source = pointOnCircleToward(ME_POSITION, ME_RADIUS, endpoints.end);
+  function circleSource(endpoints: ReturnType<typeof shapeEndpoints>, bounds: Bounds): ReturnType<typeof shapeEndpoints> {
+    const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    const source = pointOnCircleToward(center, BEACON_SIZE / 2, endpoints.end);
     return { ...endpoints, start: source.point, startNormal: source.normal };
+  }
+
+  function circleTarget(endpoints: ReturnType<typeof shapeEndpoints>, bounds: Bounds): ReturnType<typeof shapeEndpoints> {
+    const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    const target = pointOnCircleToward(center, BEACON_SIZE / 2, endpoints.start);
+    return { ...endpoints, end: target.point, endNormal: target.normal };
+  }
+
+  function isBeacon(id: string): boolean {
+    return id === ME_OBJECT_ID || board.notes[id]?.type === "beacon";
   }
 
   function objectBounds(id: string): Bounds | null {
@@ -582,7 +606,7 @@
         {/each}
       </defs>
       {#each renderedLinks as link (link.id)}
-        <g data-link-id={link.id} class:selected={link.selected}>
+        <g data-link-id={link.id} class:selected={link.selected} class:dimmed={isDimmed(links.byId[link.id]?.from ?? "") || isDimmed(links.byId[link.id]?.to ?? "")}>
           <path class="link-hit" d={link.path} />
           {#if link.dashPaths}
             {#each link.dashPaths as dashPath, index (`${link.id}-dash-${index}`)}

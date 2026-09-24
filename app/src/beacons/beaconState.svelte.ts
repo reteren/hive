@@ -6,4 +6,14 @@
 export const beaconState = $state({
   focused: [] as string[],
   marked: [] as string[],
+  menuOpen: false,
+  markCursor: 0,
 });
+
+/** Called when opening a different project; marks may be restored from that project's data. */
+export function resetBeaconViewState(marked: readonly string[] = []): void {
+  beaconState.focused = [];
+  beaconState.marked = [...marked];
+  beaconState.menuOpen = false;
+  beaconState.markCursor = 0;
+}

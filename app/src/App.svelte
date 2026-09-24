@@ -1,6 +1,7 @@
 <script module lang="ts">
   import "./commands/appCommands.svelte";
   import "./settings/commands.svelte";
+  import "./beacons/focusCommands";
 </script>
 
 <script lang="ts">
@@ -25,6 +26,7 @@
   import TransferNotice from "./transfer/TransferNotice.svelte";
   import { display } from "./settings/display.svelte";
   import SettingsPanel from "./ui/SettingsPanel.svelte";
+  import BeaconMenu from "./beacons/BeaconMenu.svelte";
 
   let undoLogCommand = $derived(getCommand("ui.toggleUndoLog"));
   let undoLogKeys = $derived(undoLogCommand?.keys.map(formatKey).join(", ") ?? "");
@@ -35,6 +37,7 @@
   <div class="left"><LeftToolbar /></div>
   <main class="center">
     <Board />
+    <BeaconMenu />
     <CommandSearch />
     <KeymapEditor />
     <SequentialRename />
