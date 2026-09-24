@@ -1,0 +1,8 @@
+TASK R3-debug-lines — line tool feedback. Browser port: 1447.
+YOUR FILES: src/links/** (except src/links/rules.ts module rules owned by the modules worker — you may still edit other rules there if needed, coordinate via ask), src/model/link.ts (LineShape), src/tools/tool.svelte.ts, src/notes/noteCommands.ts ONLY the quick-add link call (see 6 — the modules worker also edits that file for Q entries; keep your change to that single call and ask first if unsure), src/project/index.ts ONLY the shape migration (the modules worker adds moods there in parallel — keep changes minimal and separate), tests/links*.test.ts, tests/linkShapes.test.ts.
+User report / improvements:
+6. Nodes created via RMB (Add plus / Add minus quick-add, and any other quick-created link) must always be linked with the "base" curve shape, regardless of the user's last chosen shape.
+9. While dragging a STRONG line the preview is dashed — the preview must look exactly like the final line kind (solid for strong, dashed for weak), same shape.
+Imp 1. In line mode, pressing LMB on an EMPTY board point and dragging draws a marquee that selects LINES it touches (multi-selection of links); selected lines can then be deleted (Delete) or have their shape changed (T / shape button) together — one history step each. Click on a line still selects one; Ctrl/Shift+click toggles.
+Imp 2. Remove the "straight" shape. Rename "curved" to "base". Shapes are now: base, orthogonal, zigzag, wave (T cycles these 4). Migrate saved data: "straight" and "curved" both → "base" (board.json load, clipboard parse). Default shape for new lines = base.
+Tests: migration, preview kind, marquee hit test on paths, multi-link delete/shape with undo.
