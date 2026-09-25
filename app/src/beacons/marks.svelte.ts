@@ -12,13 +12,22 @@ export function isMarked(beaconId: string): boolean {
   return validMarks().includes(beaconId);
 }
 
-export function markSelected(additive: boolean): void {
+export function toggleSelectedMarks(): void {
   const ids = selectedBeacons();
   if (!ids.length) return;
-  const current = validMarks();
-  beaconState.marked = additive
-    ? ids.reduce((marks, id) => marks.includes(id) ? marks.filter((value) => value !== id) : [...marks, id], current)
-    : ids;
+  beaconState.marked = ids.reduce((marks, id) => marks.includes(id)
+    ? marks.filter((value) => value !== id)
+    : [...marks, id], validMarks());
+  beaconState.markCursor = 0;
+}
+
+/** Toggle one beacon from a contextual menu without changing the current selection. */
+export function toggleBeaconMark(beaconId: string): void {
+  if (!isBeacon(beaconId)) return;
+  const marks = validMarks();
+  beaconState.marked = marks.includes(beaconId)
+    ? marks.filter((id) => id !== beaconId)
+    : [...marks, beaconId];
   beaconState.markCursor = 0;
 }
 

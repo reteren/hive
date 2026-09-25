@@ -7,6 +7,9 @@ import {
   splitSearchMatch,
   type SearchResult,
 } from "../src/search/matching";
+import "../src/links/commands";
+import "../src/search/commands.svelte";
+import { getCommands } from "../src/commands/registry.svelte";
 
 describe("note search matching", () => {
   it("matches names and text without case or diacritic sensitivity, including Cyrillic", () => {
@@ -36,6 +39,48 @@ describe("note search matching", () => {
       "text:both",
       "text:text",
     ]);
+  });
+
+  it("finds objects by kind aliases and prefixes, with kind hits after name hits", () => {
+    const notes = [
+      { id: "name", name: "Beacon map", text: "beacon in body", type: "note" as const, createdAt: 1 },
+      { id: "beacon", name: "North marker", text: "", type: "beacon" as const, createdAt: 99 },
+      { id: "plus", name: "Argument A", text: "", type: "pro" as const },
+      { id: "minus", name: "Argument B", text: "", type: "con" as const },
+      { id: "task", name: "Follow-up", text: "", type: "note" as const, task: true },
+    ];
+
+    expect(searchNotes("beac", notes).map(({ noteId, kind }) => `${kind}:${noteId}`)).toEqual([
+      "name:name",
+      "kind:beacon",
+      "text:name",
+    ]);
+    expect(searchNotes("plus", notes).map(({ noteId, kind }) => `${kind}:${noteId}`)).toEqual(["kind:plus"]);
+    expect(searchNotes("pro", notes).map(({ noteId, kind }) => `${kind}:${noteId}`)).toEqual(["kind:plus"]);
+    expect(searchNotes("minus", notes).map(({ noteId, kind }) => `${kind}:${noteId}`)).toEqual(["kind:minus"]);
+    expect(searchNotes("task", notes).map(({ noteId, kind }) => `${kind}:${noteId}`)).toEqual(["kind:task"]);
+  });
+
+  it.each([
+    ["note", "note", false],
+    ["task", "note", true],
+    ["beac", "beacon", false],
+    ["pro", "pro", false],
+    ["con", "con", false],
+    ["importance", "importance", false],
+    ["purpose", "purpose", false],
+    ["mood", "mood", false],
+  ] as const)("matches the %s object kind", (query, type, task) => {
+    const results = searchNotes(query, [{ id: "object", name: "Unrelated name", text: "", type, task }]);
+    expect(results.map((result) => [result.kind, result.objectKind, result.isTask])).toEqual([["kind", type, task]]);
+  });
+
+  it("moves search to Ctrl+T and preserves T for line shape without a Ctrl+T conflict", () => {
+    const commands = getCommands();
+    expect(commands.find((command) => command.id === "search.open")?.keys).toEqual(["Ctrl+KeyT"]);
+    expect(commands.find((command) => command.id === "line.cycleShape")?.keys).toEqual(["KeyT"]);
+    expect(commands.filter((command) => command.id !== "search.open").flatMap((command) => command.keys))
+      .not.toContain("Ctrl+KeyT");
   });
 
   it("extracts a short snippet with a precise highlight range", () => {

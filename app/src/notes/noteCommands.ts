@@ -8,15 +8,26 @@ import { pointer } from "../board/camera.svelte";
 import { grid } from "../board/grid.svelte";
 import { snapToGrid } from "../board/gridMath";
 import { tool } from "../tools/tool.svelte";
-import { notePositionAt } from "./creationPosition";
+import {
+  creationObstacleForNote,
+  estimatedCreationHeight,
+  nearestFreeNoteCenter,
+  notePositionAt,
+} from "./creationPosition";
 import type { Point } from "../board/cameraMath";
 import { editing } from "./editing.svelte";
-import { MIN_NOTE_HEIGHT } from "./layout.svelte";
-import { noteBounds, type Bounds } from "./layout.svelte";
+import { measuredHeights, type Bounds } from "./layout.svelte";
 import { closeCreationMenu, creationMenu, creationMenuTrigger, openCreationMenu } from "./creation.svelte";
 import { uniqueName } from "./naming";
 import { registerNoteMenuItem } from "./noteMenu";
-import { selection } from "../selection/selection.svelte";
+import {
+  captureSelectionSnapshot,
+  clearSelection,
+  restoreSelectionSnapshot,
+  selectOnly,
+  selection,
+} from "../selection/selection.svelte";
+import { clearSelectedLink } from "../links/selection.svelte";
 import { formatNoteMarkdownLink, formatPointAddress } from "../links-in-text/format";
 import { closeLinkContextMenu, linkContext, showLinkStatus } from "../links-in-text/contextMenu.svelte";
 import { MODULE_NOTE_HEIGHT, MODULE_NOTE_WIDTH } from "../modules/moduleLogic";
@@ -42,28 +53,46 @@ export function createNote(): string {
 export function createNoteKind(kind: NoteKind): string {
   const isModule = kind === "importance" || kind === "purpose" || kind === "mood";
   const width = kind === "beacon" ? BEACON_SIZE : kind === "note" ? DEFAULT_NOTE_WIDTH : isModule ? MODULE_NOTE_WIDTH : DEFAULT_MINI_NOTE_WIDTH;
-  const height = kind === "beacon" ? BEACON_SIZE : isModule ? MODULE_NOTE_HEIGHT : MIN_NOTE_HEIGHT;
+  const height = estimatedCreationHeight({
+    type: kind,
+    width,
+    height: kind === "beacon" ? BEACON_SIZE : kind === "importance" ? MODULE_NOTE_HEIGHT : null,
+    text: "",
+  });
   const id = newId();
-  const position = notePositionAt(
+  const freeCenter = nearestFreeNoteCenter(
     creationMenu.origin,
     width,
     height,
+    Object.values(board.notes).map((note) => creationObstacleForNote(note, measuredHeights[note.id])),
     grid.snap,
+    grid.step,
+  );
+  const position = notePositionAt(
+    freeCenter,
+    width,
+    height,
+    false,
     grid.step,
   );
   const note = makeNote(kind, id, position, Date.now());
   const index = board.order.length;
   const previousEditing = editing.noteId;
+  const previousSelection = captureSelectionSnapshot();
 
   execute({
     label: `Create ${kindLabel(kind).toLowerCase()}`,
     target: note.name,
     do: () => {
       addNote(note, index);
+      clearSelection();
+      clearSelectedLink();
+      selectOnly(id);
       if (!isModule && kind !== "beacon") editing.noteId = id;
     },
     undo: () => {
       removeNote(id);
+      restoreSelectionSnapshot(previousSelection);
       if (editing.noteId === id) editing.noteId = previousEditing;
     },
   });
@@ -77,7 +106,12 @@ export function addMiniNode(parentId: string, kind: MiniNoteKind): string | null
   if (!parent) return null;
 
   const id = newId();
-  const position = findMiniNodePosition(noteBounds(parent), Object.values(board.notes).map(noteBounds));
+  const parentBounds = creationObstacleForNote(parent, measuredHeights[parent.id]);
+  const position = findMiniNodePosition(
+    parentBounds,
+    Object.values(board.notes).map((note) => creationObstacleForNote(note, measuredHeights[note.id])),
+    kind,
+  );
   const note = makeNote(kind, id, position, Date.now());
   const link: Link = {
     id: newId(),
@@ -90,17 +124,22 @@ export function addMiniNode(parentId: string, kind: MiniNoteKind): string | null
 
   const index = board.order.length;
   const previousEditing = editing.noteId;
+  const previousSelection = captureSelectionSnapshot();
   execute({
     label: `Add ${kindLabel(kind).toLowerCase()}`,
     target: `${parent.name} → ${note.name}`,
     do: () => {
       addNote(note, index);
       addLink(link);
+      clearSelection();
+      clearSelectedLink();
+      selectOnly(id);
       editing.noteId = id;
     },
     undo: () => {
       removeLink(link.id);
       removeNote(id);
+      restoreSelectionSnapshot(previousSelection);
       if (editing.noteId === id) editing.noteId = previousEditing;
     },
   });
@@ -123,11 +162,11 @@ function makeNote(kind: NoteKind, id: string, position: Point, createdAt: number
       : kind === "importance" || kind === "purpose" || kind === "mood"
         ? MODULE_NOTE_WIDTH
         : DEFAULT_MINI_NOTE_WIDTH,
-    height: kind === "beacon" ? BEACON_SIZE : kind === "importance" || kind === "purpose" || kind === "mood" ? MODULE_NOTE_HEIGHT : null,
+    height: kind === "beacon" ? BEACON_SIZE : kind === "importance" ? MODULE_NOTE_HEIGHT : null,
     createdAt,
     ...(kind === "importance" ? { importance: "basic" as const } : {}),
-    ...(kind === "purpose" ? { purposes: ["concept" as const] } : {}),
-    ...(kind === "mood" ? { moods: ["happiness" as const] } : {}),
+    ...(kind === "purpose" ? { purposes: [] } : {}),
+    ...(kind === "mood" ? { moods: [] } : {}),
     ...(kind === "beacon" ? { color: beaconPaletteColor(Object.values(board.notes).filter((existing) => existing.type === "beacon").length) } : {}),
   };
 }
@@ -142,9 +181,9 @@ function kindLabel(kind: NoteKind): string {
   return "Note";
 }
 
-function findMiniNodePosition(parent: Bounds, existing: readonly Bounds[]): Point {
+function findMiniNodePosition(parent: Bounds, existing: readonly Bounds[], kind: MiniNoteKind): Point {
   const width = DEFAULT_MINI_NOTE_WIDTH;
-  const height = MIN_NOTE_HEIGHT;
+  const height = estimatedCreationHeight({ type: kind, width, height: null, text: "" });
   const gap = 2;
   const startX = parent.x + parent.width + gap;
 

@@ -5,7 +5,13 @@ import type { Note } from "../src/model/note";
 import { selection } from "../src/selection/selection.svelte";
 import { beaconState, resetBeaconViewState } from "../src/beacons/beaconState.svelte";
 import { allBeacons, isDimmed, selectBeaconGroups, setFocused, toggleSelectedFocus } from "../src/beacons/focus.svelte";
-import { isMarked, markSelected, nextMarkedBeacon } from "../src/beacons/marks.svelte";
+import { beaconDescendants } from "../src/beacons/coverage";
+import { isMarked, nextMarkedBeacon, toggleSelectedMarks } from "../src/beacons/marks.svelte";
+import "../src/beacons/focusCommands";
+import "../src/tasks/taskActions.svelte";
+import { getCommands } from "../src/commands/registry.svelte";
+import { noteMenuItems } from "../src/notes/noteMenu";
+import { clear as clearHistory, history, redo, undo } from "../src/history/history.svelte";
 
 function note(id: string, type: Note["type"] = "note"): Note {
   return { id, type, name: id, text: "", x: 0, y: 0, width: 10, height: 10, createdAt: 0 };
@@ -16,6 +22,7 @@ function strong(id: string, from: string, to: string): void {
 }
 
 beforeEach(() => {
+  clearHistory();
   board.notes = {};
   board.order = [];
   links.byId = {};
@@ -23,9 +30,26 @@ beforeEach(() => {
   selection.primaryId = null;
   resetBeaconViewState();
 });
-afterEach(() => resetBeaconViewState());
+afterEach(() => {
+  clearHistory();
+  resetBeaconViewState();
+});
 
 describe("beacon focus", () => {
+  it("uses Ctrl+M as the sole beacon mark command and offers keyed actions in the note menu", () => {
+    addNote(note("a", "beacon"));
+    addNote(note("ordinary"));
+    const markCommands = getCommands().filter((command) => command.id.startsWith("beacons.") && /mark/i.test(command.label));
+    expect(markCommands.map((command) => [command.label, command.keys])).toEqual([["Mark / unmark beacon", ["Ctrl+KeyM"]]]);
+    expect(getCommands().find((command) => command.id === "beacons.toggleMark")).toBeUndefined();
+
+    const beaconItems = noteMenuItems("a");
+    expect(beaconItems.map((item) => item.id)).not.toContain("task.toggleFlag");
+    expect(beaconItems.find((item) => item.id === "beacons.toggleMark")?.label("a")).toBe("Mark (Ctrl+M)");
+    expect(beaconItems.find((item) => item.id === "beacons.toggleFocus")?.label("a")).toBe("Focus (Ctrl+G)");
+    expect(noteMenuItems("ordinary").map((item) => item.id)).toContain("task.toggleFlag");
+  });
+
   it("unions every focused beacon's descendants and dims unrelated nodes", () => {
     for (const [id, kind] of [["a", "beacon"], ["b", "beacon"], ["child", "note"], ["grandchild", "note"], ["other", "note"], ["unrelated", "note"]] as const) addNote(note(id, kind));
     strong("a-child", "a", "child");
@@ -54,6 +78,11 @@ describe("beacon focus", () => {
     selection.ids = ["a"];
     selectBeaconGroups();
     expect(selection.ids).toEqual(["a", "child"]);
+    expect(history.entries.map(({ label }) => label)).toEqual(["Select 2 objects"]);
+    undo();
+    expect(selection.ids).toEqual(["a"]);
+    redo();
+    expect(selection.ids).toEqual(["a", "child"]);
   });
 
   it("drops a selection when focus makes it non-interactive", () => {
@@ -70,26 +99,72 @@ describe("beacon focus", () => {
     addNote(note("ordinary"));
     selection.ids = ["ordinary"];
     toggleSelectedFocus();
-    markSelected(false);
+    toggleSelectedMarks();
     expect(beaconState.focused).toEqual([]);
     expect(beaconState.marked).toEqual([]);
+  });
+
+  it("includes a standalone module whose strong targets are all in the beacon network", () => {
+    for (const [id, kind] of [["a", "beacon"], ["inside", "note"], ["module", "importance"]] as const) addNote(note(id, kind));
+    strong("a-inside", "a", "inside");
+    strong("module-inside", "module", "inside");
+    setFocused("a", true);
+    expect(beaconDescendants("a")).toEqual(new Set(["inside", "module"]));
+    expect(isDimmed("module")).toBe(false);
+    selection.ids = ["a"];
+    selectBeaconGroups();
+    expect(selection.ids).toEqual(["a", "inside", "module"]);
+  });
+
+  it("leaves a module dimmed and unselected when it also feeds outside the network", () => {
+    for (const [id, kind] of [["a", "beacon"], ["inside", "note"], ["outside", "note"], ["module", "purpose"]] as const) addNote(note(id, kind));
+    strong("a-inside", "a", "inside");
+    strong("module-inside", "module", "inside");
+    strong("module-outside", "module", "outside");
+    setFocused("a", true);
+    expect(beaconDescendants("a")).toEqual(new Set(["inside"]));
+    expect(isDimmed("module")).toBe(true);
+    selection.ids = ["a"];
+    selectBeaconGroups();
+    expect(selection.ids).toEqual(["a", "inside"]);
+  });
+
+  it("includes module chains into the network, but does not include isolated module cycles", () => {
+    for (const [id, kind] of [
+      ["a", "beacon"], ["inside", "note"], ["first", "mood"], ["second", "importance"],
+      ["third", "purpose"], ["cycle-a", "mood"], ["cycle-b", "purpose"],
+    ] as const) addNote(note(id, kind));
+    strong("a-inside", "a", "inside");
+    strong("first-second", "first", "second");
+    strong("second-third", "second", "third");
+    strong("third-inside", "third", "inside");
+    strong("cycle-a-b", "cycle-a", "cycle-b");
+    strong("cycle-b-a", "cycle-b", "cycle-a");
+    setFocused("a", true);
+    expect(beaconDescendants("a")).toEqual(new Set(["inside", "first", "second", "third"]));
+    expect(isDimmed("cycle-a")).toBe(true);
+    selection.ids = ["a"];
+    selectBeaconGroups();
+    expect(new Set(selection.ids)).toEqual(new Set(["a", "inside", "first", "second", "third"]));
   });
 });
 
 describe("beacon marks", () => {
-  it("replaces on M, adds or removes on Ctrl+M, and cycles from the first", () => {
+  it("toggles the selected beacons on Ctrl+M and cycles from the first", () => {
     addNote(note("a", "beacon"));
     addNote(note("b", "beacon"));
-    selection.ids = ["a"];
-    markSelected(false);
-    selection.ids = ["b"];
-    markSelected(true);
+    selection.ids = ["a", "b"];
+    toggleSelectedMarks();
     expect(beaconState.marked).toEqual(["a", "b"]);
     expect([nextMarkedBeacon(), nextMarkedBeacon(), nextMarkedBeacon()]).toEqual(["a", "b", "a"]);
     expect(isMarked("b")).toBe(true);
-    markSelected(true);
+    selection.ids = ["b"];
+    toggleSelectedMarks();
     expect(beaconState.marked).toEqual(["a"]);
-    markSelected(false);
+    toggleSelectedMarks();
+    expect(beaconState.marked).toEqual(["a", "b"]);
+    selection.ids = ["a"];
+    toggleSelectedMarks();
     expect(beaconState.marked).toEqual(["b"]);
   });
 

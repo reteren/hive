@@ -4,6 +4,15 @@ import type { Point } from "../board/cameraMath";
 import { zoneBounds, type Zone } from "../model/zone";
 import { zoneTouchesRect } from "../zones/geometry";
 
+const NOTE_CORNER_RADIUS_PX = 5;
+const SELECTION_OUTLINE_OFFSET_PX = 1;
+
+/** Match a note's rounded corners after the note layer's zoom transform and outline offset. */
+export function noteSelectionCornerRadius(zoom: number): number {
+  const safeZoom = Number.isFinite(zoom) ? Math.max(0, zoom) : 1;
+  return NOTE_CORNER_RADIUS_PX * safeZoom + SELECTION_OUTLINE_OFFSET_PX;
+}
+
 /** A rectangle with board-space coordinates and non-negative dimensions. */
 export function rectFromPoints(first: Point, second: Point): Bounds {
   return {

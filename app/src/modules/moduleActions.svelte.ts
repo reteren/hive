@@ -7,10 +7,17 @@ import { addLink, links, linksOf, removeLink } from "../model/links.svelte";
 import type { Link } from "../model/link";
 import { grid } from "../board/grid.svelte";
 import { screenToWorld } from "../board/cameraMath";
-import { noteBounds } from "../notes/layout.svelte";
+import { measuredHeights, noteBounds } from "../notes/layout.svelte";
 import { uniqueName } from "../notes/naming";
-import { notePositionAt } from "../notes/creationPosition";
+import {
+  creationObstacleForNote,
+  estimatedCreationHeight,
+  nearestFreeNoteCenter,
+  notePositionAt,
+} from "../notes/creationPosition";
 import { editing } from "../notes/editing.svelte";
+import { selection } from "../selection/selection.svelte";
+import { planModuleMerge } from "./moduleMerge";
 import {
   createImportanceCommand,
   createMoodToggleCommand,
@@ -144,7 +151,7 @@ export function toggleMood(noteId: string, mood: MoodKind): void {
 export function updateModuleDropPreview(moduleId: string, worldPoint: Point): void {
   const module = board.notes[moduleId];
   const target = module && isExternalModule(module) ? targetAtPoint(worldPoint, moduleId) : null;
-  const reason = target && module ? insertionRefusal(module, target) : null;
+  const reason = target && module ? dropRefusal(module, target) : null;
   moduleDropPreview.moduleId = moduleId;
   moduleDropPreview.targetId = target?.id ?? null;
   moduleDropPreview.allowed = Boolean(target && !reason);
@@ -167,11 +174,15 @@ export function tryInsertModuleOnDrop(moduleId: string, worldPoint: Point): bool
     return false;
   }
 
-  const refusal = insertionRefusal(module, target);
+  const refusal = dropRefusal(module, target);
   if (refusal) {
     showModuleFeedback(target.id, refusal);
     clearModuleDropPreview();
     return false;
+  }
+
+  if (module.type === target.type && (module.type === "purpose" || module.type === "mood")) {
+    return mergeArrayModuleNodes(module, target);
   }
 
   const moduleSnapshot = copyNote(module);
@@ -215,6 +226,51 @@ export function tryInsertModuleOnDrop(moduleId: string, worldPoint: Point): bool
     },
   });
 
+  clearModuleDropPreview();
+  return true;
+}
+
+function mergeArrayModuleNodes(source: Note, target: Note): boolean {
+  const result = planModuleMerge(source, target, Object.values(links.byId), board.notes);
+  if (!result.ok) {
+    showModuleFeedback(target.id, result.reason);
+    clearModuleDropPreview();
+    return false;
+  }
+  const { plan } = result;
+  const sourceSnapshot = copyNote(source);
+  const sourceIndex = orderIndex(source.id);
+  const previousValues = plan.field === "purposes"
+    ? target.purposes ? [...target.purposes] : target.purposes
+    : target.moods ? [...target.moods] : target.moods;
+  const previousSelection = [...selection.ids];
+  const previousPrimary = selection.primaryId;
+  const previousEditing = editing.noteId;
+  const nextSelection = [...new Set(previousSelection.map((id) => id === source.id ? target.id : id))];
+
+  execute({
+    label: `Merge ${source.type === "purpose" ? "Purpose" : "Mood"}`,
+    target: target.name,
+    do: () => {
+      for (const link of plan.removedLinks) removeLink(link.id);
+      writeModulePatch(target.id, { [plan.field]: plan.values });
+      removeNote(source.id);
+      for (const link of plan.addedLinks) addLink(copyLink(link));
+      selection.ids = nextSelection;
+      selection.primaryId = previousPrimary === source.id ? target.id : previousPrimary;
+      if (editing.noteId === source.id) editing.noteId = null;
+      closeModulePicker();
+    },
+    undo: () => {
+      for (const link of plan.addedLinks) removeLink(link.id);
+      addNote(copyNote(sourceSnapshot), sourceIndex);
+      writeModulePatch(target.id, { [plan.field]: previousValues });
+      for (const link of plan.removedLinks) addLink(copyLink(link));
+      selection.ids = [...previousSelection];
+      selection.primaryId = previousPrimary;
+      editing.noteId = previousEditing;
+    },
+  });
   clearModuleDropPreview();
   return true;
 }
@@ -307,7 +363,21 @@ function createExternalModule(
   worldPoint: Point,
 ): Note {
   const id = newId();
-  const position = notePositionAt(worldPoint, MODULE_NOTE_WIDTH, MODULE_NOTE_HEIGHT, grid.snap, grid.step);
+  const height = estimatedCreationHeight({
+    type: kind,
+    width: MODULE_NOTE_WIDTH,
+    height: kind === "importance" ? MODULE_NOTE_HEIGHT : null,
+    text: "",
+  });
+  const freeCenter = nearestFreeNoteCenter(
+    worldPoint,
+    MODULE_NOTE_WIDTH,
+    height,
+    Object.values(board.notes).map((note) => creationObstacleForNote(note, measuredHeights[note.id])),
+    grid.snap,
+    grid.step,
+  );
+  const position = notePositionAt(freeCenter, MODULE_NOTE_WIDTH, height, false, grid.step);
   const existingNames = Object.values(board.notes).map((note) => note.name);
   const name = uniqueName(kindLabel(kind), existingNames);
   return {
@@ -318,7 +388,7 @@ function createExternalModule(
     x: position.x,
     y: position.y,
     width: MODULE_NOTE_WIDTH,
-    height: MODULE_NOTE_HEIGHT,
+    height: kind === "importance" ? MODULE_NOTE_HEIGHT : null,
     createdAt: Date.now(),
     ...(kind === "importance"
       ? { importance: value as ImportanceLevel }
@@ -366,12 +436,22 @@ function kindLabel(kind: ExternalModuleKind): string {
 function targetAtPoint(point: Point, excludedId: string): Note | null {
   for (let index = board.order.length - 1; index >= 0; index -= 1) {
     const note = board.notes[board.order[index]];
-    if (!note || note.id === excludedId || !isAssignableNote(note)) continue;
+    if (!note || note.id === excludedId) continue;
     const bounds = noteBounds(note);
     if (point.x >= bounds.x && point.x <= bounds.x + bounds.width &&
-      point.y >= bounds.y && point.y <= bounds.y + bounds.height) return note;
+      point.y >= bounds.y && point.y <= bounds.y + bounds.height) {
+      return isAssignableNote(note) || note.type === "purpose" || note.type === "mood" ? note : null;
+    }
   }
   return null;
+}
+
+function dropRefusal(module: Note, target: Note): string | null {
+  if (module.type === target.type && (module.type === "purpose" || module.type === "mood")) {
+    const result = planModuleMerge(module, target, Object.values(links.byId), board.notes);
+    return result.ok ? null : result.reason;
+  }
+  return isAssignableNote(target) ? insertionRefusal(module, target) : "Cannot insert a module into this node.";
 }
 
 function insertionRefusal(module: Note, target: Note): string | null {

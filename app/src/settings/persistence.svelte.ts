@@ -4,7 +4,6 @@ import { camera, cameraSettings } from "../board/camera.svelte";
 import { grid } from "../board/grid.svelte";
 import { history as undoHistory, setHistoryLimit } from "../history/history.svelte";
 import { getCommandKeyOverrides, setCommandKeyOverrides } from "../commands/registry.svelte";
-import { display } from "./display.svelte";
 import { applyReduceMotionPreference } from "./motion";
 import { preferences, setReduceAnimations, setTransferHintsShown } from "./preferences.svelte";
 import { parseViewSettings, serializeViewSettings, type ViewSettings } from "./viewSettings";
@@ -93,7 +92,6 @@ function currentSettings(): ViewSettings {
       panSpeed: cameraSettings.panSpeed,
     },
     grid: { step: grid.step, showGrid: grid.showGrid, snap: grid.snap },
-    display: { rightPanelOpen: display.rightPanelOpen },
     history: { limit: undoHistory.limit },
     accessibility: { reduceAnimations: preferences.reduceAnimations },
     keyOverrides: getCommandKeyOverrides(),
@@ -112,7 +110,6 @@ function applySettings(settings: ViewSettings): void {
   grid.step = settings.grid.step;
   grid.showGrid = settings.grid.showGrid;
   grid.snap = settings.grid.snap;
-  display.rightPanelOpen = settings.display.rightPanelOpen;
   setHistoryLimit(settings.history.limit);
   setReduceAnimations(settings.accessibility.reduceAnimations);
   setCommandKeyOverrides(settings.keyOverrides);

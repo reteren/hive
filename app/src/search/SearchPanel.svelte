@@ -30,11 +30,12 @@
     board.order.flatMap((id) => {
       const note = board.notes[id];
       return note
-        ? [{ id: note.id, name: note.name, text: note.text, createdAt: note.createdAt }]
+        ? [{ id: note.id, name: note.name, text: note.text, createdAt: note.createdAt, type: note.type, task: Boolean(note.task) }]
         : [];
     }),
   );
   let nameResults = $derived(searchState.results.filter((result) => result.kind === "name"));
+  let kindResults = $derived(searchState.results.filter((result) => result.kind === "kind"));
   let textResults = $derived(searchState.results.filter((result) => result.kind === "text"));
 
   $effect(() => {
@@ -99,6 +100,15 @@
   function resultId(result: SearchResult): string {
     return `search-result-${result.kind}-${result.noteId}`;
   }
+
+  function resultObjectLabel(result: SearchResult): string {
+    const type = result.objectKind;
+    const kindLabel = type === "pro" ? "Plus"
+      : type === "con" ? "Minus"
+        : type ? type[0]!.toUpperCase() + type.slice(1)
+          : "Object";
+    return result.isTask && type === "note" ? "Task · Note" : kindLabel;
+  }
 </script>
 
 <div class="search-trigger" data-selection-ignore>
@@ -147,8 +157,36 @@
                 onmousedown={preventMouseFocus}
                 onclick={() => jumpToResult(result)}
               >
-                <span class="result-name">{parts.before}<mark>{parts.match}</mark>{parts.after}</span>
-                <span class="result-type">Name</span>
+                <span class="result-mainline">
+                  <span class="result-name">{parts.before}<mark>{parts.match}</mark>{parts.after}</span>
+                  <span class="result-type">{resultObjectLabel(result)} · Name</span>
+                </span>
+              </button>
+            {/each}
+          </section>
+        {/if}
+
+        {#if kindResults.length > 0}
+          <section class="result-group" role="group" aria-label="Kinds">
+            <h2>Kinds <span>{kindResults.length}</span></h2>
+            {#each kindResults as result (resultId(result))}
+              {@const index = searchState.results.findIndex((item) => item.noteId === result.noteId && item.kind === result.kind)}
+              {@const parts = splitSearchMatch(result)}
+              <button
+                id={resultId(result)}
+                class="search-result"
+                class:current={index === searchState.currentIndex}
+                type="button"
+                role="option"
+                aria-selected={index === searchState.currentIndex}
+                onmousedown={preventMouseFocus}
+                onclick={() => jumpToResult(result)}
+              >
+                <span class="result-mainline">
+                  <span class="result-name">{result.noteName}</span>
+                  <span class="result-type">{resultObjectLabel(result)} · Type</span>
+                </span>
+                <span class="result-snippet"><mark>{parts.match}</mark></span>
               </button>
             {/each}
           </section>
@@ -170,12 +208,16 @@
                 onmousedown={preventMouseFocus}
                 onclick={() => jumpToResult(result)}
               >
-                <span class="result-name">{result.noteName}</span>
+                <span class="result-mainline">
+                  <span class="result-name">{result.noteName}</span>
+                  <span class="result-type">{resultObjectLabel(result)} · Text</span>
+                </span>
                 <span class="result-snippet">{parts.before}<mark>{parts.match}</mark>{parts.after}</span>
               </button>
             {/each}
           </section>
-        {:else if nameResults.length === 0}
+        {/if}
+        {#if nameResults.length === 0 && kindResults.length === 0 && textResults.length === 0}
           <p class="empty-results">{searchState.query.trim() ? "No matching notes." : "Type to search notes."}</p>
         {/if}
       </div>
@@ -382,6 +424,17 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
+  .result-mainline {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .result-mainline .result-name { min-width: 0; }
 
   .result-snippet,
   .result-type {

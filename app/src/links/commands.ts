@@ -43,8 +43,9 @@ registerCommand({
 registerCommand({
   id: "line.cycleShape",
   label: "Cycle Line Shape",
-  keys: [],
+  keys: ["KeyT"],
   run: () => {
+    if (tool.active !== "line-strong" && tool.active !== "line-weak" && selectedLinkIds().length === 0) return;
     tool.lineShape = nextLineShape(tool.lineShape);
     cycleLinkShapes(selectedLinkIds());
   },

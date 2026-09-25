@@ -1,11 +1,15 @@
+import type { NoteKind } from "../model/note";
+
 export interface SearchNote {
   id: string;
   name: string;
   text: string;
   createdAt?: number;
+  type?: NoteKind;
+  task?: boolean;
 }
 
-export type SearchResultKind = "name" | "text";
+export type SearchResultKind = "name" | "kind" | "text";
 
 export interface SearchResult {
   noteId: string;
@@ -14,6 +18,9 @@ export interface SearchResult {
   snippet: string;
   matchStart: number;
   matchEnd: number;
+  objectKind?: NoteKind;
+  isTask?: boolean;
+  kindMatchLabel?: string;
 }
 
 const SNIPPET_CONTENT_LENGTH = 96;
@@ -37,6 +44,7 @@ export function searchNotes(
 
   for (const note of notes) {
     const nameMatch = findMatchRange(note.name, foldedQuery);
+    const resultInfo = { objectKind: note.type, isTask: Boolean(note.task) };
     if (nameMatch) {
       matches.push({
         result: {
@@ -46,6 +54,25 @@ export function searchNotes(
           snippet: note.name,
           matchStart: nameMatch.start,
           matchEnd: nameMatch.end,
+          ...resultInfo,
+        },
+        createdAt: validCreationTime(note.createdAt),
+        position: positionById.get(note.id) ?? fallbackPosition.get(note.id) ?? Number.MAX_SAFE_INTEGER,
+      });
+    }
+
+    const kindMatch = findObjectKindMatch(note, foldedQuery);
+    if (kindMatch) {
+      matches.push({
+        result: {
+          noteId: note.id,
+          noteName: note.name,
+          kind: "kind",
+          snippet: kindMatch.term,
+          matchStart: kindMatch.start,
+          matchEnd: kindMatch.end,
+          kindMatchLabel: kindMatch.label,
+          ...resultInfo,
         },
         createdAt: validCreationTime(note.createdAt),
         position: positionById.get(note.id) ?? fallbackPosition.get(note.id) ?? Number.MAX_SAFE_INTEGER,
@@ -60,6 +87,7 @@ export function searchNotes(
           noteId: note.id,
           noteName: note.name,
           kind: "text",
+          ...resultInfo,
           ...snippet,
         },
         createdAt: validCreationTime(note.createdAt),
@@ -69,6 +97,8 @@ export function searchNotes(
   }
 
   matches.sort((left, right) => {
+    const kindDifference = resultPriority(left.result.kind) - resultPriority(right.result.kind);
+    if (kindDifference !== 0) return kindDifference;
     if (left.createdAt !== undefined && right.createdAt !== undefined) {
       const timeDifference = left.createdAt - right.createdAt;
       if (timeDifference !== 0) return timeDifference;
@@ -79,12 +109,39 @@ export function searchNotes(
     const positionDifference = left.position - right.position;
     if (positionDifference !== 0) return positionDifference;
     if (left.result.noteId === right.result.noteId && left.result.kind !== right.result.kind) {
-      return left.result.kind === "name" ? -1 : 1;
+      return resultPriority(left.result.kind) - resultPriority(right.result.kind);
     }
     return 0;
   });
 
   return matches.map(({ result }) => result);
+}
+
+const OBJECT_KIND_TERMS: Partial<Record<NoteKind, Array<{ term: string; label: string }>>> = {
+  note: [{ term: "note", label: "Note" }],
+  pro: [{ term: "pro", label: "Plus" }, { term: "plus", label: "Plus" }],
+  con: [{ term: "con", label: "Minus" }, { term: "minus", label: "Minus" }],
+  importance: [{ term: "importance", label: "Importance" }],
+  purpose: [{ term: "purpose", label: "Purpose" }],
+  mood: [{ term: "mood", label: "Mood" }],
+  beacon: [{ term: "beacon", label: "Beacon" }],
+};
+
+function findObjectKindMatch(
+  note: SearchNote,
+  foldedQuery: string,
+): { term: string; label: string; start: number; end: number } | null {
+  const terms = note.type ? [...(OBJECT_KIND_TERMS[note.type] ?? [])] : [];
+  if (note.task) terms.push({ term: "task", label: "Task" });
+  for (const candidate of terms) {
+    const range = findMatchRange(candidate.term, foldedQuery);
+    if (range) return { ...range, ...candidate };
+  }
+  return null;
+}
+
+function resultPriority(kind: SearchResultKind): number {
+  return kind === "name" ? 0 : kind === "kind" ? 1 : 2;
 }
 
 /** Create a short, highlightable snippet without cutting a surrogate pair. */

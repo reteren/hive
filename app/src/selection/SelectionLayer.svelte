@@ -8,7 +8,7 @@
   import { execute, record, type HistoryCommand } from "../history/history.svelte";
   import { editing } from "../notes/editing.svelte";
   import type { NoteKind } from "../model/note";
-  import { noteBounds, type Bounds } from "../notes/layout.svelte";
+  import { maximumResizableHeight, maximumResizableHeightForNote, noteBounds, renderedNoteMetrics, type Bounds } from "../notes/layout.svelte";
   import { zoneBounds, type Zone } from "../model/zone";
   import { zones, updateZone } from "../model/zones.svelte";
   import { zoneMembers } from "../zones/membership.svelte";
@@ -39,6 +39,7 @@
     crossedGestureThreshold,
     moveGestureChange,
     resizeGestureChange,
+    shouldCancelForLineTool,
     updateMoveGesture,
     updateResizeGesture,
     type GeometryChange,
@@ -46,7 +47,7 @@
     type NoteFrame,
     type ResizeGesture,
   } from "./gestures";
-  import { hitTestNotes, hitTestZones, notesTouchingMarquee, rectFromPoints, zonesTouchingMarquee } from "./hitTesting";
+  import { hitTestNotes, hitTestZones, noteSelectionCornerRadius, notesTouchingMarquee, rectFromPoints, zonesTouchingMarquee } from "./hitTesting";
   import {
     cancelGroupScaleGesture,
     createGroupScaleGesture,
@@ -57,17 +58,12 @@
   } from "./groupScale";
   import {
     attachSelectionController,
-    clearSelection,
+    changeSelectionUndoable,
+    clearSelectionUndoable,
     closeContextPick,
-    selectMarquee,
-    selectOnly,
-    selectZonesOnly,
     selection,
     setContextPick,
     setMarquee,
-    setPrimary,
-    toggleSelected,
-    toggleZoneSelected,
   } from "./selection.svelte";
   import { selectionForEditing } from "./editingSelection";
   import {
@@ -75,10 +71,10 @@
     notePressIntent,
     shouldToggleSelectedHeaderAfterGesture,
   } from "./noteMoveIntent";
-  import { hasResizeHandle, isStandaloneModuleKind, RESIZE_EDGES, resizeEdgeAxes, type ResizeEdge } from "./resize";
+  import { hasResizeHandle, isStandaloneModuleKind, maximumWidthForKind, RESIZE_EDGES, resizeEdgeAxes, type ResizeEdge } from "./resize";
   import { resizeDoubleClickAction } from "./resizeDoubleClick";
   import { startNoteEditing } from "../editor/editorSession";
-  import { tool } from "../tools/tool.svelte";
+  import { isLineTool, tool } from "../tools/tool.svelte";
   import {
     createPrecisionDeltaTracker,
     setPrecisionAlt,
@@ -96,6 +92,7 @@
     height: number;
     primary: boolean;
     kind: NoteKind;
+    widthLocked: boolean;
   }
 
   interface ZoneOutline {
@@ -200,6 +197,8 @@
   let suppressContextMenuUntil = 0;
   let suppressBodyClickUntil = 0;
   let zoneCollisionHint = $state(false);
+  let lineToolActive = $derived(isLineTool());
+  let noteOutlineCornerRadius = $derived(`${noteSelectionCornerRadius(camera.zoom)}px`);
 
   let outlines = $derived.by((): Outline[] => {
     const ppu = pixelsPerUnit(camera);
@@ -219,6 +218,7 @@
           height: bounds.height * ppu,
           primary: selection.primaryId === id,
           kind: note.type,
+          widthLocked: note.widthLocked ?? false,
         },
       ];
     });
@@ -287,6 +287,14 @@
     if (editingId && boardState.notes[editingId]) ensureEditingSelection(editingId);
   });
 
+  $effect(() => {
+    if (!lineToolActive) return;
+    const gesture = activeGesture;
+    if (gesture && shouldCancelForLineTool(gesture.kind, lineToolActive)) {
+      finishPointerGesture(gesture.pointerId, true);
+    }
+  });
+
   onMount(() => {
     boardElement = layer.parentElement;
     if (!boardElement) return;
@@ -320,7 +328,7 @@
         return;
       }
 
-      if (tool.active === "zone") return;
+      if (tool.active === "zone" || lineToolActive) return;
 
       const world = screenToWorld(camera, viewport, local);
       const groupHandle = target.closest<HTMLElement>("[data-group-scale-handle]");
@@ -362,7 +370,7 @@
           return;
         } else if (hits.length === 1 && !canDragFromTarget) {
           closeContextPick();
-          selectOnly(hits[0]);
+          selectNoteUndoable(hits[0]);
           return;
         }
       }
@@ -388,7 +396,9 @@
       if (resizeHandle) {
         const id = resizeHandle.dataset.noteId;
         const edge = resizeHandle.dataset.resizeHandle as ResizeEdge | undefined;
-        if (id && edge && id === selection.primaryId && hasResizeHandle(boardState.notes[id]?.type, edge)) {
+        if (id && edge && id === selection.primaryId && hasResizeHandle(
+          boardState.notes[id]?.type, edge, boardState.notes[id]?.widthLocked ?? false,
+        )) {
           startResize(event, id, edge, local, world);
         }
         return;
@@ -401,15 +411,14 @@
         let toggleOnClickId: string | null = null;
         if (event.ctrlKey) {
           if (selection.ids.includes(id)) {
-            setPrimary(id);
             toggleOnClickId = id;
           } else {
-            toggleSelected(id);
+            toggleNoteUndoable(id);
           }
         } else if (selection.ids.includes(id)) {
-          setPrimary(id);
+          setPrimaryUndoable(id);
         } else {
-          selectOnly(id);
+          selectNoteUndoable(id);
         }
 
         if (!selection.ids.includes(id)) return;
@@ -433,10 +442,17 @@
         const zoneId = target.closest<HTMLElement>("[data-zone-id]")?.dataset.zoneId ??
           hitTestZones(world, zones.byId, zones.order);
         if (zoneId && zones.byId[zoneId]) {
-          if (event.ctrlKey) toggleZoneSelected(zoneId);
+          if (event.ctrlKey) toggleZoneUndoable(zoneId);
           else {
-            if (!selection.zoneIds.includes(zoneId)) selectZonesOnly([zoneId]);
-            else selection.zoneIds = [...selection.zoneIds.filter((id) => id !== zoneId), zoneId];
+            changeSelectionUndoable((next) => {
+              if (!next.zoneIds.includes(zoneId)) {
+                next.ids = [];
+                next.primaryId = null;
+                next.zoneIds = [zoneId];
+              } else {
+                next.zoneIds = [...next.zoneIds.filter((id) => id !== zoneId), zoneId];
+              }
+            }, undefined, true);
             startZoneMove(event, zoneId, local, world, event.shiftKey);
           }
           return;
@@ -524,13 +540,16 @@
       if (!id || !boardState.notes[id] || isDimmed(id)) return;
 
       if (editing.noteId === id) {
+        changeSelectionUndoable(() => undefined, undefined, true);
         ensureEditingSelection(id);
         return;
       }
 
-      if (event.ctrlKey) toggleSelected(id);
-      else if (selection.ids.includes(id)) ensureEditingSelection(id);
-      else selectOnly(id);
+      if (event.ctrlKey) toggleNoteUndoable(id);
+      else if (selection.ids.includes(id)) {
+        changeSelectionUndoable(() => undefined, undefined, true);
+        ensureEditingSelection(id);
+      } else selectNoteUndoable(id);
     }
 
     function onDoubleClick(event: MouseEvent): void {
@@ -554,10 +573,14 @@
           event.clientX >= rect.left && event.clientX < rect.right &&
           event.clientY >= rect.top && event.clientY < rect.bottom;
         const canEdit = note.type === "note" || note.type === "pro" || note.type === "con";
+        const metrics = renderedNoteMetrics(id);
+        const autoHeightWithinLimit = !metrics ||
+          metrics.contentHeight <= maximumResizableHeight(metrics.contentHeight, metrics.lineHeight);
         const action = resizeDoubleClickAction(
           handle.dataset.resizeHandle as ResizeEdge,
           canEdit && insideBody,
           !isStandaloneModuleKind(note.type),
+          autoHeightWithinLimit,
         );
         if (action === "edit") {
           event.preventDefault();
@@ -675,7 +698,13 @@
   function frameForNote(id: string): NoteFrame {
     const note = boardState.notes[id];
     const bounds = noteBounds(note);
-    return boundsAsFrame(id, bounds, note.height);
+    return {
+      ...boundsAsFrame(id, bounds, note.height),
+      type: note.type,
+      widthLocked: note.widthLocked ?? false,
+      maxWidth: maximumWidthForKind(note.type),
+      maxHeight: maximumResizableHeightForNote(id),
+    };
   }
 
   function startMove(
@@ -852,17 +881,22 @@
       capturePointer(event.pointerId);
       gesture.captured = true;
     }
+    const justStarted = !gesture.started;
     gesture.started = true;
+
+    if (justStarted && gesture.kind === "move" && gesture.toggleOnClickId) {
+      setPrimaryUndoable(gesture.toggleOnClickId);
+    }
 
     if (gesture.kind === "body-move") {
       event.preventDefault();
       if (!gesture.gesture) {
         if (event.ctrlKey) {
-          if (!selection.ids.includes(gesture.noteId)) toggleSelected(gesture.noteId);
+          if (!selection.ids.includes(gesture.noteId)) toggleNoteUndoable(gesture.noteId);
         } else if (selection.ids.includes(gesture.noteId)) {
-          setPrimary(gesture.noteId);
+          setPrimaryUndoable(gesture.noteId);
         } else {
-          selectOnly(gesture.noteId);
+          selectNoteUndoable(gesture.noteId);
         }
         const frames = framesForSelection();
         if (frames.length === 0) return;
@@ -946,11 +980,23 @@
       } else if (gesture.started && marquee) {
         const zoneIds = zonesTouchingMarquee(marquee, zones.byId, zones.order);
         const ids = notesTouchingMarquee(marquee, boardState.notes, boardState.order, noteBounds, (id) => !isDimmed(id));
-        selectMarquee(ids, gesture.additive, zoneIds);
+        changeSelectionUndoable((next) => {
+          if (!gesture.additive) {
+            next.ids = [...ids];
+            next.zoneIds = [...zoneIds];
+            next.primaryId = ids.at(-1) ?? null;
+            return;
+          }
+          const merged = [...next.ids];
+          for (const id of ids) if (!merged.includes(id)) merged.push(id);
+          next.ids = merged;
+          next.zoneIds = [...new Set([...next.zoneIds, ...zoneIds])];
+          if (ids.length > 0) next.primaryId = ids.at(-1) ?? null;
+        }, undefined, true);
         setMarquee(null);
       } else {
         setMarquee(null);
-        if (!gesture.additive) clearSelection();
+        if (!gesture.additive) clearSelectionUndoable();
       }
     } else if (gesture.kind === "move") {
       if (cancelled) {
@@ -961,7 +1007,7 @@
         gesture.toggleOnClickId &&
         shouldToggleSelectedHeaderAfterGesture(gesture.started, cancelled)
       ) {
-        toggleSelected(gesture.toggleOnClickId);
+        toggleNoteUndoable(gesture.toggleOnClickId);
       }
     } else if (gesture.kind === "body-move") {
       if (gesture.gesture) {
@@ -1094,7 +1140,7 @@
       closeContextPick();
       return;
     }
-    clearSelection();
+    clearSelectionUndoable();
   }
 
   function completePendingAltContextPick(pointerId: number, open: boolean): void {
@@ -1104,6 +1150,40 @@
     selection.ids = [...pending.selectedIds];
     selection.primaryId = pending.primaryId;
     if (open) setContextPick(pending.noteIds, pending.point, viewport);
+  }
+
+  function selectNoteUndoable(noteId: string): void {
+    changeSelectionUndoable((next) => {
+      next.ids = [noteId];
+      next.zoneIds = [];
+      next.primaryId = noteId;
+    }, undefined, true);
+  }
+
+  function toggleNoteUndoable(noteId: string): void {
+    changeSelectionUndoable((next) => {
+      if (next.ids.includes(noteId)) {
+        next.ids = next.ids.filter((id) => id !== noteId);
+        if (next.primaryId === noteId) next.primaryId = next.ids.at(-1) ?? null;
+      } else {
+        next.ids = [...next.ids, noteId];
+        next.primaryId = noteId;
+      }
+    }, undefined, true);
+  }
+
+  function setPrimaryUndoable(noteId: string): void {
+    changeSelectionUndoable((next) => {
+      if (next.ids.includes(noteId)) next.primaryId = noteId;
+    }, undefined, true);
+  }
+
+  function toggleZoneUndoable(zoneId: string): void {
+    changeSelectionUndoable((next) => {
+      next.zoneIds = next.zoneIds.includes(zoneId)
+        ? next.zoneIds.filter((id) => id !== zoneId)
+        : [...next.zoneIds, zoneId];
+    }, undefined, true);
   }
 
   function ensureEditingSelection(noteId: string): void {
@@ -1208,7 +1288,7 @@
   function chooseContextNote(id: string, event: MouseEvent): void {
     event.preventDefault();
     event.stopPropagation();
-    if (boardState.notes[id]) selectOnly(id);
+    if (boardState.notes[id]) selectNoteUndoable(id);
     closeContextPick();
   }
 
@@ -1235,7 +1315,7 @@
   }
 </script>
 
-<div class="selection-layer" bind:this={layer} aria-hidden="false">
+<div class="selection-layer" class:line-tool-active={lineToolActive} bind:this={layer} aria-hidden="false">
   {#each zoneOutlines as outline (outline.id)}
     <div
       class="selection-outline selection-zone-outline"
@@ -1260,6 +1340,8 @@
             type="button"
             data-zone-resize-handle={edge}
             data-zone-id={outline.id}
+            aria-disabled={lineToolActive ? "true" : undefined}
+            tabindex={lineToolActive ? -1 : undefined}
             aria-label="Resize zone {outline.name} from {handleLabel(edge)}"
             title="Resize zone from {handleLabel(edge)}"
           ></button>
@@ -1279,10 +1361,11 @@
       style:top="{outline.top}px"
       style:width="{outline.width}px"
       style:height="{outline.height}px"
+      style:border-radius={outline.kind === "beacon" ? undefined : noteOutlineCornerRadius}
       aria-label="Selected {outline.name}"
     >
       {#if selection.ids.length === 1 && selection.zoneIds.length === 0 && outline.primary}
-        {#each RESIZE_EDGES.filter((edge) => hasResizeHandle(outline.kind, edge)) as edge (edge)}
+        {#each RESIZE_EDGES.filter((edge) => hasResizeHandle(outline.kind, edge, outline.widthLocked)) as edge (edge)}
           <button
             class={`resize-handle resize-handle-${edge}`}
             class:resize-handle-corner={isCornerHandle(edge)}
@@ -1291,6 +1374,8 @@
             type="button"
             data-resize-handle={edge}
             data-note-id={outline.id}
+            aria-disabled={lineToolActive ? "true" : undefined}
+            tabindex={lineToolActive ? -1 : undefined}
             aria-label={isStandaloneModuleKind(outline.kind)
               ? `Resize ${outline.name} height from ${edge.startsWith("top") ? "top" : "bottom"}`
               : `Resize ${outline.name} from ${handleLabel(edge)}`}
@@ -1310,6 +1395,7 @@
       style:top="{groupOutline.top}px"
       style:width="{groupOutline.width}px"
       style:height="{groupOutline.height}px"
+      style:border-radius="5px"
       role="group"
       aria-label="Selection bounds for {selection.ids.length} notes"
     >
@@ -1320,6 +1406,8 @@
           class:resize-handle-side={!isCornerHandle(edge)}
           type="button"
           data-group-scale-handle={edge}
+          aria-disabled={lineToolActive ? "true" : undefined}
+          tabindex={lineToolActive ? -1 : undefined}
           aria-label="Scale selected notes from {handleLabel(edge)}"
           title={groupHandleTitle(edge)}
         ></button>
@@ -1336,10 +1424,6 @@
       style:height="{marqueeScreen.height}px"
       aria-hidden="true"
     ></div>
-  {/if}
-
-  {#if selection.grabActive}
-    <div class="grab-hint" role="status">Move selection · click to place · Esc or right-click to cancel</div>
   {/if}
 
   {#if zoneCollisionHint}
@@ -1392,6 +1476,14 @@
     outline-width: 1.5px;
   }
 
+  .selection-layer.line-tool-active .resize-handle {
+    cursor: crosshair;
+  }
+
+  .selection-layer.line-tool-active .resize-handle:hover::before {
+    background: var(--accent);
+  }
+
   .selection-group-outline {
     outline-style: dashed;
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
@@ -1399,6 +1491,15 @@
 
   .selection-zone-outline {
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+  }
+
+  .zone-resize-handle {
+    outline: none;
+  }
+
+  .zone-resize-handle:focus-visible {
+    outline: 1px solid var(--zone-handle-color);
+    outline-offset: 1px;
   }
 
   .resize-handle {
@@ -1501,21 +1602,6 @@
     position: absolute;
     border: 1px solid rgba(232, 176, 48, 0.95);
     background: rgba(232, 176, 48, 0.12);
-  }
-
-  .grab-hint {
-    position: absolute;
-    top: 10px;
-    left: 50%;
-    padding: 5px 8px;
-    transform: translateX(-50%);
-    border: 1px solid #594518;
-    border-radius: 3px;
-    background: rgba(35, 35, 35, 0.96);
-    color: var(--text);
-    font-size: 11px;
-    white-space: nowrap;
-    pointer-events: none;
   }
 
   .zone-collision-hint {

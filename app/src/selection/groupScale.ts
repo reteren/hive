@@ -2,7 +2,7 @@ import type { Point } from "../board/cameraMath";
 import { snapToGrid } from "../board/gridMath";
 import type { Bounds } from "../notes/layout.svelte";
 import { MIN_NOTE_HEIGHT } from "../notes/layout.svelte";
-import { clampModuleHeight, MIN_NOTE_WIDTH, resizeEdgeAxes, type ResizeEdge } from "./resize";
+import { clampModuleHeight, maximumWidthForKind, MIN_NOTE_WIDTH, resizeEdgeAxes, type ResizeEdge } from "./resize";
 import type { GeometryChange, NoteFrame } from "./gestures";
 
 export interface GroupScaleGesture {
@@ -103,10 +103,12 @@ export function scaleGroupFrames(
     y: axes.vertical === "top"
       ? bounds.y + bounds.height - (bounds.y + bounds.height - frame.y) * scaleY
       : bounds.y + (frame.y - bounds.y) * scaleY,
-    width: moduleIds.has(frame.id) || beaconIds.has(frame.id) ? frame.width : frame.width * scaleX,
+    width: moduleIds.has(frame.id) || beaconIds.has(frame.id) || frame.widthLocked
+      ? frame.width
+      : Math.max(MIN_NOTE_WIDTH, Math.min(frame.maxWidth ?? maximumWidthForKind(frame.type), frame.width * scaleX)),
     height: beaconIds.has(frame.id) ? frame.height : moduleIds.has(frame.id)
       ? clampModuleHeight((frame.height ?? MIN_NOTE_HEIGHT) * scaleY)
-      : frame.height === null ? null : frame.height * scaleY,
+      : frame.height === null ? null : Math.max(MIN_NOTE_HEIGHT, Math.min(frame.maxHeight ?? Infinity, frame.height * scaleY)),
   }));
 }
 
@@ -157,7 +159,9 @@ function edgeScales(
 }
 
 function minimumWidthScale(frames: readonly NoteFrame[], moduleIds: ReadonlySet<string>, beaconIds: ReadonlySet<string>): number {
-  return Math.max(0, ...frames.flatMap((frame) => moduleIds.has(frame.id) || beaconIds.has(frame.id) ? [] : [MIN_NOTE_WIDTH / frame.width]));
+  return Math.max(0, ...frames.flatMap((frame) => moduleIds.has(frame.id) || beaconIds.has(frame.id) || frame.widthLocked
+    ? []
+    : [MIN_NOTE_WIDTH / frame.width]));
 }
 
 function minimumHeightScale(frames: readonly NoteFrame[], moduleIds: ReadonlySet<string>, beaconIds: ReadonlySet<string>): number {

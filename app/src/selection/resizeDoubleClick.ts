@@ -7,7 +7,8 @@ export function resizeDoubleClickAction(
   edge: ResizeEdge,
   insideEditableBody: boolean,
   allowAutoHeight = true,
+  autoHeightWithinLimit = true,
 ): ResizeDoubleClickAction {
   if (edge !== "top" && edge !== "bottom") return "none";
-  return insideEditableBody ? "edit" : allowAutoHeight ? "auto-height" : "none";
+  return insideEditableBody ? "edit" : allowAutoHeight && autoHeightWithinLimit ? "auto-height" : "none";
 }

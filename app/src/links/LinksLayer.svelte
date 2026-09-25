@@ -8,7 +8,7 @@
   import { ME_OBJECT_ID, type Link, type LinkAnchor } from "../model/link";
   import { BEACON_SIZE, newId } from "../model/note";
   import { noteBounds, type Bounds } from "../notes/layout.svelte";
-  import { clearSelection } from "../selection/selection.svelte";
+  import { captureSelectionSnapshot, setSelectionUndoable } from "../selection/selection.svelte";
   import { isLineTool, tool } from "../tools/tool.svelte";
   import { objectColor } from "./colors";
   import { marqueeIntersectsPath, strokeIntersectsPath } from "./lineGeometry";
@@ -19,7 +19,12 @@
   import { cancelLineDraft, lineInteraction, setLineError } from "./interaction.svelte";
   import { createBoardLink, cutLinks } from "./operations";
   import { effectiveLinkKind } from "./rules";
-  import { clearSelectedLink, selectLink, selectedLinkIds, selectLinks, toggleLinkSelection } from "./selection.svelte";
+  import {
+    clearLinkSelectionUndoable,
+    selectedLinkIds,
+    selectLinkUndoable,
+    selectLinksUndoable,
+  } from "./selection.svelte";
   import { isDimmed } from "../beacons/focus.svelte";
 
   const CUT_DRAG_THRESHOLD_PX = 5;
@@ -242,9 +247,7 @@
           event.preventDefault();
           event.stopImmediatePropagation();
           cancelLineDraft();
-          clearSelection();
-          if (event.ctrlKey || event.metaKey || event.shiftKey) toggleLinkSelection(hitLinkId);
-          else selectLink(hitLinkId);
+          selectLinkUndoable(hitLinkId, event.ctrlKey || event.metaKey || event.shiftKey, true);
           lastBodyClick = null;
           return;
         }
@@ -258,7 +261,7 @@
         if (isSecondBodyClick) {
           tool.active = "select";
           cancelLineDraft();
-          clearSelectedLink();
+          clearLinkSelectionUndoable();
           lastBodyClick = null;
           return;
         }
@@ -267,7 +270,6 @@
         event.stopImmediatePropagation();
         if (!objectId) {
           cancelLineDraft();
-          clearSelection();
           gesture = { kind: "marquee", id: event.pointerId, start: point, captured: false };
           linkMarquee = { start: point, end: point };
           lastBodyClick = null;
@@ -309,12 +311,9 @@
       if (linkId) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        clearSelection();
-        if (event.ctrlKey || event.metaKey || event.shiftKey) toggleLinkSelection(linkId);
-        else selectLink(linkId);
+        selectLinkUndoable(linkId, event.ctrlKey || event.metaKey || event.shiftKey, true);
         return;
       }
-      clearSelectedLink();
     }
 
     function onPointerMove(event: PointerEvent): void {
@@ -420,7 +419,12 @@
       linkMarquee = null;
       const dragged = Math.hypot(point.x - active.start.x, point.y - active.start.y) >= CUT_DRAG_THRESHOLD_PX;
       if (!dragged) {
-        if (!event.ctrlKey && !event.metaKey && !event.shiftKey) clearSelectedLink();
+        if (event.ctrlKey || event.metaKey || event.shiftKey) {
+          const current = captureSelectionSnapshot();
+          setSelectionUndoable({ ...current, ids: [], zoneIds: [], primaryId: null });
+        } else {
+          clearLinkSelectionUndoable(true);
+        }
         return;
       }
 
@@ -436,7 +440,7 @@
         }, { type: "polyline", points: link.geometry.polyline }))
         .map((link) => link.id);
       const additive = event.ctrlKey || event.metaKey || event.shiftKey;
-      selectLinks(touched, additive);
+      selectLinksUndoable(touched, additive, true);
     }
 
     function finishPointer(event: PointerEvent): void {

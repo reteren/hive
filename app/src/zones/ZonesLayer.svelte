@@ -249,7 +249,8 @@
 <style>
   .zones-layer, .zone-svg { position: absolute; inset: 0; pointer-events: none; }
   .zone-svg { overflow: visible; }
-  .zone-name { font-size: 1.15px; font-weight: 650; paint-order: stroke; stroke: #17191d; stroke-width: 0.25px; cursor: text; }
+  .zone-name { font-size: 1.15px; font-weight: 650; paint-order: stroke; stroke: #17191d; stroke-width: 0.25px; cursor: text; outline: none; }
+  .zone-name:focus-visible { text-decoration: underline; text-decoration-thickness: 0.12px; text-underline-offset: 0.2px; }
   .zone-preview { fill: #739abc; fill-opacity: 0.12; stroke: #9bbbd8; stroke-width: 1.5px; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; pointer-events: none; }
   .zone-feedback { position: absolute; z-index: 30; max-width: 220px; padding: 5px 7px; border: 1px solid #8c6d40; border-radius: 4px; color: #f5dbab; background: #302b23; font-size: 11px; pointer-events: none; }
   .zone-menu { position: absolute; z-index: 30; display: flex; width: 176px; flex-direction: column; gap: 3px; padding: 5px; border: 1px solid #4c4c4c; border-radius: 4px; color: var(--text); background: #242424; box-shadow: 0 5px 16px #0008; pointer-events: auto; }

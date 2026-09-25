@@ -175,7 +175,7 @@ describe("project index", () => {
         importance: "medium", purposes: ["openQuestion", "experiment"],
       },
       {
-        id: "purpose-1", type: "purpose", name: "Decision", text: "", x: 20, y: 12, width: 8, height: 6,
+        id: "purpose-1", type: "purpose", name: "Decision", text: "", x: 20, y: 12, width: 8, height: null,
         task: null, taskMemory: null, importance: null, purposes: ["decision"],
       },
       {

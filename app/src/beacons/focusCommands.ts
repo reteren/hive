@@ -1,7 +1,26 @@
-import { registerCommand } from "../commands/registry.svelte";
+import { getCommand, registerCommand } from "../commands/registry.svelte";
+import { formatKey } from "../commands/keys";
+import { registerNoteMenuItem } from "../notes/noteMenu";
 import { beaconState } from "./beaconState.svelte";
-import { clearFocus, selectBeaconGroups, toggleSelectedFocus, validFocused } from "./focus.svelte";
-import { markSelected } from "./marks.svelte";
+import { clearFocus, isBeacon, selectBeaconGroups, setFocused, toggleSelectedFocus, validFocused } from "./focus.svelte";
+import { isMarked, toggleBeaconMark, toggleSelectedMarks } from "./marks.svelte";
+
+function keyLabel(commandId: string): string {
+  const keys = getCommand(commandId)?.keys ?? [];
+  return keys.length ? ` (${keys.map(formatKey).join(" / ")})` : "";
+}
+
+export function beaconMarkActionLabel(beaconId: string): string {
+  return `${isMarked(beaconId) ? "Unmark" : "Mark"}${keyLabel("beacons.mark")}`;
+}
+
+export function beaconFocusActionLabel(beaconId: string): string {
+  return `${validFocused().includes(beaconId) ? "Exit focus" : "Focus"}${keyLabel("beacons.toggleFocus")}`;
+}
+
+export function focusBeaconFromMenu(beaconId: string): void {
+  setFocused(beaconId, !validFocused().includes(beaconId));
+}
 
 registerCommand({
   id: "beacons.toggleFocus",
@@ -28,16 +47,9 @@ registerCommand({
 
 registerCommand({
   id: "beacons.mark",
-  label: "Mark selected beacon",
-  keys: ["KeyM"],
-  run: () => markSelected(false),
-});
-
-registerCommand({
-  id: "beacons.toggleMark",
-  label: "Add or remove beacon mark",
+  label: "Mark / unmark beacon",
   keys: ["Ctrl+KeyM"],
-  run: () => markSelected(true),
+  run: toggleSelectedMarks,
 });
 
 registerCommand({
@@ -45,4 +57,20 @@ registerCommand({
   label: "Exit beacon focus",
   keys: [],
   run: clearFocus,
+});
+
+registerNoteMenuItem({
+  id: "beacons.toggleMark",
+  label: beaconMarkActionLabel,
+  run: toggleBeaconMark,
+  visible: isBeacon,
+  order: 12,
+});
+
+registerNoteMenuItem({
+  id: "beacons.toggleFocus",
+  label: beaconFocusActionLabel,
+  run: focusBeaconFromMenu,
+  visible: isBeacon,
+  order: 13,
 });

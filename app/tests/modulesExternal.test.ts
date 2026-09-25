@@ -6,6 +6,7 @@ import type { Link } from "../src/model/link";
 import type { Note } from "../src/model/note";
 import { editing } from "../src/notes/editing.svelte";
 import { creationMenu } from "../src/notes/creation.svelte";
+import { grid } from "../src/board/grid.svelte";
 import { createNoteKind } from "../src/notes/noteCommands";
 import { noteMenuItems } from "../src/notes/noteMenu";
 import "../src/modules/commands";
@@ -213,10 +214,11 @@ describe("standalone modules", () => {
     expect(moduleItems("content")).not.toContain("module.removeImportance");
   });
 
-  it("creates compact module nodes with default values and undoable ids", () => {
+  it("creates compact modules with empty Purpose and Mood selection", () => {
     creationMenu.origin = { x: 40, y: 25 };
     const importanceId = createNoteKind("importance");
     const purposeId = createNoteKind("purpose");
+    const moodId = createNoteKind("mood");
 
     expect(board.notes[importanceId]).toMatchObject({
       type: "importance",
@@ -231,11 +233,14 @@ describe("standalone modules", () => {
       type: "purpose",
       name: "Purpose",
       width: 14,
-      height: 4,
-      purposes: ["concept"],
+      height: null,
+      purposes: [],
     });
-    expect(history.entries.slice(-2).map((entry) => entry.label)).toEqual(["Create importance", "Create purpose"]);
+    expect(board.notes[moodId]).toMatchObject({ type: "mood", height: null, moods: [] });
+    expect(history.entries.slice(-3).map((entry) => entry.label)).toEqual(["Create importance", "Create purpose", "Create mood"]);
 
+    undo();
+    expect(board.notes[moodId]).toBeUndefined();
     undo();
     expect(board.notes[purposeId]).toBeUndefined();
     redo();
@@ -344,5 +349,20 @@ describe("standalone modules", () => {
     redo();
     expect(board.notes[module!.id]?.importance).toBe("medium");
     expect(links.byId[createdLink.id]?.from).toBe(module?.id);
+  });
+
+  it("moves an extracted module to the nearest free spot when its drop point is occupied", () => {
+    grid.snap = false;
+    grid.step = 10;
+    const target = note({ id: "target", type: "pro", name: "Target", importance: "medium" });
+    const blocker = note({ id: "blocker", type: "note", x: 41, y: 20, width: 14, height: 4 });
+    replaceBoard([target, blocker]);
+
+    expect(extractModuleFromNote("target", "importance", "medium", { x: 48, y: 22 })).toBe(true);
+    const module = Object.values(board.notes).find((candidate) => candidate.type === "importance");
+    expect(module).toMatchObject({ x: 41, y: 16, width: 14, height: 4 });
+    expect(module!.x < blocker.x + blocker.width && module!.x + module!.width > blocker.x &&
+      module!.y < blocker.y + blocker.height! && module!.y + module!.height! > blocker.y).toBe(false);
+    expect(history.entries).toHaveLength(1);
   });
 });

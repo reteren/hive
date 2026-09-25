@@ -57,6 +57,11 @@
   border-color: #555;
 }
 
+.note-card[data-kind="purpose"],
+.note-card[data-kind="mood"] {
+  min-height: 40px !important;
+}
+
 .note-card[data-kind="importance"] .note-header,
 .note-card[data-kind="purpose"] .note-header,
 .note-card[data-kind="mood"] .note-header {

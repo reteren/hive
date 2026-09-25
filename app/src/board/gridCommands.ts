@@ -1,16 +1,5 @@
 import { registerCommand } from "../commands/registry.svelte";
-import { GRID_STEP_PRESETS } from "./gridMath";
-import { grid, setGridStep } from "./grid.svelte";
-
-function stepUp(): void {
-  const next = GRID_STEP_PRESETS.find((step) => step > grid.step);
-  setGridStep(next ?? GRID_STEP_PRESETS[GRID_STEP_PRESETS.length - 1]);
-}
-
-function stepDown(): void {
-  const previous = [...GRID_STEP_PRESETS].reverse().find((step) => step < grid.step);
-  setGridStep(previous ?? GRID_STEP_PRESETS[0]);
-}
+import { decreaseGridStep, grid, increaseGridStep } from "./grid.svelte";
 
 registerCommand({
   id: "grid.toggleShow",
@@ -36,12 +25,12 @@ registerCommand({
   id: "grid.stepUp",
   label: "Increase Grid Step",
   keys: ["BracketRight"],
-  run: stepUp,
+  run: increaseGridStep,
 });
 
 registerCommand({
   id: "grid.stepDown",
   label: "Decrease Grid Step",
   keys: ["BracketLeft"],
-  run: stepDown,
+  run: decreaseGridStep,
 });

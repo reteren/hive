@@ -1,4 +1,5 @@
 import { camera, pointer } from "../board/camera.svelte";
+import { grid } from "../board/grid.svelte";
 import { DEFAULT_NOTE_WIDTH, newId, type Note } from "../model/note";
 import { board, addNote, removeNote } from "../model/board.svelte";
 import { addLink, links, removeLink } from "../model/links.svelte";
@@ -6,15 +7,30 @@ import type { Link } from "../model/link";
 import { addZone, removeZone, zones } from "../model/zones.svelte";
 import type { Zone } from "../model/zone";
 import { execute, historyFeedback, type HistoryCommand } from "../history/history.svelte";
-import { MIN_NOTE_HEIGHT } from "../notes/layout.svelte";
+import { measuredHeights } from "../notes/layout.svelte";
 import { uniqueName } from "../notes/naming";
-import { clearSelection, clearZoneSelection, includeSelected, selection, setPrimary, toggleZoneSelected } from "../selection/selection.svelte";
+import {
+  captureSelectionSnapshot,
+  clearSelection,
+  clearZoneSelection,
+  includeSelected,
+  restoreSelectionSnapshot,
+  selection,
+  setPrimary,
+  toggleZoneSelected,
+} from "../selection/selection.svelte";
 import { registerCommand, runCommand } from "../commands/registry.svelte";
 import { isTextEditingTarget } from "../commands/focus";
 import { clearSelectedLink, selectedLink } from "../links/selection.svelte";
 import { unlinkSelected } from "../links/operations";
 import { deleteZonesAction } from "../zones/zoneGestures";
 import { beaconPaletteColor } from "../beacons/beaconPalette";
+import {
+  creationObstacleForNote,
+  estimatedCreationHeight,
+  nearestFreeNoteCenter,
+  type CreationObstacle,
+} from "../notes/creationPosition";
 import {
   HIVE_CLIPBOARD_MIME,
   HIVE_CLIPBOARD_WEB_MIME,
@@ -29,13 +45,6 @@ import {
   type ClipboardLink,
   type ClipboardZone,
 } from "./payload";
-
-interface SelectionSnapshot {
-  ids: string[];
-  zoneIds: string[];
-  primaryId: string | null;
-  linkId: string | null;
-}
 
 interface IndexedNote {
   note: Note;
@@ -135,7 +144,14 @@ export function duplicateSelection(): void {
     showClipboardFeedback("Can't place copied zones without overlap");
     return;
   }
-  addCopies(copies.notes, copies.zones, copies.links, "Duplicate", selectionNoun(copies.notes.length, copies.zones.length));
+  addCopies(
+    copies.notes,
+    copies.zones,
+    copies.links,
+    "Duplicate",
+    selectionNoun(copies.notes.length, copies.zones.length),
+    copies.placementHeights,
+  );
   runCommand("select.move");
 }
 
@@ -154,7 +170,14 @@ export async function pasteFromClipboard(): Promise<void> {
         showClipboardFeedback("Can't place copied zones without overlap");
         return;
       }
-      addCopies(copies.notes, copies.zones, copies.links, "Paste", selectionNoun(copies.notes.length, copies.zones.length));
+      addCopies(
+        copies.notes,
+        copies.zones,
+        copies.links,
+        "Paste",
+        selectionNoun(copies.notes.length, copies.zones.length),
+        copies.placementHeights,
+      );
       return;
     }
 
@@ -165,13 +188,14 @@ export async function pasteFromClipboard(): Promise<void> {
 
     const name = uniqueName("Note", Object.values(board.notes).map((note) => note.name));
     const center = destination ?? fallbackCenter;
+    const height = estimatedCreationHeight({ type: "note", width: DEFAULT_NOTE_WIDTH, height: null, text: source.text });
     const note: Note = {
       id: newId(),
       type: "note",
       name,
       text: source.text,
       x: center.x - DEFAULT_NOTE_WIDTH / 2,
-      y: center.y - MIN_NOTE_HEIGHT / 2,
+      y: center.y - height / 2,
       width: DEFAULT_NOTE_WIDTH,
       height: null,
       createdAt: Date.now(),
@@ -207,25 +231,6 @@ function setZoneIds(ids: readonly string[]): void {
   for (const id of ids) toggleZoneSelected(id);
 }
 
-function selectionSnapshot(): SelectionSnapshot {
-  const ids = selection.ids.filter((id) => Boolean(board.notes[id]));
-  return {
-    ids,
-    zoneIds: selectedZoneIds().filter((id) => Boolean(zones.byId[id])),
-    primaryId: selection.primaryId && ids.includes(selection.primaryId) ? selection.primaryId : ids.at(-1) ?? null,
-    linkId: selectedLink.id && links.byId[selectedLink.id] ? selectedLink.id : null,
-  };
-}
-
-function restoreSelection(snapshot: SelectionSnapshot): void {
-  const ids = snapshot.ids.filter((id) => Boolean(board.notes[id]));
-  clearSelection();
-  for (const id of ids) includeSelected(id);
-  if (snapshot.primaryId && ids.includes(snapshot.primaryId)) setPrimary(snapshot.primaryId);
-  selectedLink.id = snapshot.linkId && links.byId[snapshot.linkId] ? snapshot.linkId : null;
-  setZoneIds(snapshot.zoneIds.filter((id) => Boolean(zones.byId[id])));
-}
-
 function selectIds(ids: readonly string[], zoneIds: readonly string[] = []): void {
   clearSelection();
   clearSelectedLink();
@@ -245,7 +250,7 @@ function createCopies(
   sourceZoneValues: readonly (Zone | ClipboardZone)[],
   destination: { x: number; y: number } | null,
   sourceLinks: readonly ClipboardLink[],
-): { notes: Note[]; zones: Zone[]; links: Link[] } | null {
+): { notes: Note[]; zones: Zone[]; links: Link[]; placementHeights: Map<string, number> } | null {
   const sourceZones = sourceZoneValues.map((zone) => normalizeSourceZone(zone));
   const existingNames = Object.values(board.notes).map((note) => note.name);
   const names = uniqueCopyNames(sourceNotes.map((note) => note.name), existingNames);
@@ -254,10 +259,15 @@ function createCopies(
   const offset = placementOffset(sourceNotes, sourceZones, destination);
   const idMap = new Map<string, string>();
   const zoneIdMap = new Map<string, string>();
+  const placementHeights = new Map<string, number>();
   sourceZones.forEach((zone) => zoneIdMap.set(zone.id, newId()));
   const notes = sourceNotes.map((note, index) => {
     const id = newId();
     idMap.set(note.sourceId, id);
+    const measuredHeight = measuredHeights[note.sourceId];
+    if (note.height === null && Number.isFinite(measuredHeight) && measuredHeight > 0) {
+      placementHeights.set(id, measuredHeight);
+    }
     return {
       id,
       type: note.type,
@@ -266,7 +276,7 @@ function createCopies(
       x: note.x + offset.x,
       y: note.y + offset.y,
       width: note.width,
-      height: note.height,
+      height: note.type === "purpose" || note.type === "mood" ? null : note.height,
       createdAt: note.createdAt ?? Date.now(),
       ...taskFieldsForPaste(note),
       importance: note.importance ?? null,
@@ -288,24 +298,25 @@ function createCopies(
   const copiedNotes = nonOverlappingOffset.x === 0 && nonOverlappingOffset.y === 0
     ? notes
     : notes.map((note) => ({ ...note, x: note.x + nonOverlappingOffset.x, y: note.y + nonOverlappingOffset.y }));
-  return { notes: copiedNotes, zones: copiedZones, links: remapClipboardLinks(sourceLinks, idMap) };
+  return { notes: copiedNotes, zones: copiedZones, links: remapClipboardLinks(sourceLinks, idMap), placementHeights };
 }
 
 function addCopies(
   notes: readonly Note[], copiedZones: readonly Zone[], copiedLinks: readonly Link[],
-  label: "Paste" | "Duplicate", target?: string,
+  label: "Paste" | "Duplicate", target?: string, placementHeights?: ReadonlyMap<string, number>,
 ): void {
   if (notes.length === 0 && copiedZones.length === 0) return;
-  const previousSelection = selectionSnapshot();
+  const placedNotes = placeNewNotesWithoutOverlap(notes, placementHeights);
+  const previousSelection = captureSelectionSnapshot();
   const startIndex = board.order.length;
-  const ids = notes.map((note) => note.id);
+  const ids = placedNotes.map((note) => note.id);
   const zoneIds = copiedZones.map((zone) => zone.id);
 
   const command: HistoryCommand = {
     label,
     target,
     do: () => {
-      notes.forEach((note, index) => addNote(note, startIndex + index));
+      placedNotes.forEach((note, index) => addNote(note, startIndex + index));
       copiedZones.forEach(addZone);
       copiedLinks.forEach(addLink);
       selectIds(ids, zoneIds);
@@ -314,10 +325,24 @@ function addCopies(
       copiedLinks.forEach((link) => removeLink(link.id));
       for (const id of ids) removeNote(id);
       for (const id of zoneIds) removeZone(id);
-      restoreSelection(previousSelection);
+      restoreSelectionSnapshot(previousSelection);
     },
   };
   execute(command);
+}
+
+function placeNewNotesWithoutOverlap(notes: readonly Note[], placementHeights?: ReadonlyMap<string, number>): Note[] {
+  const obstacles: CreationObstacle[] = Object.values(board.notes).map((note) =>
+    creationObstacleForNote(note, measuredHeights[note.id]),
+  );
+  return notes.map((note) => {
+    const height = estimatedCreationHeight(note, placementHeights?.get(note.id));
+    const center = { x: note.x + note.width / 2, y: note.y + height / 2 };
+    const placedCenter = nearestFreeNoteCenter(center, note.width, height, obstacles, grid.snap, grid.step);
+    const placed = { ...note, x: placedCenter.x - note.width / 2, y: placedCenter.y - height / 2 };
+    obstacles.push(creationObstacleForNote(placed));
+    return placed;
+  });
 }
 
 function deleteSelectionItems(notes: readonly Note[], zoneIds: readonly string[], label: "Cut" | "Delete"): void {
@@ -329,7 +354,7 @@ function deleteSelectionItems(notes: readonly Note[], zoneIds: readonly string[]
   const existingZoneIds = zoneIds.filter((id) => Boolean(zones.byId[id]));
   if (indexed.length === 0 && existingZoneIds.length === 0) return;
 
-  const previousSelection = selectionSnapshot();
+  const previousSelection = captureSelectionSnapshot();
   const deletedIds = new Set(indexed.map(({ note }) => note.id));
   const attachedLinks = Object.values(links.byId).filter((link) => deletedIds.has(link.from) || deletedIds.has(link.to));
   const target = selectionNoun(indexed.length, existingZoneIds.length);
@@ -350,7 +375,7 @@ function deleteSelectionItems(notes: readonly Note[], zoneIds: readonly string[]
       }
       zoneAction.undo();
       attachedLinks.forEach(addLink);
-      restoreSelection(previousSelection);
+      restoreSelectionSnapshot(previousSelection);
     },
   };
   execute(command);

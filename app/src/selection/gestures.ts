@@ -2,8 +2,23 @@ import type { Point } from "../board/cameraMath";
 import { snapToGrid } from "../board/gridMath";
 import type { Bounds } from "../notes/layout.svelte";
 import { resizeNote, type ResizeEdge } from "./resize";
+import type { NoteKind } from "../model/note";
 
 export const GESTURE_THRESHOLD_PX = 4;
+
+export type SelectionGestureKind =
+  | "move"
+  | "body-move"
+  | "resize"
+  | "group-scale"
+  | "zone-move"
+  | "zone-resize"
+  | "marquee";
+
+/** A line tool takes pointer ownership away from active resize gestures. */
+export function shouldCancelForLineTool(kind: SelectionGestureKind, lineToolActive: boolean): boolean {
+  return lineToolActive && (kind === "resize" || kind === "group-scale" || kind === "zone-resize");
+}
 
 export function crossedGestureThreshold(start: Point, current: Point): boolean {
   return Math.hypot(current.x - start.x, current.y - start.y) >= GESTURE_THRESHOLD_PX;
@@ -16,6 +31,11 @@ export interface NoteFrame {
   width: number;
   /** null means the note is currently using auto-height. */
   height: number | null;
+  /** Metadata used by bounded resize gestures; omitted by movement-only callers. */
+  type?: NoteKind;
+  widthLocked?: boolean;
+  maxWidth?: number;
+  maxHeight?: number;
 }
 
 export interface MoveGesture {
@@ -93,6 +113,7 @@ export function updateResizeGesture(
     snap,
     step,
     gesture.standaloneModule,
+    { widthLocked: gesture.before.widthLocked, maxWidth: gesture.before.maxWidth, maxHeight: gesture.before.maxHeight },
   );
   return { ...gesture, after: { ...gesture.before, ...afterGeometry } };
 }

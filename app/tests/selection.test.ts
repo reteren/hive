@@ -22,14 +22,20 @@ import {
 } from "../src/selection/gestures";
 import { hasResizeHandle, MIN_NOTE_WIDTH, resizeNote } from "../src/selection/resize";
 import {
+  captureSelectionSnapshot,
   clearSelection,
+  clearSelectionUndoable,
+  restoreSelectionSnapshot,
   selectMarquee,
   selectOnly,
   selectZonesOnly,
   selection,
+  setSelectionUndoable,
   toggleSelected,
   toggleZoneSelected,
 } from "../src/selection/selection.svelte";
+import { clear as clearHistory, history, redo, undo } from "../src/history/history.svelte";
+import { clearSelectedLink, selectedLink, setLinkSelectionUndoable } from "../src/links/selection.svelte";
 
 const noteA: Note = {
   id: "a",
@@ -112,6 +118,93 @@ describe("selection hit testing", () => {
 
   it("does not select notes separated from the marquee", () => {
     expect(boundsTouch({ x: 0, y: 0, width: 5, height: 5 }, { x: 5.01, y: 0, width: 3, height: 3 })).toBe(false);
+  });
+});
+
+describe("undoable board selection", () => {
+  it("records one Select step and restores the prior selection on Undo and Redo", () => {
+    clearSelection();
+    clearSelectedLink();
+    clearHistory();
+    const empty = captureSelectionSnapshot();
+    const selected = { ...empty, ids: ["a", "b"], zoneIds: ["zone"], primaryId: "b" };
+
+    expect(setSelectionUndoable(selected)).toBe(true);
+    expect(history.entries.map(({ label }) => label)).toEqual(["Select 3 objects"]);
+    expect(selection.ids).toEqual(["a", "b"]);
+    expect(selection.zoneIds).toEqual(["zone"]);
+    expect(selection.primaryId).toBe("b");
+    expect(setSelectionUndoable(captureSelectionSnapshot())).toBe(false);
+    expect(history.entries).toHaveLength(1);
+
+    undo();
+    expect(selection.ids).toEqual([]);
+    expect(selection.zoneIds).toEqual([]);
+    redo();
+    expect(selection.ids).toEqual(["a", "b"]);
+    expect(selection.zoneIds).toEqual(["zone"]);
+  });
+
+  it("includes line selection in the same selection history step", () => {
+    clearSelection();
+    clearSelectedLink();
+    clearHistory();
+    selectOnly("note");
+
+    expect(setLinkSelectionUndoable(["line-a", "line-b"], true)).toBe(true);
+    expect(selection.ids).toEqual([]);
+    expect(selectedLink.ids).toEqual(["line-a", "line-b"]);
+    expect(history.entries.map(({ label }) => label)).toEqual(["Select 2 objects"]);
+
+    undo();
+    expect(selection.ids).toEqual(["note"]);
+    expect(selectedLink.ids).toEqual([]);
+    redo();
+    expect(selection.ids).toEqual([]);
+    expect(selectedLink.ids).toEqual(["line-a", "line-b"]);
+  });
+
+  it("restores a captured selection raw for inclusion in a different command", () => {
+    clearSelection();
+    clearSelectedLink();
+    clearHistory();
+    selectOnly("before");
+    const before = captureSelectionSnapshot();
+    clearSelection();
+    selectOnly("created");
+
+    restoreSelectionSnapshot(before);
+    expect(selection.ids).toEqual(["before"]);
+    expect(history.entries).toEqual([]);
+  });
+
+  it("labels clearing a nonempty selection as Deselect", () => {
+    clearSelection();
+    clearSelectedLink();
+    clearHistory();
+    const empty = captureSelectionSnapshot();
+    setSelectionUndoable({ ...empty, ids: ["a"], primaryId: "a" });
+    setSelectionUndoable(empty);
+    expect(history.entries.map(({ label }) => label)).toEqual(["Select 1 object", "Deselect"]);
+  });
+
+  it("clears note, zone, and link selection together and restores them with Undo", () => {
+    clearSelection();
+    clearSelectedLink();
+    clearHistory();
+    setSelectionUndoable({ ...captureSelectionSnapshot(), ids: ["a"], zoneIds: ["zone"], primaryId: "a" });
+    setLinkSelectionUndoable(["line"]);
+
+    expect(clearSelectionUndoable()).toBe(true);
+    expect(selection.ids).toEqual([]);
+    expect(selection.zoneIds).toEqual([]);
+    expect(selectedLink.ids).toEqual([]);
+    expect(history.entries.at(-1)?.label).toBe("Deselect");
+
+    undo();
+    expect(selection.ids).toEqual(["a"]);
+    expect(selection.zoneIds).toEqual(["zone"]);
+    expect(selectedLink.ids).toEqual(["line"]);
   });
 });
 
@@ -206,11 +299,15 @@ describe("selection move and resize gestures", () => {
   it("keeps standalone module width fixed and bounds corner resizing to 1–2× base height", () => {
     const frame = { id: "module", x: 10, y: 20, width: 14, height: 4 };
 
-    for (const kind of ["importance", "purpose", "mood"] as const) {
+    for (const kind of ["importance"] as const) {
       expect(hasResizeHandle(kind, "left")).toBe(false);
       expect(hasResizeHandle(kind, "right")).toBe(false);
       expect(hasResizeHandle(kind, "top-left")).toBe(true);
       expect(hasResizeHandle(kind, "bottom-right")).toBe(true);
+    }
+    for (const kind of ["purpose", "mood"] as const) {
+      expect(hasResizeHandle(kind, "top-left")).toBe(false);
+      expect(hasResizeHandle(kind, "bottom")).toBe(false);
     }
     expect(hasResizeHandle("note", "right")).toBe(true);
 
@@ -232,6 +329,28 @@ describe("selection move and resize gestures", () => {
     for (const edge of ["top-left", "top", "top-right", "right", "bottom-right", "bottom", "bottom-left", "left"] as const) {
       expect(hasResizeHandle("beacon", edge)).toBe(false);
     }
+  });
+
+  it("limits note width to 2.5× base and preserves width while locked", () => {
+    const note = { id: "wide", type: "note" as const, x: 10, y: 5, width: 30, height: 20, maxHeight: 30 };
+    const plus = { id: "mini", type: "pro" as const, x: 10, y: 5, width: 18, height: 20 };
+    expect(resizeNote(note, 20, "right", { x: 200, y: 0 }, false, 10).width).toBe(75);
+    expect(resizeNote(plus, 20, "right", { x: 200, y: 0 }, false, 10).width).toBe(45);
+    expect(hasResizeHandle("note", "left", true)).toBe(false);
+    expect(hasResizeHandle("note", "right", true)).toBe(false);
+    expect(hasResizeHandle("note", "top-left", true)).toBe(true);
+
+    expect(resizeNote(
+      { ...note, widthLocked: true }, 20, "top-left", { x: -100, y: -4 }, false, 10,
+    )).toEqual({ x: 10, y: 1, width: 30, height: 24 });
+  });
+
+  it("clamps manual height to content height plus five rendered lines", () => {
+    const frame = {
+      id: "long", type: "note" as const, x: 0, y: 0, width: 30, height: 12,
+      maxHeight: 18,
+    };
+    expect(resizeNote(frame, 12, "bottom", { x: 0, y: 100 }, false, 10).height).toBe(18);
   });
 
   it("snaps a standalone module's dragged vertical edge before clamping", () => {

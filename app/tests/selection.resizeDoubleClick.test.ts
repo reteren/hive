@@ -17,4 +17,9 @@ describe("resize handle double-click", () => {
     expect(resizeDoubleClickAction("top", false, false)).toBe("none");
     expect(resizeDoubleClickAction("bottom", false, false)).toBe("none");
   });
+
+  it("does not auto-height when rendered content metrics exceed the resize limit", () => {
+    expect(resizeDoubleClickAction("bottom", false, true, false)).toBe("none");
+    expect(resizeDoubleClickAction("bottom", true, true, false)).toBe("edit");
+  });
 });

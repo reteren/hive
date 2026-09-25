@@ -32,6 +32,36 @@
 .beacon-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .beacon-menu-row input { margin: 0; accent-color: #d8ae4f; }
 
+.me-beacon-context {
+  position: fixed;
+  z-index: 1100;
+  display: flex;
+  min-width: 160px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid #4c4c4c;
+  border-radius: 4px;
+  background: #242424;
+  box-shadow: 0 5px 16px rgb(0 0 0 / 45%);
+  pointer-events: auto;
+}
+
+.me-beacon-context button {
+  min-height: 28px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: #e9e5d8;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.me-beacon-context button:hover,
+.me-beacon-context button:focus-visible { background: #393939; color: #fff; }
+
 .note-card[data-dimmed="true"],
 .beacon-object[data-dimmed="true"],
 .beacon-circle[data-dimmed="true"],

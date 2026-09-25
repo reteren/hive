@@ -5,6 +5,8 @@
   import { IMPORTANCE_OPTIONS, PURPOSE_OPTIONS, isImportanceLevel, isPurposeKind } from "./moduleLogic";
   import {
     closeModulePicker,
+    moduleDropPreview,
+    moduleFeedback,
     setImportance,
     toggleModulePicker,
     togglePurpose,
@@ -16,10 +18,8 @@
   let importance = $derived(noteImportance());
   let purposes = $derived(note.purposes?.filter(isPurposeKind) ?? []);
   let importanceOption = $derived(IMPORTANCE_OPTIONS.find((option) => option.id === importance)!);
-  let purposeOption = $derived(PURPOSE_OPTIONS.find((option) => option.id === purposes[0]));
-  let purposeLabel = $derived(purposeOption
-    ? `${purposeOption.label}${purposes.length > 1 ? ` +${purposes.length - 1}` : ""}`
-    : "Purpose");
+  let isDropTarget = $derived(moduleDropPreview.targetId === note.id);
+  let dropMessage = $derived(isDropTarget ? moduleDropPreview.reason : moduleFeedback.noteId === note.id ? moduleFeedback.message : null);
 
   function chooseImportance(id: string): void {
     if (isImportanceLevel(id)) setImportance(note.id, id as ImportanceLevel);
@@ -27,6 +27,11 @@
 
   function choosePurpose(id: string): void {
     if (isPurposeKind(id)) togglePurpose(note.id, id);
+  }
+
+  function clickPurpose(id: string): void {
+    if (pickerKind === "purpose" && isPurposeKind(id)) togglePurpose(note.id, id);
+    else togglePicker("purpose");
   }
 
   function noteImportance(): ImportanceLevel {
@@ -38,7 +43,7 @@
   }
 </script>
 
-<div class="module-node-body">
+<div class="module-node-body" data-module-drop-target={isDropTarget ? (moduleDropPreview.allowed ? "allowed" : "refused") : undefined}>
   {#if note.type === "importance"}
     <ModuleChip
       label={importanceOption.label}
@@ -58,12 +63,16 @@
       />
     {/if}
   {:else if note.type === "purpose"}
-    <ModuleChip
-      label={purposeLabel}
-      color={purposeOption?.color ?? "#b8b8b8"}
-      iconPath={purposeOption?.iconPath}
-      onClick={() => togglePicker("purpose")}
-    />
+    <button type="button" class="module-node-label" data-module-trigger data-selection-ignore onclick={() => togglePicker("purpose")}>Purpose</button>
+    {#each purposes as purpose (purpose)}
+      {@const option = PURPOSE_OPTIONS.find((item) => item.id === purpose)}
+      {#if option}
+        <ModuleChip label={option.label} color={option.color} iconPath={option.iconPath} onClick={() => clickPurpose(purpose)} />
+      {/if}
+    {/each}
+    {#if purposes.length > 0}
+      <button type="button" class="module-node-add" data-module-trigger data-selection-ignore aria-label="Add Purpose" onclick={() => togglePicker("purpose")}>+</button>
+    {/if}
     {#if pickerKind === "purpose"}
       <ModulePicker
         title="Purpose"
@@ -73,7 +82,9 @@
         onSelect={choosePurpose}
         onClose={closeModulePicker}
         floating
+        hideSelected
       />
     {/if}
   {/if}
+  {#if dropMessage}<span class="module-node-drop-message" role="status">{dropMessage}</span>{/if}
 </div>

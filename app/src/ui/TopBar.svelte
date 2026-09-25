@@ -68,7 +68,6 @@
   </div>
   <div class="top-actions">
     <CommandButton commandId="ui.settings" />
-    <CommandButton commandId="ui.toggleRightPanel" />
   </div>
   <div class="conflict-status">
     <ConflictNotice />

@@ -19,10 +19,6 @@ export interface GridSettings {
   snap: boolean;
 }
 
-export interface DisplaySettings {
-  rightPanelOpen: boolean;
-}
-
 export interface HistorySettings {
   limit: number;
 }
@@ -35,7 +31,6 @@ export interface ViewSettings {
   camera: Camera;
   cameraSettings: CameraSettings;
   grid: GridSettings;
-  display: DisplaySettings;
   history: HistorySettings;
   accessibility: AccessibilitySettings;
   keyOverrides: KeyBindingOverrides;
@@ -51,7 +46,6 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
     panSpeed: 600,
   },
   grid: { step: 10, showGrid: true, snap: false },
-  display: { rightPanelOpen: true },
   history: { limit: DEFAULT_HISTORY_LIMIT },
   accessibility: { reduceAnimations: systemPrefersReducedMotion() },
   keyOverrides: {},
@@ -83,7 +77,6 @@ export function parseViewSettings(serialized: string | null | undefined, default
   const defaultZoom = clamp(defaults.camera.zoom, limits.minZoom, limits.maxZoom);
   const cameraInput = asRecord(parsed.camera);
   const gridInput = asRecord(parsed.grid);
-  const displayInput = asRecord(parsed.display);
   const historyInput = asRecord(parsed.history);
   const accessibilityInput = asRecord(parsed.accessibility);
 
@@ -100,9 +93,6 @@ export function parseViewSettings(serialized: string | null | undefined, default
       step: gridStepOrDefault(gridInput.step, defaults.grid.step),
       showGrid: booleanOrDefault(gridInput.showGrid, defaults.grid.showGrid),
       snap: booleanOrDefault(gridInput.snap, defaults.grid.snap),
-    },
-    display: {
-      rightPanelOpen: booleanOrDefault(displayInput.rightPanelOpen, defaults.display.rightPanelOpen),
     },
     history: {
       limit: historyLimitOrDefault(historyInput.limit, defaults.history.limit),
@@ -127,7 +117,6 @@ export function serializeViewSettings(settings: ViewSettings): string {
       panSpeed: settings.cameraSettings.panSpeed,
     },
     grid: { step: settings.grid.step, showGrid: settings.grid.showGrid, snap: settings.grid.snap },
-    display: { rightPanelOpen: settings.display.rightPanelOpen },
     history: { limit: settings.history.limit },
     accessibility: { reduceAnimations: settings.accessibility.reduceAnimations },
     keyOverrides: sanitizeKeyOverrides(settings.keyOverrides),
@@ -163,7 +152,6 @@ function cloneViewSettings(settings: ViewSettings): ViewSettings {
     camera: { ...settings.camera },
     cameraSettings: { ...settings.cameraSettings },
     grid: { ...settings.grid },
-    display: { ...settings.display },
     history: { ...settings.history },
     accessibility: { ...settings.accessibility },
     keyOverrides: sanitizeKeyOverrides(settings.keyOverrides),

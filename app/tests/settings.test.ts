@@ -13,7 +13,6 @@ describe("view settings serialization", () => {
       camera: { x: 32.5, y: -80, zoom: 2.4 },
       cameraSettings: { minZoom: 0.1, maxZoom: 12, zoomSensitivity: 0.002, panSpeed: 720 },
       grid: { step: 25, showGrid: false, snap: true },
-      display: { rightPanelOpen: false },
       history: { limit: 256 },
       accessibility: { reduceAnimations: true },
       keyOverrides: { "view.home": ["Ctrl+Alt+KeyH"], "edit.undo": [] },
@@ -38,7 +37,7 @@ describe("view settings serialization", () => {
       camera: DEFAULT_VIEW_SETTINGS.camera,
       cameraSettings: DEFAULT_VIEW_SETTINGS.cameraSettings,
       grid: DEFAULT_VIEW_SETTINGS.grid,
-      display: DEFAULT_VIEW_SETTINGS.display,
+      display: { rightPanelOpen: false },
     });
 
     expect(parseViewSettings(oldSettings, DEFAULT_VIEW_SETTINGS)).toEqual(DEFAULT_VIEW_SETTINGS);
@@ -50,7 +49,7 @@ describe("view settings serialization", () => {
       camera: DEFAULT_VIEW_SETTINGS.camera,
       cameraSettings: DEFAULT_VIEW_SETTINGS.cameraSettings,
       grid: DEFAULT_VIEW_SETTINGS.grid,
-      display: DEFAULT_VIEW_SETTINGS.display,
+      display: { rightPanelOpen: false },
       history: DEFAULT_VIEW_SETTINGS.history,
     });
 
@@ -74,7 +73,6 @@ describe("view settings serialization", () => {
       camera: { x: 14, y: 0, zoom: 1 },
       cameraSettings: { minZoom: 0.1, maxZoom: 5, zoomSensitivity: 0.0015, panSpeed: 900 },
       grid: { step: 10, showGrid: false, snap: false },
-      display: { rightPanelOpen: false },
       history: { limit: 64 },
       accessibility: DEFAULT_VIEW_SETTINGS.accessibility,
       keyOverrides: {},
@@ -119,5 +117,16 @@ describe("view settings serialization", () => {
     expect(parseViewSettings('{"transferHintsShown":-1}', DEFAULT_VIEW_SETTINGS).transferHintsShown).toBe(0);
     expect(parseViewSettings('{"transferHintsShown":6}', DEFAULT_VIEW_SETTINGS).transferHintsShown).toBe(0);
     expect(parseViewSettings('{"transferHintsShown":2.5}', DEFAULT_VIEW_SETTINGS).transferHintsShown).toBe(0);
+  });
+
+  it("ignores the removed display-panel setting when loading older files", () => {
+    const serialized = serializeViewSettings(DEFAULT_VIEW_SETTINGS);
+    const oldSettings = JSON.stringify({
+      ...JSON.parse(serialized),
+      display: { rightPanelOpen: false },
+    });
+
+    expect(parseViewSettings(oldSettings, DEFAULT_VIEW_SETTINGS)).toEqual(DEFAULT_VIEW_SETTINGS);
+    expect(JSON.parse(serialized)).not.toHaveProperty("display");
   });
 });

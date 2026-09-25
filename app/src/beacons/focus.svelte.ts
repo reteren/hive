@@ -1,6 +1,6 @@
 import { board } from "../model/board.svelte";
 import { ME_OBJECT_ID } from "../model/link";
-import { selection } from "../selection/selection.svelte";
+import { captureSelectionSnapshot, selection, setSelectionUndoable } from "../selection/selection.svelte";
 import { editing } from "../notes/editing.svelte";
 import { links } from "../model/links.svelte";
 import { selectLinks, selectedLinkIds } from "../links/selection.svelte";
@@ -24,12 +24,16 @@ export function validFocused(): string[] {
   return beaconState.focused.filter(isBeacon);
 }
 
-export function visibleInFocus(): Set<string> | null {
+const cachedVisibleInFocus = $derived.by(() => {
   const focused = validFocused();
   if (!focused.length) return null;
   const visible = new Set(focused);
   for (const id of focused) for (const descendant of beaconDescendants(id)) visible.add(descendant);
   return visible;
+});
+
+export function visibleInFocus(): Set<string> | null {
+  return cachedVisibleInFocus;
 }
 
 export function isDimmed(objectId: string): boolean {
@@ -68,8 +72,11 @@ export function selectBeaconGroups(): void {
     group.add(id);
     for (const descendant of beaconDescendants(id)) group.add(descendant);
   }
-  selection.ids = [...group];
-  selection.primaryId = selected[0] ?? null;
+  setSelectionUndoable({
+    ...captureSelectionSnapshot(),
+    ids: [...group],
+    primaryId: selected[0] ?? null,
+  });
 }
 
 function releaseDimmedSelection(): void {

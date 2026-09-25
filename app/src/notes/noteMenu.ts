@@ -1,3 +1,5 @@
+import { board } from "../model/board.svelte";
+
 /**
  * Items of the note right-click menu. Features register their entries here instead of editing
  * the menu component (R3: Task, Add Importance, Add Purpose, …).
@@ -20,7 +22,9 @@ export function registerNoteMenuItem(item: NoteMenuItem): void {
 }
 
 export function noteMenuItems(noteId: string): NoteMenuItem[] {
+  const beacon = board.notes[noteId]?.type === "beacon";
   return [...items.values()]
+    .filter((item) => !(beacon && /^tasks?\./i.test(item.id)))
     .filter((item) => item.visible?.(noteId) ?? true)
     .sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
 }

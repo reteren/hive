@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onDestroy, onMount } from "svelte";
+  import { onDestroy, onMount, tick } from "svelte";
+  import { camera, viewport } from "../board/camera.svelte";
   import ModuleChip from "./ModuleChip.svelte";
   import type { ModuleOption } from "./moduleLogic";
 
@@ -18,6 +19,7 @@
     makeLocalLabel,
     onMakeLocal,
     floating = false,
+    hideSelected = false,
   }: {
     title: string;
     mode: "single" | "multiple";
@@ -33,6 +35,7 @@
     makeLocalLabel?: string;
     onMakeLocal?: (id: string) => void;
     floating?: boolean;
+    hideSelected?: boolean;
   } = $props();
 
   let draftId = $state<string | null>(null);
@@ -42,21 +45,45 @@
     if (!floating || !pickerElement) return;
     const board = pickerElement.closest<HTMLElement>(".board");
     const host = pickerElement.parentElement;
-    if (!board || !host) return;
+    const card = pickerElement.closest<HTMLElement>(".note-card");
+    if (!board || !host || !card) return;
 
     const boardRect = board.getBoundingClientRect();
     const hostRect = host.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
     const panel = document.querySelector<HTMLElement>(".right-panel");
     const panelLeft = panel && panel.getClientRects().length > 0
       ? panel.getBoundingClientRect().left
       : Number.POSITIVE_INFINITY;
     const visibleLeft = boardRect.left + 8;
     const visibleRight = Math.min(boardRect.right, panelLeft, window.innerWidth) - 8;
-    const width = pickerElement.getBoundingClientRect().width;
-    const maxLeft = Math.max(visibleLeft, visibleRight - width);
-    const left = Math.max(visibleLeft, Math.min(hostRect.left - 5, maxLeft));
+    const visibleTop = Math.max(boardRect.top, 0) + 8;
+    const visibleBottom = Math.min(boardRect.bottom, window.innerHeight) - 8;
+    const pickerRect = pickerElement.getBoundingClientRect();
+    const width = pickerRect.width;
+    const height = pickerRect.height;
+    const gap = 8;
+    const rightFits = cardRect.right + gap + width <= visibleRight;
+    const leftFits = cardRect.left - gap - width >= visibleLeft;
+    let left: number;
+    let top: number;
+    if (rightFits || leftFits) {
+      pickerElement.style.maxHeight = "";
+      pickerElement.style.overflowY = "";
+      left = rightFits ? cardRect.right + gap : cardRect.left - gap - width;
+      top = Math.max(visibleTop, Math.min(cardRect.top, visibleBottom - height));
+    } else {
+      const below = visibleBottom - cardRect.bottom - gap;
+      const above = cardRect.top - gap - visibleTop;
+      const placeBelow = below >= height || below >= above;
+      left = Math.max(visibleLeft, Math.min(cardRect.left, visibleRight - width));
+      top = placeBelow ? cardRect.bottom + gap : cardRect.top - gap - height;
+      pickerElement.style.maxHeight = `${Math.max(90, (placeBelow ? below : above) / (host.offsetWidth > 0 ? hostRect.width / host.offsetWidth : 1))}px`;
+      pickerElement.style.overflowY = "auto";
+    }
     const scale = host.offsetWidth > 0 ? hostRect.width / host.offsetWidth : 1;
     pickerElement.style.left = `${(left - hostRect.left) / scale}px`;
+    pickerElement.style.top = `${(top - hostRect.top) / scale}px`;
   }
 
   function onWindowPointerDown(event: PointerEvent): void {
@@ -79,6 +106,14 @@
       placeFloatingPicker();
       window.addEventListener("resize", placeFloatingPicker);
     }
+  });
+
+  $effect(() => {
+    if (!floating) return;
+    camera.x; camera.y; camera.zoom;
+    viewport.width; viewport.height;
+    selected.length;
+    void tick().then(placeFloatingPicker);
   });
 
   onDestroy(() => {
@@ -112,13 +147,15 @@
   </div>
   <div class="module-picker-options">
     {#each options as option (option.id)}
-      <ModuleChip
-        label={option.label}
-        color={option.color}
-        iconPath={option.iconPath}
-        pressed={deferred ? draftId === option.id : selected.includes(option.id)}
-        onClick={() => select(option.id)}
-      />
+      {#if !hideSelected || !selected.includes(option.id)}
+        <ModuleChip
+          label={option.label}
+          color={option.color}
+          iconPath={option.iconPath}
+          pressed={deferred ? draftId === option.id : selected.includes(option.id)}
+          onClick={() => select(option.id)}
+        />
+      {/if}
     {/each}
   </div>
   {#if description}
