@@ -24,14 +24,15 @@
   let surface: HTMLElement | null = null;
   let animationFrame: number | null = null;
   let wheelRemainder = 0;
-  const pendingPoints: Point[] = [];
+  /** Pointer samples waiting for the next frame; `free` = Shift was held (no grid snapping). */
+  const pendingPoints: { point: Point; free: boolean }[] = [];
 
   const transform = $derived(
     `translate(${viewport.width / 2} ${viewport.height / 2}) scale(${camera.zoom * PX_PER_UNIT}) translate(${-camera.x} ${-camera.y})`,
   );
   const cursorBounds = $derived(
     brushStrokeState.cursor && !brushStrokeState.gesture?.rectangle
-      ? brushSquare(brushStrokeState.cursor, brushState.size)
+      ? brushSquare(brushStrokeState.cursor, brushState.size, !brushStrokeState.free)
       : null,
   );
 
@@ -72,7 +73,7 @@
       animationFrame = null;
     }
     const points = pendingPoints.splice(0);
-    for (const point of points) appendBrushGesturePoint(point, brushState.size);
+    for (const { point, free } of points) appendBrushGesturePoint(point, brushState.size, free);
   }
 
   function clearStroke(): void {
@@ -96,6 +97,7 @@
       surface?.setPointerCapture(event.pointerId);
       const mode: BrushMode = event.button === 0 ? "paint" : "erase";
       const targetZoneId = mode === "paint" ? resolvePaintTarget(point, entries()) : null;
+      brushStrokeState.free = event.shiftKey;
       pendingPoints.length = 0;
       startBrushGesture(event.pointerId, mode, point, event.ctrlKey, targetZoneId, brushState.size);
     }
@@ -108,11 +110,12 @@
         if (!gesture) setBrushCursor(null);
         return;
       }
+      brushStrokeState.free = event.shiftKey;
       setBrushCursor(point);
       if (!gesture || gesture.pointerId !== event.pointerId) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      pendingPoints.push(point);
+      pendingPoints.push({ point, free: event.shiftKey });
       scheduleFlush();
     }
 
@@ -120,7 +123,7 @@
       const active = brushStrokeState.gesture;
       if (!active || active.pointerId !== event.pointerId) return;
       const point = world(event.clientX, event.clientY, true);
-      if (point) pendingPoints.push(point);
+      if (point) pendingPoints.push({ point, free: event.shiftKey });
       flushPendingPoints();
       const completed = finishBrushGesture();
       pendingPoints.length = 0;
@@ -162,7 +165,13 @@
       for (let notch = 0; notch < Math.abs(notches); notch += 1) stepBrushSize(notches > 0 ? -1 : 1);
     }
 
+    /** Shift toggles grid-free painting; update the cursor preview without waiting for a mouse move. */
+    function onShift(event: KeyboardEvent): void {
+      if (event.key === "Shift") brushStrokeState.free = event.type === "keydown";
+    }
+
     function onKeyDown(event: KeyboardEvent): void {
+      onShift(event);
       if (event.code !== "Escape" || event.defaultPrevented || tool.active !== "zone" || !brushStrokeState.gesture) return;
       const pointerId = brushStrokeState.gesture.pointerId;
       clearStroke();
@@ -183,6 +192,7 @@
     window.addEventListener("pointerup", finish, true);
     window.addEventListener("pointercancel", cancel, true);
     window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("keyup", onShift, true);
     return () => {
       surface?.removeEventListener("pointerdown", onPointerDown, true);
       surface?.removeEventListener("contextmenu", onContextMenu, true);
@@ -192,6 +202,8 @@
       window.removeEventListener("pointerup", finish, true);
       window.removeEventListener("pointercancel", cancel, true);
       window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("keyup", onShift, true);
+      brushStrokeState.free = false;
       clearStroke();
       setBrushCursor(null);
     };

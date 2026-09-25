@@ -78,3 +78,10 @@ describe("zone brush stroke state and history", () => {
     expect(shapeArea(zones.byId.one)).toBe(10_000);
   });
 });
+
+describe("brush rectangle without grid (Shift)", () => {
+  it("uses the exact pointer coordinates", () => {
+    expect(brushRectangleShape({ x: 3, y: 4 }, { x: 47, y: 38 }, false).parts[0]).toEqual(rectContour(3, 4, 44, 34));
+    expect(brushRectangleShape({ x: 3, y: 4 }, { x: 47, y: 38 }).parts[0]).toEqual(rectContour(0, 0, 50, 40));
+  });
+});

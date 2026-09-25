@@ -139,3 +139,15 @@ describe("zone brush geometry", () => {
     expect(result.removed).toEqual(["removed"]);
   });
 });
+
+describe("zone brush without grid (Shift)", () => {
+  it("places the square exactly under the cursor when snapping is off", () => {
+    expect(brushSquare({ x: 13, y: 7 }, 20, false)).toEqual({ x: 3, y: -3, width: 20, height: 20 });
+    expect(brushSquare({ x: 13, y: 7 }, 20)).toEqual({ x: 0, y: 0, width: 20, height: 20 });
+  });
+
+  it("keeps off-grid coordinates along a free segment", () => {
+    const shape = brushSegmentShape({ x: 13, y: 7 }, { x: 13, y: 7 }, 20, false);
+    expect(shape.parts[0].map((point) => point.x)).toContain(3);
+  });
+});

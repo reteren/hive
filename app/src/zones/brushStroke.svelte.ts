@@ -38,6 +38,8 @@ export interface CompletedBrushGesture {
 
 export const brushStrokeState = $state({
   cursor: null as Point | null,
+  /** Shift held: the brush and rectangles ignore the 10 u grid. */
+  free: false,
   gesture: null as BrushGesture | null,
 });
 
@@ -67,21 +69,23 @@ export function startBrushGesture(
     current: start,
     lastPoint: start,
     targetZoneId,
-    shape: rectangle ? brushRectangleShape(start, start) : shapeFromBounds(brushSquare(start, size)),
+    shape: rectangle
+      ? brushRectangleShape(start, start, !brushStrokeState.free)
+      : shapeFromBounds(brushSquare(start, size, !brushStrokeState.free)),
   };
 }
 
 /** Add one sampled pointer position; callers batch samples at requestAnimationFrame cadence. */
-export function appendBrushGesturePoint(point: Point, size: number): void {
+export function appendBrushGesturePoint(point: Point, size: number, free = brushStrokeState.free): void {
   const gesture = brushStrokeState.gesture;
   if (!gesture) return;
   const nextPoint = { x: point.x, y: point.y };
   brushStrokeState.cursor = nextPoint;
   gesture.current = nextPoint;
   if (gesture.rectangle) {
-    gesture.shape = brushRectangleShape(gesture.start, nextPoint);
+    gesture.shape = brushRectangleShape(gesture.start, nextPoint, !free);
   } else {
-    const segment = brushSegmentShape(gesture.lastPoint, nextPoint, size);
+    const segment = brushSegmentShape(gesture.lastPoint, nextPoint, size, !free);
     gesture.shape = unionShapes([gesture.shape, segment]) ?? gesture.shape;
     gesture.lastPoint = nextPoint;
   }
@@ -126,11 +130,12 @@ export function commitBrushGesture(gesture: CompletedBrushGesture): boolean {
   return true;
 }
 
-export function brushRectangleShape(from: Point, to: Point): ZoneShape {
-  const startX = snapBrushCoordinate(from.x);
-  const startY = snapBrushCoordinate(from.y);
-  const endX = snapBrushCoordinate(to.x);
-  const endY = snapBrushCoordinate(to.y);
+export function brushRectangleShape(from: Point, to: Point, snap = true): ZoneShape {
+  const coordinate = (value: number) => snap ? snapBrushCoordinate(value) : value;
+  const startX = coordinate(from.x);
+  const startY = coordinate(from.y);
+  const endX = coordinate(to.x);
+  const endY = coordinate(to.y);
   const width = Math.max(ZONE_MIN_THICKNESS, Math.abs(endX - startX));
   const height = Math.max(ZONE_MIN_THICKNESS, Math.abs(endY - startY));
   const x = endX < startX || (endX === startX && to.x < from.x) ? startX - width : startX;

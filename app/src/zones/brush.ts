@@ -33,12 +33,14 @@ export function normalizeBrushSize(size: number): number {
 
 /**
  * The square the brush covers when centred on `point`. Its top-left is snapped with Math.round to
- * the nearest 10u multiple (ties go toward positive infinity, including negative half-steps).
+ * the nearest 10u multiple (ties go toward positive infinity, including negative half-steps);
+ * `snap = false` (Shift held) places the square exactly under the cursor.
  */
-export function brushSquare(point: Point, size: number): ZoneBounds {
+export function brushSquare(point: Point, size: number, snap = true): ZoneBounds {
   if (![point.x, point.y].every(Number.isFinite)) throw new RangeError("Brush point must be finite.");
   const normalizedSize = normalizeBrushSize(size);
-  const snapped = snapToGrid({ x: point.x - normalizedSize / 2, y: point.y - normalizedSize / 2 }, BRUSH_GRID);
+  const corner = { x: point.x - normalizedSize / 2, y: point.y - normalizedSize / 2 };
+  const snapped = snap ? snapToGrid(corner, BRUSH_GRID) : corner;
   const topLeft = {
     x: Object.is(snapped.x, -0) ? 0 : snapped.x,
     y: Object.is(snapped.y, -0) ? 0 : snapped.y,
@@ -50,7 +52,7 @@ export function brushSquare(point: Point, size: number): ZoneBounds {
  * The area covered by moving the brush from `from` to `to`. Samples are no more than half a
  * 10u grid step apart along the path, then snapped square stamps are rasterized as one union.
  */
-export function brushSegmentShape(from: Point, to: Point, size: number): ZoneShape {
+export function brushSegmentShape(from: Point, to: Point, size: number, snap = true): ZoneShape {
   if (![from.x, from.y, to.x, to.y].every(Number.isFinite)) throw new RangeError("Brush segment must be finite.");
   const normalizedSize = normalizeBrushSize(size);
   const distance = Math.hypot(to.x - from.x, to.y - from.y);
@@ -62,7 +64,7 @@ export function brushSegmentShape(from: Point, to: Point, size: number): ZoneSha
       x: from.x + (to.x - from.x) * ratio,
       y: from.y + (to.y - from.y) * ratio,
     };
-    const square = brushSquare(point, normalizedSize);
+    const square = brushSquare(point, normalizedSize, snap);
     squares.set(`${square.x},${square.y}`, square);
   }
   return shapeFromGrid(createRectUnionGrid([...squares.values()]));
