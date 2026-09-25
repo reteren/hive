@@ -41,3 +41,15 @@ export function zoneBounds(zone: Zone): ZoneBounds {
   const y = Math.min(...ys);
   return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
 }
+
+/** Name strip follows the highest outer top edge, then the leftmost one. */
+export function zoneNameEdge(zone: Zone): { x: number; y: number; width: number } {
+  const edges = zone.parts.flatMap((part) => part.flatMap((point, index) => {
+    const next = part[(index + 1) % part.length];
+    return point.y === next.y && point.x !== next.x
+      ? [{ x: Math.min(point.x, next.x), y: point.y, width: Math.abs(next.x - point.x) }]
+      : [];
+  }));
+  edges.sort((first, second) => first.y - second.y || first.x - second.x);
+  return edges[0];
+}

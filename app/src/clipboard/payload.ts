@@ -17,6 +17,7 @@ import { uniqueName } from "../notes/naming";
 import type { Zone } from "../model/zone";
 import { zoneBounds } from "../model/zone";
 import { normalizeBeaconColor } from "../beacons/beaconPalette";
+import { shapesOverlap, translateShape } from "../zones/shape";
 
 export const HIVE_CLIPBOARD_MARKER = "hive/nodes";
 export const HIVE_CLIPBOARD_VERSION = 3;
@@ -306,26 +307,7 @@ export function findNonOverlappingZoneOffset(
 
 /** Area overlap check; shared edges and corners are allowed. */
 export function zonesOverlap(first: Zone, second: Zone): boolean {
-  const a = zoneBounds(first);
-  const b = zoneBounds(second);
-  if (a.x >= b.x + b.width || b.x >= a.x + a.width || a.y >= b.y + b.height || b.y >= a.y + a.height) return false;
-  for (const polygonA of first.parts) {
-    for (const polygonB of second.parts) {
-      if (polygonEdgesCross(polygonA, polygonB) ||
-        polygonA.some((point) => pointStrictlyInZone(point, second)) ||
-        polygonB.some((point) => pointStrictlyInZone(point, first)) ||
-        pointStrictlyInZone(polygonAverage(polygonA), second) ||
-        pointStrictlyInZone(polygonAverage(polygonB), first)) return true;
-    }
-  }
-  return false;
-}
-
-function polygonAverage(polygon: readonly Point[]): Point {
-  return polygon.reduce((point, next) => ({
-    x: point.x + next.x / polygon.length,
-    y: point.y + next.y / polygon.length,
-  }), { x: 0, y: 0 });
+  return shapesOverlap(first, second);
 }
 
 function parseClipboardNode(value: unknown): ClipboardNode | null {
@@ -400,13 +382,13 @@ function parseClipboardPolygons(value: unknown, allowEmpty: boolean): Point[][] 
   if (!Array.isArray(value) || (!allowEmpty && value.length === 0) || value.length > 100) return null;
   const polygons: Point[][] = [];
   for (const candidate of value) {
-    if (!Array.isArray(candidate) || candidate.length < 3 || candidate.length > 512) return null;
+    if (!Array.isArray(candidate) || candidate.length < 4 || candidate.length > 512) return null;
     const points: Point[] = [];
     for (const point of candidate) {
       if (!isRecord(point) || !finite(point.x) || !finite(point.y)) return null;
       points.push({ x: point.x, y: point.y });
     }
-    if (!hasPolygonArea(points) || polygonSelfIntersects(points)) return null;
+    if (!hasPolygonArea(points) || !isOrthogonal(points) || polygonSelfIntersects(points)) return null;
     polygons.push(points);
   }
   return polygons;
@@ -471,48 +453,7 @@ function copyPolygons(polygons: readonly Point[][]): Point[][] {
 }
 
 function translateZone(zone: Zone, offset: Point): Zone {
-  return {
-    ...zone,
-    parts: zone.parts.map((polygon) => polygon.map((point) => ({ x: point.x + offset.x, y: point.y + offset.y }))),
-    holes: zone.holes.map((polygon) => polygon.map((point) => ({ x: point.x + offset.x, y: point.y + offset.y }))),
-  };
-}
-
-function polygonEdgesCross(first: readonly Point[], second: readonly Point[]): boolean {
-  for (let firstIndex = 0; firstIndex < first.length; firstIndex += 1) {
-    const a = first[firstIndex];
-    const b = first[(firstIndex + 1) % first.length];
-    for (let secondIndex = 0; secondIndex < second.length; secondIndex += 1) {
-      const c = second[secondIndex];
-      const d = second[(secondIndex + 1) % second.length];
-      const crossA = crossProduct(a, b, c);
-      const crossB = crossProduct(a, b, d);
-      const crossC = crossProduct(c, d, a);
-      const crossD = crossProduct(c, d, b);
-      if (((crossA > 1e-8 && crossB < -1e-8) || (crossA < -1e-8 && crossB > 1e-8)) &&
-        ((crossC > 1e-8 && crossD < -1e-8) || (crossC < -1e-8 && crossD > 1e-8))) return true;
-    }
-  }
-  return false;
-}
-
-function pointStrictlyInZone(point: Point, zone: Zone): boolean {
-  return zone.parts.some((part) => pointStrictlyInPolygon(point, part)) &&
-    !zone.holes.some((hole) => pointStrictlyInPolygon(point, hole));
-}
-
-function pointStrictlyInPolygon(point: Point, polygon: readonly Point[]): boolean {
-  let inside = false;
-  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
-    const a = polygon[previous];
-    const b = polygon[index];
-    if (Math.abs(crossProduct(a, b, point)) < 1e-8 &&
-      point.x >= Math.min(a.x, b.x) && point.x <= Math.max(a.x, b.x) &&
-      point.y >= Math.min(a.y, b.y) && point.y <= Math.max(a.y, b.y)) return false;
-    if ((a.y > point.y) !== (b.y > point.y) &&
-      point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
-  }
-  return inside;
+  return { ...zone, ...translateShape(zone, offset) };
 }
 
 function hasPolygonArea(points: readonly Point[]): boolean {
@@ -524,6 +465,13 @@ function hasPolygonArea(points: readonly Point[]): boolean {
     twiceArea += point.x * next.y - next.x * point.y;
   }
   return Math.abs(twiceArea) > 1e-8;
+}
+
+function isOrthogonal(points: readonly Point[]): boolean {
+  return points.every((point, index) => {
+    const next = points[(index + 1) % points.length];
+    return point.x === next.x || point.y === next.y;
+  });
 }
 
 function polygonSelfIntersects(points: readonly Point[]): boolean {

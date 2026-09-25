@@ -24,6 +24,7 @@ import { isTextEditingTarget } from "../commands/focus";
 import { clearSelectedLink, selectedLink } from "../links/selection.svelte";
 import { unlinkSelected } from "../links/operations";
 import { deleteZonesAction } from "../zones/zoneGestures";
+import { translateShape } from "../zones/shape";
 import { beaconPaletteColor } from "../beacons/beaconPalette";
 import {
   creationObstacleForNote,
@@ -528,11 +529,7 @@ function copyZone(zone: Zone): Zone {
 }
 
 function translateZone(zone: Zone, offset: { x: number; y: number }): Zone {
-  return {
-    ...zone,
-    parts: zone.parts.map((part) => part.map((point) => ({ x: point.x + offset.x, y: point.y + offset.y }))),
-    holes: zone.holes.map((hole) => hole.map((point) => ({ x: point.x + offset.x, y: point.y + offset.y }))),
-  };
+  return { ...zone, ...translateShape(zone, offset) };
 }
 
 function isNoteEditingFocus(): boolean {

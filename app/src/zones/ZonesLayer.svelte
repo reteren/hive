@@ -6,9 +6,11 @@
   import { isTextEditingTarget } from "../commands/focus";
   import { zones } from "../model/zones.svelte";
   import type { Zone } from "../model/zone";
-  import { zoneBounds } from "../model/zone";
+  import { zoneNameEdge } from "../model/zone";
   import { tool } from "../tools/tool.svelte";
-  import { createZone, deleteZone, recolorZone, renameZone, ZONE_COLORS } from "./commands";
+  import { formatKey } from "../commands/keys";
+  import { getCommand } from "../commands/registry.svelte";
+  import { createZone, deleteZone, editZoneShape, recolorZone, renameZone, ZONE_COLORS } from "./commands";
   import { startZoneMembershipSync } from "./membership.svelte";
   import { zoneCreationPreview, zoneTouchesRect } from "./geometry";
 
@@ -29,6 +31,7 @@
   const preview = $derived(drag
     ? zoneCreationPreview(drag.start, drag.end, Object.values(zones.byId))
     : null);
+  const editShapeKeys = $derived(getCommand("zone.editShape")?.keys.map(formatKey).join(", ") ?? "");
 
   function pathFor(zone: Zone): string {
     return [...zone.parts, ...zone.holes].map((polygon) => polygon.length
@@ -77,7 +80,7 @@
     for (const id of [...zones.order].reverse()) {
       const label = labels.find((element) => element.closest("[data-zone-id]")?.getAttribute("data-zone-id") === id);
       if (!label) continue;
-      const rect = label.getBoundingClientRect();
+      const rect = (label.parentElement ?? label).getBoundingClientRect();
       if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) return id;
     }
     return null;
@@ -188,7 +191,7 @@
       {#each zones.order as id (id)}
         {@const zone = zones.byId[id]}
         {#if zone}
-          {@const bounds = zoneBounds(zone)}
+          {@const nameEdge = zoneNameEdge(zone)}
           <g data-zone-id={id}>
             <path
               d={pathFor(zone)}
@@ -200,17 +203,19 @@
               vector-effect="non-scaling-stroke"
               style:pointer-events={tool.active === "select" ? "visiblePainted" : "none"}
             />
-            <text
-              x={bounds.x + 0.8}
-              y={bounds.y + 1.7}
-              fill={zone.color}
-              class="zone-name"
-              role="button"
-              tabindex="0"
-              aria-label={`Rename ${zone.name}`}
-              style:pointer-events={tool.active === "select" ? "visiblePainted" : "none"}
-              onkeydown={(event) => { if (event.code === "Enter") { event.preventDefault(); openMenu(id, { x: 12, y: 12 }, true); } }}
-            >{zone.name}</text>
+            <svg x={nameEdge.x} y={nameEdge.y} width={nameEdge.width} height="2.4" overflow="hidden">
+              <text
+                x="0.8"
+                y="1.7"
+                fill={zone.color}
+                class="zone-name"
+                role="button"
+                tabindex="0"
+                aria-label={`Rename ${zone.name}`}
+                style:pointer-events={tool.active === "select" ? "visiblePainted" : "none"}
+                onkeydown={(event) => { if (event.code === "Enter") { event.preventDefault(); openMenu(id, { x: 12, y: 12 }, true); } }}
+              >{zone.name}</text>
+            </svg>
           </g>
         {/if}
       {/each}
@@ -233,6 +238,9 @@
           else if (event.code === "Escape") { event.preventDefault(); menu = null; }
         }} onblur={commitRename} />
       {:else}
+        <button type="button" role="menuitem" onclick={() => { if (menu) { editZoneShape(menu.id); menu = null; } }}>
+          Edit shape{editShapeKeys ? ` (${editShapeKeys})` : ""}
+        </button>
         <button type="button" role="menuitem" onclick={() => { if (menu) openMenu(menu.id, { x: menu.x, y: menu.y }, true); }}>Rename</button>
         <div class="zone-colours" aria-label="Zone colour">
           <span>Colour</span>

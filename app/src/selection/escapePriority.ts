@@ -3,12 +3,24 @@ export interface BoardEscapeState {
   editorOpen: boolean;
   createMenuOpen: boolean;
   undoLogOpen: boolean;
+  shapeEditActive?: boolean;
+  shapeEditMarqueeActive?: boolean;
 }
 
-export type BoardEscapeAction = "defer-to-text-editor" | "close-editor" | "close-create-menu" | "close-undo-log" | "pass-through";
+export type BoardEscapeAction =
+  | "clear-shape-edit-marquee"
+  | "leave-shape-edit"
+  | "defer-to-text-editor"
+  | "close-editor"
+  | "close-create-menu"
+  | "close-undo-log"
+  | "pass-through";
 
 /** Resolve the board-owned part of Escape priority; other UI and selection handle the remaining path. */
 export function resolveBoardEscapeAction(state: BoardEscapeState): BoardEscapeAction {
+  if (state.shapeEditActive) {
+    return state.shapeEditMarqueeActive ? "clear-shape-edit-marquee" : "leave-shape-edit";
+  }
   if (state.textEditingTarget) return "defer-to-text-editor";
   if (state.editorOpen) return "close-editor";
   if (state.createMenuOpen) return "close-create-menu";

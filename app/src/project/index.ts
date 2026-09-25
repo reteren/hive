@@ -386,7 +386,7 @@ function parsePolygons(value: unknown, allowEmpty = false): Point[][] | null {
   if (!Array.isArray(value) || (!allowEmpty && value.length === 0) || value.length > MAX_ZONE_CONTOURS) return null;
   const polygons: Point[][] = [];
   for (const candidate of value) {
-    if (!Array.isArray(candidate) || candidate.length < 3 || candidate.length > MAX_ZONE_POINTS) return null;
+    if (!Array.isArray(candidate) || candidate.length < 4 || candidate.length > MAX_ZONE_POINTS) return null;
     const points: Point[] = [];
     for (const point of candidate) {
       if (!isRecord(point) || !finite(point.x) || !finite(point.y)) return null;
@@ -404,6 +404,7 @@ function isValidPolygon(points: readonly Point[]): boolean {
     const current = points[index];
     const next = points[(index + 1) % points.length];
     if (current.x === next.x && current.y === next.y) return false;
+    if (current.x !== next.x && current.y !== next.y) return false;
     twiceArea += current.x * next.y - next.x * current.y;
   }
   if (Math.abs(twiceArea) < 1e-8) return false;

@@ -105,6 +105,7 @@ import { preferences } from "../settings/preferences.svelte";
     height: number;
     primary: boolean;
     resizable: boolean;
+    path: string;
   }
 
   type ActivePointerGesture =
@@ -249,6 +250,9 @@ import { preferences } from "../settings/preferences.svelte";
         width: bounds.width * ppu, height: bounds.height * ppu,
         primary: selection.zoneIds.at(-1) === id,
         resizable: isRectZone(zone),
+        path: [...zone.parts, ...zone.holes].map((ring) =>
+          `M ${ring.map((point) => `${(point.x - bounds.x) * ppu} ${(point.y - bounds.y) * ppu}`).join(" L ")} Z`,
+        ).join(" "),
       }];
     });
   });
@@ -1330,6 +1334,7 @@ import { preferences } from "../settings/preferences.svelte";
   {#each zoneOutlines as outline (outline.id)}
     <div
       class="selection-outline selection-zone-outline"
+      class:complex={!outline.resizable}
       role="group"
       data-selected="true"
       data-primary={outline.primary ? "true" : undefined}
@@ -1342,6 +1347,11 @@ import { preferences } from "../settings/preferences.svelte";
       style={`--zone-handle-color: ${outline.color}`}
       aria-label="Selected zone {outline.name}"
     >
+      {#if !outline.resizable}
+        <svg class="selection-zone-shape" width={outline.width} height={outline.height} aria-hidden="true">
+          <path d={outline.path} stroke={outline.color} stroke-width={outline.primary ? 1.5 : 1} fill="none" />
+        </svg>
+      {/if}
       {#if outline.primary && outline.resizable}
         {#each RESIZE_EDGES as edge (edge)}
           <button
@@ -1503,6 +1513,9 @@ import { preferences } from "../settings/preferences.svelte";
   .selection-zone-outline {
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
   }
+
+  .selection-zone-outline.complex { outline: none; box-shadow: none; }
+  .selection-zone-shape { overflow: visible; pointer-events: none; }
 
   .zone-resize-handle {
     outline: none;

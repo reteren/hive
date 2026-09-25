@@ -46,4 +46,26 @@ describe("board Escape priority", () => {
       undoLogOpen: false,
     })).toBe("pass-through");
   });
+
+  it("clears the shape cut marquee before leaving edit mode", () => {
+    expect(resolveBoardEscapeAction({
+      textEditingTarget: false,
+      editorOpen: true,
+      createMenuOpen: true,
+      undoLogOpen: true,
+      shapeEditActive: true,
+      shapeEditMarqueeActive: true,
+    })).toBe("clear-shape-edit-marquee");
+  });
+
+  it("leaves shape edit before other board-owned Escape actions", () => {
+    expect(resolveBoardEscapeAction({
+      textEditingTarget: false,
+      editorOpen: true,
+      createMenuOpen: true,
+      undoLogOpen: true,
+      shapeEditActive: true,
+      shapeEditMarqueeActive: false,
+    })).toBe("leave-shape-edit");
+  });
 });

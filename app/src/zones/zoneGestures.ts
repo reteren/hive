@@ -5,6 +5,7 @@ import { addZone, removeZone, zones } from "../model/zones.svelte";
 import { rectContour, zoneBounds, type Zone, type ZoneBounds } from "../model/zone";
 import { resizeEdgeAxes, type ResizeEdge } from "../selection/resize";
 import { MIN_ZONE_SIZE } from "./geometry";
+import { shapesOverlap, translateShape } from "./shape";
 
 export interface MemberPosition {
   id: string;
@@ -17,7 +18,7 @@ export interface ZoneMoveGesture {
   afterZone: Zone;
   beforeMembers: MemberPosition[];
   afterMembers: MemberPosition[];
-  obstacles: ZoneBounds[];
+  obstacles: Zone[];
   startWorld: Point;
   blocked: boolean;
 }
@@ -25,7 +26,7 @@ export interface ZoneMoveGesture {
 export interface ZoneResizeGesture {
   beforeZone: Zone;
   afterZone: Zone;
-  obstacles: ZoneBounds[];
+  obstacles: Zone[];
   edge: ResizeEdge;
   startWorld: Point;
   blocked: boolean;
@@ -34,10 +35,8 @@ export interface ZoneResizeGesture {
 export function isRectZone(zone: Zone): boolean {
   if (zone.parts.length !== 1 || zone.holes.length !== 0 || zone.parts[0].length !== 4) return false;
   const bounds = zoneBounds(zone);
-  return zone.parts[0].every((point, index) => {
-    const corner = rectContour(bounds.x, bounds.y, bounds.width, bounds.height)[index];
-    return point.x === corner.x && point.y === corner.y;
-  });
+  const corners = rectContour(bounds.x, bounds.y, bounds.width, bounds.height);
+  return zone.parts[0].every((point) => corners.some((corner) => point.x === corner.x && point.y === corner.y));
 }
 
 export function createZoneMoveGesture(
@@ -53,7 +52,7 @@ export function createZoneMoveGesture(
     afterZone: copyZone(beforeZone),
     beforeMembers,
     afterMembers: beforeMembers.map((member) => ({ ...member })),
-    obstacles: obstacles.map(zoneBounds),
+    obstacles: obstacles.map(copyZone),
     startWorld: { ...startWorld },
     blocked: false,
   };
@@ -74,10 +73,10 @@ export function updateZoneMoveGesture(
     const target = snapToGrid({ x: before.x + desired.x, y: before.y + desired.y }, step);
     desired = { x: target.x - before.x, y: target.y - before.y };
   }
-  const applied = moveAroundObstacles(before, desired, gesture.obstacles);
+  const applied = moveAroundObstacles(gesture.beforeZone, desired, gesture.obstacles);
   return {
     ...gesture,
-    afterZone: translateZone(gesture.beforeZone, applied),
+    afterZone: { ...copyZone(gesture.beforeZone), ...translateShape(gesture.beforeZone, applied) },
     afterMembers: gesture.beforeMembers.map((member) => ({
       ...member, x: member.x + applied.x, y: member.y + applied.y,
     })),
@@ -95,7 +94,7 @@ export function createZoneResizeGesture(
   return {
     beforeZone,
     afterZone: copyZone(beforeZone),
-    obstacles: obstacles.map(zoneBounds),
+    obstacles: obstacles.map(copyZone),
     edge,
     startWorld: { ...startWorld },
     blocked: false,
@@ -148,9 +147,9 @@ export function updateZoneResizeGesture(
 }
 
 export function zoneGestureChanged(before: Zone, after: Zone): boolean {
-  const a = before.parts.flat();
-  const b = after.parts.flat();
-  return a.length !== b.length || a.some((point, index) => point.x !== b[index].x || point.y !== b[index].y);
+  if (isRectZone(before) && isRectZone(after)) return !sameBounds(zoneBounds(before), zoneBounds(after));
+  return JSON.stringify(before.parts) !== JSON.stringify(after.parts) ||
+    JSON.stringify(before.holes) !== JSON.stringify(after.holes);
 }
 
 /** The caller may combine this action with note deletion in one HistoryCommand. */
@@ -169,14 +168,6 @@ export function deleteZonesAction(zoneIds: readonly string[]): Pick<HistoryComma
   };
 }
 
-function translateZone(zone: Zone, delta: Point): Zone {
-  return {
-    ...copyZone(zone),
-    parts: zone.parts.map((part) => part.map((point) => ({ x: point.x + delta.x, y: point.y + delta.y }))),
-    holes: zone.holes.map((hole) => hole.map((point) => ({ x: point.x + delta.x, y: point.y + delta.y }))),
-  };
-}
-
 function copyZone(zone: Zone): Zone {
   return {
     ...zone,
@@ -185,53 +176,31 @@ function copyZone(zone: Zone): Zone {
   };
 }
 
-function moveAroundObstacles(
-  before: ZoneBounds,
-  desired: Point,
-  obstacles: readonly ZoneBounds[],
-): Point {
+function moveAroundObstacles(before: Zone, desired: Point, obstacles: readonly Zone[]): Point {
   const xy = moveInOrder(before, desired, obstacles, "xy");
   const yx = moveInOrder(before, desired, obstacles, "yx");
   return distanceSquared(xy, desired) <= distanceSquared(yx, desired) ? xy : yx;
 }
 
-function moveInOrder(
-  before: ZoneBounds,
-  desired: Point,
-  obstacles: readonly ZoneBounds[],
-  order: "xy" | "yx",
-): Point {
-  let bounds = { ...before };
-  let applied = { x: 0, y: 0 };
+function moveInOrder(before: Zone, desired: Point, obstacles: readonly Zone[], order: "xy" | "yx"): Point {
+  const applied = { x: 0, y: 0 };
   for (const axis of axisOrder(order)) {
-    const amount = clampMoveAxis(bounds, axis, desired[axis], obstacles);
-    bounds = { ...bounds, [axis]: bounds[axis] + amount };
-    applied = { ...applied, [axis]: amount };
+    const amount = desired[axis];
+    if (amount === 0) continue;
+    const at = (fraction: number): Zone => ({
+      ...before,
+      ...translateShape(before, { ...applied, [axis]: amount * fraction }),
+    });
+    applied[axis] = amount * firstCollisionFraction(at, axis, obstacles);
   }
   return applied;
-}
-
-function clampMoveAxis(bounds: ZoneBounds, axis: "x" | "y", desired: number, obstacles: readonly ZoneBounds[]): number {
-  let allowed = desired;
-  const other = axis === "x" ? "y" : "x";
-  const size = axis === "x" ? "width" : "height";
-  const otherSize = axis === "x" ? "height" : "width";
-  for (const obstacle of obstacles) {
-    if (!intervalsOverlap(bounds[other], bounds[other] + bounds[otherSize], obstacle[other], obstacle[other] + obstacle[otherSize])) continue;
-    if (desired > 0 && obstacle[axis] >= bounds[axis] + bounds[size]) {
-      allowed = Math.min(allowed, obstacle[axis] - (bounds[axis] + bounds[size]));
-    } else if (desired < 0 && obstacle[axis] + obstacle[size] <= bounds[axis]) {
-      allowed = Math.max(allowed, obstacle[axis] + obstacle[size] - bounds[axis]);
-    }
-  }
-  return allowed;
 }
 
 function resizeAroundObstacles(
   before: ZoneBounds,
   desired: ZoneBounds,
   axes: ReturnType<typeof resizeEdgeAxes>,
-  obstacles: readonly ZoneBounds[],
+  obstacles: readonly Zone[],
 ): ZoneBounds {
   const xy = resizeInOrder(before, desired, axes, obstacles, "xy");
   const yx = resizeInOrder(before, desired, axes, obstacles, "yx");
@@ -242,7 +211,7 @@ function resizeInOrder(
   before: ZoneBounds,
   desired: ZoneBounds,
   axes: ReturnType<typeof resizeEdgeAxes>,
-  obstacles: readonly ZoneBounds[],
+  obstacles: readonly Zone[],
   order: "xy" | "yx",
 ): ZoneBounds {
   let result = { ...before };
@@ -250,37 +219,68 @@ function resizeInOrder(
     const edge = axis === "x" ? axes.horizontal : axes.vertical;
     if (!edge) continue;
     const size = axis === "x" ? "width" : "height";
-    const other = axis === "x" ? "y" : "x";
-    const otherSize = axis === "x" ? "height" : "width";
     const currentStart = result[axis];
     const currentEnd = currentStart + result[size];
     const desiredStart = desired[axis];
     const desiredEnd = desiredStart + desired[size];
-    let next = edge === "right" || edge === "bottom" ? desiredEnd : desiredStart;
-    const expanding = edge === "right" || edge === "bottom"
-      ? next > currentEnd
-      : next < currentStart;
-    if (expanding) {
-      for (const obstacle of obstacles) {
-        if (!intervalsOverlap(result[other], result[other] + result[otherSize], obstacle[other], obstacle[other] + obstacle[otherSize])) continue;
-        if (edge === "right" || edge === "bottom") {
-          if (obstacle[axis] >= currentEnd) next = Math.min(next, obstacle[axis]);
-        } else if (obstacle[axis] + obstacle[size] <= currentStart) {
-          next = Math.max(next, obstacle[axis] + obstacle[size]);
-        }
-      }
-    }
-    if (edge === "right" || edge === "bottom") {
-      result = { ...result, [size]: next - currentStart };
-    } else {
-      result = { ...result, [axis]: next, [size]: currentEnd - next };
-    }
+    const change = edge === "right" || edge === "bottom" ? desiredEnd - currentEnd : desiredStart - currentStart;
+    if (change === 0) continue;
+    const rectAt = (fraction: number): ZoneBounds => edge === "right" || edge === "bottom"
+      ? { ...result, [size]: result[size] + change * fraction }
+      : { ...result, [axis]: result[axis] + change * fraction, [size]: result[size] - change * fraction };
+    const at = (fraction: number): Zone => ({
+      id: "", name: "", color: "", holes: [], parts: [rectContour(...rectValues(rectAt(fraction)))],
+    });
+    result = rectAt(firstCollisionFraction(at, axis, obstacles));
   }
   return result;
 }
 
-function intervalsOverlap(a0: number, a1: number, b0: number, b1: number): boolean {
-  return a0 < b1 && b0 < a1;
+function rectValues(rect: ZoneBounds): [number, number, number, number] {
+  return [rect.x, rect.y, rect.width, rect.height];
+}
+
+/** Orthogonal overlap changes only when moving and obstacle vertex coordinates align. */
+function firstCollisionFraction(at: (fraction: number) => Zone, axis: "x" | "y", obstacles: readonly Zone[]): number {
+  if (obstacles.length === 0) return 1;
+  const start = at(0);
+  const end = at(1);
+  const firstBounds = zoneBounds(start);
+  const lastBounds = zoneBounds(end);
+  const sweep = {
+    x: Math.min(firstBounds.x, lastBounds.x),
+    y: Math.min(firstBounds.y, lastBounds.y),
+    width: Math.max(firstBounds.x + firstBounds.width, lastBounds.x + lastBounds.width) - Math.min(firstBounds.x, lastBounds.x),
+    height: Math.max(firstBounds.y + firstBounds.height, lastBounds.y + lastBounds.height) - Math.min(firstBounds.y, lastBounds.y),
+  };
+  const nearby = obstacles.filter((zone) => boundsOverlap(sweep, zoneBounds(zone)));
+  if (nearby.length === 0) return 1;
+  const startPoints = [...start.parts.flat(), ...start.holes.flat()];
+  const endPoints = [...end.parts.flat(), ...end.holes.flat()];
+  const fractions = new Set<number>([0, 1]);
+  const obstacleCoordinates = [...new Set(nearby.flatMap((zone) =>
+    [...zone.parts.flat(), ...zone.holes.flat()].map((point) => point[axis])))];
+  for (let index = 0; index < startPoints.length; index += 1) {
+    const coordinate = startPoints[index][axis];
+    const movement = endPoints[index][axis] - coordinate;
+    if (movement === 0) continue;
+    for (const obstacleCoordinate of obstacleCoordinates) {
+      const fraction = (obstacleCoordinate - coordinate) / movement;
+      if (fraction > 0 && fraction < 1) fractions.add(fraction);
+    }
+  }
+  const sorted = [...fractions].sort((first, second) => first - second);
+  for (let index = 0; index < sorted.length - 1; index += 1) {
+    const middle = (sorted[index] + sorted[index + 1]) / 2;
+    const candidate = at(middle);
+    if (nearby.some((obstacle) => shapesOverlap(candidate, obstacle))) return sorted[index];
+  }
+  return 1;
+}
+
+function boundsOverlap(first: ZoneBounds, second: ZoneBounds): boolean {
+  return first.x < second.x + second.width && second.x < first.x + first.width &&
+    first.y < second.y + second.height && second.y < first.y + first.height;
 }
 
 function axisOrder(order: "xy" | "yx"): Array<"x" | "y"> {

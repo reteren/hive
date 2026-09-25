@@ -1,5 +1,6 @@
 import type { Point } from "../board/cameraMath";
 import type { Zone, ZoneBounds } from "../model/zone";
+import { shapeAreaInRect, shapeContainsPoint, shapesOverlap } from "./shape";
 
 const EPS = 1e-8;
 
@@ -10,47 +11,9 @@ export function normalizedRect(a: Point, b: Point): ZoneBounds {
   return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y) };
 }
 
-function clipPolygon(polygon: readonly Point[], inside: (point: Point) => boolean, intersect: (a: Point, b: Point) => Point): Point[] {
-  const result: Point[] = [];
-  if (polygon.length === 0) return result;
-  for (let index = 0; index < polygon.length; index += 1) {
-    const current = polygon[index];
-    const previous = polygon[(index + polygon.length - 1) % polygon.length];
-    const currentInside = inside(current);
-    const previousInside = inside(previous);
-    if (currentInside !== previousInside) result.push(intersect(previous, current));
-    if (currentInside) result.push(current);
-  }
-  return result;
-}
-
-function polygonWithinRect(polygon: readonly Point[], rect: ZoneBounds): Point[] {
-  let result = [...polygon];
-  const x2 = rect.x + rect.width;
-  const y2 = rect.y + rect.height;
-  result = clipPolygon(result, (p) => p.x >= rect.x, (a, b) => ({ x: rect.x, y: a.y + (b.y - a.y) * (rect.x - a.x) / (b.x - a.x) }));
-  result = clipPolygon(result, (p) => p.x <= x2, (a, b) => ({ x: x2, y: a.y + (b.y - a.y) * (x2 - a.x) / (b.x - a.x) }));
-  result = clipPolygon(result, (p) => p.y >= rect.y, (a, b) => ({ x: a.x + (b.x - a.x) * (rect.y - a.y) / (b.y - a.y), y: rect.y }));
-  result = clipPolygon(result, (p) => p.y <= y2, (a, b) => ({ x: a.x + (b.x - a.x) * (y2 - a.y) / (b.y - a.y), y: y2 }));
-  return result;
-}
-
-function polygonArea(points: readonly Point[]): number {
-  let twice = 0;
-  for (let index = 0; index < points.length; index += 1) {
-    const a = points[index];
-    const b = points[(index + 1) % points.length];
-    twice += a.x * b.y - a.y * b.x;
-  }
-  return Math.abs(twice) / 2;
-}
-
 /** Area occupied by a zone inside a rectangular object, respecting future holes. */
 export function zoneAreaInRect(zone: Zone, rect: ZoneBounds): number {
-  if (rect.width <= 0 || rect.height <= 0) return 0;
-  const area = zone.parts.reduce((sum, polygon) => sum + polygonArea(polygonWithinRect(polygon, rect)), 0)
-    - zone.holes.reduce((sum, polygon) => sum + polygonArea(polygonWithinRect(polygon, rect)), 0);
-  return Math.max(0, area);
+  return shapeAreaInRect(zone, rect);
 }
 
 function cross(a: Point, b: Point, c: Point): number {
@@ -85,6 +48,7 @@ function pointInPolygon(point: Point, polygon: readonly Point[]): boolean {
 
 /** Contact counts, including a shared edge or corner; a rectangle wholly inside a hole does not. */
 export function zoneTouchesRect(zone: Zone, rect: ZoneBounds): boolean {
+  if (rect.width === 0 && rect.height === 0) return shapeContainsPoint(zone, { x: rect.x, y: rect.y });
   if (zoneAreaInRect(zone, rect) > EPS) return true;
   const corners = [
     { x: rect.x, y: rect.y }, { x: rect.x + rect.width, y: rect.y },
@@ -104,7 +68,11 @@ export function zoneTouchesRect(zone: Zone, rect: ZoneBounds): boolean {
 }
 
 export function rectangleOverlapsZones(rect: ZoneBounds, zones: readonly Zone[]): boolean {
-  return zones.some((zone) => zoneAreaInRect(zone, rect) > EPS);
+  const rectangle = { parts: [[
+    { x: rect.x, y: rect.y }, { x: rect.x + rect.width, y: rect.y },
+    { x: rect.x + rect.width, y: rect.y + rect.height }, { x: rect.x, y: rect.y + rect.height },
+  ]], holes: [] };
+  return zones.some((zone) => shapesOverlap(rectangle, zone));
 }
 
 export interface ZoneCreationPreview {
