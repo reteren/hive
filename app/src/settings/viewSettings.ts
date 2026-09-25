@@ -2,9 +2,10 @@ import { isValidGridStep } from "../board/gridMath";
 import type { Camera } from "../board/cameraMath";
 import { sanitizeKeyOverrides, type KeyBindingOverrides } from "../commands/keymap";
 import { DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT, MIN_HISTORY_LIMIT } from "../history/historyStack";
+import { BRUSH_MIN, normalizeBrushSize } from "../zones/brush";
 import { systemPrefersReducedMotion } from "./motion";
 
-export const VIEW_SETTINGS_VERSION = 6;
+export const VIEW_SETTINGS_VERSION = 7;
 
 export interface CameraSettings {
   minZoom: number;
@@ -27,12 +28,17 @@ export interface AccessibilitySettings {
   reduceAnimations: boolean;
 }
 
+export interface ZoneSettings {
+  brushSize: number;
+}
+
 export interface ViewSettings {
   camera: Camera;
   cameraSettings: CameraSettings;
   grid: GridSettings;
   history: HistorySettings;
   accessibility: AccessibilitySettings;
+  zones: ZoneSettings;
   keyOverrides: KeyBindingOverrides;
   transferHintsShown: number;
   fitWidthToText: boolean;
@@ -49,6 +55,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
   grid: { step: 10, showGrid: true, snap: false },
   history: { limit: DEFAULT_HISTORY_LIMIT },
   accessibility: { reduceAnimations: systemPrefersReducedMotion() },
+  zones: { brushSize: BRUSH_MIN * 3 },
   keyOverrides: {},
   transferHintsShown: 0,
   fitWidthToText: true,
@@ -81,6 +88,7 @@ export function parseViewSettings(serialized: string | null | undefined, default
   const gridInput = asRecord(parsed.grid);
   const historyInput = asRecord(parsed.history);
   const accessibilityInput = asRecord(parsed.accessibility);
+  const zonesInput = asRecord(parsed.zones);
 
   return {
     camera: {
@@ -102,6 +110,9 @@ export function parseViewSettings(serialized: string | null | undefined, default
     accessibility: {
       reduceAnimations: booleanOrDefault(accessibilityInput.reduceAnimations, defaults.accessibility.reduceAnimations),
     },
+    zones: {
+      brushSize: brushSizeOrDefault(zonesInput.brushSize, defaults.zones.brushSize),
+    },
     keyOverrides: sanitizeKeyOverrides(parsed.keyOverrides),
     transferHintsShown: hintCountOrDefault(parsed.transferHintsShown, defaults.transferHintsShown),
     fitWidthToText: booleanOrDefault(parsed.fitWidthToText, defaults.fitWidthToText),
@@ -122,6 +133,7 @@ export function serializeViewSettings(settings: ViewSettings): string {
     grid: { step: settings.grid.step, showGrid: settings.grid.showGrid, snap: settings.grid.snap },
     history: { limit: settings.history.limit },
     accessibility: { reduceAnimations: settings.accessibility.reduceAnimations },
+    zones: { brushSize: settings.zones.brushSize },
     keyOverrides: sanitizeKeyOverrides(settings.keyOverrides),
     transferHintsShown: hintCountOrDefault(settings.transferHintsShown, 0),
     fitWidthToText: settings.fitWidthToText,
@@ -158,6 +170,7 @@ function cloneViewSettings(settings: ViewSettings): ViewSettings {
     grid: { ...settings.grid },
     history: { ...settings.history },
     accessibility: { ...settings.accessibility },
+    zones: { ...settings.zones },
     keyOverrides: sanitizeKeyOverrides(settings.keyOverrides),
     transferHintsShown: settings.transferHintsShown,
     fitWidthToText: settings.fitWidthToText,
@@ -203,6 +216,10 @@ function hintCountOrDefault(value: unknown, fallback: number): number {
 
 function gridStepOrDefault(value: unknown, fallback: number): number {
   return typeof value === "number" && isValidGridStep(value) ? value : fallback;
+}
+
+function brushSizeOrDefault(value: unknown, fallback: number): number {
+  return isFiniteNumber(value) ? normalizeBrushSize(value) : fallback;
 }
 
 function clamp(value: number, min: number, max: number): number {

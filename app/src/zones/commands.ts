@@ -4,11 +4,10 @@ import { zones, addZone, removeZone, updateZone } from "../model/zones.svelte";
 import { newId } from "../model/note";
 import { execute } from "../history/history.svelte";
 import { registerCommand } from "../commands/registry.svelte";
-import { selection } from "../selection/selection.svelte";
 import { tool } from "../tools/tool.svelte";
 import { uniqueName } from "../notes/naming";
 import { MIN_ZONE_SIZE, rectangleOverlapsZones } from "./geometry";
-import { enterShapeEdit } from "./shapeEdit.svelte";
+import { stepBrushSize } from "./brushState.svelte";
 
 export const ZONE_COLORS = ["#608ac1", "#a882c2", "#72a98b", "#c59965", "#b87582", "#73a9b6"] as const;
 
@@ -65,16 +64,18 @@ registerCommand({
   isActive: () => tool.active === "zone",
 });
 
-export function editZoneShape(id: string): boolean {
-  tool.active = "select";
-  return enterShapeEdit(id);
-}
+registerCommand({
+  id: "zone.increaseBrushSize",
+  label: "Increase brush size",
+  keys: [],
+  run: () => { if (tool.active === "zone") stepBrushSize(1); },
+  isActive: () => tool.active === "zone",
+});
 
 registerCommand({
-  id: "zone.editShape",
-  label: "Edit zone shape",
-  keys: ["KeyE"],
-  run: () => {
-    if (selection.zoneIds.length === 1 && selection.ids.length === 0) editZoneShape(selection.zoneIds[0]);
-  },
+  id: "zone.decreaseBrushSize",
+  label: "Decrease brush size",
+  keys: [],
+  run: () => { if (tool.active === "zone") stepBrushSize(-1); },
+  isActive: () => tool.active === "zone",
 });

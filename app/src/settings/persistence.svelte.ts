@@ -3,6 +3,7 @@ import { registerCloseFlush } from "../lifecycle/closeFlush";
 import { camera, cameraSettings } from "../board/camera.svelte";
 import { grid } from "../board/grid.svelte";
 import { history as undoHistory, setHistoryLimit } from "../history/history.svelte";
+import { brushState, setBrushSize } from "../zones/brushState.svelte";
 import { getCommandKeyOverrides, setCommandKeyOverrides } from "../commands/registry.svelte";
 import { applyReduceMotionPreference } from "./motion";
 import { preferences, setFitWidthToText, setReduceAnimations, setTransferHintsShown } from "./preferences.svelte";
@@ -94,6 +95,7 @@ function currentSettings(): ViewSettings {
     grid: { step: grid.step, showGrid: grid.showGrid, snap: grid.snap },
     history: { limit: undoHistory.limit },
     accessibility: { reduceAnimations: preferences.reduceAnimations },
+    zones: { brushSize: brushState.size },
     keyOverrides: getCommandKeyOverrides(),
     transferHintsShown: preferences.transferHintsShown,
     fitWidthToText: preferences.fitWidthToText,
@@ -112,6 +114,7 @@ function applySettings(settings: ViewSettings): void {
   grid.showGrid = settings.grid.showGrid;
   grid.snap = settings.grid.snap;
   setHistoryLimit(settings.history.limit);
+  setBrushSize(settings.zones.brushSize);
   setReduceAnimations(settings.accessibility.reduceAnimations);
   setCommandKeyOverrides(settings.keyOverrides);
   setTransferHintsShown(settings.transferHintsShown);

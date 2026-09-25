@@ -5,7 +5,8 @@
   import { attachCameraInput } from "./cameraInput";
   import GridLayer from "./GridLayer.svelte";
   import ZonesLayer from "../zones/ZonesLayer.svelte";
-  import ShapeEditor from "../zones/ShapeEditor.svelte";
+  import ZoneBrushLayer from "../zones/ZoneBrushLayer.svelte";
+  import BrushPanel from "../zones/BrushPanel.svelte";
   import BeaconsLayer from "../beacons/BeaconsLayer.svelte";
   import LinksLayer from "../links/LinksLayer.svelte";
   import "../links/commands";
@@ -17,7 +18,6 @@
   import { creationMenu } from "../notes/creation.svelte";
   import { isTextEditingTarget } from "../commands/focus";
   import { resolveBoardEscapeAction } from "../selection/escapePriority";
-  import { clearShapeEditMarquee, leaveShapeEdit, shapeEdit } from "../zones/shapeEdit.svelte";
   import { closeUndoLog, undoLogPanel } from "../history/history.svelte";
   import { cancelLineDraft } from "../links/interaction.svelte";
   import { isLineTool, tool } from "../tools/tool.svelte";
@@ -49,7 +49,7 @@
 
   function onBoardClick(event: MouseEvent): void {
     if (!(event.target instanceof Element)) return;
-    if (event.target.closest("[data-note-id], [data-create-menu]")) return;
+    if (event.target.closest("[data-note-id], [data-create-menu], [data-selection-ignore]")) return;
 
     editing.noteId = null;
     if (!creationMenu.pinned) creationMenu.open = false;
@@ -63,19 +63,9 @@
       editorOpen: editing.noteId !== null,
       createMenuOpen: creationMenu.open,
       undoLogOpen: undoLogPanel.open,
-      shapeEditActive: shapeEdit.zoneId !== null,
-      shapeEditMarqueeActive: shapeEdit.marquee !== null,
     });
 
-    if (action === "clear-shape-edit-marquee") {
-      clearShapeEditMarquee();
-      event.preventDefault();
-      event.stopPropagation();
-    } else if (action === "leave-shape-edit") {
-      leaveShapeEdit();
-      event.preventDefault();
-      event.stopPropagation();
-    } else if (action === "close-editor") {
+    if (action === "close-editor") {
       editing.noteId = null;
       event.preventDefault();
     } else if (action === "close-create-menu") {
@@ -116,7 +106,6 @@
 
 <div
   class="board"
-  class:shape-editing={shapeEdit.zoneId !== null}
   bind:this={board}
   use:boardSurface
   tabindex="-1"
@@ -124,7 +113,8 @@
 >
   <GridLayer />
   <ZonesLayer />
-  <ShapeEditor />
+  <ZoneBrushLayer />
+  <BrushPanel />
   <LinksLayer />
   <MeMarker />
   <BeaconsLayer />

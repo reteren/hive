@@ -32,14 +32,66 @@ export function createShapeGrid(shapes: readonly ZoneShape[], extraRects: readon
 
   const xCoordinates = [...xs].sort((a, b) => a - b);
   const yCoordinates = [...ys].sort((a, b) => a - b);
-  const cells = Array.from({ length: Math.max(0, yCoordinates.length - 1) }, (_, row) =>
-    Array.from({ length: Math.max(0, xCoordinates.length - 1) }, (_, column) => {
-      const x = midpoint(xCoordinates[column], xCoordinates[column + 1]);
-      const y = midpoint(yCoordinates[row], yCoordinates[row + 1]);
-      return ringsByShape.some((rings) => isInsideShape(rings, x, y));
-    }),
+  const cells = Array.from({ length: Math.max(0, yCoordinates.length - 1) }, () =>
+    Array.from({ length: Math.max(0, xCoordinates.length - 1) }, () => false),
   );
+  const columnCount = Math.max(0, xCoordinates.length - 1);
+  for (let row = 0; row < cells.length; row += 1) {
+    const y = midpoint(yCoordinates[row], yCoordinates[row + 1]);
+    for (const rings of ringsByShape) {
+      const shapeCells = rasterizeShapeRow(rings, y, xCoordinates);
+      for (let column = 0; column < columnCount; column += 1) {
+        if (shapeCells[column]) cells[row][column] = true;
+      }
+    }
+  }
   return { xs: xCoordinates, ys: yCoordinates, cells };
+}
+
+/** Replace grid cells with source minus the union of cuts, using the grid's shared coordinates. */
+export function subtractShapeCells(grid: ShapeGrid, source: ZoneShape, cuts: readonly ZoneShape[]): void {
+  const sourceRings = getShapeRings(source);
+  const cutRings = cuts.map(getShapeRings);
+  const columnCount = Math.max(0, grid.xs.length - 1);
+  for (let row = 0; row < grid.cells.length; row += 1) {
+    const y = midpoint(grid.ys[row], grid.ys[row + 1]);
+    const sourceCells = rasterizeShapeRow(sourceRings, y, grid.xs);
+    const removed = Array.from({ length: columnCount }, () => false);
+    for (const rings of cutRings) {
+      const cutCells = rasterizeShapeRow(rings, y, grid.xs);
+      for (let column = 0; column < columnCount; column += 1) {
+        if (cutCells[column]) removed[column] = true;
+      }
+    }
+    for (let column = 0; column < columnCount; column += 1) {
+      grid.cells[row][column] = sourceCells[column] && !removed[column];
+    }
+  }
+}
+
+/** Rasterize snapped rectangles directly; brush stamps are axis aligned on the 10u grid. */
+export function createRectUnionGrid(rectangles: readonly ZoneBounds[]): ShapeGrid {
+  const valid = rectangles.filter(isValidRect).map((rect) => ({
+    left: roundCoordinate(rect.x),
+    top: roundCoordinate(rect.y),
+    right: roundCoordinate(rect.x + rect.width),
+    bottom: roundCoordinate(rect.y + rect.height),
+  })).filter((rect) => rect.right > rect.left && rect.bottom > rect.top);
+  const xs = [...new Set(valid.flatMap((rect) => [rect.left, rect.right]))].sort((a, b) => a - b);
+  const ys = [...new Set(valid.flatMap((rect) => [rect.top, rect.bottom]))].sort((a, b) => a - b);
+  const cells = Array.from({ length: Math.max(0, ys.length - 1) }, () =>
+    Array.from({ length: Math.max(0, xs.length - 1) }, () => false),
+  );
+  for (const rect of valid) {
+    const firstColumn = coordinateIndex(xs, rect.left);
+    const lastColumn = coordinateIndex(xs, rect.right);
+    const firstRow = coordinateIndex(ys, rect.top);
+    const lastRow = coordinateIndex(ys, rect.bottom);
+    for (let row = firstRow; row < lastRow; row += 1) {
+      for (let column = firstColumn; column < lastColumn; column += 1) cells[row][column] = true;
+    }
+  }
+  return { xs, ys, cells };
 }
 
 export function shapeFromGrid(grid: ShapeGrid): ZoneShape {
@@ -207,8 +259,12 @@ export function pointInRing(point: Point, ring: readonly Point[]): boolean {
 }
 
 export function pointInShapeStrict(rings: ShapeRings, point: Point): boolean {
-  return rings.parts.some((ring) => pointInRingStrict(point, ring)) &&
-    !rings.holes.some((ring) => pointInRingStrict(point, ring));
+  if (!rings.parts.some((ring) => pointInRingStrict(point, ring))) return false;
+  let inside = false;
+  for (const ring of [...rings.parts, ...rings.holes]) {
+    if (pointInRingStrict(point, ring)) inside = !inside;
+  }
+  return inside;
 }
 
 export function shapeRings(shape: ZoneShape): ShapeRings {
@@ -310,12 +366,55 @@ function isValidRing(ring: readonly Point[]): boolean {
 }
 
 function isValidRect(rect: ZoneBounds): boolean {
-  return [rect.x, rect.y, rect.width, rect.height].every(Number.isFinite) && rect.width > 0 && rect.height > 0;
+  return [rect.x, rect.y, rect.width, rect.height, rect.x + rect.width, rect.y + rect.height]
+    .every(Number.isFinite) && rect.width > 0 && rect.height > 0;
 }
 
-function isInsideShape(rings: ShapeRings, x: number, y: number): boolean {
-  return rings.parts.some((ring) => pointInRingStrict({ x, y }, ring)) &&
-    !rings.holes.some((ring) => pointInRingStrict({ x, y }, ring));
+function ringIntervalsAtY(ring: readonly Point[], y: number): Array<[number, number]> {
+  const crossings: number[] = [];
+  for (let index = 0; index < ring.length; index += 1) {
+    const first = ring[index];
+    const second = ring[(index + 1) % ring.length];
+    if (first.x !== second.x) continue;
+    if (y > Math.min(first.y, second.y) && y < Math.max(first.y, second.y)) crossings.push(first.x);
+  }
+  crossings.sort((a, b) => a - b);
+  const intervals: Array<[number, number]> = [];
+  for (let index = 0; index + 1 < crossings.length; index += 2) {
+    if (crossings[index + 1] > crossings[index]) intervals.push([crossings[index], crossings[index + 1]]);
+  }
+  return intervals;
+}
+
+function rasterizeShapeRow(rings: ShapeRings, y: number, xCoordinates: readonly number[]): boolean[] {
+  const cells = Array.from({ length: Math.max(0, xCoordinates.length - 1) }, () => false);
+  const insidePart = Array.from({ length: Math.max(0, xCoordinates.length - 1) }, () => false);
+  for (const ring of rings.parts) {
+    for (const [left, right] of ringIntervalsAtY(ring, y)) {
+      const first = coordinateIndex(xCoordinates, left);
+      const last = coordinateIndex(xCoordinates, right);
+      for (let column = first; column < last; column += 1) insidePart[column] = true;
+    }
+  }
+  for (const ring of [...rings.parts, ...rings.holes]) {
+    for (const [left, right] of ringIntervalsAtY(ring, y)) {
+      const first = coordinateIndex(xCoordinates, left);
+      const last = coordinateIndex(xCoordinates, right);
+      for (let column = first; column < last; column += 1) cells[column] = !cells[column];
+    }
+  }
+  return cells.map((inside, column) => inside && insidePart[column]);
+}
+
+function coordinateIndex(coordinates: readonly number[], value: number): number {
+  let low = 0;
+  let high = coordinates.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (coordinates[middle] < value) low = middle + 1;
+    else high = middle;
+  }
+  return low;
 }
 
 function pointInRingStrict(point: Point, ring: readonly Point[]): boolean {

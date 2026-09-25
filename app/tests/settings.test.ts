@@ -15,6 +15,7 @@ describe("view settings serialization", () => {
       grid: { step: 25, showGrid: false, snap: true },
       history: { limit: 256 },
       accessibility: { reduceAnimations: true },
+      zones: { brushSize: 240 },
       keyOverrides: { "view.home": ["Ctrl+Alt+KeyH"], "edit.undo": [] },
       transferHintsShown: 3,
       fitWidthToText: false,
@@ -76,6 +77,7 @@ describe("view settings serialization", () => {
       grid: { step: 10, showGrid: false, snap: false },
       history: { limit: 64 },
       accessibility: DEFAULT_VIEW_SETTINGS.accessibility,
+      zones: DEFAULT_VIEW_SETTINGS.zones,
       keyOverrides: {},
       transferHintsShown: 0,
       fitWidthToText: true,
@@ -86,6 +88,14 @@ describe("view settings serialization", () => {
     expect(DEFAULT_VIEW_SETTINGS.fitWidthToText).toBe(true);
     expect(parseViewSettings('{"fitWidthToText":false}', DEFAULT_VIEW_SETTINGS).fitWidthToText).toBe(false);
     expect(parseViewSettings('{"fitWidthToText":"yes"}', DEFAULT_VIEW_SETTINGS).fitWidthToText).toBe(true);
+  });
+
+  it("normalizes the persisted zone brush size and defaults older settings", () => {
+    expect(parseViewSettings('{"version":6}', DEFAULT_VIEW_SETTINGS).zones.brushSize).toBe(60);
+    expect(parseViewSettings('{"zones":{"brushSize":87}}', DEFAULT_VIEW_SETTINGS).zones.brushSize).toBe(80);
+    expect(parseViewSettings('{"zones":{"brushSize":301}}', DEFAULT_VIEW_SETTINGS).zones.brushSize).toBe(300);
+    expect(parseViewSettings('{"zones":{"brushSize":0}}', DEFAULT_VIEW_SETTINGS).zones.brushSize).toBe(20);
+    expect(parseViewSettings('{"zones":{"brushSize":"large"}}', DEFAULT_VIEW_SETTINGS).zones.brushSize).toBe(60);
   });
 
   it("rejects non-finite positions and zooms outside the configured limits", () => {

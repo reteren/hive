@@ -2,20 +2,22 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { clear, history, redo, undo } from "../src/history/history.svelte";
 import { board, replaceBoard } from "../src/model/board.svelte";
 import { zones, replaceZones } from "../src/model/zones.svelte";
-import { selection, selectZonesOnly } from "../src/selection/selection.svelte";
+import { selection } from "../src/selection/selection.svelte";
 import { createZone, deleteZone, recolorZone, renameZone, ZONE_COLORS } from "../src/zones/commands";
 import { getCommand } from "../src/commands/registry.svelte";
-import { leaveShapeEdit, shapeEdit } from "../src/zones/shapeEdit.svelte";
+import { brushState, setBrushSize } from "../src/zones/brushState.svelte";
+import { tool } from "../src/tools/tool.svelte";
 
 describe("zone commands", () => {
   beforeEach(() => {
-    leaveShapeEdit();
     clear();
     replaceZones([]);
     replaceBoard([]);
     selection.ids = [];
     selection.zoneIds = [];
     selection.primaryId = null;
+    tool.active = "select";
+    setBrushSize(60);
   });
 
   it("creates unique names and rotating colours as individual Undo steps", () => {
@@ -57,19 +59,30 @@ describe("zone commands", () => {
     expect(zones.byId[created.id]?.name).toBe("Zone");
   });
 
-  it("enters shape editing with E only when exactly one zone is selected", () => {
-    const created = createZone({ x: 0, y: 0, width: 120, height: 120 })!;
-    const command = getCommand("zone.editShape");
-    expect(command?.keys).toEqual(["KeyE"]);
+  it("registers brush size commands without default keys and guards them to the zone tool", () => {
+    const increase = getCommand("zone.increaseBrushSize");
+    const decrease = getCommand("zone.decreaseBrushSize");
+    expect(increase?.keys).toEqual([]);
+    expect(decrease?.keys).toEqual([]);
+    expect(increase?.isActive?.()).toBe(false);
 
-    selectZonesOnly([created.id]);
-    command?.run();
-    expect(shapeEdit.zoneId).toBe(created.id);
-    leaveShapeEdit();
+    increase?.run();
+    expect(brushState.size).toBe(60);
 
-    selectZonesOnly([created.id]);
-    selection.ids = ["note"];
-    command?.run();
-    expect(shapeEdit.zoneId).toBeNull();
+    tool.active = "zone";
+    expect(increase?.isActive?.()).toBe(true);
+    increase?.run();
+    expect(brushState.size).toBe(80);
+    decrease?.run();
+    expect(brushState.size).toBe(60);
+
+    setBrushSize(20);
+    decrease?.run();
+    expect(brushState.size).toBe(20);
+    setBrushSize(300);
+    increase?.run();
+    expect(brushState.size).toBe(300);
+    setBrushSize(87);
+    expect(brushState.size).toBe(80);
   });
 });
