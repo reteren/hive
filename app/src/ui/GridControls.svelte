@@ -4,8 +4,8 @@
   import { decreaseGridStep, grid, increaseGridStep } from "../board/grid.svelte";
   import { formatKey } from "../commands/keys";
   import { getCommand, runCommand } from "../commands/registry.svelte";
-  import magnetOffIcon from "./icons/magnet-off.svg";
-  import magnetOnIcon from "./icons/magnet-on.svg";
+  import magnetOffIcon from "./icons/magnet-off.png";
+  import magnetOnIcon from "./icons/magnet-on.png";
 
   let controls: HTMLDivElement;
   let expandButton: HTMLButtonElement;
@@ -73,7 +73,7 @@
       title={commandTitle(snapCommand)}
       onclick={() => runCommand(snapCommand.id)}
     >
-      <img src={isSnapEnabled ? magnetOnIcon : magnetOffIcon} alt="" aria-hidden="true" />
+      <span class="magnet-icon" style:--icon={`url("${isSnapEnabled ? magnetOnIcon : magnetOffIcon}")`} aria-hidden="true"></span>
     </button>
   {/if}
 
@@ -168,10 +168,14 @@
     color: #24211b;
   }
 
-  .magnet-button img {
+  /* The user's icons are white on transparent: used as a mask so the glyph follows the button colour. */
+  .magnet-icon {
     display: block;
     width: 16px;
     height: 16px;
+    background: currentColor;
+    -webkit-mask: var(--icon) center / contain no-repeat;
+    mask: var(--icon) center / contain no-repeat;
   }
 
   .expand-arrow {

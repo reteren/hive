@@ -33,7 +33,6 @@ export interface NoteFrame {
   height: number | null;
   /** Metadata used by bounded resize gestures; omitted by movement-only callers. */
   type?: NoteKind;
-  widthLocked?: boolean;
   maxWidth?: number;
   maxHeight?: number;
 }
@@ -113,7 +112,7 @@ export function updateResizeGesture(
     snap,
     step,
     gesture.standaloneModule,
-    { widthLocked: gesture.before.widthLocked, maxWidth: gesture.before.maxWidth, maxHeight: gesture.before.maxHeight },
+    { maxWidth: gesture.before.maxWidth, maxHeight: gesture.before.maxHeight },
   );
   return { ...gesture, after: { ...gesture.before, ...afterGeometry } };
 }

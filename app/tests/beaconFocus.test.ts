@@ -36,11 +36,14 @@ afterEach(() => {
 });
 
 describe("beacon focus", () => {
-  it("uses Ctrl+M as the sole beacon mark command and offers keyed actions in the note menu", () => {
+  it("marks with M, toggles marks with Ctrl+M and offers keyed actions in the note menu", () => {
     addNote(note("a", "beacon"));
     addNote(note("ordinary"));
     const markCommands = getCommands().filter((command) => command.id.startsWith("beacons.") && /mark/i.test(command.label));
-    expect(markCommands.map((command) => [command.label, command.keys])).toEqual([["Mark / unmark beacon", ["Ctrl+KeyM"]]]);
+    expect(markCommands.map((command) => [command.label, command.keys])).toEqual([
+      ["Mark selected beacon", ["KeyM"]],
+      ["Add or remove beacon mark", ["Ctrl+KeyM"]],
+    ]);
     expect(getCommands().find((command) => command.id === "beacons.toggleMark")).toBeUndefined();
 
     const beaconItems = noteMenuItems("a");

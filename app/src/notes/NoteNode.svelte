@@ -11,7 +11,6 @@
   import { uniqueName } from "./naming";
   import NoteBody from "../editor/NoteBody.svelte";
   import TaskCheckbox from "../tasks/TaskCheckbox.svelte";
-  import NodeLock from "./NodeLock.svelte";
   import NoteModules from "../modules/NoteModules.svelte";
   import ModuleNodeBody from "../modules/ModuleNodeBody.svelte";
   import MoodNodeBody from "../moods/MoodNodeBody.svelte";
@@ -140,7 +139,6 @@
     {:else}
       <span class="note-name">{note.name}</span>
     {/if}
-    <NodeLock {note} />
   </header>
   <NoteModules {note} />
   <div class="note-frame" class:fixed-height={note.height !== null}>

@@ -12,6 +12,14 @@ export function isMarked(beaconId: string): boolean {
   return validMarks().includes(beaconId);
 }
 
+/** Mark exactly the selected beacons, replacing the previous marks (M). */
+export function markSelectedOnly(): void {
+  const ids = selectedBeacons();
+  if (!ids.length) return;
+  beaconState.marked = ids;
+  beaconState.markCursor = 0;
+}
+
 export function toggleSelectedMarks(): void {
   const ids = selectedBeacons();
   if (!ids.length) return;

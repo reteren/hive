@@ -173,16 +173,15 @@ describe("group scale", () => {
     expect(scaled[0].y).toBeGreaterThan(frames[0].y);
   });
 
-  it("keeps a locked note width and clamps over-limit notes per item while scaling the rest", () => {
+  it("clamps over-limit notes per item while scaling the rest", () => {
     const frames: NoteFrame[] = [
-      { id: "locked", type: "note", x: 10, y: 10, width: 30, height: 10, widthLocked: true, maxWidth: 75, maxHeight: 30 },
       { id: "bounded", type: "pro", x: 40, y: 20, width: 30, height: 10, maxWidth: 45, maxHeight: 14 },
       { id: "free", type: "note", x: 60, y: 30, width: 20, height: 10, maxWidth: 75, maxHeight: 30 },
     ];
     const bounds = { x: 0, y: 0, width: 100, height: 100 };
     const scaled = scaleGroupFrames(frames, bounds, "bottom-right", { x: 100, y: 100 }, false, 10);
-    expect(scaled.map((frame) => frame.width)).toEqual([30, 45, 40]);
-    expect(scaled.map((frame) => frame.height)).toEqual([20, 14, 20]);
-    expect(scaled.map((frame) => frame.x)).toEqual([20, 80, 120]);
+    expect(scaled.map((frame) => frame.width)).toEqual([45, 40]);
+    expect(scaled.map((frame) => frame.height)).toEqual([14, 20]);
+    expect(scaled.map((frame) => frame.x)).toEqual([80, 120]);
   });
 });

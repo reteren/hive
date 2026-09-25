@@ -24,10 +24,9 @@ export function isStandaloneModuleKind(kind: NoteKind | undefined): boolean {
   return kind === "importance" || kind === "purpose" || kind === "mood";
 }
 
-export function hasResizeHandle(kind: NoteKind | undefined, edge: ResizeEdge, widthLocked = false): boolean {
+export function hasResizeHandle(kind: NoteKind | undefined, edge: ResizeEdge): boolean {
   if (kind === "beacon") return false;
   if (kind === "purpose" || kind === "mood") return false;
-  if (widthLocked && (edge === "left" || edge === "right")) return false;
   return !isStandaloneModuleKind(kind) || (edge !== "left" && edge !== "right");
 }
 
@@ -59,7 +58,6 @@ export interface ResizedGeometry {
 }
 
 export interface ResizeLimits {
-  widthLocked?: boolean;
   maxWidth?: number;
   maxHeight?: number;
 }
@@ -89,7 +87,6 @@ export function resizeNote(
   limits: ResizeLimits = {},
 ): ResizedGeometry {
   const axes = resizeEdgeAxes(edge);
-  const widthLocked = limits.widthLocked ?? initial.widthLocked ?? false;
   const maxWidth = limits.maxWidth ?? initial.maxWidth ?? maximumWidthForKind(initial.type);
   const maxHeight = limits.maxHeight ?? initial.maxHeight ?? (initial.type ? MIN_NOTE_HEIGHT * 1.5 : Number.POSITIVE_INFINITY);
   let x = initial.x;
@@ -97,11 +94,11 @@ export function resizeNote(
   let width = initial.width;
   let height = initial.height;
 
-  if (!standaloneModule && !widthLocked && axes.horizontal === "right") {
+  if (!standaloneModule && axes.horizontal === "right") {
     let right = initial.x + initial.width + delta.x;
     if (snap) right = snapToGrid({ x: right, y: 0 }, step).x;
     width = Math.min(maxWidth, Math.max(MIN_NOTE_WIDTH, right - initial.x));
-  } else if (!standaloneModule && !widthLocked && axes.horizontal === "left") {
+  } else if (!standaloneModule && axes.horizontal === "left") {
     let left = initial.x + delta.x;
     if (snap) left = snapToGrid({ x: left, y: 0 }, step).x;
     const fixedRight = initial.x + initial.width;

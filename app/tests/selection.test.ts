@@ -336,13 +336,6 @@ describe("selection move and resize gestures", () => {
     const plus = { id: "mini", type: "pro" as const, x: 10, y: 5, width: 18, height: 20 };
     expect(resizeNote(note, 20, "right", { x: 200, y: 0 }, false, 10).width).toBe(75);
     expect(resizeNote(plus, 20, "right", { x: 200, y: 0 }, false, 10).width).toBe(45);
-    expect(hasResizeHandle("note", "left", true)).toBe(false);
-    expect(hasResizeHandle("note", "right", true)).toBe(false);
-    expect(hasResizeHandle("note", "top-left", true)).toBe(true);
-
-    expect(resizeNote(
-      { ...note, widthLocked: true }, 20, "top-left", { x: -100, y: -4 }, false, 10,
-    )).toEqual({ x: 10, y: 1, width: 30, height: 24 });
   });
 
   it("clamps manual height to content height plus five rendered lines", () => {

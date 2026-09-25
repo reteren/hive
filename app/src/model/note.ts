@@ -88,8 +88,6 @@ export interface Note {
   color?: string;
   /** Zone this object belongs to (R4.3); kept to resolve equal-area ties in favour of the previous zone (H19). */
   zoneId?: string | null;
-  /** Width lock toggled from the note header: when true the width can't be resized. */
-  widthLocked?: boolean;
 }
 
 /** Beacon diameter in u (fixed size, ROADMAP R4.0). */

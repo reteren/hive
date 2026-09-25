@@ -92,7 +92,6 @@
     height: number;
     primary: boolean;
     kind: NoteKind;
-    widthLocked: boolean;
   }
 
   interface ZoneOutline {
@@ -218,7 +217,6 @@
           height: bounds.height * ppu,
           primary: selection.primaryId === id,
           kind: note.type,
-          widthLocked: note.widthLocked ?? false,
         },
       ];
     });
@@ -396,9 +394,7 @@
       if (resizeHandle) {
         const id = resizeHandle.dataset.noteId;
         const edge = resizeHandle.dataset.resizeHandle as ResizeEdge | undefined;
-        if (id && edge && id === selection.primaryId && hasResizeHandle(
-          boardState.notes[id]?.type, edge, boardState.notes[id]?.widthLocked ?? false,
-        )) {
+        if (id && edge && id === selection.primaryId && hasResizeHandle(boardState.notes[id]?.type, edge)) {
           startResize(event, id, edge, local, world);
         }
         return;
@@ -701,7 +697,6 @@
     return {
       ...boundsAsFrame(id, bounds, note.height),
       type: note.type,
-      widthLocked: note.widthLocked ?? false,
       maxWidth: maximumWidthForKind(note.type),
       maxHeight: maximumResizableHeightForNote(id),
     };
@@ -1365,7 +1360,7 @@
       aria-label="Selected {outline.name}"
     >
       {#if selection.ids.length === 1 && selection.zoneIds.length === 0 && outline.primary}
-        {#each RESIZE_EDGES.filter((edge) => hasResizeHandle(outline.kind, edge, outline.widthLocked)) as edge (edge)}
+        {#each RESIZE_EDGES.filter((edge) => hasResizeHandle(outline.kind, edge)) as edge (edge)}
           <button
             class={`resize-handle resize-handle-${edge}`}
             class:resize-handle-corner={isCornerHandle(edge)}

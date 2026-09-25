@@ -33,7 +33,6 @@ export interface IndexedNote {
   moods: MoodKind[];
   color?: string | null;
   zoneId?: string | null;
-  widthLocked?: boolean;
   [key: string]: unknown;
 }
 
@@ -141,7 +140,6 @@ export function serializeProjectIndex(
       moods: [...new Set(note.moods ?? [])],
       color: note.type === "beacon" ? normalizeBeaconColor(note.color ?? "") ?? beaconPaletteColor(0) : note.color ?? null,
       zoneId: note.zoneId && validZoneIds.has(note.zoneId) ? note.zoneId : null,
-      ...(note.widthLocked ? { widthLocked: true } : {}),
     };
   });
   validateUniqueNotes(indexedNotes);
@@ -183,7 +181,6 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       ...(entry.moods.length > 0 ? { moods: [...entry.moods] } : {}),
       ...(entry.color ? { color: entry.color } : {}),
       ...(entry.zoneId ? { zoneId: entry.zoneId } : {}),
-      ...(entry.widthLocked === true ? { widthLocked: true } : {}),
       ...(typeof entry.createdAt === "number" && Number.isFinite(entry.createdAt) && entry.createdAt >= 0
         ? { createdAt: entry.createdAt }
         : {}),
@@ -291,7 +288,6 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
       moods: moods.values,
       color: type === "beacon" ? color ?? beaconPaletteColor(0) : color,
       zoneId,
-      ...(value.widthLocked === true ? { widthLocked: true } : {}),
     },
     warnings,
   };

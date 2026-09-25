@@ -103,7 +103,7 @@ export function scaleGroupFrames(
     y: axes.vertical === "top"
       ? bounds.y + bounds.height - (bounds.y + bounds.height - frame.y) * scaleY
       : bounds.y + (frame.y - bounds.y) * scaleY,
-    width: moduleIds.has(frame.id) || beaconIds.has(frame.id) || frame.widthLocked
+    width: moduleIds.has(frame.id) || beaconIds.has(frame.id)
       ? frame.width
       : Math.max(MIN_NOTE_WIDTH, Math.min(frame.maxWidth ?? maximumWidthForKind(frame.type), frame.width * scaleX)),
     height: beaconIds.has(frame.id) ? frame.height : moduleIds.has(frame.id)
@@ -159,7 +159,7 @@ function edgeScales(
 }
 
 function minimumWidthScale(frames: readonly NoteFrame[], moduleIds: ReadonlySet<string>, beaconIds: ReadonlySet<string>): number {
-  return Math.max(0, ...frames.flatMap((frame) => moduleIds.has(frame.id) || beaconIds.has(frame.id) || frame.widthLocked
+  return Math.max(0, ...frames.flatMap((frame) => moduleIds.has(frame.id) || beaconIds.has(frame.id)
     ? []
     : [MIN_NOTE_WIDTH / frame.width]));
 }

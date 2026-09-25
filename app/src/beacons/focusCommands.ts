@@ -3,7 +3,7 @@ import { formatKey } from "../commands/keys";
 import { registerNoteMenuItem } from "../notes/noteMenu";
 import { beaconState } from "./beaconState.svelte";
 import { clearFocus, isBeacon, selectBeaconGroups, setFocused, toggleSelectedFocus, validFocused } from "./focus.svelte";
-import { isMarked, toggleBeaconMark, toggleSelectedMarks } from "./marks.svelte";
+import { isMarked, markSelectedOnly, toggleBeaconMark, toggleSelectedMarks } from "./marks.svelte";
 
 function keyLabel(commandId: string): string {
   const keys = getCommand(commandId)?.keys ?? [];
@@ -11,7 +11,7 @@ function keyLabel(commandId: string): string {
 }
 
 export function beaconMarkActionLabel(beaconId: string): string {
-  return `${isMarked(beaconId) ? "Unmark" : "Mark"}${keyLabel("beacons.mark")}`;
+  return `${isMarked(beaconId) ? "Unmark" : "Mark"}${keyLabel("beacons.toggleMarkSelected")}`;
 }
 
 export function beaconFocusActionLabel(beaconId: string): string {
@@ -47,7 +47,14 @@ registerCommand({
 
 registerCommand({
   id: "beacons.mark",
-  label: "Mark / unmark beacon",
+  label: "Mark selected beacon",
+  keys: ["KeyM"],
+  run: markSelectedOnly,
+});
+
+registerCommand({
+  id: "beacons.toggleMarkSelected",
+  label: "Add or remove beacon mark",
   keys: ["Ctrl+KeyM"],
   run: toggleSelectedMarks,
 });
