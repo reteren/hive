@@ -7,6 +7,7 @@
   import { camera, viewport } from "../board/camera.svelte";
   import { PX_PER_UNIT, screenToWorld } from "../board/cameraMath";
   import { measuredHeights } from "./layout.svelte";
+  import { clearTextFitWidthCache, measureAndCacheTextMinimumWidth } from "../editor/textFitWidth";
   import NoteNode from "./NoteNode.svelte";
   import { copyCursorCoordinates, copyNoteLink } from "./noteCommands";
   import { closeCreationMenu, creationMenu, markCreationMenuToolbarTrigger } from "./creation.svelte";
@@ -110,11 +111,15 @@
   }
 
   const observeAutoHeight: Action<HTMLElement, string> = (element, initialId) => {
-    let noteId = initialId;
+    let measurementKey = initialId;
+    let noteId = noteIdFromMeasurementKey(initialId);
 
     const updateMeasuredHeight = () => {
       const note = board.notes[noteId];
-      if (!note || note.height !== null) return;
+      if (!note) return;
+
+      measureAndCacheTextMinimumWidth(noteId, note.text, element, note.type);
+      if (note.height !== null) return;
 
       const height = element.offsetHeight / PX_PER_UNIT;
       if (Number.isFinite(height) && height > 0 && measuredHeights[noteId] !== height) {
@@ -127,18 +132,30 @@
 
     return {
       update(nextId) {
-        if (nextId === noteId) return;
-        delete measuredHeights[noteId];
-        noteId = nextId;
-        observer.disconnect();
-        observer.observe(element);
+        if (nextId === measurementKey) return;
+        const nextNoteId = noteIdFromMeasurementKey(nextId);
+        if (nextNoteId !== noteId) {
+          delete measuredHeights[noteId];
+          clearTextFitWidthCache(noteId);
+          noteId = nextNoteId;
+          observer.disconnect();
+          observer.observe(element);
+        }
+        measurementKey = nextId;
+        updateMeasuredHeight();
       },
       destroy() {
         observer.disconnect();
         delete measuredHeights[noteId];
+        clearTextFitWidthCache(noteId);
       },
     };
   };
+
+  function noteIdFromMeasurementKey(key: string): string {
+    const separator = key.indexOf("\u0000");
+    return separator === -1 ? key : key.slice(0, separator);
+  }
 
   // 2D transform without will-change: the layer is not promoted to a cached bitmap, so text and
   // borders are re-rasterised at the current zoom instead of being stretched (blurry notes).

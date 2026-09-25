@@ -5,7 +5,7 @@ import { grid } from "../board/grid.svelte";
 import { history as undoHistory, setHistoryLimit } from "../history/history.svelte";
 import { getCommandKeyOverrides, setCommandKeyOverrides } from "../commands/registry.svelte";
 import { applyReduceMotionPreference } from "./motion";
-import { preferences, setReduceAnimations, setTransferHintsShown } from "./preferences.svelte";
+import { preferences, setFitWidthToText, setReduceAnimations, setTransferHintsShown } from "./preferences.svelte";
 import { parseViewSettings, serializeViewSettings, type ViewSettings } from "./viewSettings";
 
 const SAVE_DEBOUNCE_MS = 400;
@@ -96,6 +96,7 @@ function currentSettings(): ViewSettings {
     accessibility: { reduceAnimations: preferences.reduceAnimations },
     keyOverrides: getCommandKeyOverrides(),
     transferHintsShown: preferences.transferHintsShown,
+    fitWidthToText: preferences.fitWidthToText,
   };
 }
 
@@ -114,4 +115,5 @@ function applySettings(settings: ViewSettings): void {
   setReduceAnimations(settings.accessibility.reduceAnimations);
   setCommandKeyOverrides(settings.keyOverrides);
   setTransferHintsShown(settings.transferHintsShown);
+  setFitWidthToText(settings.fitWidthToText);
 }

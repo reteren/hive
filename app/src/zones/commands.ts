@@ -6,12 +6,12 @@ import { execute } from "../history/history.svelte";
 import { registerCommand } from "../commands/registry.svelte";
 import { tool } from "../tools/tool.svelte";
 import { uniqueName } from "../notes/naming";
-import { rectangleOverlapsZones } from "./geometry";
+import { MIN_ZONE_SIZE, rectangleOverlapsZones } from "./geometry";
 
 export const ZONE_COLORS = ["#608ac1", "#a882c2", "#72a98b", "#c59965", "#b87582", "#73a9b6"] as const;
 
 export function createZone(rect: ZoneBounds): Zone | null {
-  if (rect.width < 2 || rect.height < 2 || rectangleOverlapsZones(rect, Object.values(zones.byId))) return null;
+  if (rect.width < MIN_ZONE_SIZE || rect.height < MIN_ZONE_SIZE || rectangleOverlapsZones(rect, Object.values(zones.byId))) return null;
   const zone: Zone = {
     id: newId(),
     name: uniqueName("Zone", Object.values(zones.byId).map((existing) => existing.name)),

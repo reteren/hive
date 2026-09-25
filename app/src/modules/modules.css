@@ -301,8 +301,17 @@
   width: 20px;
   padding: 0;
   border-radius: 50%;
-  font-size: 14px;
-  line-height: 1;
+}
+
+.module-node-add svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 1.35;
 }
 
 .module-node-body .module-picker {

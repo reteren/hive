@@ -112,7 +112,7 @@
   style:width={`${note.width * PX_PER_UNIT}px`}
   style:height={note.height === null ? "auto" : `${note.height * PX_PER_UNIT}px`}
   style:min-height={note.height === null ? `${MIN_NOTE_HEIGHT * PX_PER_UNIT}px` : "0px"}
-  use:measureHeight={note.id}
+  use:measureHeight={`${note.id}\u0000${note.type}\u0000${note.text}`}
   ondblclick={beginEditingFromDoubleClick}
 >
   {#if memberZone}

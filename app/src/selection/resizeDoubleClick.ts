@@ -1,6 +1,6 @@
 import type { ResizeEdge } from "./resize";
 
-export type ResizeDoubleClickAction = "edit" | "auto-height" | "none";
+export type ResizeDoubleClickAction = "edit" | "auto-height" | "auto-width" | "none";
 
 /** A body click keeps its editing intent even if a resize handle overlaps it. */
 export function resizeDoubleClickAction(
@@ -8,7 +8,11 @@ export function resizeDoubleClickAction(
   insideEditableBody: boolean,
   allowAutoHeight = true,
   autoHeightWithinLimit = true,
+  allowAutoWidth = true,
 ): ResizeDoubleClickAction {
+  if (edge === "left" || edge === "right") {
+    return insideEditableBody ? "none" : allowAutoWidth ? "auto-width" : "none";
+  }
   if (edge !== "top" && edge !== "bottom") return "none";
   return insideEditableBody ? "edit" : allowAutoHeight && autoHeightWithinLimit ? "auto-height" : "none";
 }

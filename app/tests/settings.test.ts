@@ -17,6 +17,7 @@ describe("view settings serialization", () => {
       accessibility: { reduceAnimations: true },
       keyOverrides: { "view.home": ["Ctrl+Alt+KeyH"], "edit.undo": [] },
       transferHintsShown: 3,
+      fitWidthToText: false,
     };
 
     const serialized = serializeViewSettings(settings);
@@ -77,7 +78,14 @@ describe("view settings serialization", () => {
       accessibility: DEFAULT_VIEW_SETTINGS.accessibility,
       keyOverrides: {},
       transferHintsShown: 0,
+      fitWidthToText: true,
     });
+  });
+
+  it("defaults text fitting on and validates the persisted beta setting", () => {
+    expect(DEFAULT_VIEW_SETTINGS.fitWidthToText).toBe(true);
+    expect(parseViewSettings('{"fitWidthToText":false}', DEFAULT_VIEW_SETTINGS).fitWidthToText).toBe(false);
+    expect(parseViewSettings('{"fitWidthToText":"yes"}', DEFAULT_VIEW_SETTINGS).fitWidthToText).toBe(true);
   });
 
   it("rejects non-finite positions and zooms outside the configured limits", () => {

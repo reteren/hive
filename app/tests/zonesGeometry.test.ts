@@ -42,14 +42,29 @@ describe("zone geometry and membership choices", () => {
     expect(zoneTouchesRect(twoParts, { x: 8, y: 1, width: 2, height: 2 })).toBe(false);
   });
 
-  it("stops creation at an obstacle, allows touching, and rejects tiny resulting zones", () => {
-    const obstacle = zone("obstacle", 10, 5, 10, 10);
-    const preview = zoneCreationPreview({ x: 0, y: 0 }, { x: 20, y: 20 }, [obstacle]);
+  it("clamps small drags to 30 units from the drag anchor, independently per axis", () => {
+    expect(zoneCreationPreview({ x: 0, y: 0 }, { x: 10, y: 20 }, []).rect).toEqual({
+      x: 0, y: 0, width: 30, height: 30,
+    });
+    expect(zoneCreationPreview({ x: 100, y: 100 }, { x: 60, y: 88 }, []).rect).toEqual({
+      x: 60, y: 70, width: 40, height: 30,
+    });
+    expect(zoneCreationPreview({ x: 100, y: 100 }, { x: 90, y: 90 }, []).rect).toEqual({
+      x: 70, y: 70, width: 30, height: 30,
+    });
+  });
+
+  it("stops creation at an obstacle and rejects the drag when no minimum zone fits", () => {
+    const obstacle = zone("obstacle", 40, 5, 20, 20);
+    const preview = zoneCreationPreview({ x: 0, y: 0 }, { x: 80, y: 60 }, [obstacle]);
     expect(preview.blocked).toBe(true);
     expect(preview.reason).toMatch(/overlap/);
-    expect(preview.rect?.width).toBeCloseTo(10, 3);
+    expect(preview.rect?.width).toBeCloseTo(40, 3);
+    expect(preview.rect?.height).toBeCloseTo(30, 3);
     expect(preview.rect && rectangleOverlapsZones(preview.rect, [obstacle])).toBe(false);
-    expect(zoneCreationPreview({ x: 9, y: 8 }, { x: 20, y: 20 }, [obstacle]).rect).toBeNull();
-    expect(zoneCreationPreview({ x: 0, y: 0 }, { x: 1, y: 3 }, []).rect?.width).toBe(1);
+    const blocked = zoneCreationPreview({ x: 0, y: 0 }, { x: 10, y: 10 }, [zone("near", 10, 10, 20, 20)]);
+    expect(blocked.rect).toBeNull();
+    expect(blocked.blocked).toBe(true);
+    expect(blocked.reason).toMatch(/overlap/);
   });
 });

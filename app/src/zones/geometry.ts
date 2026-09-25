@@ -3,6 +3,9 @@ import type { Zone, ZoneBounds } from "../model/zone";
 
 const EPS = 1e-8;
 
+/** Minimum width and height for newly created zones, in board units. */
+export const MIN_ZONE_SIZE = 30;
+
 export function normalizedRect(a: Point, b: Point): ZoneBounds {
   return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y) };
 }
@@ -111,25 +114,53 @@ export interface ZoneCreationPreview {
 }
 
 /** Growing the rectangle from its anchor makes overlap monotonic, so binary search can stop at a neighbour. */
-export function zoneCreationPreview(start: Point, end: Point, zones: readonly Zone[], minimumSize = 2): ZoneCreationPreview {
-  const desired = normalizedRect(start, end);
-  if (desired.width < minimumSize || desired.height < minimumSize) {
-    return { rect: desired, blocked: false, reason: null };
-  }
+export function zoneCreationPreview(
+  start: Point,
+  end: Point,
+  zones: readonly Zone[],
+  minimumSize = MIN_ZONE_SIZE,
+): ZoneCreationPreview {
+  const minimumRect = anchoredMinimumRect(start, start, minimumSize, end);
+  const desired = anchoredMinimumRect(start, end, minimumSize, end);
   if (!rectangleOverlapsZones(desired, zones)) return { rect: desired, blocked: false, reason: null };
+
+  if (rectangleOverlapsZones(minimumRect, zones)) {
+    return { rect: null, blocked: true, reason: "Zones can touch but cannot overlap" };
+  }
 
   let low = 0;
   let high = 1;
   for (let index = 0; index < 32; index += 1) {
     const middle = (low + high) / 2;
-    const candidate = normalizedRect(start, { x: start.x + (end.x - start.x) * middle, y: start.y + (end.y - start.y) * middle });
+    const candidateEnd = {
+      x: start.x + (end.x - start.x) * middle,
+      y: start.y + (end.y - start.y) * middle,
+    };
+    const candidate = anchoredMinimumRect(start, candidateEnd, minimumSize, end);
     if (rectangleOverlapsZones(candidate, zones)) high = middle;
     else low = middle;
   }
-  const rect = normalizedRect(start, { x: start.x + (end.x - start.x) * low, y: start.y + (end.y - start.y) * low });
+  const rectEnd = {
+    x: start.x + (end.x - start.x) * low,
+    y: start.y + (end.y - start.y) * low,
+  };
+  const rect = anchoredMinimumRect(start, rectEnd, minimumSize, end);
   return {
-    rect: rect.width >= minimumSize && rect.height >= minimumSize ? rect : null,
+    rect: rectangleOverlapsZones(rect, zones) ? null : rect,
     blocked: true,
     reason: "Zones can touch but cannot overlap",
   };
+}
+
+/** Expand each undersized axis away from the original pointer-down corner. */
+function anchoredMinimumRect(start: Point, end: Point, minimumSize: number, direction: Point): ZoneBounds {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const signX = dx === 0 ? (direction.x < 0 ? -1 : 1) : Math.sign(dx);
+  const signY = dy === 0 ? (direction.y < 0 ? -1 : 1) : Math.sign(dy);
+  const adjustedEnd = {
+    x: start.x + signX * Math.max(Math.abs(dx), minimumSize),
+    y: start.y + signY * Math.max(Math.abs(dy), minimumSize),
+  };
+  return normalizedRect(start, adjustedEnd);
 }

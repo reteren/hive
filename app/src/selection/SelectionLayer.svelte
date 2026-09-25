@@ -8,7 +8,8 @@
   import { execute, record, type HistoryCommand } from "../history/history.svelte";
   import { editing } from "../notes/editing.svelte";
   import type { NoteKind } from "../model/note";
-  import { maximumResizableHeight, maximumResizableHeightForNote, noteBounds, renderedNoteMetrics, type Bounds } from "../notes/layout.svelte";
+import { maximumResizableHeight, maximumResizableHeightForNote, minimumTextWidthForNote, noteBounds, renderedNoteMetrics, type Bounds } from "../notes/layout.svelte";
+import { preferences } from "../settings/preferences.svelte";
   import { zoneBounds, type Zone } from "../model/zone";
   import { zones, updateZone } from "../model/zones.svelte";
   import { zoneMembers } from "../zones/membership.svelte";
@@ -554,7 +555,7 @@
 
       const body = target.closest("[data-note-body]");
       const handle = target?.closest<HTMLElement>(
-        '[data-resize-handle="bottom"], [data-resize-handle="top"]',
+        '[data-resize-handle="bottom"], [data-resize-handle="top"], [data-resize-handle="left"], [data-resize-handle="right"]',
       );
       if (handle) {
         const id = handle.dataset.noteId;
@@ -577,6 +578,7 @@
           canEdit && insideBody,
           !isStandaloneModuleKind(note.type),
           autoHeightWithinLimit,
+          preferences.fitWidthToText,
         );
         if (action === "edit") {
           event.preventDefault();
@@ -590,6 +592,20 @@
           const before = frameForNote(id);
           const after = { ...before, height: null };
           execute(geometryCommand("Resize", note.name, [before], [after]));
+        } else if (action === "auto-width") {
+          event.preventDefault();
+          event.stopPropagation();
+          const before = frameForNote(id);
+          const width = minimumTextWidthForNote(id, maximumWidthForKind(note.type));
+          const fromLeft = handle.dataset.resizeHandle === "left";
+          const after = {
+            ...before,
+            x: fromLeft ? before.x + before.width - width : before.x,
+            width,
+          };
+          if (before.x !== after.x || before.width !== after.width) {
+            execute(geometryCommand("Resize", note.name, [before], [after]));
+          }
         }
         return;
       }
@@ -1509,6 +1525,8 @@
     background: transparent;
     pointer-events: auto;
     touch-action: none;
+    /* A handle focused by the mouse would show the webview's round focus ring after the next key press (e.g. C). */
+    outline: none;
   }
 
   .resize-handle::before {

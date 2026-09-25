@@ -8,6 +8,7 @@ import {
 } from "../src/selection/groupScale";
 import type { NoteFrame } from "../src/selection/gestures";
 import type { Bounds } from "../src/notes/layout.svelte";
+import { cacheMinimumTextWidth, clearMinimumTextWidth } from "../src/notes/layout.svelte";
 
 const groupBounds: Bounds = { x: 0, y: 0, width: 100, height: 100 };
 
@@ -48,6 +49,23 @@ describe("group scale", () => {
       { id: "a", x: 0, y: 0, width: 12, height: 6 },
       { id: "b", x: 30, y: 24, width: 24, height: 12 },
     ]);
+  });
+
+  it("keeps group-scaled notes at their text-fit minimum width", () => {
+    cacheMinimumTextWidth("wide-line", 30);
+    try {
+      const scaled = scaleGroupFrames(
+        [{ id: "wide-line", type: "note", x: 0, y: 0, width: 40, height: 10, maxWidth: 75 }],
+        { x: 0, y: 0, width: 40, height: 10 },
+        "right",
+        { x: -36, y: 0 },
+        false,
+        10,
+      );
+      expect(scaled[0].width).toBe(30);
+    } finally {
+      clearMinimumTextWidth("wide-line");
+    }
   });
 
   it("scales auto-height note width and position while keeping its height automatic", () => {

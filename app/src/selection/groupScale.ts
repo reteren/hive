@@ -1,8 +1,9 @@
 import type { Point } from "../board/cameraMath";
 import { snapToGrid } from "../board/gridMath";
 import type { Bounds } from "../notes/layout.svelte";
-import { MIN_NOTE_HEIGHT } from "../notes/layout.svelte";
-import { clampModuleHeight, maximumWidthForKind, MIN_NOTE_WIDTH, resizeEdgeAxes, type ResizeEdge } from "./resize";
+import { MIN_NOTE_HEIGHT, MIN_NOTE_WIDTH, maximumNoteWidthForKind, minimumTextWidthForNote } from "../notes/layout.svelte";
+import { preferences } from "../settings/preferences.svelte";
+import { clampModuleHeight, maximumWidthForKind, resizeEdgeAxes, type ResizeEdge } from "./resize";
 import type { GeometryChange, NoteFrame } from "./gestures";
 
 export interface GroupScaleGesture {
@@ -161,7 +162,9 @@ function edgeScales(
 function minimumWidthScale(frames: readonly NoteFrame[], moduleIds: ReadonlySet<string>, beaconIds: ReadonlySet<string>): number {
   return Math.max(0, ...frames.flatMap((frame) => moduleIds.has(frame.id) || beaconIds.has(frame.id)
     ? []
-    : [MIN_NOTE_WIDTH / frame.width]));
+    : [(preferences.fitWidthToText
+      ? minimumTextWidthForNote(frame.id, frame.maxWidth ?? maximumNoteWidthForKind(frame.type))
+      : MIN_NOTE_WIDTH) / frame.width]));
 }
 
 function minimumHeightScale(frames: readonly NoteFrame[], moduleIds: ReadonlySet<string>, beaconIds: ReadonlySet<string>): number {

@@ -88,12 +88,12 @@ describe("project index", () => {
     expect(migrated.warnings).toEqual([]);
   });
 
-  it("round trips beacon colour, zone membership, zones and ordered marks", () => {
+  it("round trips beacon colour, zone membership, undersized legacy zones and ordered marks", () => {
     const zone = {
       id: "zone-a",
       name: "Research",
       color: "#608ac1",
-      parts: [[{ x: -10, y: -8 }, { x: 20, y: -8 }, { x: 20, y: 18 }, { x: -10, y: 18 }]],
+      parts: [[{ x: -10, y: -8 }, { x: 2, y: -8 }, { x: 2, y: 10 }, { x: -10, y: 10 }]],
       holes: [[{ x: 2, y: 2 }, { x: 8, y: 2 }, { x: 8, y: 8 }, { x: 2, y: 8 }]],
       createdAt: 1_700_000_000_000,
     };

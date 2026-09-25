@@ -4,7 +4,7 @@ import { sanitizeKeyOverrides, type KeyBindingOverrides } from "../commands/keym
 import { DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT, MIN_HISTORY_LIMIT } from "../history/historyStack";
 import { systemPrefersReducedMotion } from "./motion";
 
-export const VIEW_SETTINGS_VERSION = 5;
+export const VIEW_SETTINGS_VERSION = 6;
 
 export interface CameraSettings {
   minZoom: number;
@@ -35,6 +35,7 @@ export interface ViewSettings {
   accessibility: AccessibilitySettings;
   keyOverrides: KeyBindingOverrides;
   transferHintsShown: number;
+  fitWidthToText: boolean;
 }
 
 export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
@@ -50,6 +51,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
   accessibility: { reduceAnimations: systemPrefersReducedMotion() },
   keyOverrides: {},
   transferHintsShown: 0,
+  fitWidthToText: true,
 };
 
 const MIN_ALLOWED_ZOOM_LIMIT = 0.001;
@@ -102,6 +104,7 @@ export function parseViewSettings(serialized: string | null | undefined, default
     },
     keyOverrides: sanitizeKeyOverrides(parsed.keyOverrides),
     transferHintsShown: hintCountOrDefault(parsed.transferHintsShown, defaults.transferHintsShown),
+    fitWidthToText: booleanOrDefault(parsed.fitWidthToText, defaults.fitWidthToText),
   };
 }
 
@@ -121,6 +124,7 @@ export function serializeViewSettings(settings: ViewSettings): string {
     accessibility: { reduceAnimations: settings.accessibility.reduceAnimations },
     keyOverrides: sanitizeKeyOverrides(settings.keyOverrides),
     transferHintsShown: hintCountOrDefault(settings.transferHintsShown, 0),
+    fitWidthToText: settings.fitWidthToText,
   });
 }
 
@@ -156,6 +160,7 @@ function cloneViewSettings(settings: ViewSettings): ViewSettings {
     accessibility: { ...settings.accessibility },
     keyOverrides: sanitizeKeyOverrides(settings.keyOverrides),
     transferHintsShown: settings.transferHintsShown,
+    fitWidthToText: settings.fitWidthToText,
   };
 }
 

@@ -58,6 +58,19 @@ describe("static Markdown renderer", () => {
     expect(all.some((node) => node.tagName === "script")).toBe(false);
   });
 
+  it("keeps each source line break visible in a rendered paragraph", () => {
+    const tree = render("first line\nsecond **line**\nthird");
+    const all = collect(tree);
+
+    expect(all.filter((node) => node.tagName === "br")).toHaveLength(2);
+    expect(tree.textContent).toBe("first linesecond linethird");
+  });
+
+  it("does not duplicate Markdown hard breaks", () => {
+    const tree = render("first line  \nsecond line");
+    expect(collect(tree).filter((node) => node.tagName === "br")).toHaveLength(1);
+  });
+
   it("renders colored highlight text with contrast and keeps the color suffix out of view", () => {
     const source = "==bright=={{#ffff00}} and ==dark=={{#122033}}";
     const tree = render(source);

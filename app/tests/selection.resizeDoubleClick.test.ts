@@ -13,6 +13,12 @@ describe("resize handle double-click", () => {
     expect(resizeDoubleClickAction("left", true)).toBe("none");
   });
 
+  it("fits horizontal resize handles to the cached text minimum when enabled", () => {
+    expect(resizeDoubleClickAction("left", false)).toBe("auto-width");
+    expect(resizeDoubleClickAction("right", false)).toBe("auto-width");
+    expect(resizeDoubleClickAction("right", false, true, true, false)).toBe("none");
+  });
+
   it("does not switch standalone modules to auto height", () => {
     expect(resizeDoubleClickAction("top", false, false)).toBe("none");
     expect(resizeDoubleClickAction("bottom", false, false)).toBe("none");

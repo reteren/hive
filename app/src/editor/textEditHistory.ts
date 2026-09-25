@@ -19,6 +19,9 @@ export interface TextEditRecord {
   kind: TextEditKind;
   at: number;
   group: number;
+  /** Width changes caused by text fitting travel with the same text Undo/Redo step. */
+  widthBefore?: number;
+  widthAfter?: number;
   /** Changes to dependent nodes that share this edit's Undo/Redo boundary. */
   transferEffects?: TextEditEffect[];
 }
@@ -63,6 +66,8 @@ export function mergeTextEditRecords(
     inverse: forward.invert(previous.before),
     selectionAfter: next.selectionAfter,
     at: next.at,
+    widthBefore: previous.widthBefore ?? next.widthBefore,
+    widthAfter: next.widthAfter ?? previous.widthAfter,
     transferEffects,
   };
 }

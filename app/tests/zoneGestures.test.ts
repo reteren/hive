@@ -107,13 +107,23 @@ describe("zone move and resize", () => {
     expect(resized.blocked).toBe(true);
   });
 
-  it("lets a corner resize slide along the free axis and never shrinks below creation minimum", () => {
+  it("lets a corner resize slide along the free axis and preserves legacy small zones", () => {
     const gesture = createZoneResizeGesture(zone("a", 0, 0, 4, 4), [zone("b", 10, 0, 4, 4)], "bottom-right", { x: 0, y: 0 });
     const vertical = updateZoneResizeGesture(gesture, { x: 20, y: 10 }, false, 10);
     const shrink = updateZoneResizeGesture(gesture, { x: -20, y: -20 }, false, 10);
 
     expect(zoneBounds(vertical.afterZone)).toEqual({ x: 0, y: 0, width: 10, height: 14 });
-    expect(zoneBounds(shrink.afterZone)).toEqual({ x: 0, y: 0, width: 2, height: 2 });
+    expect(zoneBounds(shrink.afterZone)).toEqual({ x: 0, y: 0, width: 4, height: 4 });
+  });
+
+  it("keeps the 30u minimum during resize and does not shrink smaller legacy dimensions", () => {
+    const standard = createZoneResizeGesture(zone("standard", 0, 0, 30, 30), [], "bottom-right", { x: 30, y: 30 });
+    const standardShrink = updateZoneResizeGesture(standard, { x: -100, y: -100 }, false, 10);
+    expect(zoneBounds(standardShrink.afterZone)).toEqual({ x: 0, y: 0, width: 30, height: 30 });
+
+    const legacy = createZoneResizeGesture(zone("legacy", 0, 0, 12, 18), [], "bottom-right", { x: 12, y: 18 });
+    const legacyShrink = updateZoneResizeGesture(legacy, { x: -100, y: -100 }, false, 10);
+    expect(zoneBounds(legacyShrink.afterZone)).toEqual({ x: 0, y: 0, width: 12, height: 18 });
   });
 });
 

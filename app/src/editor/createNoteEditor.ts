@@ -7,6 +7,8 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Note } from "../model/note";
 import { history, record, type HistoryCommand } from "../history/history.svelte";
 import { board, updateNote } from "../model/board.svelte";
+import { preferences } from "../settings/preferences.svelte";
+import { growWidthToTextMinimum, maximumNoteWidthForKind } from "../notes/layout.svelte";
 import { runCommand } from "../commands/registry.svelte";
 import { teleportToObject, teleportToPoint } from "../navigation/navigate";
 import { showLinkStatus } from "../links-in-text/contextMenu.svelte";
@@ -18,6 +20,7 @@ import { openHighlightPalette } from "./highlightPalette";
 import { hiveMarkdownExtensions } from "./markdownSyntax";
 import { collapsedLinkMarkup, visibleMarkdownLinksInTree } from "./linkPreview";
 import { applyTextEditEffects, captureTextEditEffects } from "../transfer/textEditHooks";
+import { measureAndCacheTextMinimumWidth } from "./textFitWidth";
 import {
   createTextEditRecord,
   mergeTextEditRecords,
@@ -168,7 +171,19 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
       });
 
       edit.transferEffects = captureTextEditEffects(noteId, before.toString(), after.toString());
-      updateNote(noteId, { text: after.toString() });
+      const textMinimum = measureAndCacheTextMinimumWidth(noteId, after.toString(), update.view.contentDOM, note.type);
+      const currentWidth = board.notes[noteId]?.width ?? note.width;
+      const nextWidth = preferences.fitWidthToText && textMinimum !== null
+        ? growWidthToTextMinimum(currentWidth, textMinimum, maximumNoteWidthForKind(note.type))
+        : currentWidth;
+      if (nextWidth > currentWidth) {
+        edit.widthBefore = currentWidth;
+        edit.widthAfter = nextWidth;
+      }
+
+      updateNote(noteId, nextWidth > currentWidth
+        ? { text: after.toString(), width: nextWidth }
+        : { text: after.toString() });
       applyTextEditEffects(edit.transferEffects, "redo");
       record(createHistoryCommand(edit));
       observedHistoryEntries = history.entries;
@@ -331,7 +346,8 @@ function replayTextEdit(edit: TextEditRecord, direction: "undo" | "redo"): void 
   const selection = forward ? edit.selectionAfter : edit.selectionBefore;
 
   replayTextEditRecord(edit, direction, (nextText) => {
-    updateNote(edit.noteId, { text: nextText });
+    const width = direction === "redo" ? edit.widthAfter : edit.widthBefore;
+    updateNote(edit.noteId, width === undefined ? { text: nextText } : { text: nextText, width });
     const view = editorForNote(edit.noteId);
     if (!view) return;
 

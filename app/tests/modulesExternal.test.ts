@@ -351,7 +351,7 @@ describe("standalone modules", () => {
     expect(links.byId[createdLink.id]?.from).toBe(module?.id);
   });
 
-  it("moves an extracted module to the nearest free spot when its drop point is occupied", () => {
+  it("moves an extracted module to the nearest free spot with a two-unit gap", () => {
     grid.snap = false;
     grid.step = 10;
     const target = note({ id: "target", type: "pro", name: "Target", importance: "medium" });
@@ -360,7 +360,7 @@ describe("standalone modules", () => {
 
     expect(extractModuleFromNote("target", "importance", "medium", { x: 48, y: 22 })).toBe(true);
     const module = Object.values(board.notes).find((candidate) => candidate.type === "importance");
-    expect(module).toMatchObject({ x: 41, y: 16, width: 14, height: 4 });
+    expect(module).toMatchObject({ x: 57, y: 20, width: 14, height: 4 });
     expect(module!.x < blocker.x + blocker.width && module!.x + module!.width > blocker.x &&
       module!.y < blocker.y + blocker.height! && module!.y + module!.height! > blocker.y).toBe(false);
     expect(history.entries).toHaveLength(1);

@@ -18,7 +18,14 @@ function edit(
   insert: string,
   selectionBefore: EditorSelection,
   selectionAfter: EditorSelection,
-  options: { at?: number; group?: number; noteId?: string; kind?: "typing" | "backspace" | "atomic" } = {},
+  options: {
+    at?: number;
+    group?: number;
+    noteId?: string;
+    kind?: "typing" | "backspace" | "atomic";
+    widthBefore?: number;
+    widthAfter?: number;
+  } = {},
 ) {
   const before = Text.of(text.split("\n"));
   const forward = ChangeSet.of([{ from, to, insert }], before.length);
@@ -33,6 +40,8 @@ function edit(
     kind: options.kind ?? "typing",
     at: options.at ?? 100,
     group: options.group ?? 0,
+    widthBefore: options.widthBefore,
+    widthAfter: options.widthAfter,
   });
 }
 
@@ -67,6 +76,23 @@ describe("editor text history", () => {
 
     expect(merged?.after.toString()).toBe("");
     expect(merged?.inverse.apply(second.after).toString()).toBe("ab");
+  });
+
+  it("coalesces typing-driven width growth into the same history burst", () => {
+    const first = edit("", 0, 0, "a", selection(0), selection(1), {
+      widthBefore: 30,
+      widthAfter: 34,
+    });
+    const second = edit("a", 1, 1, "b", selection(1), selection(2), {
+      at: 250,
+      widthBefore: 34,
+      widthAfter: 41,
+    });
+    const merged = mergeTextEditRecords(first, second);
+
+    expect(merged?.before.toString()).toBe("");
+    expect(merged?.after.toString()).toBe("ab");
+    expect([merged?.widthBefore, merged?.widthAfter]).toEqual([30, 41]);
   });
 
   it("breaks groups on note, caret, edit kind, group, or a pause over one second", () => {

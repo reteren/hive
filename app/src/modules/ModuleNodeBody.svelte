@@ -71,7 +71,9 @@
       {/if}
     {/each}
     {#if purposes.length > 0}
-      <button type="button" class="module-node-add" data-module-trigger data-selection-ignore aria-label="Add Purpose" onclick={() => togglePicker("purpose")}>+</button>
+      <button type="button" class="module-node-add" data-module-trigger data-selection-ignore aria-label="Add Purpose" onclick={() => togglePicker("purpose")}>
+        <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M6 2.5v7M2.5 6h7" /></svg>
+      </button>
     {/if}
     {#if pickerKind === "purpose"}
       <ModulePicker

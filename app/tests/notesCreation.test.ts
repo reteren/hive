@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   chooseCreationOrigin,
+  CREATION_GAP,
   createMenuPosition,
   creationObstacleForNote,
   estimatedCreationHeight,
@@ -50,58 +51,79 @@ describe("note creation placement", () => {
     expect({ x: snappedTopLeft.x + 15, y: snappedTopLeft.y + 10 }).toEqual({ x: 10, y: -10 });
   });
 
-  it("keeps a free target unchanged and allows bounds to touch without counting as overlap", () => {
-    const obstacles: CreationObstacle[] = [{ x: 4, y: -1, width: 2, height: 2 }];
-    expect(nearestFreeNoteCenter({ x: 2, y: 0 }, 2, 2, obstacles, false, 10)).toEqual({ x: 2, y: 0 });
-    expect(nearestFreeNoteCenter({ x: 3, y: 0 }, 2, 2, obstacles, false, 10)).toEqual({ x: 3, y: 0 });
+  it("keeps a free target unchanged when it already has the required clearance", () => {
+    const obstacles: CreationObstacle[] = [{ x: 104, y: 99, width: 2, height: 2 }];
+    expect(nearestFreeNoteCenter({ x: 100, y: 100 }, 2, 2, obstacles, false, 10)).toEqual({ x: 100, y: 100 });
+    expect(nearestFreeNoteCenter({ x: 101, y: 100 }, 2, 2, obstacles, false, 10)).toEqual({ x: 101, y: 100 });
   });
 
-  it("pushes an overlapping rectangle to the nearest touching edge", () => {
+  it("places an overlapping rectangle to the right first with the minimum gap", () => {
     expect(nearestFreeNoteCenter(
-      { x: 0, y: 0 },
+      { x: 100, y: 100 },
       4,
       4,
-      [{ x: -2, y: -2, width: 4, height: 4 }],
+      [{ x: 98, y: 98, width: 4, height: 4 }],
       false,
       10,
-    )).toEqual({ x: 0, y: -4 });
+    )).toEqual({ x: 106, y: 100 });
+    expect(CREATION_GAP).toBe(2);
   });
 
-  it("treats floating point edge contact with a 7.2-unit beacon as touching", () => {
-    expect(nearestFreeNoteCenter(
-      { x: 0, y: 0 },
+  it("keeps at least two units between a new note and a beacon", () => {
+    const placed = nearestFreeNoteCenter(
+      { x: 100, y: 100 },
       30,
       6,
-      [{ x: -3.6, y: -3.6, width: 7.2, height: 7.2 }],
+      [{ x: 96.4, y: 96.4, width: 7.2, height: 7.2 }],
       false,
       10,
-    )).toEqual({ x: 0, y: -6.6 });
+    );
+    expect(placed.x).toBeCloseTo(120.6);
+    expect(placed.y).toBeCloseTo(99.4);
   });
 
-  it("keeps collision-resolved centres on the snap grid", () => {
+  it("continues a blocked placement to the right of its blocker", () => {
+    expect(nearestFreeNoteCenter(
+      { x: 100, y: 100 },
+      4,
+      4,
+      [
+        { x: 98, y: 98, width: 4, height: 4 },
+        { x: 104, y: 98, width: 4, height: 4 },
+      ],
+      false,
+      10,
+    )).toEqual({ x: 112, y: 100 });
+  });
+
+  it("keeps collision-resolved centres on-grid and clears the gap when snapping is enabled", () => {
     const placed = nearestFreeNoteCenter(
-      { x: 6, y: 6 },
-      2,
-      2,
-      [{ x: 4, y: 4, width: 2, height: 2 }],
+      { x: 100, y: 100 },
+      4,
+      4,
+      [{ x: 98, y: 98, width: 4, height: 4 }],
       true,
       5,
     );
     expect(placed.x % 5).toBe(0);
     expect(placed.y % 5).toBe(0);
-    expect(placed).toEqual({ x: 5, y: 0 });
+    expect(placed).toEqual({ x: 110, y: 100 });
   });
 
-  it("places repeated pinned-menu creations around the original anchor", () => {
-    const anchor = { x: 0, y: 0 };
+  it("places repeated pinned-menu creations in a row to the right", () => {
+    const anchor = { x: 100, y: 100 };
     const placed: CreationObstacle[] = [];
     const centers = Array.from({ length: 4 }, () => {
       const center = nearestFreeNoteCenter(anchor, 4, 4, placed, false, 10);
       placed.push({ x: center.x - 2, y: center.y - 2, width: 4, height: 4 });
       return center;
     });
-    expect(new Set(centers.map(({ x, y }) => `${x}:${y}`)).size).toBe(4);
-    expect(centers).toContainEqual(anchor);
+    expect(centers).toEqual([
+      anchor,
+      { x: 106, y: 100 },
+      { x: 112, y: 100 },
+      { x: 118, y: 100 },
+    ]);
     for (let first = 0; first < placed.length; first += 1) {
       for (let second = first + 1; second < placed.length; second += 1) {
         const a = placed[first];
@@ -111,20 +133,20 @@ describe("note creation placement", () => {
     }
   });
 
-  it("keeps two auto-height notes apart using their first rendered size", () => {
+  it("keeps two auto-height notes at least two units apart using their first rendered size", () => {
     const height = estimatedCreationHeight({ type: "note", width: 30, height: null, text: "" });
-    const firstCenter = nearestFreeNoteCenter({ x: 0, y: 0 }, 30, height, [], false, 10);
+    const firstCenter = nearestFreeNoteCenter({ x: 100, y: 100 }, 30, height, [], false, 10);
     const first = { x: firstCenter.x - 15, y: firstCenter.y - height / 2, width: 30, height };
-    const secondCenter = nearestFreeNoteCenter({ x: 0, y: 0 }, 30, height, [first], false, 10);
+    const secondCenter = nearestFreeNoteCenter({ x: 100, y: 100 }, 30, height, [first], false, 10);
     const second = { x: secondCenter.x - 15, y: secondCenter.y - height / 2, width: 30, height };
 
-    const touches = Math.abs(first.y + first.height - second.y) < 1e-9 ||
-      Math.abs(second.y + second.height - first.y) < 1e-9 ||
-      Math.abs(first.x + first.width - second.x) < 1e-9 ||
-      Math.abs(second.x + second.width - first.x) < 1e-9;
-    expect(touches).toBe(true);
-    expect(first.x < second.x + second.width && first.x + first.width > second.x &&
-      first.y < second.y + second.height && first.y + first.height > second.y).toBe(false);
+    const gapX = Math.max(first.x - (second.x + second.width), second.x - (first.x + first.width), 0);
+    const gapY = Math.max(first.y - (second.y + second.height), second.y - (first.y + first.height), 0);
+    expect(Math.hypot(gapX, gapY)).toBeGreaterThanOrEqual(CREATION_GAP);
+  });
+
+  it("treats the permanent ME beacon as an obstacle", () => {
+    expect(nearestFreeNoteCenter({ x: 0, y: 0 }, 4, 4, [], false, 10)).toEqual({ x: 7.6, y: -1.6 });
   });
 
   it("keeps the menu inside the viewport near the lower-right edge", () => {

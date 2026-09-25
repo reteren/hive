@@ -1,4 +1,4 @@
-import type { Note } from "../model/note";
+import { DEFAULT_NOTE_WIDTH, type Note, type NoteKind } from "../model/note";
 import { PX_PER_UNIT } from "../board/cameraMath";
 
 /** Rendered height (u) of notes whose height follows their text; kept current by NotesLayer. */
@@ -6,6 +6,52 @@ export const measuredHeights: Record<string, number> = $state({});
 
 /** Minimum height used before a note has been measured. */
 export const MIN_NOTE_HEIGHT = 6;
+export const MIN_NOTE_WIDTH = 12;
+export const FIT_WIDTH_MAX_MULTIPLIER = 2.5;
+
+const minimumTextWidths = new Map<string, number>();
+
+export function maximumNoteWidthForKind(kind: NoteKind | undefined): number {
+  if (!kind) return Number.POSITIVE_INFINITY;
+  const baseWidth = kind === "pro" || kind === "con" ? 18 : DEFAULT_NOTE_WIDTH;
+  return baseWidth * FIT_WIDTH_MAX_MULTIPLIER;
+}
+
+/** Minimum board width needed to keep the widest natural text line unwrapped. */
+export function minimumWidthForText(
+  widestLinePx: number,
+  horizontalChromePx: number,
+  maxWidth: number,
+  pxPerUnit = PX_PER_UNIT,
+): number {
+  const safeLine = Number.isFinite(widestLinePx) ? Math.max(0, widestLinePx) : 0;
+  const safeChrome = Number.isFinite(horizontalChromePx) ? Math.max(0, horizontalChromePx) : 0;
+  const safeScale = Number.isFinite(pxPerUnit) && pxPerUnit > 0 ? pxPerUnit : PX_PER_UNIT;
+  const safeMax = Number.isFinite(maxWidth) ? Math.max(MIN_NOTE_WIDTH, maxWidth) : Number.POSITIVE_INFINITY;
+  return Math.min(safeMax, Math.max(MIN_NOTE_WIDTH, (safeLine + safeChrome) / safeScale));
+}
+
+/** Grow only as needed; deleting text never reduces the current width. */
+export function growWidthToTextMinimum(currentWidth: number, textMinimum: number, maxWidth: number): number {
+  const safeCurrent = Number.isFinite(currentWidth) ? Math.max(MIN_NOTE_WIDTH, currentWidth) : MIN_NOTE_WIDTH;
+  const safeMaximum = Number.isFinite(maxWidth) ? Math.max(MIN_NOTE_WIDTH, maxWidth) : safeCurrent;
+  const clampedMinimum = Math.min(safeMaximum, Number.isFinite(textMinimum) ? Math.max(MIN_NOTE_WIDTH, textMinimum) : MIN_NOTE_WIDTH);
+  return Math.max(safeCurrent, clampedMinimum);
+}
+
+export function cacheMinimumTextWidth(noteId: string, width: number): void {
+  if (Number.isFinite(width)) minimumTextWidths.set(noteId, Math.max(MIN_NOTE_WIDTH, width));
+}
+
+export function minimumTextWidthForNote(noteId: string, maxWidth: number): number {
+  const cached = minimumTextWidths.get(noteId) ?? MIN_NOTE_WIDTH;
+  const safeMaximum = Number.isFinite(maxWidth) ? Math.max(MIN_NOTE_WIDTH, maxWidth) : cached;
+  return Math.max(MIN_NOTE_WIDTH, Math.min(safeMaximum, cached));
+}
+
+export function clearMinimumTextWidth(noteId: string): void {
+  minimumTextWidths.delete(noteId);
+}
 
 /** Preview and CodeMirror body styles both use a 14 px font with a 1.45 line height. */
 export const NOTE_LINE_HEIGHT = (14 * 1.45) / PX_PER_UNIT;

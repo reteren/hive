@@ -3,6 +3,7 @@ import { applyReduceMotionPreference, systemPrefersReducedMotion } from "./motio
 export const preferences = $state({
   reduceAnimations: systemPrefersReducedMotion(),
   transferHintsShown: 0,
+  fitWidthToText: true,
 });
 
 export function setTransferHintsShown(count: number): void {
@@ -16,6 +17,10 @@ export function recordTransferHintShown(): void {
 export function setReduceAnimations(enabled: boolean): void {
   preferences.reduceAnimations = enabled;
   applyReduceMotionPreference(enabled);
+}
+
+export function setFitWidthToText(enabled: boolean): void {
+  preferences.fitWidthToText = enabled;
 }
 
 applyReduceMotionPreference(preferences.reduceAnimations);

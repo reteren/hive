@@ -23,6 +23,8 @@ interface RenderOptions {
   highlights?: ReadonlyMap<number, ReturnType<typeof coloredHighlights>[number]>;
   consumedColorSuffixes?: ReadonlySet<number>;
   linkActions?: MarkdownLinkActions;
+  /** Preserve source newlines inside a paragraph as visible line breaks. */
+  softBreaks?: boolean;
 }
 
 export interface MarkdownLinkActions {
@@ -126,7 +128,8 @@ function renderChildren(
     if (firstText && options.trimFirstWhitespace) gap = gap.replace(/^[\t\n\r ]+/u, "");
     if (trimAfterSkipped) gap = gap.replace(/^[\t ]+/u, "");
     if (options.trimEdges) gap = gap.trim();
-    appendText(parent, doc, gap);
+    if (options.softBreaks) appendTextWithLineBreaks(parent, doc, gap);
+    else appendText(parent, doc, gap);
     if (gap) firstText = false;
     trimAfterSkipped = false;
   };
@@ -154,6 +157,14 @@ function renderChildren(
   addGap(end);
 }
 
+function appendTextWithLineBreaks(parent: Node, doc: Document, text: string): void {
+  const lines = text.split(/\r\n|\r|\n/u);
+  lines.forEach((line, index) => {
+    appendText(parent, doc, line);
+    if (index < lines.length - 1) element(doc, parent, "br");
+  });
+}
+
 function renderNode(
   node: MarkdownNode,
   parent: Node,
@@ -169,7 +180,7 @@ function renderNode(
 
   if (name === "Paragraph") {
     const paragraph = element(doc, parent, "p");
-    renderChildren(node, paragraph, source, doc, options);
+    renderChildren(node, paragraph, source, doc, { ...options, softBreaks: true });
     return;
   }
 

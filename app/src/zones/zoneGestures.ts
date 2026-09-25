@@ -4,8 +4,7 @@ import type { HistoryCommand } from "../history/history.svelte";
 import { addZone, removeZone, zones } from "../model/zones.svelte";
 import { rectContour, zoneBounds, type Zone, type ZoneBounds } from "../model/zone";
 import { resizeEdgeAxes, type ResizeEdge } from "../selection/resize";
-
-const MIN_ZONE_SIZE = 2;
+import { MIN_ZONE_SIZE } from "./geometry";
 
 export interface MemberPosition {
   id: string;
@@ -116,24 +115,27 @@ export function updateZoneResizeGesture(
     x: cursorWorld.x - gesture.startWorld.x,
     y: cursorWorld.y - gesture.startWorld.y,
   };
+  // Existing persisted zones can be smaller than 30 u; let them stay as-is, but never shrink them.
+  const minWidth = Math.min(MIN_ZONE_SIZE, before.width);
+  const minHeight = Math.min(MIN_ZONE_SIZE, before.height);
   if (axes.horizontal === "right") {
     let right = before.x + before.width + delta.x;
     if (snap) right = snapToGrid({ x: right, y: 0 }, step).x;
-    desired.width = Math.max(MIN_ZONE_SIZE, right - before.x);
+    desired.width = Math.max(minWidth, right - before.x);
   } else if (axes.horizontal === "left") {
     let left = before.x + delta.x;
     if (snap) left = snapToGrid({ x: left, y: 0 }, step).x;
-    desired.x = Math.min(left, before.x + before.width - MIN_ZONE_SIZE);
+    desired.x = Math.min(left, before.x + before.width - minWidth);
     desired.width = before.x + before.width - desired.x;
   }
   if (axes.vertical === "bottom") {
     let bottom = before.y + before.height + delta.y;
     if (snap) bottom = snapToGrid({ x: 0, y: bottom }, step).y;
-    desired.height = Math.max(MIN_ZONE_SIZE, bottom - before.y);
+    desired.height = Math.max(minHeight, bottom - before.y);
   } else if (axes.vertical === "top") {
     let top = before.y + delta.y;
     if (snap) top = snapToGrid({ x: 0, y: top }, step).y;
-    desired.y = Math.min(top, before.y + before.height - MIN_ZONE_SIZE);
+    desired.y = Math.min(top, before.y + before.height - minHeight);
     desired.height = before.y + before.height - desired.y;
   }
 

@@ -8,8 +8,8 @@ describe("zone commands", () => {
   beforeEach(() => { clear(); replaceZones([]); replaceBoard([]); });
 
   it("creates unique names and rotating colours as individual Undo steps", () => {
-    const first = createZone({ x: 0, y: 0, width: 10, height: 10 });
-    const second = createZone({ x: 10, y: 0, width: 10, height: 10 });
+    const first = createZone({ x: 0, y: 0, width: 30, height: 30 });
+    const second = createZone({ x: 30, y: 0, width: 30, height: 30 });
     expect(first?.name).toBe("Zone");
     expect(second?.name).toBe("Zone 2");
     expect(first?.color).toBe(ZONE_COLORS[0]);
@@ -22,15 +22,15 @@ describe("zone commands", () => {
   });
 
   it("refuses tiny and overlapping rectangles without creating history", () => {
-    createZone({ x: 0, y: 0, width: 10, height: 10 });
+    createZone({ x: 0, y: 0, width: 30, height: 30 });
     expect(createZone({ x: 10, y: 2, width: 1, height: 8 })).toBeNull();
-    expect(createZone({ x: 9, y: 2, width: 4, height: 8 })).toBeNull();
+    expect(createZone({ x: 29, y: 2, width: 30, height: 30 })).toBeNull();
     expect(history.entries).toHaveLength(1);
   });
 
   it("renames, recolours and deletes only the zone with reversible commands", () => {
     replaceBoard([{ id: "note", name: "Note", type: "note", text: "content", x: 1, y: 1, width: 3, height: 3 }]);
-    const created = createZone({ x: 0, y: 0, width: 10, height: 10 })!;
+    const created = createZone({ x: 0, y: 0, width: 30, height: 30 })!;
     expect(renameZone(created.id, "Work")).toBe(true);
     expect(recolorZone(created.id, "#123456")).toBe(true);
     expect(deleteZone(created.id)).toBe(true);

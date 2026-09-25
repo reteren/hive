@@ -32,7 +32,9 @@
         <ModuleChip label={option.label} color={option.color} onClick={() => clickMood(mood)} />
       {/if}
     {/each}
-    <button type="button" class="module-node-add" data-module-trigger data-selection-ignore aria-label="Add Mood" onclick={() => toggleModulePicker(note.id, "mood")}>+</button>
+    <button type="button" class="module-node-add" data-module-trigger data-selection-ignore aria-label="Add Mood" onclick={() => toggleModulePicker(note.id, "mood")}>
+      <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M6 2.5v7M2.5 6h7" /></svg>
+    </button>
   {/if}
   {#if isOpen}
     <ModulePicker

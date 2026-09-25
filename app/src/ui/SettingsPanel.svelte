@@ -1,6 +1,6 @@
 <script lang="ts">
   import { history, MAX_HISTORY_LIMIT, MIN_HISTORY_LIMIT, setHistoryLimit } from "../history/history.svelte";
-  import { preferences, setReduceAnimations } from "../settings/preferences.svelte";
+  import { preferences, setFitWidthToText, setReduceAnimations } from "../settings/preferences.svelte";
   import { closeSettingsPanel, settingsPanel } from "../settings/settingsPanel.svelte";
 
   let historyLimitDraft = $state(String(history.limit));
@@ -63,6 +63,17 @@
               type="checkbox"
               checked={preferences.reduceAnimations}
               onchange={(event) => setReduceAnimations(event.currentTarget.checked)}
+            />
+          </label>
+          <label class="setting-row">
+            <span class="setting-copy">
+              <span>Fit note width to text (beta)</span>
+              <span class="setting-description">Grow while typing to keep each line unwrapped.</span>
+            </span>
+            <input
+              type="checkbox"
+              checked={preferences.fitWidthToText}
+              onchange={(event) => setFitWidthToText(event.currentTarget.checked)}
             />
           </label>
         </section>
