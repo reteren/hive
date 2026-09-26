@@ -16,6 +16,7 @@ import type { Point } from "../board/cameraMath";
 import { beaconPaletteColor, normalizeBeaconColor } from "../beacons/beaconPalette";
 import { noteFileKey, sanitizeNoteName } from "./fileNames";
 import type { TaskLogEntry } from "../tasks/taskLog.svelte";
+import { parseScope, parseTiers, type CalculatorData, type NodeScope, type TierRow } from "../model/nodeData";
 
 export interface IndexedNote {
   id: string;
@@ -33,6 +34,8 @@ export interface IndexedNote {
   moods: MoodKind[];
   color?: string | null;
   zoneId?: string | null;
+  scope?: NodeScope;
+  tiers?: TierRow[];
   [key: string]: unknown;
 }
 
@@ -45,6 +48,8 @@ export interface ProjectIndex {
   beaconMarks: string[];
   /** Completion history stays with the project snapshot and is separate from Undo. */
   taskLog: TaskLogEntry[];
+  /** R5.6 shared calculator contents keyed by calculatorKey(name); optional for older boards. */
+  calculators?: Record<string, CalculatorData>;
   [key: string]: unknown;
 }
 
@@ -140,6 +145,8 @@ export function serializeProjectIndex(
       moods: [...new Set(note.moods ?? [])],
       color: note.type === "beacon" ? normalizeBeaconColor(note.color ?? "") ?? beaconPaletteColor(0) : note.color ?? null,
       zoneId: note.zoneId && validZoneIds.has(note.zoneId) ? note.zoneId : null,
+      ...(note.scope ? { scope: note.scope } : {}),
+      ...(note.tiers ? { tiers: note.tiers } : {}),
     };
   });
   validateUniqueNotes(indexedNotes);
@@ -181,6 +188,8 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       ...(entry.moods.length > 0 ? { moods: [...entry.moods] } : {}),
       ...(entry.color ? { color: entry.color } : {}),
       ...(entry.zoneId ? { zoneId: entry.zoneId } : {}),
+      ...(entry.scope ? { scope: entry.scope } : {}),
+      ...(entry.tiers ? { tiers: entry.tiers } : {}),
       ...(typeof entry.createdAt === "number" && Number.isFinite(entry.createdAt) && entry.createdAt >= 0
         ? { createdAt: entry.createdAt }
         : {}),
@@ -288,6 +297,8 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
       moods: moods.values,
       color: type === "beacon" ? color ?? beaconPaletteColor(0) : color,
       zoneId,
+      scope: parseScope(value.scope) ?? undefined,
+      tiers: parseTiers(value.tiers) ?? undefined,
     },
     warnings,
   };
@@ -307,7 +318,8 @@ function validateUniqueNotes(notes: readonly IndexedNote[]): void {
 
 function parseNoteKind(value: unknown): NoteKind | null {
   return value === "note" || value === "pro" || value === "con" ||
-    value === "importance" || value === "purpose" || value === "mood" || value === "beacon"
+    value === "importance" || value === "purpose" || value === "mood" || value === "beacon" ||
+    value === "goal" || value === "progress" || value === "calculator" || value === "tierlist" || value === "stats"
     ? value
     : null;
 }

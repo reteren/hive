@@ -1,10 +1,18 @@
+import type { NodeScope, TierRow } from "./nodeData";
+
 /**
  * "note" — ordinary text node; "pro"/"con" — the green/red plus/minus mini-nodes (R3.5);
  * "importance"/"purpose"/"mood" — a standalone (external) module on the board (R3.6): no text, its
  * value lives in `importance` / `purposes` / `moods`, and it applies to the notes it links to;
- * "beacon" — an organising beacon (R4): fixed 7.2 u circle, name + `color`, only outgoing links.
+ * "beacon" — an organising beacon (R4): fixed 7.2 u circle, name + `color`, only outgoing links;
+ * R5 nodes that show and calculate: "goal", "progress", "calculator", "tierlist", "stats".
  */
-export type NoteKind = "note" | "pro" | "con" | "importance" | "purpose" | "mood" | "beacon";
+export type NoteKind =
+  | "note" | "pro" | "con" | "importance" | "purpose" | "mood" | "beacon"
+  | "goal" | "progress" | "calculator" | "tierlist" | "stats";
+
+/** R5 kinds, in create-menu order. */
+export const R5_KINDS = ["goal", "progress", "calculator", "tierlist", "stats"] as const;
 
 /** Importance levels (R3.3): white / yellow / red / purple / rainbow. */
 export const IMPORTANCE_LEVELS = ["basic", "medium", "important", "immediately", "absolute"] as const;
@@ -88,6 +96,10 @@ export interface Note {
   color?: string;
   /** Zone this object belongs to (R4.3); kept to resolve equal-area ties in favour of the previous zone (H19). */
   zoneId?: string | null;
+  /** Progress / Statistics (R5): what the node counts. */
+  scope?: NodeScope;
+  /** Tierlist (R5.7): rows and their cards. */
+  tiers?: TierRow[];
 }
 
 /** Beacon diameter in u (fixed size, ROADMAP R4.0). */

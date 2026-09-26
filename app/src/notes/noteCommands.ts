@@ -1,4 +1,5 @@
 import { registerCommand } from "../commands/registry.svelte";
+import { nodeBodyFor } from "./nodeBodies";
 import { execute } from "../history/history.svelte";
 import { addNote, board, removeNote } from "../model/board.svelte";
 import { BEACON_SIZE, DEFAULT_NOTE_WIDTH, newId, type Note, type NoteKind } from "../model/note";
@@ -52,7 +53,7 @@ export function createNote(): string {
 /** Create a note, plus/minus, or standalone module at the current creation origin. */
 export function createNoteKind(kind: NoteKind): string {
   const isModule = kind === "importance" || kind === "purpose" || kind === "mood";
-  const width = kind === "beacon" ? BEACON_SIZE : kind === "note" ? DEFAULT_NOTE_WIDTH : isModule ? MODULE_NOTE_WIDTH : DEFAULT_MINI_NOTE_WIDTH;
+  const width = kind === "beacon" ? BEACON_SIZE : kind in R5_WIDTHS ? R5_WIDTHS[kind as keyof typeof R5_WIDTHS] : kind === "note" ? DEFAULT_NOTE_WIDTH : isModule ? MODULE_NOTE_WIDTH : DEFAULT_MINI_NOTE_WIDTH;
   const height = estimatedCreationHeight({
     type: kind,
     width,
@@ -88,7 +89,7 @@ export function createNoteKind(kind: NoteKind): string {
       clearSelection();
       clearSelectedLink();
       selectOnly(id);
-      if (!isModule && kind !== "beacon") editing.noteId = id;
+      if (!isModule && kind !== "beacon" && !nodeBodyFor(kind)) editing.noteId = id;
     },
     undo: () => {
       removeNote(id);
@@ -146,6 +147,9 @@ export function addMiniNode(parentId: string, kind: MiniNoteKind): string | null
   return id;
 }
 
+/** Initial widths of R5 nodes in u (owners may tune them). */
+const R5_WIDTHS = { goal: 30, progress: 30, calculator: 40, tierlist: 60, stats: 30 } as const;
+
 function makeNote(kind: NoteKind, id: string, position: Point, createdAt: number): Note {
   const baseName = kindLabel(kind);
   return {
@@ -157,6 +161,8 @@ function makeNote(kind: NoteKind, id: string, position: Point, createdAt: number
     y: position.y,
     width: kind === "beacon"
       ? BEACON_SIZE
+      : kind in R5_WIDTHS
+      ? R5_WIDTHS[kind as keyof typeof R5_WIDTHS]
       : kind === "note"
       ? DEFAULT_NOTE_WIDTH
       : kind === "importance" || kind === "purpose" || kind === "mood"
@@ -178,6 +184,11 @@ function kindLabel(kind: NoteKind): string {
   if (kind === "purpose") return "Purpose";
   if (kind === "mood") return "Mood";
   if (kind === "beacon") return "Beacon";
+  if (kind === "goal") return "Goal";
+  if (kind === "progress") return "Progress";
+  if (kind === "calculator") return "Calculator";
+  if (kind === "tierlist") return "Tierlist";
+  if (kind === "stats") return "Statistics";
   return "Note";
 }
 

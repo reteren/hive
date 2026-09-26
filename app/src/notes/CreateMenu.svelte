@@ -1,6 +1,7 @@
 <script lang="ts">
   import { viewport } from "../board/camera.svelte";
   import { createNote, createNoteKind } from "./noteCommands";
+  import { R5_KINDS } from "../model/note";
   import { createMenuPosition } from "./creationPosition";
   import { creationMenu, closeCreationMenu } from "./creation.svelte";
 
@@ -21,6 +22,19 @@
   }
 
   function createModuleFromMenu(kind: "importance" | "purpose" | "mood"): void {
+    createNoteKind(kind);
+    if (!creationMenu.pinned) closeCreationMenu();
+  }
+
+  const R5_LABELS: Record<(typeof R5_KINDS)[number], string> = {
+    goal: "Goal",
+    progress: "Progress",
+    calculator: "Calculator",
+    tierlist: "Tierlist",
+    stats: "Statistics",
+  };
+
+  function createR5FromMenu(kind: (typeof R5_KINDS)[number]): void {
     createNoteKind(kind);
     if (!creationMenu.pinned) closeCreationMenu();
   }
@@ -99,6 +113,12 @@
         <span class="beacon-icon" aria-hidden="true"></span>
         <span>Beacon</span>
       </button>
+      {#each R5_KINDS as kind (kind)}
+        <button class="create-item" type="button" data-create-kind={kind} onclick={() => createR5FromMenu(kind)}>
+          <span class="r5-icon" aria-hidden="true"></span>
+          <span>{R5_LABELS[kind]}</span>
+        </button>
+      {/each}
     </div>
   </aside>
 {/if}
@@ -260,6 +280,15 @@
     stroke-linecap: round;
     stroke-linejoin: round;
     stroke-width: 1.4;
+  }
+
+  /* Placeholder glyph for R5 kinds; each kind's owner may give it a proper icon later. */
+  .r5-icon {
+    width: 11px;
+    height: 11px;
+    flex: 0 0 auto;
+    border: 1.5px solid var(--text-dim);
+    border-radius: 3px;
   }
 
   .beacon-icon {

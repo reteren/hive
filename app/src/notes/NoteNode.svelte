@@ -14,6 +14,7 @@
   import NoteModules from "../modules/NoteModules.svelte";
   import ModuleNodeBody from "../modules/ModuleNodeBody.svelte";
   import MoodNodeBody from "../moods/MoodNodeBody.svelte";
+  import { nodeBodyFor } from "./nodeBodies";
   import { effectiveImportance } from "../modules/moduleActions.svelte";
   import { startNoteEditing } from "../editor/editorSession";
   import { tool } from "../tools/tool.svelte";
@@ -149,7 +150,10 @@
       class:empty-auto-body={note.height === null && note.text.trim() === "" && (note.type === "note" || note.type === "pro" || note.type === "con")}
       data-note-body
     >
-      {#if note.type === "importance" || note.type === "purpose"}
+      {#if nodeBodyFor(note.type)}
+        {@const CustomBody = nodeBodyFor(note.type)!}
+        <CustomBody {note} />
+      {:else if note.type === "importance" || note.type === "purpose"}
         <ModuleNodeBody {note} />
       {:else if note.type === "mood"}
         <MoodNodeBody {note} />
