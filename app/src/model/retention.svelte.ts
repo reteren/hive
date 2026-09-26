@@ -1,6 +1,7 @@
 import type { Link } from "./link";
 import type { Note } from "./note";
 import type { Zone } from "./zone";
+import type { CalculatorData } from "./nodeData";
 
 /**
  * R6 contracts: soft-deleted (trash) and archived board content. Both live in board.json
@@ -15,6 +16,8 @@ export interface TrashEntry {
   notes: Note[];
   zones: Zone[];
   links: Link[];
+  /** Calculator contents of removed calculators (keyed by calculatorKey(name)); data is pruned from the board otherwise. */
+  calculators?: Record<string, CalculatorData>;
 }
 
 /** One archived note with the links it had when it was archived (H34: restore to old place or screen centre). */
@@ -23,6 +26,8 @@ export interface ArchiveEntry {
   archivedAt: number;
   note: Note;
   links: Link[];
+  /** Contents of an archived calculator (its board data is pruned once no calculator with that name remains). */
+  calculatorData?: CalculatorData;
 }
 
 export const trash = $state({ entries: [] as TrashEntry[] });
