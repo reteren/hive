@@ -83,6 +83,7 @@
     <button
       class:move-mode={zoneMode.active === "move"}
       class="mode-toggle"
+      data-zone-mode-toggle
       type="button"
       aria-pressed={zoneMode.active === "move"}
       title="Shift toggles between painting and moving zones"

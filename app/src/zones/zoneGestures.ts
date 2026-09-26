@@ -153,6 +153,24 @@ export function zoneGestureChanged(before: Zone, after: Zone): boolean {
     JSON.stringify(before.holes) !== JSON.stringify(after.holes);
 }
 
+export function cancelZoneMoveGesture(gesture: ZoneMoveGesture): Pick<ZoneMoveGesture, "beforeZone" | "beforeMembers"> {
+  return { beforeZone: gesture.beforeZone, beforeMembers: gesture.beforeMembers };
+}
+
+/** The preview is already applied; record both zone and captured members as one Undo step. */
+export function zoneMoveHistoryCommand(
+  gesture: ZoneMoveGesture,
+  apply: (zone: Zone, members: readonly MemberPosition[]) => void,
+): HistoryCommand | null {
+  if (!zoneGestureChanged(gesture.beforeZone, gesture.afterZone)) return null;
+  return {
+    label: "Move zone",
+    target: gesture.beforeZone.name,
+    do: () => apply(gesture.afterZone, gesture.afterMembers),
+    undo: () => apply(gesture.beforeZone, gesture.beforeMembers),
+  };
+}
+
 /** The caller may combine this action with note deletion in one HistoryCommand. */
 export function deleteZonesAction(zoneIds: readonly string[]): Pick<HistoryCommand, "do" | "undo"> {
   const indexed = zoneIds.flatMap((id) => {

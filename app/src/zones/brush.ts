@@ -34,7 +34,7 @@ export function normalizeBrushSize(size: number): number {
 /**
  * The square the brush covers when centred on `point`. Its top-left is snapped with Math.round to
  * the nearest 10u multiple (ties go toward positive infinity, including negative half-steps);
- * `snap = false` (Shift held) places the square exactly under the cursor.
+ * `snap = false` supports internal geometry callers; the interactive brush always snaps.
  */
 export function brushSquare(point: Point, size: number, snap = true): ZoneBounds {
   if (![point.x, point.y].every(Number.isFinite)) throw new RangeError("Brush point must be finite.");

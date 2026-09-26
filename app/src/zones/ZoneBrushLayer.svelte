@@ -33,14 +33,14 @@
     `translate(${viewport.width / 2} ${viewport.height / 2}) scale(${camera.zoom * PX_PER_UNIT}) translate(${-camera.x} ${-camera.y})`,
   );
   const cursorBounds = $derived(
-    shouldShowZoneBrushCursor(tool.active, zoneMode.active, brushStrokeState.cursor !== null) &&
+    shouldShowZoneBrushCursor(tool.active, zoneMode.active, brushStrokeState.cursor !== null, zoneMode.followMoveActive) &&
       brushStrokeState.cursor && !brushStrokeState.gesture?.rectangle
       ? brushSquare(brushStrokeState.cursor, brushState.size)
       : null,
   );
 
   $effect(() => {
-    const enabled = tool.active === "zone" && zoneMode.active === "brush";
+    const enabled = tool.active === "zone" && zoneMode.active === "brush" && !zoneMode.followMoveActive;
     if (!enabled) {
       if (brushStrokeState.gesture) finishCurrentBrush();
       setBrushCursor(null);
@@ -110,7 +110,7 @@
     if (!surface) return;
 
     function onPointerDown(event: PointerEvent): void {
-      if (tool.active !== "zone" || zoneMode.active !== "brush" || (event.button !== 0 && event.button !== 2) ||
+      if (tool.active !== "zone" || zoneMode.active !== "brush" || zoneMode.followMoveActive || (event.button !== 0 && event.button !== 2) ||
         isTextEditingTarget(event.target) || shouldIgnoreTarget(event.target)) return;
       const point = world(event.clientX, event.clientY);
       if (!point) return;
@@ -126,7 +126,7 @@
     function onPointerMove(event: PointerEvent): void {
       const gesture = brushStrokeState.gesture;
       if (gesture && gesture.pointerId !== event.pointerId) return;
-      if (tool.active !== "zone" || zoneMode.active !== "brush") {
+      if (tool.active !== "zone" || zoneMode.active !== "brush" || zoneMode.followMoveActive) {
         if (!gesture) setBrushCursor(null);
         return;
       }
@@ -166,7 +166,7 @@
     }
 
     function onContextMenu(event: MouseEvent): void {
-      if (tool.active !== "zone") return;
+      if (tool.active !== "zone" || zoneMode.active !== "brush" || zoneMode.followMoveActive) return;
       event.preventDefault();
       event.stopImmediatePropagation();
     }

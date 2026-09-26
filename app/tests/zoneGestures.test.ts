@@ -4,14 +4,16 @@ import type { Note } from "../src/model/note";
 import { rectContour, zoneBounds, type Zone } from "../src/model/zone";
 import { addZone, zones } from "../src/model/zones.svelte";
 import { deleteSelection } from "../src/clipboard/commands";
-import { clear as clearHistory, history, undo } from "../src/history/history.svelte";
+import { clear as clearHistory, history, record, redo, undo } from "../src/history/history.svelte";
 import { clearSelection, selection, selectZonesOnly, toggleSelected } from "../src/selection/selection.svelte";
 import {
   createZoneMoveGesture,
   createZoneResizeGesture,
+  cancelZoneMoveGesture,
   deleteZonesAction,
   updateZoneMoveGesture,
   updateZoneResizeGesture,
+  zoneMoveHistoryCommand,
 } from "../src/zones/zoneGestures";
 
 function zone(id: string, x: number, y: number, width: number, height: number): Zone {
@@ -41,16 +43,44 @@ describe("zone move and resize", () => {
     }
   });
 
-  it("carries only members captured when a Shift move starts", () => {
+  it("carries only members captured when Ctrl is held while moving", () => {
     const moving = zone("a", 0, 0, 4, 4);
     const gesture = createZoneMoveGesture(moving, [], [{ id: "member", x: 1, y: 1 }], { x: 0, y: 0 });
-    const first = updateZoneMoveGesture(gesture, { x: 4, y: 0 }, false, 10);
-    const second = updateZoneMoveGesture(first, { x: 8, y: 0 }, false, 10);
+    const first = updateZoneMoveGesture(gesture, { x: 4, y: 0 }, false, 10, true);
+    const second = updateZoneMoveGesture(first, { x: 8, y: 0 }, false, 10, true);
 
     expect(zoneBounds(second.afterZone)).toEqual({ x: 8, y: 0, width: 4, height: 4 });
     expect(second.afterMembers).toEqual([{ id: "member", x: 9, y: 1 }]);
     expect(second.beforeMembers).toEqual([{ id: "member", x: 1, y: 1 }]);
+    expect(updateZoneMoveGesture(gesture, { x: 8, y: 0 }, false, 10, false).afterMembers)
+      .toEqual([{ id: "member", x: 1, y: 1 }]);
     expect(updateZoneMoveGesture(createZoneMoveGesture(moving, [], [], { x: 0, y: 0 }), { x: 8, y: 0 }, false, 10).afterMembers).toEqual([]);
+  });
+
+  it("cancels to the original zone and member positions and records a move as one Undo step", () => {
+    clearHistory();
+    const gesture = createZoneMoveGesture(zone("a", 0, 0, 4, 4), [], [{ id: "member", x: 1, y: 2 }], { x: 0, y: 0 });
+    const moved = updateZoneMoveGesture(gesture, { x: 8, y: 5 }, false, 10, true);
+    const cancelled = cancelZoneMoveGesture(moved);
+    expect(zoneBounds(cancelled.beforeZone)).toMatchObject({ x: 0, y: 0 });
+    expect(cancelled.beforeMembers).toEqual([{ id: "member", x: 1, y: 2 }]);
+
+    let currentZone = moved.afterZone;
+    let currentMembers = moved.afterMembers;
+    const command = zoneMoveHistoryCommand(moved, (nextZone, nextMembers) => {
+      currentZone = nextZone;
+      currentMembers = [...nextMembers];
+    });
+    expect(command).not.toBeNull();
+    record(command!);
+    expect(history.entries).toHaveLength(1);
+    undo();
+    expect(zoneBounds(currentZone)).toMatchObject({ x: 0, y: 0 });
+    expect(currentMembers).toEqual([{ id: "member", x: 1, y: 2 }]);
+    redo();
+    expect(zoneBounds(currentZone)).toMatchObject({ x: 8, y: 5 });
+    expect(currentMembers).toEqual([{ id: "member", x: 9, y: 7 }]);
+    clearHistory();
   });
 
   it("stops at a touching boundary even when the pointer moves past the obstacle", () => {

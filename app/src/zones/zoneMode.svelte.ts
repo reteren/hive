@@ -5,13 +5,14 @@ import { toggleZoneToolMode } from "./zoneMode";
 export interface ZoneMoveRequest {
   zoneId: string;
   startWorld: Point;
-  carryMembers: boolean;
 }
 
 export const zoneMode = $state({
   active: "brush" as ZoneToolMode,
+  followMoveActive: false,
   moveRequest: null as ZoneMoveRequest | null,
   finishRequest: 0,
+  suppressContextMenuUntil: 0,
 });
 
 export function toggleZoneMoveMode(): ZoneToolMode {

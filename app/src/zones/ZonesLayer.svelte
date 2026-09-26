@@ -10,6 +10,10 @@
   import { deleteZone, recolorZone, renameZone, ZONE_COLORS } from "./commands";
   import { startZoneMembershipSync } from "./membership.svelte";
   import { boardPopupStyle, dismissBoardPopup, fitBoardPopupAnchor } from "../ui/boardAnchor";
+  import { getCommand } from "../commands/registry.svelte";
+  import { formatKey } from "../commands/keys";
+  import { hitTestZones } from "../selection/hitTesting";
+  import { requestZoneMove, zoneMode } from "./zoneMode.svelte";
 
   type Menu = { id: string; x: number; y: number; rename: boolean };
   let layer: HTMLDivElement;
@@ -17,6 +21,7 @@
   let menu = $state<Menu | null>(null);
   let draftName = $state("");
   let renameInput = $state<HTMLInputElement>();
+  const moveKeys = $derived(getCommand("select.move")?.keys.map(formatKey).join(", ") ?? "");
 
   const transform = $derived(
     `translate(${viewport.width / 2} ${viewport.height / 2}) scale(${camera.zoom * PX_PER_UNIT}) translate(${-camera.x} ${-camera.y})`,
@@ -38,7 +43,7 @@
     if (!zone) return;
     draftName = zone.name;
     const world = screenToWorld(camera, viewport, point);
-    const anchor = fitBoardPopupAnchor(camera, viewport, world, { width: 176, height: 158 });
+    const anchor = fitBoardPopupAnchor(camera, viewport, world, { width: 176, height: 190 });
     menu = {
       id,
       x: anchor.x,
@@ -52,6 +57,14 @@
     if (!menu) return;
     menu.rename = true;
     void tick().then(() => { renameInput?.focus(); renameInput?.select(); });
+  }
+
+  function startMoveFromMenu(event: MouseEvent): void {
+    if (!menu) return;
+    const id = menu.id;
+    const point = screenToWorld(camera, viewport, local(event.clientX, event.clientY));
+    menu = null;
+    requestZoneMove({ zoneId: id, startWorld: point });
   }
 
   function commitRename(): void {
@@ -83,16 +96,19 @@
     if (!surface) return;
 
     function onContextMenu(event: MouseEvent): void {
-      if (tool.active === "zone") {
+      if (performance.now() < zoneMode.suppressContextMenuUntil) {
         event.preventDefault();
         event.stopImmediatePropagation();
         return;
       }
-      const id = zoneAt(event.target);
-      if (!id || tool.active !== "select") return;
+      if (tool.active !== "select" && !(tool.active === "zone" && zoneMode.active === "move")) return;
+      if (event.target instanceof Element && event.target.closest("[data-note-id], [data-beacon-id], [data-link-id], [data-selection-ignore]")) return;
+      const point = local(event.clientX, event.clientY);
+      const id = zoneAt(event.target) ?? hitTestZones(screenToWorld(camera, viewport, point), zones.byId, zones.order);
+      if (!id) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      openMenu(id, local(event.clientX, event.clientY));
+      openMenu(id, point);
     }
 
     function onDoubleClick(event: MouseEvent): void {
@@ -171,6 +187,7 @@
           else if (event.code === "Escape") { event.preventDefault(); menu = null; }
         }} onblur={commitRename} />
       {:else}
+        <button type="button" role="menuitem" data-zone-move-menu onclick={startMoveFromMenu}>Move zone{moveKeys ? ` (${moveKeys})` : ""}</button>
         <button type="button" role="menuitem" onclick={startRename}>Rename</button>
         <div class="zone-colours" aria-label="Zone colour">
           <span>Colour</span>

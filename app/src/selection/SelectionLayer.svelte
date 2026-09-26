@@ -18,10 +18,12 @@ import { preferences } from "../settings/preferences.svelte";
   import {
     createZoneMoveGesture,
     createZoneResizeGesture,
+    cancelZoneMoveGesture,
     isRectZone,
     updateZoneMoveGesture,
     updateZoneResizeGesture,
     zoneGestureChanged,
+    zoneMoveHistoryCommand,
     type MemberPosition,
     type ZoneMoveGesture,
     type ZoneResizeGesture,
@@ -195,6 +197,8 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
   let activeGesture: ActivePointerGesture | null = null;
   let grabGesture: MoveGesture | null = null;
   let zoneGrabGesture: ZoneMoveGesture | null = null;
+  let zoneGrabStartWorld: Point | null = null;
+  let zoneGrabPrecision: PrecisionDeltaTracker | null = null;
   let grabStartWorld: Point | null = null;
   let grabPrecision: PrecisionDeltaTracker | null = null;
   let pendingAltContextPick: PendingAltContextPick | null = null;
@@ -326,6 +330,7 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
     function onPointerDown(event: PointerEvent): void {
       if (event.button === 2 && activeGesture?.kind === "zone-move") {
         suppressContextMenuUntil = performance.now() + 750;
+        zoneMode.suppressContextMenuUntil = suppressContextMenuUntil;
         event.preventDefault();
         event.stopPropagation();
         finishPointerGesture(activeGesture.pointerId, false);
@@ -333,6 +338,7 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
       }
       if (event.button === 2 && zoneGrabGesture) {
         suppressContextMenuUntil = performance.now() + 750;
+        zoneMode.suppressContextMenuUntil = suppressContextMenuUntil;
         event.preventDefault();
         event.stopPropagation();
         const local = localPoint(event);
@@ -693,7 +699,7 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
     function onPrecisionKeyDown(event: KeyboardEvent): void {
       if (!isAltKey(event)) return;
       altHeld = true;
-      if (activeGesture || grabGesture) event.preventDefault();
+      if (activeGesture || grabGesture || zoneGrabGesture) event.preventDefault();
       rebasePrecision(true);
     }
 
@@ -931,14 +937,20 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
       memberPositions(id),
       startWorld,
     );
+    zoneMode.followMoveActive = true;
+    zoneGrabStartWorld = { ...startWorld };
+    zoneGrabPrecision = createPrecisionDeltaTracker(startWorld, altHeld);
     zoneCollisionHint = false;
   }
 
-  function updateZoneGrabAt(world: Point, carryMembers: boolean, _alt = false): void {
+  function updateZoneGrabAt(world: Point, carryMembers: boolean, alt = altHeld): void {
     if (!zoneGrabGesture) return;
+    const precision = zoneGrabPrecision ? updatePrecisionDelta(zoneGrabPrecision, world, alt) : null;
+    if (precision) zoneGrabPrecision = precision.tracker;
+    const adjustedWorld = zoneGrabStartWorld && precision ? addPoint(zoneGrabStartWorld, precision.delta) : world;
     zoneGrabGesture = updateZoneMoveGesture(
       zoneGrabGesture,
-      world,
+      adjustedWorld,
       grid.snap || carryMembers,
       grid.step,
       carryMembers,
@@ -951,6 +963,9 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
     const gesture = zoneGrabGesture;
     if (!gesture) return;
     zoneGrabGesture = null;
+    zoneMode.followMoveActive = false;
+    zoneGrabStartWorld = null;
+    zoneGrabPrecision = null;
     zoneCollisionHint = false;
     recordZoneMove(gesture);
   }
@@ -959,22 +974,17 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
     const gesture = zoneGrabGesture;
     if (!gesture) return;
     zoneGrabGesture = null;
+    zoneMode.followMoveActive = false;
+    zoneGrabStartWorld = null;
+    zoneGrabPrecision = null;
     zoneCollisionHint = false;
-    applyZoneMove(gesture.beforeZone, gesture.beforeMembers);
+    const cancelled = cancelZoneMoveGesture(gesture);
+    applyZoneMove(cancelled.beforeZone, cancelled.beforeMembers);
   }
 
   function recordZoneMove(gesture: ZoneMoveGesture): void {
-    if (!zoneGestureChanged(gesture.beforeZone, gesture.afterZone)) return;
-    const beforeZone = gesture.beforeZone;
-    const afterZone = gesture.afterZone;
-    const beforeMembers = gesture.beforeMembers;
-    const afterMembers = gesture.afterMembers;
-    record({
-      label: "Move zone",
-      target: beforeZone.name,
-      do: () => applyZoneMove(afterZone, afterMembers),
-      undo: () => applyZoneMove(beforeZone, beforeMembers),
-    });
+    const command = zoneMoveHistoryCommand(gesture, applyZoneMove);
+    if (command) record(command);
   }
 
   function finishZoneMoves(): void {
@@ -1188,7 +1198,8 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
       }
     } else if (gesture.kind === "zone-move") {
       if (cancelled) {
-        applyZoneMove(gesture.gesture.beforeZone, gesture.gesture.beforeMembers);
+        const before = cancelZoneMoveGesture(gesture.gesture);
+        applyZoneMove(before.beforeZone, before.beforeMembers);
       } else if (gesture.started) recordZoneMove(gesture.gesture);
     } else if (gesture.kind === "zone-resize") {
       if (cancelled) {
@@ -1359,6 +1370,7 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
     const gesture = activeGesture;
     if (gesture && gesture.kind !== "marquee") gesture.precision = setPrecisionAlt(gesture.precision, alt);
     if (grabPrecision) grabPrecision = setPrecisionAlt(grabPrecision, alt);
+    if (zoneGrabPrecision) zoneGrabPrecision = setPrecisionAlt(zoneGrabPrecision, alt);
   }
 
   function isAltKey(event: KeyboardEvent): boolean {

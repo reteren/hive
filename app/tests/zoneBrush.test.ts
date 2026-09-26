@@ -140,7 +140,7 @@ describe("zone brush geometry", () => {
   });
 });
 
-describe("zone brush without grid (Shift)", () => {
+describe("internal unsnapped brush geometry", () => {
   it("places the square exactly under the cursor when snapping is off", () => {
     expect(brushSquare({ x: 13, y: 7 }, 20, false)).toEqual({ x: 3, y: -3, width: 20, height: 20 });
     expect(brushSquare({ x: 13, y: 7 }, 20)).toEqual({ x: 0, y: 0, width: 20, height: 20 });
