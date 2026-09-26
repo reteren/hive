@@ -1,6 +1,6 @@
 # hive — состояние (обновлено 24.09.2026, после восстановления)
 
-**Актуально:** дебаг 1.1.7 (d17common.md, d17_a…f.md), run `run_9451457db99a`: A task_74c30b006a38 фокус-кольца (term_096d…), B task_aa3671a6b183 производительность (term_4093…), C task_ea1980b0198d Goal→Goal (term_beff…), D task_8d6fe3f69208 размер меню при открытии (term_fd35…), E task_a322a6f7bfb3 Tierlist (term_3e02…), F task_a3a6ddb815a2 калькулятор (term_faa7…). Браузерные проверки — координатор. После волны — 1.1.8.
+**Актуально:** дебаг 1.1.7 закрыт, установщик **1.1.8** ждёт проверки. Все агенты свободны (хэндлы term_096d…, term_4093…, term_beff…, term_fd35…, term_3e02…, term_faa7…). Orca иногда отклоняет worker_done с «Dispatch capability is invalid» — принимать отчёт вручную (task-update completed + worker-abandon). Браузерные проверки — координатор (d16smoke.mjs, d17smoke.mjs, d17calc.mjs).
 
 ---
 

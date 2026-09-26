@@ -1,0 +1,30 @@
+const page = (await fetch(`http://localhost:9334/json/list`).then((r) => r.json())).find((t) => t.type === "page");
+const ws = new WebSocket(page.webSocketDebuggerUrl); let id = 0; const pending = new Map();
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+await new Promise((r) => (ws.onopen = r));
+const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const ev = async (expression) => (await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true })).result?.result?.value;
+const mouse = (type, x, y, button = "none", buttons = 0) => send("Input.dispatchMouseEvent", { type, x, y, button, buttons, clickCount: type === "mousePressed" || type === "mouseReleased" ? 1 : 0 });
+const click = async (x, y) => { await mouse("mouseMoved", x, y); await mouse("mousePressed", x, y, "left", 1); await mouse("mouseReleased", x, y, "left", 0); await wait(200); };
+const press = async (key, code, vk) => { await send("Input.dispatchKeyEvent", { type: "keyDown", key, code, windowsVirtualKeyCode: vk }); await send("Input.dispatchKeyEvent", { type: "keyUp", key, code, windowsVirtualKeyCode: vk }); await wait(150); };
+const center = (sel) => ev(`(()=>{const e=document.querySelector(${JSON.stringify(sel)});if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+await ev(`(async()=>{const c=await import('/src/board/camera.svelte.ts');c.camera.x=-75;c.camera.y=-30;c.camera.zoom=1.1;return 1})()`);
+await wait(400);
+const input = await center('[data-kind="calculator"] [aria-label="Expression"]');
+console.log("input", JSON.stringify(input));
+await click(input.x, input.y);
+console.log("active", await ev(`document.activeElement?.getAttribute('aria-label')`));
+for (const ch of "2+3*4") await send("Input.insertText", { text: ch });
+await press("Enter", "Enter", 13);
+console.log("entries", await ev(`(async()=>{const c=await import('/src/calculator/calculators.svelte.ts');return JSON.stringify(c.calculatorData('Calc').entries)})()`));
+console.log("result text", await ev(`[...document.querySelectorAll('[data-kind="calculator"] .calculator-expression, [data-kind="calculator"] li')].map(e=>e.textContent.trim()).join(' | ')`));
+// select the calculator via header then find handles, click one, press G
+const header = await center('[data-note-id="calc"] [data-note-header]');
+await click(header.x, header.y);
+const handle = await center('[data-resize-handle]');
+console.log("handle", JSON.stringify(handle));
+if (handle) { await click(handle.x, handle.y); console.log("active after handle", await ev(`document.activeElement?.tagName`)); await press("g", "KeyG", 71); await press("Escape", "Escape", 27); }
+const shot = await send("Page.captureScreenshot", { format: "png" });
+(await import("node:fs")).writeFileSync(process.argv[2], Buffer.from(shot.result.data, "base64"));
+ws.close();
