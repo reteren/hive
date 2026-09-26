@@ -14,6 +14,9 @@ export type NoteKind =
 /** R5 kinds, in create-menu order. */
 export const R5_KINDS = ["goal", "progress", "calculator", "tierlist", "stats"] as const;
 
+/** Default R5 node widths (u), shared by creation and resize limits. */
+export const R5_BASE_WIDTHS = { goal: 30, progress: 30, calculator: 40, tierlist: 60, stats: 30 } as const;
+
 /** Importance levels (R3.3): white / yellow / red / purple / rainbow. */
 export const IMPORTANCE_LEVELS = ["basic", "medium", "important", "immediately", "absolute"] as const;
 export type ImportanceLevel = (typeof IMPORTANCE_LEVELS)[number];

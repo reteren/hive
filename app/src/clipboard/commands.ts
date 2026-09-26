@@ -9,6 +9,7 @@ import type { Zone } from "../model/zone";
 import { execute, historyFeedback, type HistoryCommand } from "../history/history.svelte";
 import { measuredHeights } from "../notes/layout.svelte";
 import { uniqueName } from "../notes/naming";
+import { noteFileKey } from "../project/fileNames";
 import {
   captureSelectionSnapshot,
   clearSelection,
@@ -26,6 +27,7 @@ import { unlinkSelected } from "../links/operations";
 import { deleteZonesAction } from "../zones/zoneGestures";
 import { translateShape } from "../zones/shape";
 import { beaconPaletteColor } from "../beacons/beaconPalette";
+import { removeCreatedBankRowForLink } from "../calculator/bankActions.svelte";
 import {
   creationObstacleForNote,
   estimatedCreationHeight,
@@ -253,8 +255,25 @@ function createCopies(
   sourceLinks: readonly ClipboardLink[],
 ): { notes: Note[]; zones: Zone[]; links: Link[]; placementHeights: Map<string, number> } | null {
   const sourceZones = sourceZoneValues.map((zone) => normalizeSourceZone(zone));
-  const existingNames = Object.values(board.notes).map((note) => note.name);
-  const names = uniqueCopyNames(sourceNotes.map((note) => note.name), existingNames);
+  const existingNotes = Object.values(board.notes);
+  const existingNames = existingNotes.map((note) => note.name);
+  const occupiedNames = [
+    ...existingNames,
+    ...sourceNotes.filter((note) => note.type === "calculator").map((note) => note.name),
+  ];
+  const nonCalculatorKeys = new Set([
+    ...existingNotes.filter((note) => note.type !== "calculator"),
+    ...sourceNotes.filter((note) => note.type !== "calculator"),
+  ]
+    .map((note) => noteFileKey(note.name)));
+  const names = sourceNotes.map((note) => {
+    const key = noteFileKey(note.name);
+    const name = note.type === "calculator" && !nonCalculatorKeys.has(key)
+      ? note.name
+      : uniqueName(note.name, occupiedNames);
+    occupiedNames.push(name);
+    return name;
+  });
   const sourceZoneNames = zones.order.flatMap((id) => zones.byId[id]?.name ?? []);
   const zoneNames = uniqueCopyNames(sourceZones.map((zone) => zone.name), sourceZoneNames);
   const offset = placementOffset(sourceNotes, sourceZones, destination);
@@ -323,7 +342,11 @@ function addCopies(
       selectIds(ids, zoneIds);
     },
     undo: () => {
-      copiedLinks.forEach((link) => removeLink(link.id));
+      copiedLinks.forEach((link) => {
+        removeLink(link.id);
+        // A pasted strong link into a calculator created a bank row; undoing the paste removes it.
+        removeCreatedBankRowForLink(link);
+      });
       for (const id of ids) removeNote(id);
       for (const id of zoneIds) removeZone(id);
       restoreSelectionSnapshot(previousSelection);

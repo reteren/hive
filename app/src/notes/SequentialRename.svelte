@@ -62,8 +62,12 @@
         bind:this={renameInput}
         bind:value={session.draft}
         aria-label={`New name for ${current.name}`}
+        oninput={() => { sequentialRenameState.error = ""; }}
         onkeydown={handleKeydown}
       />
+      {#if sequentialRenameState.error}
+        <p class="rename-error" role="alert">{sequentialRenameState.error}</p>
+      {/if}
       <footer>
         <button type="button" class="skip-button" onclick={skipCurrentRename}>Skip</button>
         <button type="button" class="commit-button" onclick={commitCurrentRename}>Save and next</button>
@@ -93,6 +97,12 @@
     background: var(--bg-panel);
     box-shadow: 0 12px 32px rgb(0 0 0 / 55%);
     color: var(--text);
+  }
+
+  .rename-error {
+    margin: 0;
+    color: #f0a69c;
+    font-size: 12px;
   }
 
   .rename-heading,

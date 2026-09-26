@@ -3,6 +3,7 @@ import { board, updateNote } from "../model/board.svelte";
 import { selection } from "../selection/selection.svelte";
 import { commandSearchState } from "../commands/commandSearch.svelte";
 import { uniqueName } from "./naming";
+import { renameCalculatorNode } from "./calculatorRename.svelte";
 import {
   commitSequentialRename,
   createSequentialRename,
@@ -13,6 +14,7 @@ import {
 export const sequentialRenameState = $state({
   session: null as SequentialRenameSession | null,
   returnFocus: null as HTMLElement | null,
+  error: "",
 });
 
 export function startSequentialRename(): void {
@@ -26,6 +28,7 @@ export function startSequentialRename(): void {
     Object.values(board.notes).map((note) => [note.id, note.name]),
   );
   sequentialRenameState.session = createSequentialRename(selection.ids, namesById);
+  sequentialRenameState.error = "";
 }
 
 export function takeSequentialRenameReturnFocus(): HTMLElement | null {
@@ -45,6 +48,17 @@ export function commitCurrentRename(): void {
   const note = board.notes[current.id];
   if (!note) {
     sequentialRenameState.session = skipSequentialRename(session);
+    return;
+  }
+
+  if (note.type === "calculator") {
+    const rename = renameCalculatorNode(note.id, session.draft);
+    if (!rename.ok) {
+      sequentialRenameState.error = rename.message;
+      return;
+    }
+    sequentialRenameState.error = "";
+    sequentialRenameState.session = commitSequentialRename(session, rename.name).session;
     return;
   }
 
@@ -70,4 +84,5 @@ export function commitCurrentRename(): void {
 export function skipCurrentRename(): void {
   const session = sequentialRenameState.session;
   if (session) sequentialRenameState.session = skipSequentialRename(session);
+  sequentialRenameState.error = "";
 }

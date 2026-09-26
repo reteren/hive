@@ -50,6 +50,11 @@ export function linkRefusalReason(
     return "These objects already have a link.";
   }
 
+  if (target?.type === "calculator") {
+    if (sourceIsBeacon && actualKind === "strong") return "Beacons cannot fund calculators.";
+    return null;
+  }
+
   if (sourceIsBeacon || (!sourceIsModule && !targetIsModule)) return null;
   if (sourceIsModule && targetIsModule) return "Module nodes link only to notes, pluses, or minuses.";
 

@@ -83,6 +83,7 @@ import { preferences } from "../settings/preferences.svelte";
     type PrecisionDeltaTracker,
   } from "./precision";
   import { resolveModuleDropDecision } from "./moduleDropDecision";
+  import { clearDropTargetPreview, dropOnTarget, previewDropTarget } from "./dropTargets";
 
   interface Outline {
     id: string;
@@ -926,6 +927,7 @@ import { preferences } from "../settings/preferences.svelte";
       );
       applyFrames(gesture.gesture.after);
       updateModulePreview(gesture.gesture.before, world);
+      previewDropTarget(gesture.gesture.before.map((frame) => frame.id), world);
       return;
     }
 
@@ -958,6 +960,7 @@ import { preferences } from "../settings/preferences.svelte";
       );
       applyFrames(gesture.gesture.after);
       updateModulePreview(gesture.gesture.before, world);
+      previewDropTarget(gesture.gesture.before.map((frame) => frame.id), world);
       return;
     }
 
@@ -1082,6 +1085,7 @@ import { preferences } from "../settings/preferences.svelte";
     }
 
     clearModuleDropPreview();
+    clearDropTargetPreview();
     completePendingAltContextPick(pointerId, !cancelled);
 
     if (release) releasePointer(pointerId);
@@ -1107,6 +1111,7 @@ import { preferences } from "../settings/preferences.svelte";
     );
     applyFrames(grabGesture.after);
     updateModulePreview(grabGesture.before, world);
+    previewDropTarget(grabGesture.before.map((frame) => frame.id), world);
   }
 
   function startGrab(): void {
@@ -1126,6 +1131,7 @@ import { preferences } from "../settings/preferences.svelte";
     if (!grabGesture) return;
     commitMoveGesture(grabGesture, world);
     clearModuleDropPreview();
+    clearDropTargetPreview();
     grabGesture = null;
     grabStartWorld = null;
     grabPrecision = null;
@@ -1246,6 +1252,13 @@ import { preferences } from "../settings/preferences.svelte";
   }
 
   function commitMoveGesture(gesture: MoveGesture, worldPoint: Point): void {
+    const dropCommand = dropOnTarget(gesture.before.map((frame) => frame.id), worldPoint);
+    if (dropCommand) {
+      applyFrames(gesture.before);
+      execute(dropCommand);
+      return;
+    }
+
     const movedTypes = gesture.before.map((frame) => boardState.notes[frame.id]?.type ?? "note");
     const initialDecision = resolveModuleDropDecision(movedTypes, false);
     const moduleId = initialDecision.tryInsert && gesture.before.length === 1

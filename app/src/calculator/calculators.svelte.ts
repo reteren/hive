@@ -6,21 +6,28 @@ import { calculatorKey, emptyCalculatorData, type CalculatorData } from "../mode
  * history commands in the calculator modules.
  */
 export const calculators = $state({
-  byKey: {} as Record<string, CalculatorData>,
+  byKey: Object.create(null) as Record<string, CalculatorData>,
 });
 
 export function calculatorData(name: string): CalculatorData {
-  return calculators.byKey[calculatorKey(name)] ?? emptyCalculatorData();
+  const key = calculatorKey(name);
+  return Object.prototype.hasOwnProperty.call(calculators.byKey, key)
+    ? calculators.byKey[key]
+    : emptyCalculatorData();
 }
 
 export function setCalculatorData(name: string, data: CalculatorData): void {
-  calculators.byKey[calculatorKey(name)] = data;
+  const next = Object.assign(Object.create(null) as Record<string, CalculatorData>, calculators.byKey);
+  next[calculatorKey(name)] = data;
+  calculators.byKey = next;
 }
 
 export function deleteCalculatorData(name: string): void {
-  delete calculators.byKey[calculatorKey(name)];
+  const next = Object.assign(Object.create(null) as Record<string, CalculatorData>, calculators.byKey);
+  delete next[calculatorKey(name)];
+  calculators.byKey = next;
 }
 
 export function replaceCalculators(next: Record<string, CalculatorData>): void {
-  calculators.byKey = next;
+  calculators.byKey = Object.assign(Object.create(null) as Record<string, CalculatorData>, next);
 }

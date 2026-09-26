@@ -40,6 +40,57 @@ describe("project index", () => {
     });
   });
 
+  it("round trips mirrored calculator data, prunes orphan keys, and assigns per-node Markdown files", () => {
+    const notes: Note[] = [
+      { id: "calc-a", type: "calculator", name: "Trip", text: "", x: 0, y: 0, width: 40, height: null },
+      { id: "calc-b", type: "calculator", name: "trip", text: "", x: 50, y: 0, width: 40, height: null },
+    ];
+    const data = {
+      entries: [{ id: "entry-1", expression: "2 + 3" }],
+      bank: { name: "Travel", initial: 100 },
+      rows: [{ id: "row-1", label: "Book", amount: 20, sourceNoteId: "source" }],
+    };
+    const contents = serializeProjectIndex(notes, undefined, [], [], [], [], {
+      TRIP: data,
+      orphan: { entries: [], bank: null, rows: [] },
+    });
+    const raw = JSON.parse(contents) as { version: number; notes: Array<{ id: string; file: string }>; calculators: Record<string, unknown> };
+    const parsed = parseProjectIndex(contents);
+
+    expect(raw.version).toBe(3);
+    expect(raw.calculators).toEqual({ trip: data });
+    expect(raw.notes[0]?.file).not.toBe(raw.notes[1]?.file);
+    expect(parsed.calculators).toEqual({ trip: data });
+    expect(mergeLoadedNotes(parsed, parsed.notes.map((note) => ({
+      id: note.id, name: note.name, file: note.file, text: "unused Markdown", x: note.x, y: note.y,
+      width: note.width, height: note.height,
+    }))).map((note) => note.text)).toEqual(["", ""]);
+  });
+
+  it("keeps calculator Markdown paths unique even when a note uses the generated calculator name", () => {
+    const notes: Note[] = [
+      { id: "calc-id", type: "calculator", name: "Ledger", text: "", x: 0, y: 0, width: 40, height: null },
+      { id: "note-id", type: "note", name: "Calculator-calc-id", text: "Body", x: 50, y: 0, width: 30, height: null },
+    ];
+
+    const index = parseProjectIndex(serializeProjectIndex(notes));
+    expect(index.notes.map((note) => note.file)).toEqual(["Calculator-calc-id 2.md", "Calculator-calc-id.md"]);
+    expect(new Set(index.notes.map((note) => note.file.toLowerCase())).size).toBe(2);
+  });
+
+  it("defaults calculator state for older boards and canonicalizes case-insensitive persisted keys", () => {
+    const missing = parseProjectIndex(JSON.stringify({ version: 2, notes: [] }));
+    expect(missing.calculators).toEqual({});
+
+    const data = { entries: [{ id: "e", expression: "1+1" }], bank: null, rows: [] };
+    const parsed = parseProjectIndex(JSON.stringify({
+      version: 3,
+      notes: [{ id: "calc", name: "Trip", type: "calculator", x: 0, y: 0, width: 40 }],
+      calculators: { TRIP: data },
+    }));
+    expect(parsed.calculators).toEqual({ trip: data });
+  });
+
   it("migrates unversioned indexes and derives missing file and height fields", () => {
     const migrated = parseProjectIndex(JSON.stringify({
       notes: [{ id: "legacy", name: "Old note", x: 4, y: 9, width: 24 }],

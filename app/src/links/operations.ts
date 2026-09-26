@@ -6,6 +6,7 @@ import { clearSelection } from "../selection/selection.svelte";
 import { clearSelectedLink, selectedLinkIds, selectLink, selectLinks } from "./selection.svelte";
 import { nextLineShape } from "./lineGeometry";
 import { effectiveLinkKind } from "./rules";
+import { detachBankRowForLink, removeCreatedBankRowForLink } from "../calculator/bankActions.svelte";
 
 export function createBoardLink(link: Link): boolean {
   const actualKind = effectiveLinkKind(link.from, link.to, link.kind);
@@ -24,6 +25,7 @@ export function createBoardLink(link: Link): boolean {
     },
     undo: () => {
       removeLink(createdLink.id);
+      removeCreatedBankRowForLink(createdLink);
       clearSelectedLink();
     },
   });
@@ -40,6 +42,7 @@ export function unlink(id: string): boolean {
     target,
     do: () => {
       removeLink(id);
+      detachBankRowForLink(link);
       clearSelectedLink();
     },
     undo: () => {
@@ -117,7 +120,7 @@ export function cutLinks(ids: readonly string[]): boolean {
     label: "Cut lines",
     target,
     do: () => {
-      for (const link of cut) removeLink(link.id);
+      for (const link of cut) { removeLink(link.id); detachBankRowForLink(link); }
       const remainingSelection = selectedLinkIds().filter((id) => !cutIds.has(id));
       if (remainingSelection.length > 0) selectLinks(remainingSelection);
       else if (selectedBeforeCut.some((id) => cutIds.has(id))) clearSelectedLink();
@@ -146,7 +149,7 @@ function unlinkLinks(ids: readonly string[]): boolean {
     label: "Unlink lines",
     target,
     do: () => {
-      for (const link of unlinked) removeLink(link.id);
+      for (const link of unlinked) { removeLink(link.id); detachBankRowForLink(link); }
       const remaining = selectedLinkIds().filter((id) => !unlinkedIds.has(id));
       if (remaining.length > 0) selectLinks(remaining);
       else clearSelectedLink();

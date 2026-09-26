@@ -9,6 +9,7 @@
   import { MIN_NOTE_HEIGHT } from "./layout.svelte";
   import { PX_PER_UNIT } from "../board/cameraMath";
   import { uniqueName } from "./naming";
+  import { renameCalculatorNode } from "./calculatorRename.svelte";
   import NoteBody from "../editor/NoteBody.svelte";
   import TaskCheckbox from "../tasks/TaskCheckbox.svelte";
   import NoteModules from "../modules/NoteModules.svelte";
@@ -26,10 +27,12 @@
   let renaming = $state(false);
   let draftName = $state("");
   let renameInput = $state<HTMLInputElement>();
+  let renameError = $state("");
   let memberZone = $derived(zones.byId[zoneOf(note.id) ?? ""]);
 
   function beginRename(): void {
     draftName = note.name;
+    renameError = "";
     editing.noteId = null;
     renaming = true;
     void tick().then(() => {
@@ -68,11 +71,23 @@
   function commitRename(): void {
     if (!renaming) return;
 
+    if (note.type === "calculator") {
+      const result = renameCalculatorNode(note.id, draftName);
+      if (!result.ok) {
+        renameError = result.message;
+        return;
+      }
+      renameError = "";
+      renaming = false;
+      return;
+    }
+
     const existing = Object.values(board.notes)
       .filter((other) => other.id !== note.id)
       .map((other) => other.name);
     const nextName = uniqueName(draftName, existing);
     const previousName = note.name;
+    renameError = "";
     renaming = false;
 
     if (nextName === previousName) return;
@@ -87,6 +102,7 @@
 
   function cancelRename(): void {
     draftName = note.name;
+    renameError = "";
     renaming = false;
   }
 
@@ -134,6 +150,7 @@
         bind:value={draftName}
         class="rename-input"
         aria-label="Note name"
+        oninput={() => { renameError = ""; }}
         onkeydown={handleRenameKeydown}
         onblur={commitRename}
       />
@@ -141,6 +158,9 @@
       <span class="note-name">{note.name}</span>
     {/if}
   </header>
+  {#if renameError}
+    <div class="rename-error" role="alert">{renameError}</div>
+  {/if}
   <NoteModules {note} />
   <div class="note-frame" class:fixed-height={note.height !== null}>
     <div class="note-frame-edge note-frame-edge-top" data-note-header aria-hidden="true"></div>
@@ -246,6 +266,14 @@
     border-radius: 2px;
     font: inherit;
     user-select: text;
+  }
+
+  .rename-error {
+    padding: 3px 5px;
+    border-top: 1px solid #68433f;
+    color: #f0a69c;
+    font-size: 11px;
+    line-height: 1.3;
   }
 
   .note-content {

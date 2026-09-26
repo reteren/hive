@@ -8,6 +8,7 @@ import type { Link } from "../model/link";
 import { replaceZones, zones } from "../model/zones.svelte";
 import type { Zone } from "../model/zone";
 import { beaconState, resetBeaconViewState } from "../beacons/beaconState.svelte";
+import { calculators, replaceCalculators } from "../calculator/calculators.svelte";
 import type { Note } from "../model/note";
 import { taskLog, type TaskLogEntry } from "../tasks/taskLog.svelte";
 import { resetTasksPanel } from "../tasks/tasksPanelState.svelte";
@@ -27,12 +28,12 @@ import {
   mergeLoadedNotes,
   parseProjectIndex,
   parseProjectIndexWithWarnings,
+  projectNoteFiles,
   serializeProjectIndex,
   type LoadedProjectNote,
   type ProjectIndex,
 } from "./index";
 import { decideExternalNoteChange } from "./externalChanges";
-import { sanitizeNoteName } from "./fileNames";
 import { project, type ProjectConflict } from "./project.svelte";
 
 const SAVE_DEBOUNCE_MS = 500;
@@ -147,6 +148,7 @@ function applyProject(loaded: ProjectLoad): void {
   const missingFiles = new Set(loaded.missingFiles ?? []);
   const normalizedIndex = serializeProjectIndex(
     notes, parsedIndex, parsedIndex.links, parsedIndex.taskLog, parsedIndex.zones, parsedIndex.beaconMarks,
+    parsedIndex.calculators,
   );
   const sourceVersion = JSON.parse(loaded.indexJson) as { version?: unknown };
 
@@ -171,6 +173,7 @@ function applyProject(loaded: ProjectLoad): void {
     ? normalizedIndex
     : loaded.indexJson;
   taskLog.entries = parsedIndex.taskLog.map((entry) => ({ ...entry }));
+  replaceCalculators(parsedIndex.calculators ?? {});
   project.path = loaded.path;
   project.name = loaded.name;
   project.error = "";
@@ -194,6 +197,7 @@ export function resetProjectScopedState(): void {
   resetObjectsPanelSearch();
   resetTasksPanel();
   replaceZones([]);
+  replaceCalculators({});
   resetBeaconViewState();
   closeModulePicker();
   clearModuleDropPreview();
@@ -210,7 +214,9 @@ function makeSnapshot(): ProjectSnapshot {
   const currentZones = zones.order.flatMap((id) => zones.byId[id] ? [copyZone(zones.byId[id])] : []);
   const beaconMarks = [...beaconState.marked];
   return {
-    indexJson: serializeProjectIndex(notes, indexTemplate, currentLinks, currentTaskLog, currentZones, beaconMarks),
+    indexJson: serializeProjectIndex(
+      notes, indexTemplate, currentLinks, currentTaskLog, currentZones, beaconMarks, calculators.byKey,
+    ),
     notes,
     links: currentLinks,
     taskLog: currentTaskLog,
@@ -413,6 +419,15 @@ async function handleExternalBody(event: ProjectFileEvent): Promise<void> {
     return;
   }
 
+  if (note.type === "calculator") {
+    lastSavedById.set(note.id, { file: event.file, text: event.text });
+    missingFileIds.delete(note.id);
+    project.conflicts = project.conflicts.filter((item) => item.noteId !== note.id);
+    await acknowledgeExternalChange(event.file, event.text);
+    if (event.text !== note.text) scheduleIfDirty();
+    return;
+  }
+
   const previous = lastSavedById.get(note.id);
   const decision = decideExternalNoteChange({
     externalText: event.text,
@@ -494,6 +509,13 @@ async function handleExternalDelete(file: string): Promise<void> {
     return;
   }
 
+  if (note.type === "calculator") {
+    missingFileIds.add(note.id);
+    await acknowledgeExternalChange(file, undefined);
+    scheduleIfDirty();
+    return;
+  }
+
   missingFileIds.add(note.id);
   const warning = "Note file " + file + " was deleted outside Hive; it will be recreated on the next save.";
   externalDeleteWarnings.set(note.id, warning);
@@ -503,14 +525,16 @@ async function handleExternalDelete(file: string): Promise<void> {
 
 function noteForFile(file: string): Note | undefined {
   const key = file.toLowerCase();
-  return board.order
-    .map((id) => board.notes[id])
-    .find((note) => {
-      if (!note) return false;
-      const currentFile = sanitizeNoteName(note.name) + ".md";
-      const savedFile = lastSavedById.get(note.id)?.file;
-      return currentFile.toLowerCase() === key || savedFile?.toLowerCase() === key;
-    });
+  const notes = board.order.flatMap((id) => {
+    const note = board.notes[id];
+    return note ? [note] : [];
+  });
+  const currentFiles = projectNoteFiles(notes);
+  return notes.find((note) => {
+    const currentFile = currentFiles.get(note.id);
+    const savedFile = lastSavedById.get(note.id)?.file;
+    return currentFile?.toLowerCase() === key || savedFile?.toLowerCase() === key;
+  });
 }
 
 async function acknowledgeExternalChange(file: string, text: string | undefined): Promise<boolean> {

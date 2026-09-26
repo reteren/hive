@@ -14,9 +14,9 @@ import { isFrameAnchor } from "../links/anchors";
 import type { Zone } from "../model/zone";
 import type { Point } from "../board/cameraMath";
 import { beaconPaletteColor, normalizeBeaconColor } from "../beacons/beaconPalette";
-import { noteFileKey, sanitizeNoteName } from "./fileNames";
+import { calculatorNoteFileName, noteFileKey, noteMarkdownFileName, sanitizeNoteName } from "./fileNames";
 import type { TaskLogEntry } from "../tasks/taskLog.svelte";
-import { parseScope, parseTiers, type CalculatorData, type NodeScope, type TierRow } from "../model/nodeData";
+import { calculatorKey, parseCalculatorData, parseScope, parseTiers, type CalculatorData, type NodeScope, type TierRow } from "../model/nodeData";
 
 export interface IndexedNote {
   id: string;
@@ -94,6 +94,7 @@ export function parseProjectIndexWithWarnings(contents: string): { index: Projec
   }
   const parsedLinks = sanitizeProjectLinks(parsed.links, noteIds);
   const parsedTaskLog = sanitizeTaskLog(parsed.taskLog);
+  const parsedCalculators = sanitizeCalculators(parsed.calculators);
   if ((version === 2 || version === 3) && parsed.taskLog === undefined) {
     parsedTaskLog.warnings.push("Missing task log in board.json; defaulted to an empty log.");
   }
@@ -108,8 +109,16 @@ export function parseProjectIndexWithWarnings(contents: string): { index: Projec
       zones: uniqueZones,
       beaconMarks: marks.values,
       taskLog: parsedTaskLog.entries,
+      calculators: parsedCalculators.values,
     },
-    warnings: [...noteWarnings, ...zonesResult.warnings, ...parsedLinks.warnings, ...parsedTaskLog.warnings, ...marks.warnings],
+    warnings: [
+      ...noteWarnings,
+      ...zonesResult.warnings,
+      ...parsedLinks.warnings,
+      ...parsedTaskLog.warnings,
+      ...marks.warnings,
+      ...parsedCalculators.warnings,
+    ],
   };
 }
 
@@ -121,17 +130,19 @@ export function serializeProjectIndex(
   nextTaskLog?: readonly TaskLogEntry[],
   nextZones?: readonly Zone[],
   nextBeaconMarks?: readonly string[],
+  nextCalculators?: Record<string, CalculatorData>,
 ): string {
   const extrasById = new Map(previous?.notes.map((note) => [note.id, note]) ?? []);
   const serializedZones = (nextZones ?? previous?.zones ?? []).map(copyZone);
   const validZoneIds = new Set(serializedZones.map((zone) => zone.id));
+  const filesById = projectNoteFiles(notes);
   const indexedNotes = notes.map((note) => {
     const previousNote = extrasById.get(note.id);
     return {
       ...previousNote,
       id: note.id,
       name: note.name,
-      file: `${sanitizeNoteName(note.name)}.md`,
+      file: filesById.get(note.id) ?? noteMarkdownFileName(note),
       x: note.x,
       y: note.y,
       width: note.width,
@@ -158,6 +169,7 @@ export function serializeProjectIndex(
     taskLog: [...(nextTaskLog ?? previous?.taskLog ?? [])].map((entry) => ({ ...entry })),
     zones: serializedZones,
     beaconMarks: sanitizeBeaconMarks(nextBeaconMarks ?? previous?.beaconMarks ?? [], indexedNotes).values,
+    calculators: serializeCalculators(nextCalculators ?? previous?.calculators ?? {}, notes),
   });
 }
 
@@ -175,7 +187,7 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       id: entry.id,
       type: entry.type,
       name: entry.name,
-      text: note.text,
+      text: entry.type === "calculator" ? "" : note.text,
       x: entry.x,
       y: entry.y,
       width: entry.width,
@@ -195,6 +207,74 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
         : {}),
     };
   });
+}
+
+function sanitizeCalculators(value: unknown): { values: Record<string, CalculatorData>; warnings: string[] } {
+  if (value === undefined) return { values: {}, warnings: [] };
+  if (!isRecord(value)) {
+    return { values: {}, warnings: ["Invalid calculator data in board.json; calculator history was cleared."] };
+  }
+
+  const values = Object.create(null) as Record<string, CalculatorData>;
+  let invalid = false;
+  for (const [rawKey, rawData] of Object.entries(value)) {
+    const key = calculatorKey(rawKey);
+    const data = parseCalculatorData(rawData);
+    if (!key || !data || Object.prototype.hasOwnProperty.call(values, key)) {
+      invalid = true;
+      continue;
+    }
+    values[key] = data;
+  }
+  return {
+    values: Object.fromEntries(Object.entries(values)),
+    warnings: invalid ? ["Invalid calculator data in board.json; invalid entries were discarded."] : [],
+  };
+}
+
+/** Prefer named Markdown files for text nodes and reserve collision-free id-based paths for calculators. */
+export function projectNoteFiles(notes: readonly Note[]): Map<string, string> {
+  const files = new Map<string, string>();
+  const occupied = new Set<string>();
+  for (const note of notes) {
+    if (note.type === "calculator") continue;
+    const file = noteMarkdownFileName(note);
+    files.set(note.id, file);
+    occupied.add(noteFileKey(file.slice(0, -3)));
+  }
+
+  for (const note of notes) {
+    if (note.type !== "calculator") continue;
+    const base = calculatorNoteFileName(note.id).slice(0, -3);
+    let file = `${base}.md`;
+    let suffix = 2;
+    while (occupied.has(noteFileKey(file.slice(0, -3)))) {
+      file = `${sanitizeNoteName(`${base} ${suffix}`)}.md`;
+      suffix += 1;
+    }
+    occupied.add(noteFileKey(file.slice(0, -3)));
+    files.set(note.id, file);
+  }
+  return files;
+}
+
+/** Serialize canonical calculator keys and discard data with no matching calculator node. */
+function serializeCalculators(
+  value: Record<string, CalculatorData>,
+  notes: readonly Note[],
+): Record<string, CalculatorData> {
+  const usedKeys = new Set(notes
+    .filter((note) => note.type === "calculator")
+    .map((note) => calculatorKey(note.name))
+    .filter(Boolean));
+  const values = Object.create(null) as Record<string, CalculatorData>;
+  for (const [rawKey, rawData] of Object.entries(value)) {
+    const key = calculatorKey(rawKey);
+    const data = parseCalculatorData(rawData);
+    if (!key || !usedKeys.has(key) || !data || Object.prototype.hasOwnProperty.call(values, key)) continue;
+    values[key] = data;
+  }
+  return Object.fromEntries(Object.entries(values));
 }
 
 export interface LoadedProjectNote {
@@ -220,9 +300,12 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
     throw new Error(`Project note ${id} has an invalid name.`);
   }
 
+  const type = parseNoteKind(value.type);
   const file = typeof value.file === "string" && value.file.length > 0
     ? value.file
-    : `${sanitizeNoteName(name)}.md`;
+    : type === "calculator"
+      ? calculatorNoteFileName(id)
+      : `${sanitizeNoteName(name)}.md`;
   validateNoteFile(file, id);
 
   const x = finiteNumber(value.x, `note ${id} x`);
@@ -236,7 +319,6 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
   }
 
   const warnings: string[] = [];
-  const type = parseNoteKind(value.type);
   if (value.type !== undefined && type === null) warnings.push(`Invalid type for note ${id}; defaulted to note.`);
   else if (requireV2Fields && value.type === undefined) warnings.push(`Missing type for note ${id}; defaulted to note.`);
 

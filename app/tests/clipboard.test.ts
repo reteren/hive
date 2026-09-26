@@ -65,6 +65,16 @@ describe("clipboard payload", () => {
     expect(parseNotesPayload(serialized)?.nodes).toHaveLength(2);
   });
 
+  it("keeps a calculator name and kind in copy data so paste can create a mirror", () => {
+    const calculator: Note = {
+      id: "calculator-source", type: "calculator", name: "Trip", text: "unused", x: 2, y: 3, width: 40, height: null,
+    };
+
+    const parsed = parseNotesPayload(serializeNotes([calculator]));
+    expect(parsed?.nodes).toHaveLength(1);
+    expect(parsed?.nodes[0]).toMatchObject({ sourceId: calculator.id, type: "calculator", name: "Trip" });
+  });
+
   it("rejects malformed, unknown, duplicate-id, and invalid-geometry payloads", () => {
     expect(parseNotesPayload("{")).toBeNull();
     expect(parseNotesPayload(JSON.stringify({ marker: "other", version: 1, nodes: [], links: [] }))).toBeNull();

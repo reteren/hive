@@ -9,6 +9,7 @@ import { clearSelectedLink } from "../src/links/selection.svelte";
 import { duplicateSelection } from "../src/clipboard/commands";
 import { pointer } from "../src/board/camera.svelte";
 import { measuredHeights } from "../src/notes/layout.svelte";
+import { calculatorData, replaceCalculators, setCalculatorData } from "../src/calculator/calculators.svelte";
 
 const attachedLink = { id: "two-three", from: "two", to: "three", kind: "strong" as const, shape: "base" as const };
 
@@ -20,6 +21,7 @@ const notes: Note[] = [
 
 beforeEach(() => {
   clearHistory();
+  replaceCalculators({});
   for (const id of Object.keys(measuredHeights)) delete measuredHeights[id];
   replaceBoard(notes.map((note) => ({ ...note })));
   replaceLinks([{ ...attachedLink }]);
@@ -31,6 +33,7 @@ beforeEach(() => {
 
 afterEach(() => {
   clearHistory();
+  replaceCalculators({});
   clearSelection();
   clearSelectedLink();
   replaceLinks([]);
@@ -65,6 +68,35 @@ describe("clipboard delete history", () => {
 });
 
 describe("clipboard creation placement", () => {
+  it("duplicates a calculator as a same-name mirror with shared content", () => {
+    const original: Note = { id: "calc-source", type: "calculator", name: "Travel", text: "", x: 0, y: 0, width: 40, height: null };
+    const data = {
+      entries: [{ id: "entry", expression: "2 + 2" }],
+      bank: { name: "Trip", initial: 120 },
+      rows: [],
+    };
+    replaceBoard([original]);
+    replaceLinks([]);
+    clearSelection();
+    includeSelected(original.id);
+    pointer.world = { x: 80, y: 80 };
+    setCalculatorData(original.name, data);
+
+    duplicateSelection();
+    const copies = Object.values(board.notes).filter((note) => note.type === "calculator");
+    expect(copies).toHaveLength(2);
+    expect(copies.map((note) => note.name)).toEqual(["Travel", "Travel"]);
+    expect(calculatorData("travel")).toEqual(data);
+    expect(calculatorData("TRAVEL")).toEqual(data);
+
+    undo();
+    expect(Object.values(board.notes).filter((note) => note.type === "calculator")).toHaveLength(1);
+    expect(calculatorData("Travel")).toEqual(data);
+    redo();
+    expect(Object.values(board.notes).filter((note) => note.type === "calculator")).toHaveLength(2);
+    expect(calculatorData("Travel")).toEqual(data);
+  });
+
   it("moves a duplicate away from its source and restores the selection with the same history step", () => {
     clearHistory();
     const original: Note = { id: "source", type: "note", name: "Source", text: "", x: -15, y: -5, width: 30, height: null };

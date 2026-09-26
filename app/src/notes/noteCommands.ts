@@ -2,7 +2,7 @@ import { registerCommand } from "../commands/registry.svelte";
 import { nodeBodyFor } from "./nodeBodies";
 import { execute } from "../history/history.svelte";
 import { addNote, board, removeNote } from "../model/board.svelte";
-import { BEACON_SIZE, DEFAULT_NOTE_WIDTH, newId, type Note, type NoteKind } from "../model/note";
+import { BEACON_SIZE, DEFAULT_NOTE_WIDTH, newId, R5_BASE_WIDTHS, type Note, type NoteKind } from "../model/note";
 import { addLink, canLink, removeLink } from "../model/links.svelte";
 import type { Link } from "../model/link";
 import { pointer } from "../board/camera.svelte";
@@ -53,7 +53,7 @@ export function createNote(): string {
 /** Create a note, plus/minus, or standalone module at the current creation origin. */
 export function createNoteKind(kind: NoteKind): string {
   const isModule = kind === "importance" || kind === "purpose" || kind === "mood";
-  const width = kind === "beacon" ? BEACON_SIZE : kind in R5_WIDTHS ? R5_WIDTHS[kind as keyof typeof R5_WIDTHS] : kind === "note" ? DEFAULT_NOTE_WIDTH : isModule ? MODULE_NOTE_WIDTH : DEFAULT_MINI_NOTE_WIDTH;
+  const width = kind === "beacon" ? BEACON_SIZE : kind in R5_BASE_WIDTHS ? R5_BASE_WIDTHS[kind as keyof typeof R5_BASE_WIDTHS] : kind === "note" ? DEFAULT_NOTE_WIDTH : isModule ? MODULE_NOTE_WIDTH : DEFAULT_MINI_NOTE_WIDTH;
   const height = estimatedCreationHeight({
     type: kind,
     width,
@@ -147,9 +147,6 @@ export function addMiniNode(parentId: string, kind: MiniNoteKind): string | null
   return id;
 }
 
-/** Initial widths of R5 nodes in u (owners may tune them). */
-const R5_WIDTHS = { goal: 30, progress: 30, calculator: 40, tierlist: 60, stats: 30 } as const;
-
 function makeNote(kind: NoteKind, id: string, position: Point, createdAt: number): Note {
   const baseName = kindLabel(kind);
   return {
@@ -161,8 +158,8 @@ function makeNote(kind: NoteKind, id: string, position: Point, createdAt: number
     y: position.y,
     width: kind === "beacon"
       ? BEACON_SIZE
-      : kind in R5_WIDTHS
-      ? R5_WIDTHS[kind as keyof typeof R5_WIDTHS]
+      : kind in R5_BASE_WIDTHS
+      ? R5_BASE_WIDTHS[kind as keyof typeof R5_BASE_WIDTHS]
       : kind === "note"
       ? DEFAULT_NOTE_WIDTH
       : kind === "importance" || kind === "purpose" || kind === "mood"
