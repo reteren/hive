@@ -1,6 +1,6 @@
 # hive — состояние (обновлено 24.09.2026, после восстановления)
 
-**Актуально:** после 1.1.8: run `run_838f96db9e59` — A task_4782ccbe2878 (term_3e02…) перетаскивание Tierlist на pointer-событиях (HTML5 DnD не работает в Tauri/WebView2), B task_00919b3acd85 (term_beff…) Statistics → Tierlist. Проверка мышью — координатор (tierdrag.mjs). Затем 1.1.9.
+**Актуально:** установщик **1.1.9** (перетаскивание Tierlist на pointer-событиях, Statistics → Tierlist) ждёт проверки. Все агенты свободны. Если обе target-папки заняты запущенными hive.exe — собирать с CARGO_TARGET_DIR=target-b. Смоук: tierdrag2.mjs, statstier.mjs (перед прогоном перезапускать vite — HMR создаёт дубликаты модулей).
 
 ---
 

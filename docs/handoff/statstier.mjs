@@ -1,0 +1,14 @@
+const page = (await fetch(`http://localhost:9334/json/list`).then((r) => r.json())).find((t) => t.type === "page");
+const ws = new WebSocket(page.webSocketDebuggerUrl); let id = 0; const pending = new Map();
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+await new Promise((r) => (ws.onopen = r));
+const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+const ev = async (expression) => (await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true })).result?.result?.value;
+console.log(await ev(`(async()=>{const b=await import('/src/model/board.svelte.ts');const l=await import('/src/model/links.svelte.ts');
+ b.addNote({id:'st',type:'stats',name:'Statistics',text:'',x:-75,y:-30,width:30,height:null,createdAt:Date.now()});
+ l.addLink({id:'sl',from:'st',to:'tl',kind:'strong',shape:'base'});return 'ok'})()`));
+await new Promise((r) => setTimeout(r, 600));
+console.log(await ev(`document.querySelector('[data-note-id="st"]')?.innerText?.replace(/\n+/g,' | ')`));
+const shot = await send("Page.captureScreenshot", { format: "png" });
+(await import("node:fs")).writeFileSync(process.argv[2], Buffer.from(shot.result.data, "base64"));
+ws.close();

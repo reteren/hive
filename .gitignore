@@ -21,5 +21,6 @@ desktop.ini
 *.msi
 *.pdb
 app/src-tauri/target-alt/
+app/src-tauri/target-b/
 app/.tmp-edge*/
 app/temp/

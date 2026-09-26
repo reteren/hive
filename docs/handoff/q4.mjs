@@ -1,0 +1,10 @@
+const page = (await fetch(`http://localhost:9334/json/list`).then((r) => r.json())).find((t) => t.type === "page");
+const ws = new WebSocket(page.webSocketDebuggerUrl); let id = 0; const pending = new Map();
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+await new Promise((r) => (ws.onopen = r));
+const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+await send("Runtime.evaluate", { expression: "(async()=>{const c=await import('/src/board/camera.svelte.ts');c.camera.x=-30;c.camera.y=-15;c.camera.zoom=1.2;return 1})()", awaitPromise: true });
+await new Promise(r=>setTimeout(r,500));
+const shot = await send("Page.captureScreenshot", { format: "png" });
+(await import("node:fs")).writeFileSync(process.argv[2], Buffer.from(shot.result.data, "base64"));
+ws.close();

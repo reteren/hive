@@ -18,7 +18,7 @@
   {#if tierlistView}
     <div class="tierlist-lock" data-stats-tierlist-lock title="Remove the link to change">Linked to {tierlistView.tierlist.name}</div>
     <div class="tierlist-summary" role="status" aria-live="polite" aria-label={`Tierlist statistics for ${tierlistView.tierlist.name}`}>
-      <strong class="tierlist-total" data-stats-tierlist-total>{tierlistView.summary.total} items total</strong>
+      <strong class="tierlist-total" data-stats-tierlist-total>{tierlistView.summary.total} {tierlistView.summary.total === 1 ? "item" : "items"} total</strong>
       <div class="tierlist-rows">
         {#each tierlistView.summary.rows as row (row.id)}
           <div class="tierlist-row" data-stats-tier-row={row.id}>
