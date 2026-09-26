@@ -1,4 +1,5 @@
 import type { Note } from "../model/note";
+import type { TierRow } from "../model/nodeData";
 
 const WORD = /[\p{L}\p{N}][\p{L}\p{N}\p{M}]*(?:['’\u2010-\u2015-][\p{L}\p{N}\p{M}]+)*/gu;
 
@@ -7,6 +8,19 @@ export interface TextStatistics {
   characters: number;
   lines: number;
   noteCount: number;
+}
+
+export interface TierlistStatistics {
+  total: number;
+  rows: Array<{ id: string; name: string; color: string; count: number }>;
+}
+
+/** Keep the Tierlist's row order, including empty rows. Every card counts once. */
+export function summarizeTierlist(rows: readonly TierRow[]): TierlistStatistics {
+  return {
+    total: rows.reduce((count, row) => count + row.cards.length, 0),
+    rows: rows.map((row) => ({ id: row.id, name: row.name, color: row.color, count: row.cards.length })),
+  };
 }
 
 /** Count unique text notes only: note/pro/con, including task-marked notes. */

@@ -54,6 +54,10 @@ export function linkRefusalReason(
   }
 
   if (isProgressBeaconScopeLink) return null;
+  if (target?.type === "tierlist" && actualKind === "strong") {
+    if (source?.type === "progress") return "Progress nodes cannot link strongly to Tierlists.";
+    if (source?.type === "stats") return null;
+  }
 
   if (target?.type === "calculator") {
     if (sourceIsBeacon && actualKind === "strong") return "Beacons cannot fund calculators.";
