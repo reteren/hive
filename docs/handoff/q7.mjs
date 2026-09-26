@@ -1,0 +1,16 @@
+const page = (await fetch(`http://localhost:9334/json/list`).then((r) => r.json())).find((t) => t.type === "page");
+const ws = new WebSocket(page.webSocketDebuggerUrl); let id = 0; const pending = new Map();
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+await new Promise((r) => (ws.onopen = r));
+const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const ev = async (expression) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); return r.result?.result?.value ?? r.result?.exceptionDetails?.exception?.description; };
+const mouse = (type, x, y, button = "none", buttons = 0) => send("Input.dispatchMouseEvent", { type, x, y, button, buttons, clickCount: type === "mousePressed" || type === "mouseReleased" ? 1 : 0 });
+await ev(`(async()=>{const c=await import('/src/board/camera.svelte.ts');c.camera.x=-30;c.camera.y=40;return 1})()`);
+await wait(400);
+const p = await ev(`(()=>{const r=document.querySelector('[data-archive-restore-centre]').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+await mouse("mouseMoved", p.x, p.y); await mouse("mousePressed", p.x, p.y, "left", 1); await mouse("mouseReleased", p.x, p.y, "left", 0); await wait(400);
+console.log(await ev(`(async()=>{const b=await import('/src/model/board.svelte.ts');const r=await import('/src/model/retention.svelte.ts');const c=await import('/src/board/camera.svelte.ts');return JSON.stringify({camera:[c.camera.x,c.camera.y],notes:Object.values(b.board.notes).map(n=>n.name+'@'+Math.round(n.x+n.width/2)+','+Math.round(n.y)),archive:r.archive.entries.length})})()`));
+const shot = await send("Page.captureScreenshot", { format: "png" });
+(await import("node:fs")).writeFileSync(process.argv[2], Buffer.from(shot.result.data, "base64"));
+ws.close();
