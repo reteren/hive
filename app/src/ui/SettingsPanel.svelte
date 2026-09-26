@@ -1,7 +1,20 @@
+<script module lang="ts">
+  import "../export/commands";
+</script>
+
 <script lang="ts">
+  import { backupSettings, setBackupInterval } from "../backup/backupSettings.svelte";
+  import { openBackupsPanel } from "../backup/panel.svelte";
+  import { emptyTrash } from "../trash/trashActions.svelte";
   import { history, MAX_HISTORY_LIMIT, MIN_HISTORY_LIMIT, setHistoryLimit } from "../history/history.svelte";
+  import { project } from "../project/project.svelte";
+  import { trash } from "../model/retention.svelte";
+  import { estimateJsonSize, formatStorageSize } from "../export/storage";
+  import { exportCurrentProject, importProjectFromZip, refreshStorageStats } from "../export/actions";
+  import { exportState } from "../export/exportState.svelte";
   import { preferences, setFitWidthToText, setReduceAnimations } from "../settings/preferences.svelte";
   import { closeSettingsPanel, settingsPanel } from "../settings/settingsPanel.svelte";
+  import ExportStatus from "../export/ExportStatus.svelte";
 
   let historyLimitDraft = $state(String(history.limit));
   let closeButton = $state<HTMLButtonElement | null>(null);
@@ -12,6 +25,7 @@
 
   $effect(() => {
     if (!settingsPanel.open) return;
+    if (project.path) void refreshStorageStats();
     const frame = requestAnimationFrame(() => closeButton?.focus());
     return () => cancelAnimationFrame(frame);
   });
@@ -40,7 +54,29 @@
       input.blur();
     }
   }
+
+  function changeBackupInterval(event: Event): void {
+    if (!(event.currentTarget instanceof HTMLSelectElement)) return;
+    switch (Number(event.currentTarget.value)) {
+      case 0: setBackupInterval(0); break;
+      case 15: setBackupInterval(15); break;
+      case 30: setBackupInterval(30); break;
+      case 60: setBackupInterval(60); break;
+    }
+  }
+
+  function confirmEmptyTrash(): void {
+    if (trash.entries.length === 0) return;
+    const confirmed = window.confirm(`Permanently delete ${trash.entries.length} trash entr${trash.entries.length === 1 ? "y" : "ies"}? This cannot be undone.`);
+    if (!confirmed) return;
+    emptyTrash();
+    exportState.message = "Trash emptied.";
+    exportState.error = "";
+    void refreshStorageStats();
+  }
 </script>
+
+<ExportStatus />
 
 {#if settingsPanel.open}
   <div class="settings-overlay" data-selection-ignore>
@@ -98,6 +134,53 @@
               onkeydown={handleHistoryLimitKeydown}
             />
           </label>
+        </section>
+
+        <section class="settings-section" aria-labelledby="storage-settings-title" data-storage-settings>
+          <h2 id="storage-settings-title">Storage</h2>
+          <div class="storage-row">
+            <span>Trash</span>
+            <span class="storage-value">{trash.entries.length} entr{trash.entries.length === 1 ? "y" : "ies"} · approx. {formatStorageSize(estimateJsonSize(trash.entries))}</span>
+          </div>
+          <div class="storage-row">
+            <span>Snapshots</span>
+            <span class="storage-value">{exportState.storageStats?.snapshotCount ?? "—"} snapshots · {formatStorageSize(exportState.storageStats?.snapshotBytes ?? 0)}</span>
+          </div>
+          <div class="storage-row">
+            <span>Undo history</span>
+            <span class="storage-value">{history.entries.length} entries in memory</span>
+          </div>
+          <div class="storage-row">
+            <span>Project folder</span>
+            <span class="storage-value">{formatStorageSize(exportState.storageStats?.projectBytes ?? 0)}</span>
+          </div>
+          {#if exportState.storageError}
+            <p class="storage-error" role="alert">{exportState.storageError}</p>
+          {/if}
+          <div class="storage-actions">
+            <label class="interval-control">
+              <span>Backup interval</span>
+              <select aria-label="Automatic snapshot interval" value={backupSettings.interval} onchange={changeBackupInterval}>
+                <option value={0}>Off</option>
+                <option value={15}>15 min</option>
+                <option value={30}>30 min</option>
+                <option value={60}>60 min</option>
+              </select>
+            </label>
+            <button type="button" onclick={confirmEmptyTrash} disabled={trash.entries.length === 0}>Empty trash…</button>
+            <button type="button" onclick={openBackupsPanel}>Open backups</button>
+            <button type="button" onclick={() => void refreshStorageStats()} disabled={exportState.refreshingStorage}>
+              {exportState.refreshingStorage ? "Refreshing…" : "Refresh storage"}
+            </button>
+          </div>
+          <div class="storage-actions transfer-actions">
+            <button type="button" onclick={() => void exportCurrentProject()} disabled={!project.path || exportState.busy}>
+              {exportState.busy ? "Working…" : "Export project…"}
+            </button>
+            <button type="button" onclick={() => void importProjectFromZip()} disabled={exportState.busy}>
+              Import project from .zip…
+            </button>
+          </div>
         </section>
       </div>
     </div>
@@ -244,5 +327,81 @@
   .history-limit:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 1px;
+  }
+
+  .storage-row {
+    display: flex;
+    min-height: 25px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 3px 2px;
+    font-size: 10px;
+  }
+
+  .storage-value {
+    color: var(--text-dim);
+    font-family: var(--mono-font);
+    font-size: 9px;
+    text-align: right;
+  }
+
+  .storage-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 8px;
+  }
+
+  .storage-actions button,
+  .interval-control select {
+    min-height: 25px;
+    padding: 3px 7px;
+    border: 1px solid #484848;
+    border-radius: 3px;
+    background: #252525;
+    color: var(--text);
+    font: inherit;
+    font-size: 10px;
+    cursor: pointer;
+  }
+
+  .storage-actions button:hover:not(:disabled),
+  .storage-actions button:focus-visible,
+  .interval-control select:focus-visible {
+    border-color: #806b2d;
+    background: #343019;
+  }
+
+  .storage-actions button:disabled {
+    color: #777;
+    cursor: default;
+  }
+
+  .interval-control {
+    display: flex;
+    min-height: 25px;
+    align-items: center;
+    gap: 6px;
+    margin-right: auto;
+    color: var(--text-dim);
+    font-size: 10px;
+  }
+
+  .interval-control select {
+    min-width: 69px;
+    padding-inline: 5px;
+  }
+
+  .storage-error {
+    margin: 5px 2px;
+    color: #ffb0a6;
+    font-size: 9px;
+    overflow-wrap: anywhere;
+  }
+
+  .transfer-actions {
+    padding-top: 7px;
+    border-top: 1px solid #3b3b3b;
   }
 </style>

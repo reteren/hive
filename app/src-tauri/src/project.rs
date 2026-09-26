@@ -19,6 +19,23 @@ pub struct ProjectState {
     root: Mutex<Option<PathBuf>>,
 }
 
+pub(crate) fn active_project_root(state: &ProjectState) -> Result<PathBuf, String> {
+    state
+        .root
+        .lock()
+        .map_err(|_| "project state is unavailable")?
+        .clone()
+        .ok_or_else(|| "no project is open".to_string())
+}
+
+pub(crate) fn validate_project_index_contents(contents: &[u8]) -> Result<usize, String> {
+    let mut index: BoardIndex = serde_json::from_slice(contents)
+        .map_err(|error| format!("board.json is invalid: {error}"))?;
+    migrate_index(&mut index)?;
+    validate_index(&index)?;
+    Ok(index.notes.len())
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct BoardIndex {

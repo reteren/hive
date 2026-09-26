@@ -28,6 +28,7 @@ import { deleteZonesAction } from "../zones/zoneGestures";
 import { translateShape } from "../zones/shape";
 import { beaconPaletteColor } from "../beacons/beaconPalette";
 import { removeCreatedBankRowForLink } from "../calculator/bankActions.svelte";
+import { moveToTrash } from "../trash/trashActions.svelte";
 import {
   creationObstacleForNote,
   estimatedCreationHeight,
@@ -370,6 +371,14 @@ function placeNewNotesWithoutOverlap(notes: readonly Note[], placementHeights?: 
 }
 
 function deleteSelectionItems(notes: readonly Note[], zoneIds: readonly string[], label: "Cut" | "Delete"): void {
+  if (label === "Delete") {
+    moveToTrash(notes.map((note) => note.id), zoneIds, {
+      label: "Delete",
+      target: selectionNoun(notes.length, zoneIds.length),
+    });
+    return;
+  }
+
   const indexed: IndexedNote[] = notes.flatMap((note) => {
     const index = board.order.indexOf(note.id);
     return index < 0 ? [] : [{ note: { ...note }, index }];

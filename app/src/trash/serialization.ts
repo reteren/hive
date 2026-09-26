@@ -1,0 +1,214 @@
+import { isFrameAnchor } from "../links/anchors";
+import { ME_OBJECT_ID, pairKey, type Link } from "../model/link";
+import { calculatorKey, parseCalculatorData, parseScope, parseTiers, type CalculatorData } from "../model/nodeData";
+import { IMPORTANCE_LEVELS, MOOD_KINDS, PURPOSE_KINDS, type Note, type NoteKind, type TaskState } from "../model/note";
+import type { TrashEntry } from "../model/retention.svelte";
+import type { Zone } from "../model/zone";
+import { copyTrashEntry } from "./trash";
+
+const NOTE_KINDS = new Set<NoteKind>([
+  "note", "pro", "con", "importance", "purpose", "mood", "beacon",
+  "goal", "progress", "calculator", "tierlist", "stats", "archive", "trash",
+]);
+const LINK_SHAPES = new Set<Link["shape"]>(["base", "orthogonal", "zigzag", "wave"]);
+const MAX_ENTRIES = 10_000;
+
+/** Tolerantly load saved trash; malformed entries are omitted with a visible warning. */
+export function sanitizeTrashEntries(value: unknown): { entries: TrashEntry[]; warnings: string[] } {
+  if (value === undefined) return { entries: [], warnings: [] };
+  if (!Array.isArray(value) || value.length > MAX_ENTRIES) {
+    return { entries: [], warnings: ["Invalid or oversized trash in board.json; no entries were loaded."] };
+  }
+
+  const entries: TrashEntry[] = [];
+  const entryIds = new Set<string>();
+  const noteIds = new Set<string>();
+  const zoneIds = new Set<string>();
+  let invalid = false;
+  for (const candidate of value) {
+    if (!isRecord(candidate) || !validId(candidate.id) || entryIds.has(candidate.id) ||
+      !finite(candidate.deletedAt) || candidate.deletedAt < 0 ||
+      !Array.isArray(candidate.notes) || !Array.isArray(candidate.zones) || !Array.isArray(candidate.links)) {
+      invalid = true;
+      continue;
+    }
+
+    const notes = candidate.notes.map(parseTrashNote);
+    const zones = candidate.zones.map(parseTrashZone);
+    if (notes.some((note) => note === null) || zones.some((zone) => zone === null)) {
+      invalid = true;
+      continue;
+    }
+    const safeNotes = notes as Note[];
+    const safeZones = zones as Zone[];
+    if (safeNotes.length === 0 && safeZones.length === 0 ||
+      safeNotes.some((note) => noteIds.has(note.id)) || safeZones.some((zone) => zoneIds.has(zone.id)) ||
+      safeNotes.some((note) => safeZones.some((zone) => zone.id === note.id))) {
+      invalid = true;
+      continue;
+    }
+
+    const links: Link[] = [];
+    const linkIds = new Set<string>();
+    const pairs = new Set<string>();
+    for (const rawLink of candidate.links) {
+      const link = parseTrashLink(rawLink);
+      if (!link || linkIds.has(link.id) || pairs.has(pairKey(link.from, link.to))) {
+        invalid = true;
+        continue;
+      }
+      links.push(link);
+      linkIds.add(link.id);
+      pairs.add(pairKey(link.from, link.to));
+    }
+
+    const calculators: Record<string, CalculatorData> = Object.create(null) as Record<string, CalculatorData>;
+    if (candidate.calculators !== undefined) {
+      if (!isRecord(candidate.calculators)) {
+        invalid = true;
+      } else {
+        const calculatorNames = new Set(safeNotes
+          .filter((note) => note.type === "calculator")
+          .map((note) => calculatorKey(note.name)));
+        for (const [rawKey, rawData] of Object.entries(candidate.calculators)) {
+          const key = calculatorKey(rawKey);
+          const data = parseCalculatorData(rawData);
+          if (!key || !data || !calculatorNames.has(key)) {
+            invalid = true;
+            continue;
+          }
+          calculators[key] = data;
+        }
+      }
+    }
+
+    entries.push({
+      id: candidate.id,
+      deletedAt: candidate.deletedAt,
+      notes: safeNotes,
+      zones: safeZones,
+      links,
+      ...(Object.keys(calculators).length > 0 ? { calculators } : {}),
+    });
+    entryIds.add(candidate.id);
+    safeNotes.forEach((note) => noteIds.add(note.id));
+    safeZones.forEach((zone) => zoneIds.add(zone.id));
+  }
+  return {
+    entries: entries.map(copyTrashEntry),
+    warnings: invalid ? ["Invalid trash data in board.json was skipped; check the project backup before saving."] : [],
+  };
+}
+
+function parseTrashNote(value: unknown): Note | null {
+  if (!isRecord(value) || !validId(value.id) || value.id === ME_OBJECT_ID ||
+    typeof value.name !== "string" || !value.name.trim() || value.name.length > 500 ||
+    typeof value.text !== "string" || !NOTE_KINDS.has(value.type as NoteKind) ||
+    !finite(value.x) || !finite(value.y) || !finite(value.width) || value.width <= 0 ||
+    !(value.height === null || value.height === undefined || finite(value.height) && value.height > 0)) return null;
+  const task = parseTask(value.task);
+  const taskMemory = parseTask(value.taskMemory);
+  if (task === false || taskMemory === false ||
+    value.importance !== undefined && value.importance !== null && !IMPORTANCE_LEVELS.includes(value.importance as typeof IMPORTANCE_LEVELS[number]) ||
+    value.purposes !== undefined && (!Array.isArray(value.purposes) || value.purposes.some((item) => !PURPOSE_KINDS.includes(item as typeof PURPOSE_KINDS[number]))) ||
+    value.moods !== undefined && (!Array.isArray(value.moods) || value.moods.some((item) => !MOOD_KINDS.includes(item as typeof MOOD_KINDS[number]))) ||
+    value.color !== undefined && typeof value.color !== "string" ||
+    value.zoneId !== undefined && value.zoneId !== null && typeof value.zoneId !== "string" ||
+    value.createdAt !== undefined && !finite(value.createdAt)) return null;
+  const scope = value.scope === undefined ? undefined : parseScope(value.scope);
+  const tiers = value.tiers === undefined ? undefined : parseTiers(value.tiers);
+  if (scope === null || tiers === null) return null;
+  return {
+    id: value.id,
+    type: value.type as NoteKind,
+    name: value.name,
+    text: value.text,
+    x: value.x,
+    y: value.y,
+    width: value.width,
+    height: value.height ?? null,
+    ...(task ? { task } : {}),
+    ...(taskMemory ? { taskMemory } : {}),
+    ...(value.importance ? { importance: value.importance as Note["importance"] } : {}),
+    ...(value.purposes ? { purposes: value.purposes as Note["purposes"] } : {}),
+    ...(value.moods ? { moods: value.moods as Note["moods"] } : {}),
+    ...(scope ? { scope } : {}),
+    ...(tiers ? { tiers } : {}),
+    ...(typeof value.color === "string" ? { color: value.color } : {}),
+    ...(typeof value.zoneId === "string" ? { zoneId: value.zoneId } : {}),
+    ...(finite(value.createdAt) ? { createdAt: value.createdAt } : {}),
+  };
+}
+
+function parseTrashZone(value: unknown): Zone | null {
+  if (!isRecord(value) || !validId(value.id) || typeof value.name !== "string" || !value.name.trim() ||
+    typeof value.color !== "string" || !/^#[0-9a-f]{6}$/i.test(value.color) ||
+    value.createdAt !== undefined && !finite(value.createdAt) ||
+    !Array.isArray(value.parts) || !Array.isArray(value.holes)) return null;
+  const parts = parseContours(value.parts);
+  const holes = parseContours(value.holes);
+  if (!parts || !holes || parts.length === 0) return null;
+  return {
+    id: value.id,
+    name: value.name,
+    color: value.color,
+    parts,
+    holes,
+    ...(finite(value.createdAt) ? { createdAt: value.createdAt } : {}),
+  };
+}
+
+function parseContours(value: unknown): Zone["parts"] | null {
+  if (!Array.isArray(value) || value.length > 100) return null;
+  const contours: Zone["parts"] = [];
+  for (const contour of value) {
+    if (!Array.isArray(contour) || contour.length < 3 || contour.length > 512) return null;
+    const points = contour.map((point) => isRecord(point) && finite(point.x) && finite(point.y)
+      ? { x: point.x, y: point.y }
+      : null);
+    if (points.some((point) => point === null)) return null;
+    contours.push(points as Zone["parts"][number]);
+  }
+  return contours;
+}
+
+function parseTrashLink(value: unknown): Link | null {
+  if (!isRecord(value) || !validId(value.id) || !validId(value.from) || !validId(value.to) ||
+    value.from === value.to || value.kind !== "strong" && value.kind !== "weak" ||
+    !LINK_SHAPES.has(value.shape as Link["shape"]) ||
+    value.fromAnchor !== undefined && !isFrameAnchor(value.fromAnchor) ||
+    value.toAnchor !== undefined && !isFrameAnchor(value.toAnchor) ||
+    value.transferDeclined !== undefined && typeof value.transferDeclined !== "boolean" ||
+    value.transferOriginalText !== undefined && typeof value.transferOriginalText !== "string") return null;
+  return {
+    id: value.id,
+    from: value.from,
+    to: value.to,
+    kind: value.kind,
+    shape: value.shape as Link["shape"],
+    ...(value.fromAnchor ? { fromAnchor: value.fromAnchor as Link["fromAnchor"] } : {}),
+    ...(value.toAnchor ? { toAnchor: value.toAnchor as Link["toAnchor"] } : {}),
+    ...(typeof value.transferDeclined === "boolean" ? { transferDeclined: value.transferDeclined } : {}),
+    ...(typeof value.transferOriginalText === "string" ? { transferOriginalText: value.transferOriginalText } : {}),
+  };
+}
+
+function parseTask(value: unknown): TaskState | null | false {
+  if (value === undefined || value === null) return null;
+  return isRecord(value) && typeof value.done === "boolean" &&
+    (value.doneAt === null || finite(value.doneAt) && value.doneAt >= 0)
+    ? { done: value.done, doneAt: value.doneAt as number | null }
+    : false;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validId(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 200 && !value.includes("/") && !value.includes("\\");
+}
+
+function finite(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}

@@ -7,6 +7,7 @@ import { brushState, setBrushSize } from "../zones/brushState.svelte";
 import { getCommandKeyOverrides, setCommandKeyOverrides } from "../commands/registry.svelte";
 import { applyReduceMotionPreference } from "./motion";
 import { preferences, setFitWidthToText, setReduceAnimations, setTransferHintsShown } from "./preferences.svelte";
+import { backupSettings, setBackupInterval } from "../backup/backupSettings.svelte";
 import { parseViewSettings, serializeViewSettings, type ViewSettings } from "./viewSettings";
 
 const SAVE_DEBOUNCE_MS = 400;
@@ -99,6 +100,7 @@ function currentSettings(): ViewSettings {
     keyOverrides: getCommandKeyOverrides(),
     transferHintsShown: preferences.transferHintsShown,
     fitWidthToText: preferences.fitWidthToText,
+    backupIntervalMinutes: backupSettings.interval,
   };
 }
 
@@ -119,4 +121,5 @@ function applySettings(settings: ViewSettings): void {
   setCommandKeyOverrides(settings.keyOverrides);
   setTransferHintsShown(settings.transferHintsShown);
   setFitWidthToText(settings.fitWidthToText);
+  setBackupInterval(settings.backupIntervalMinutes);
 }

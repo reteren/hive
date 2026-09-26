@@ -16,6 +16,8 @@ import { initializeTransfer } from "./transfer/init";
 import "./goal/init";
 import "./calculator/init";
 import "./tierlist/init";
+import "./backup/init";
+import "./archive/init";
 
 await initializeViewSettingsPersistence();
 await initializeProjectPersistence();

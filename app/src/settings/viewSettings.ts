@@ -4,6 +4,7 @@ import { sanitizeKeyOverrides, type KeyBindingOverrides } from "../commands/keym
 import { DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT, MIN_HISTORY_LIMIT } from "../history/historyStack";
 import { BRUSH_MIN, normalizeBrushSize } from "../zones/brush";
 import { systemPrefersReducedMotion } from "./motion";
+import type { BackupInterval } from "../backup/backupSettings.svelte";
 
 export const VIEW_SETTINGS_VERSION = 7;
 
@@ -42,6 +43,7 @@ export interface ViewSettings {
   keyOverrides: KeyBindingOverrides;
   transferHintsShown: number;
   fitWidthToText: boolean;
+  backupIntervalMinutes: BackupInterval;
 }
 
 export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
@@ -59,6 +61,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
   keyOverrides: {},
   transferHintsShown: 0,
   fitWidthToText: true,
+  backupIntervalMinutes: 30,
 };
 
 const MIN_ALLOWED_ZOOM_LIMIT = 0.001;
@@ -116,6 +119,7 @@ export function parseViewSettings(serialized: string | null | undefined, default
     keyOverrides: sanitizeKeyOverrides(parsed.keyOverrides),
     transferHintsShown: hintCountOrDefault(parsed.transferHintsShown, defaults.transferHintsShown),
     fitWidthToText: booleanOrDefault(parsed.fitWidthToText, defaults.fitWidthToText),
+    backupIntervalMinutes: backupIntervalOrDefault(parsed.backupIntervalMinutes, defaults.backupIntervalMinutes),
   };
 }
 
@@ -137,6 +141,7 @@ export function serializeViewSettings(settings: ViewSettings): string {
     keyOverrides: sanitizeKeyOverrides(settings.keyOverrides),
     transferHintsShown: hintCountOrDefault(settings.transferHintsShown, 0),
     fitWidthToText: settings.fitWidthToText,
+    backupIntervalMinutes: backupIntervalOrDefault(settings.backupIntervalMinutes, 30),
   });
 }
 
@@ -174,6 +179,7 @@ function cloneViewSettings(settings: ViewSettings): ViewSettings {
     keyOverrides: sanitizeKeyOverrides(settings.keyOverrides),
     transferHintsShown: settings.transferHintsShown,
     fitWidthToText: settings.fitWidthToText,
+    backupIntervalMinutes: settings.backupIntervalMinutes,
   };
 }
 
@@ -212,6 +218,10 @@ function hintCountOrDefault(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 5
     ? value
     : fallback;
+}
+
+function backupIntervalOrDefault(value: unknown, fallback: BackupInterval): BackupInterval {
+  return value === 0 || value === 15 || value === 30 || value === 60 ? value : fallback;
 }
 
 function gridStepOrDefault(value: unknown, fallback: number): number {

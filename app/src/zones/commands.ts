@@ -8,6 +8,7 @@ import { tool } from "../tools/tool.svelte";
 import { uniqueName } from "../notes/naming";
 import { MIN_ZONE_SIZE, rectangleOverlapsZones } from "./geometry";
 import { stepBrushSize } from "./brushState.svelte";
+import { moveToTrash } from "../trash/trashActions.svelte";
 
 export const ZONE_COLORS = ["#608ac1", "#a882c2", "#72a98b", "#c59965", "#b87582", "#73a9b6"] as const;
 
@@ -51,9 +52,7 @@ export function recolorZone(id: string, color: string): boolean {
 export function deleteZone(id: string): boolean {
   const zone = zones.byId[id];
   if (!zone) return false;
-  const index = zones.order.indexOf(id);
-  execute({ label: "Delete zone", target: zone.name, do: () => { removeZone(id); }, undo: () => addZone(zone, index) });
-  return true;
+  return moveToTrash([], [id], { label: "Delete zone", target: zone.name }) !== null;
 }
 
 registerCommand({

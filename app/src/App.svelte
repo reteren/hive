@@ -25,6 +25,7 @@
   import TransferNotice from "./transfer/TransferNotice.svelte";
   import SettingsPanel from "./ui/SettingsPanel.svelte";
   import BeaconMenu from "./beacons/BeaconMenu.svelte";
+  import TrashPanel from "./trash/TrashPanel.svelte";
 
   let undoLogCommand = $derived(getCommand("ui.toggleUndoLog"));
   let undoLogKeys = $derived(undoLogCommand?.keys.map(formatKey).join(", ") ?? "");
@@ -66,11 +67,13 @@
       </button>
       <CommandButton commandId="ui.toggleTasks" showLabel labelOverride="Tasks" className="dock-toggle" />
       <CommandButton commandId="ui.toggleObjectsPanel" showLabel labelOverride="Objects" className="dock-toggle" />
+      <CommandButton commandId="ui.openTrash" showLabel labelOverride="Trash" className="dock-toggle" />
     </div>
     <div class="panel-stack" data-selection-ignore aria-label="Open panels">
       <TasksPanel />
       {#if undoLogPanel.open}<UndoLog />{/if}
       <ObjectsPanel />
+      <TrashPanel />
     </div>
     <SettingsPanel />
     <div class="overlay-bottom-right">
@@ -177,7 +180,8 @@
 
   .panel-stack :global(.tasks-panel),
   .panel-stack :global(.history-panel),
-  .panel-stack :global(.objects-panel) {
+  .panel-stack :global(.objects-panel),
+  .panel-stack :global(.trash-panel) {
     position: relative;
     inset: auto;
     width: 100%;

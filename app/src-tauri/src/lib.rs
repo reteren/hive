@@ -1,4 +1,6 @@
 mod project;
+mod backup;
+mod export;
 mod settings;
 mod watcher;
 
@@ -21,7 +23,17 @@ pub fn run() {
             project::open_project,
             project::save_project,
             project::write_conflict_copy,
-            project::acknowledge_external_file_change
+            project::acknowledge_external_file_change,
+            backup::list_backups,
+            backup::create_backup,
+            backup::create_backup_if_changed,
+            backup::backup_status,
+            backup::delete_backup,
+            backup::restore_backup,
+            backup::check_project_health,
+            export::export_project,
+            export::import_project_zip,
+            export::project_storage_stats
         ])
         .run(tauri::generate_context!())
         .expect("error while running hive");

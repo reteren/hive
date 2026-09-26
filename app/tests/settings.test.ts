@@ -19,6 +19,7 @@ describe("view settings serialization", () => {
       keyOverrides: { "view.home": ["Ctrl+Alt+KeyH"], "edit.undo": [] },
       transferHintsShown: 3,
       fitWidthToText: false,
+      backupIntervalMinutes: 15 as const,
     };
 
     const serialized = serializeViewSettings(settings);
@@ -81,6 +82,7 @@ describe("view settings serialization", () => {
       keyOverrides: {},
       transferHintsShown: 0,
       fitWidthToText: true,
+      backupIntervalMinutes: 30,
     });
   });
 
@@ -146,5 +148,13 @@ describe("view settings serialization", () => {
 
     expect(parseViewSettings(oldSettings, DEFAULT_VIEW_SETTINGS)).toEqual(DEFAULT_VIEW_SETTINGS);
     expect(JSON.parse(serialized)).not.toHaveProperty("display");
+  });
+
+  it("persists supported backup intervals and defaults invalid values", () => {
+    for (const backupIntervalMinutes of [0, 15, 30, 60] as const) {
+      const saved = serializeViewSettings({ ...DEFAULT_VIEW_SETTINGS, backupIntervalMinutes });
+      expect(parseViewSettings(saved, DEFAULT_VIEW_SETTINGS).backupIntervalMinutes).toBe(backupIntervalMinutes);
+    }
+    expect(parseViewSettings('{"backupIntervalMinutes":20}', DEFAULT_VIEW_SETTINGS).backupIntervalMinutes).toBe(30);
   });
 });

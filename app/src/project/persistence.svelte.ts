@@ -9,6 +9,11 @@ import { replaceZones, zones } from "../model/zones.svelte";
 import type { Zone } from "../model/zone";
 import { beaconState, resetBeaconViewState } from "../beacons/beaconState.svelte";
 import { calculators, replaceCalculators } from "../calculator/calculators.svelte";
+import { archive, replaceArchive, replaceTrash, trash } from "../model/retention.svelte";
+import { copyArchiveEntry } from "../archive/serialization";
+import { copyTrashEntry } from "../trash/trash";
+import { resetTrashHistoryInvalidators } from "../trash/trashActions.svelte";
+import { resetArchiveHistoryTombstones } from "../archive/actions.svelte";
 import type { Note } from "../model/note";
 import { taskLog, type TaskLogEntry } from "../tasks/taskLog.svelte";
 import { resetTasksPanel } from "../tasks/tasksPanelState.svelte";
@@ -59,6 +64,7 @@ interface ProjectSnapshot {
   taskLog: TaskLogEntry[];
   zones: Zone[];
   beaconMarks: string[];
+  trash: ReturnType<typeof copyTrashEntry>[];
 }
 
 interface ChangedFile {
@@ -148,7 +154,7 @@ function applyProject(loaded: ProjectLoad): void {
   const missingFiles = new Set(loaded.missingFiles ?? []);
   const normalizedIndex = serializeProjectIndex(
     notes, parsedIndex, parsedIndex.links, parsedIndex.taskLog, parsedIndex.zones, parsedIndex.beaconMarks,
-    parsedIndex.calculators,
+    parsedIndex.calculators, parsedIndex.archive, parsedIndex.trash,
   );
   const sourceVersion = JSON.parse(loaded.indexJson) as { version?: unknown };
 
@@ -174,6 +180,8 @@ function applyProject(loaded: ProjectLoad): void {
     : loaded.indexJson;
   taskLog.entries = parsedIndex.taskLog.map((entry) => ({ ...entry }));
   replaceCalculators(parsedIndex.calculators ?? {});
+  replaceArchive(parsedIndex.archive.map(copyArchiveEntry));
+  replaceTrash(parsedIndex.trash.map(copyTrashEntry));
   project.path = loaded.path;
   project.name = loaded.name;
   project.error = "";
@@ -198,6 +206,10 @@ export function resetProjectScopedState(): void {
   resetTasksPanel();
   replaceZones([]);
   replaceCalculators({});
+  replaceArchive([]);
+  replaceTrash([]);
+  resetTrashHistoryInvalidators();
+  resetArchiveHistoryTombstones();
   resetBeaconViewState();
   closeModulePicker();
   clearModuleDropPreview();
@@ -213,15 +225,18 @@ function makeSnapshot(): ProjectSnapshot {
   const currentTaskLog = taskLog.entries.map((entry) => ({ ...entry }));
   const currentZones = zones.order.flatMap((id) => zones.byId[id] ? [copyZone(zones.byId[id])] : []);
   const beaconMarks = [...beaconState.marked];
+  const currentTrash = trash.entries.map(copyTrashEntry);
   return {
     indexJson: serializeProjectIndex(
       notes, indexTemplate, currentLinks, currentTaskLog, currentZones, beaconMarks, calculators.byKey,
+      archive.entries, currentTrash,
     ),
     notes,
     links: currentLinks,
     taskLog: currentTaskLog,
     zones: currentZones,
     beaconMarks,
+    trash: currentTrash,
   };
 }
 
@@ -589,4 +604,21 @@ function copyZone(zone: Zone): Zone {
     parts: zone.parts.map((part) => part.map((point) => ({ ...point }))),
     holes: zone.holes.map((hole) => hole.map((point) => ({ ...point }))),
   };
+}
+
+/** Finish pending board writes before transferring or switching project folders. */
+export async function flushPendingSave(): Promise<void> {
+  await flushProject();
+}
+
+/** Reload an already-written project folder; callers must flush before changing projects. */
+export async function openProjectAt(path: string): Promise<void> {
+  if (!isTauri()) throw new Error("Project storage is available in the desktop app.");
+  try {
+    const loaded = await invoke<ProjectLoad>("open_project", { path });
+    applyProject(loaded);
+  } catch (error) {
+    project.error = errorMessage(error);
+    throw error;
+  }
 }

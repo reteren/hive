@@ -17,6 +17,10 @@ import { beaconPaletteColor, normalizeBeaconColor } from "../beacons/beaconPalet
 import { calculatorNoteFileName, noteFileKey, noteMarkdownFileName, sanitizeNoteName } from "./fileNames";
 import type { TaskLogEntry } from "../tasks/taskLog.svelte";
 import { calculatorKey, parseCalculatorData, parseScope, parseTiers, type CalculatorData, type NodeScope, type TierRow } from "../model/nodeData";
+import type { ArchiveEntry, TrashEntry } from "../model/retention.svelte";
+import { copyArchiveEntry, sanitizeArchiveEntries } from "../archive/serialization";
+import { copyTrashEntry } from "../trash/trash";
+import { sanitizeTrashEntries } from "../trash/serialization";
 
 export interface IndexedNote {
   id: string;
@@ -50,6 +54,10 @@ export interface ProjectIndex {
   taskLog: TaskLogEntry[];
   /** R5.6 shared calculator contents keyed by calculatorKey(name); optional for older boards. */
   calculators?: Record<string, CalculatorData>;
+  /** Archived notes retain their Markdown bodies and original links in board.json. */
+  archive: ArchiveEntry[];
+  /** Soft-deleted objects retain their contents until the user restores or purges them. */
+  trash: TrashEntry[];
   [key: string]: unknown;
 }
 
@@ -95,6 +103,8 @@ export function parseProjectIndexWithWarnings(contents: string): { index: Projec
   const parsedLinks = sanitizeProjectLinks(parsed.links, noteIds);
   const parsedTaskLog = sanitizeTaskLog(parsed.taskLog);
   const parsedCalculators = sanitizeCalculators(parsed.calculators);
+  const parsedArchive = sanitizeArchiveEntries(parsed.archive);
+  const parsedTrash = sanitizeTrashEntries(parsed.trash);
   if ((version === 2 || version === 3) && parsed.taskLog === undefined) {
     parsedTaskLog.warnings.push("Missing task log in board.json; defaulted to an empty log.");
   }
@@ -110,6 +120,8 @@ export function parseProjectIndexWithWarnings(contents: string): { index: Projec
       beaconMarks: marks.values,
       taskLog: parsedTaskLog.entries,
       calculators: parsedCalculators.values,
+      archive: parsedArchive.entries,
+      trash: parsedTrash.entries,
     },
     warnings: [
       ...noteWarnings,
@@ -118,6 +130,8 @@ export function parseProjectIndexWithWarnings(contents: string): { index: Projec
       ...parsedTaskLog.warnings,
       ...marks.warnings,
       ...parsedCalculators.warnings,
+      ...parsedArchive.warnings,
+      ...parsedTrash.warnings,
     ],
   };
 }
@@ -131,6 +145,8 @@ export function serializeProjectIndex(
   nextZones?: readonly Zone[],
   nextBeaconMarks?: readonly string[],
   nextCalculators?: Record<string, CalculatorData>,
+  nextArchive?: readonly ArchiveEntry[],
+  nextTrash?: readonly TrashEntry[],
 ): string {
   const extrasById = new Map(previous?.notes.map((note) => [note.id, note]) ?? []);
   const serializedZones = (nextZones ?? previous?.zones ?? []).map(copyZone);
@@ -161,6 +177,12 @@ export function serializeProjectIndex(
     };
   });
   validateUniqueNotes(indexedNotes);
+  const serializedTrash = (nextTrash ?? previous?.trash ?? []).map(copyTrashEntry);
+  const calculatorData = Object.assign(
+    Object.create(null) as Record<string, CalculatorData>,
+    ...serializedTrash.map((entry) => entry.calculators ?? {}),
+    nextCalculators ?? previous?.calculators ?? {},
+  );
   return JSON.stringify({
     ...previous,
     version: 3,
@@ -169,7 +191,12 @@ export function serializeProjectIndex(
     taskLog: [...(nextTaskLog ?? previous?.taskLog ?? [])].map((entry) => ({ ...entry })),
     zones: serializedZones,
     beaconMarks: sanitizeBeaconMarks(nextBeaconMarks ?? previous?.beaconMarks ?? [], indexedNotes).values,
-    calculators: serializeCalculators(nextCalculators ?? previous?.calculators ?? {}, notes),
+    calculators: serializeCalculators(calculatorData, [
+      ...notes,
+      ...serializedTrash.flatMap((entry) => entry.notes),
+    ]),
+    archive: (nextArchive ?? previous?.archive ?? []).map(copyArchiveEntry),
+    trash: serializedTrash,
   });
 }
 
