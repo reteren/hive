@@ -5,6 +5,7 @@
 
 /** What a Progress / Statistics node counts (user decision 26.09: chosen from a list in the node). */
 export type NodeScope =
+  | { kind: "auto" }
   | { kind: "board" }
   | { kind: "zone"; id: string }
   | { kind: "beacon"; id: string };
@@ -67,6 +68,7 @@ function nonEmptyString(value: unknown): value is string {
 
 export function parseScope(value: unknown): NodeScope | null {
   if (!isRecord(value)) return null;
+  if (value.kind === "auto") return { kind: "auto" };
   if (value.kind === "board") return { kind: "board" };
   if ((value.kind === "zone" || value.kind === "beacon") && nonEmptyString(value.id)) return { kind: value.kind, id: value.id };
   return null;

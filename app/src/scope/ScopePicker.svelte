@@ -4,11 +4,12 @@
   import type { NodeScope } from "../model/nodeData";
   import type { Note } from "../model/note";
   import { createScopeChangeCommand } from "./scopeChange";
-  import { scopeExists, scopeForNote, scopeOptions } from "./scope.svelte";
+  import { linkedBeaconForNote, scopeChoiceForNote, scopeExists, scopeOptions } from "./scope.svelte";
   import { scopeKey } from "./scopeLogic";
 
   let { note }: { note: Note } = $props();
-  let selectedScope = $derived(scopeForNote(note));
+  let linkedBeacon = $derived(linkedBeaconForNote(note.id));
+  let selectedScope = $derived(linkedBeacon?.scope ?? scopeChoiceForNote(note));
   let selectedKey = $derived(scopeKey(selectedScope));
   let missing = $derived(!scopeExists(selectedScope));
   let options = $derived(scopeOptions());
@@ -31,13 +32,15 @@
     id={`scope-${note.id}`}
     value={selectedKey}
     aria-label={`Scope for ${note.name}`}
+    disabled={Boolean(linkedBeacon)}
+    title={linkedBeacon ? "Linked to beacon — remove the link to change" : undefined}
     onchange={changeScope}
     ondblclick={(event) => event.stopPropagation()}
   >
     {#if missing}
       <option value={selectedKey} disabled>Scope missing</option>
     {/if}
-    {#each options as option (`${option.scope.kind}:${option.scope.kind === "board" ? "board" : option.scope.id}`)}
+    {#each options as option (scopeKey(option.scope))}
       <option value={scopeKey(option.scope)}>{option.label}</option>
     {/each}
   </select>

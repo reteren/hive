@@ -1,18 +1,19 @@
 import { board } from "../model/board.svelte";
+import { links } from "../model/links.svelte";
 import { ME_OBJECT_ID } from "../model/link";
 import type { NodeScope } from "../model/nodeData";
 import type { Note } from "../model/note";
 import { zones } from "../model/zones.svelte";
 import { beaconDescendants } from "../beacons/coverage";
 import { zoneMembers, zoneOf } from "../zones/membership.svelte";
-import { resolveScopeIn, scopeExistsIn, defaultScopeForZone } from "./scopeLogic";
+import { effectiveScope, resolveScopeIn, scopeExistsIn, type ScopeSources } from "./scopeLogic";
 
 export interface ScopeOption {
   scope: NodeScope;
   label: string;
 }
 
-function currentSources() {
+function currentSources(): ScopeSources {
   return {
     notes: board.notes,
     zones: zones.byId,
@@ -30,9 +31,30 @@ export function scopeExists(scope: NodeScope): boolean {
   return scopeExistsIn(scope, currentSources());
 }
 
-/** Nodes without an explicit choice lazily follow their current zone, or use the board. */
+/** Most recently inserted strong link to an actual beacon overrides a progress/statistics scope. */
+export function linkedBeaconForNote(noteId: string): { id: string; name: string; scope: NodeScope } | null {
+  const note = board.notes[noteId];
+  if (note?.type !== "progress" && note?.type !== "stats") return null;
+
+  const linkedIds = Object.values(links.byId)
+    .filter((link) => link.from === noteId && link.kind === "strong" && board.notes[link.to]?.type === "beacon")
+    .map((link) => link.to);
+  // Link records retain insertion order, so the last matching live link is the newest choice.
+  const beaconId = linkedIds.at(-1);
+  const beacon = beaconId ? board.notes[beaconId] : undefined;
+  return beaconId && beacon?.type === "beacon"
+    ? { id: beaconId, name: beacon.name, scope: { kind: "beacon", id: beaconId } }
+    : null;
+}
+
+/** Scope choice stored on a node; absent scope behaves as Auto. */
+export function scopeChoiceForNote(note: Pick<Note, "scope">): NodeScope {
+  return note.scope ?? { kind: "auto" };
+}
+
+/** Effective scope for calculations: linked beacon, stored choice, or current zone/board for Auto. */
 export function scopeForNote(note: Pick<Note, "id" | "scope">): NodeScope {
-  return note.scope ?? defaultScopeForZone(zoneOf(note.id));
+  return linkedBeaconForNote(note.id)?.scope ?? effectiveScope(note.scope, zoneOf(note.id));
 }
 
 export function scopeOptions(): ScopeOption[] {
@@ -47,6 +69,7 @@ export function scopeOptions(): ScopeOption[] {
   });
 
   return [
+    { scope: { kind: "auto" }, label: "Auto (under this node)" },
     { scope: { kind: "board" }, label: "Board" },
     ...zoneOptions.sort(compareOptions),
     ...beaconOptions.sort(compareOptions),

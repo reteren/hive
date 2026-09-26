@@ -4,7 +4,7 @@ import { clear, history, redo, undo } from "../src/history/history.svelte";
 import { replaceBoard } from "../src/model/board.svelte";
 import type { Link } from "../src/model/link";
 import { links, replaceLinks } from "../src/model/links.svelte";
-import { canCreateLinkPair } from "../src/links/rules";
+import { canCreateLinkPair, linkRefusalReason } from "../src/links/rules";
 import { changeLinkShape, createBoardLink, cutLinks, cycleLinkShapes, unlinkSelected } from "../src/links/operations";
 import { pointAtAnchor, pointOnCircleToward, projectPointToAnchor, shapeEndpoints } from "../src/links/anchors";
 import { clientToBoardPoint, clientToWorld } from "../src/links/coordinates";
@@ -12,6 +12,7 @@ import { completeLinkGesture, nextTool, previewLinkKind, resolveCutRelease } fro
 import { clearSelectedLink, selectLinks, selectedLinkIds, toggleLinkSelection } from "../src/links/selection.svelte";
 import { buildShape } from "../src/links/shapes";
 import { tool } from "../src/tools/tool.svelte";
+import type { Note } from "../src/model/note";
 import {
   clipSegmentToFrames,
   flattenPath,
@@ -36,6 +37,25 @@ describe("link pair rules", () => {
   it("allows ME as a source but never as a target", () => {
     expect(canCreateLinkPair("me", "a", [])).toBe(true);
     expect(canCreateLinkPair("a", "me", [])).toBe(false);
+  });
+
+  it("allows only strong Progress and Statistics links into actual beacons, excluding ME", () => {
+    const notes: Record<string, Note> = {
+      progress: { id: "progress", type: "progress", name: "Progress", text: "", x: 0, y: 0, width: 30, height: null },
+      stats: { id: "stats", type: "stats", name: "Stats", text: "", x: 0, y: 0, width: 30, height: null },
+      goal: { id: "goal", type: "goal", name: "Goal", text: "", x: 0, y: 0, width: 30, height: null },
+      beacon: { id: "beacon", type: "beacon", name: "Beacon", text: "", x: 0, y: 0, width: 7.2, height: 7.2 },
+      note: { id: "note", type: "note", name: "Note", text: "", x: 0, y: 0, width: 30, height: null },
+    };
+
+    expect(linkRefusalReason("progress", "beacon", "strong", [], notes)).toBeNull();
+    expect(linkRefusalReason("stats", "beacon", "strong", [], notes)).toBeNull();
+    expect(linkRefusalReason("progress", "beacon", "weak", [], notes)).toMatch(/outgoing/);
+    expect(linkRefusalReason("goal", "beacon", "strong", [], notes)).toMatch(/outgoing/);
+    expect(linkRefusalReason("note", "beacon", "strong", [], notes)).toMatch(/outgoing/);
+    expect(linkRefusalReason("progress", "me", "strong", [], notes)).toMatch(/outgoing/);
+    expect(linkRefusalReason("progress", "beacon", "strong", [{ from: "beacon", to: "progress" }], notes))
+      .toMatch(/already/);
   });
 });
 

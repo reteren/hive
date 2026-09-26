@@ -130,4 +130,13 @@ describe("beacon coverage", () => {
     expect(beaconDescendants("me")).toEqual(expected);
     expect(beaconDescendants("shared")).toEqual(new Set());
   });
+
+  it("does not count an incoming Progress scope link as part of the beacon network", () => {
+    replaceBoard([note("beacon", "beacon"), note("progress", "progress"), note("child")]);
+    replaceLinks([
+      link("scope", "progress", "beacon"),
+      link("outgoing", "beacon", "child"),
+    ]);
+    expect(beaconDescendants("beacon")).toEqual(new Set(["child"]));
+  });
 });

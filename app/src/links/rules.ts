@@ -45,10 +45,15 @@ export function linkRefusalReason(
   const targetIsModule = isModule(target);
   const actualKind = effectiveLinkKind(from, to, kind, notes);
   if (sourceIsBeacon && targetIsBeacon) return "Beacons cannot link to other beacons.";
-  if (targetIsBeacon) return "Beacons can have outgoing links only.";
+  const isProgressBeaconScopeLink =
+    to !== ME_OBJECT_ID && target?.type === "beacon" && actualKind === "strong" &&
+    (source?.type === "progress" || source?.type === "stats");
+  if (targetIsBeacon && !isProgressBeaconScopeLink) return "Beacons can have outgoing links only.";
   if (existing.some((link) => pairKey(link.from, link.to) === pairKey(from, to))) {
     return "These objects already have a link.";
   }
+
+  if (isProgressBeaconScopeLink) return null;
 
   if (target?.type === "calculator") {
     if (sourceIsBeacon && actualKind === "strong") return "Beacons cannot fund calculators.";
