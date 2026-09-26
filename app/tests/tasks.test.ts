@@ -1,9 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { HistoryStack } from "../src/history/historyStack";
 import type { Note, TaskState } from "../src/model/note";
 import type { TaskLogEntry } from "../src/tasks/taskLog.svelte";
 import {
-  attemptTaskCompletion,
+  createTaskCompletionCommand,
   createReopenTaskCommand,
   createTaskFlagCommand,
   openTasks,
@@ -98,12 +98,11 @@ describe("task transitions", () => {
   it("records completion, removes its log entry on undo, and restores it on redo", () => {
     const { store, tasks, entries } = createStore({ "task-a": { done: false, doneAt: null } });
     const stack = new HistoryStack();
-    const attempt = attemptTaskCompletion(store, "task-a", "Write tests", 100, () => ({ ok: true, blockers: [] }));
-    expect(attempt.blockers).toEqual([]);
-    expect(attempt.command).toBeDefined();
-    if (!attempt.command) return;
+    const command = createTaskCompletionCommand(store, "task-a", "Write tests", 100);
+    expect(command).toBeDefined();
+    if (!command) return;
 
-    stack.execute(attempt.command);
+    stack.execute(command);
     expect(tasks.get("task-a")).toEqual({ done: true, doneAt: 100 });
     expect(entries).toEqual([{ noteId: "task-a", name: "Write tests", doneAt: 100 }]);
 
@@ -116,14 +115,10 @@ describe("task transitions", () => {
     expect(entries).toEqual([{ noteId: "task-a", name: "Write tests", doneAt: 100 }]);
   });
 
-  it("does not mutate or create history when dependencies block completion", () => {
-    const { store, tasks, entries } = createStore({ "task-b": { done: false, doneAt: null } });
-    const check = vi.fn(() => ({ ok: false, blockers: ["task-a"] }));
-    const result = attemptTaskCompletion(store, "task-b", "B", 100, check);
-
-    expect(check).toHaveBeenCalledWith("task-b");
-    expect(result).toEqual({ command: null, blockers: ["task-a"] });
-    expect(tasks.get("task-b")).toEqual({ done: false, doneAt: null });
+  it("returns no second completion command for an already completed task", () => {
+    const { store, tasks, entries } = createStore({ "task-a": { done: true, doneAt: 50 } });
+    expect(createTaskCompletionCommand(store, "task-a", "A", 100)).toBeNull();
+    expect(tasks.get("task-a")).toEqual({ done: true, doneAt: 50 });
     expect(entries).toEqual([]);
   });
 

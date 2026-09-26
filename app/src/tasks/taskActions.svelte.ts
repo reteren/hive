@@ -3,9 +3,8 @@ import { board, updateNote } from "../model/board.svelte";
 import { R5_KINDS, type Note, type NoteKind, type TaskState } from "../model/note";
 import { registerCommand } from "../commands/registry.svelte";
 import { selection } from "../selection/selection.svelte";
-import { canCompleteTask } from "./dependencies";
 import { registerNoteMenuItem } from "../notes/noteMenu";
-import { attemptTaskCompletion, cloneTaskState, createReopenTaskCommand, createTaskFlagCommand } from "./taskTransitions";
+import { cloneTaskState, createReopenTaskCommand, createTaskCompletionCommand, createTaskFlagCommand } from "./taskTransitions";
 import { taskLog, type TaskLogEntry } from "./taskLog.svelte";
 import { tasksPanel, toggleTasksPanel } from "./tasksPanelState.svelte";
 
@@ -49,7 +48,6 @@ function transitionStore() {
 
 export interface TaskCompletionResult {
   ok: boolean;
-  reason?: string;
 }
 
 export function toggleTaskFlag(noteId: string): void {
@@ -70,20 +68,9 @@ export function toggleTaskCompletion(noteId: string): TaskCompletionResult {
   }
 
   const doneAt = nextCompletionTime(noteId, Date.now());
-  const attempt = attemptTaskCompletion(
-    transitionStore(),
-    noteId,
-    note.name,
-    doneAt,
-    canCompleteTask,
-  );
-  if (!attempt.command) {
-    if (!attempt.blockers.length) return { ok: false };
-    const names = attempt.blockers.map((id) => board.notes[id]?.name ?? "Unknown task");
-    return { ok: false, reason: `Blocked by ${names.join(", ")}.` };
-  }
-
-  execute(attempt.command);
+  const command = createTaskCompletionCommand(transitionStore(), noteId, note.name, doneAt);
+  if (!command) return { ok: false };
+  execute(command);
   return { ok: true };
 }
 

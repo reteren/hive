@@ -2,6 +2,7 @@
   --note-frame: #3b3422;
   --note-body: #27241d;
   border-color: #776536;
+  border-width: 2px;
 }
 
 .note-card[data-kind="goal"] .note-header {

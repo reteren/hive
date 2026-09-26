@@ -1,29 +1,13 @@
 <!-- Task completion checkbox in the note header (R3.1); renders nothing for non-task notes. -->
 <script lang="ts">
-  import { onDestroy } from "svelte";
   import type { Note } from "../model/note";
-  import DependencyBadge from "./DependencyBadge.svelte";
   import { toggleTaskCompletion } from "./taskActions.svelte";
 
   let { note }: { note: Note } = $props();
-  let blockedReason = $state("");
-  let dismissTimer: ReturnType<typeof setTimeout> | undefined;
 
   function toggle(): void {
-    const result = toggleTaskCompletion(note.id);
-    blockedReason = result.reason ?? "";
-    if (dismissTimer !== undefined) clearTimeout(dismissTimer);
-    if (blockedReason) {
-      dismissTimer = setTimeout(() => {
-        blockedReason = "";
-        dismissTimer = undefined;
-      }, 3_500);
-    }
+    toggleTaskCompletion(note.id);
   }
-
-  onDestroy(() => {
-    if (dismissTimer !== undefined) clearTimeout(dismissTimer);
-  });
 </script>
 
 {#if note.task}
@@ -36,8 +20,7 @@
       role="checkbox"
       aria-checked={note.task.done}
       aria-label={`${note.task.done ? "Reopen" : "Complete"} ${note.name}`}
-      aria-describedby={blockedReason ? `${note.id}-task-blocked` : undefined}
-      title={blockedReason || `${note.task.done ? "Reopen" : "Complete"} ${note.name}`}
+      title={`${note.task.done ? "Reopen" : "Complete"} ${note.name}`}
       onclick={toggle}
     >
       <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -45,10 +28,6 @@
         {#if note.task.done}<path d="m4.7 8.1 2.1 2.1 4.5-4.6" />{/if}
       </svg>
     </button>
-    <DependencyBadge {note} />
-    {#if blockedReason}
-      <span id={`${note.id}-task-blocked`} class="task-blocked" role="status">{blockedReason}</span>
-    {/if}
   </span>
 {/if}
 
@@ -109,24 +88,4 @@
     outline-offset: 1px;
   }
 
-  .task-blocked {
-    position: absolute;
-    z-index: 20;
-    top: calc(100% + 3px);
-    left: 0;
-    width: max-content;
-    max-width: min(240px, calc(100vw - 24px));
-    padding: 5px 7px;
-    border: 1px solid #715348;
-    border-radius: 3px;
-    background: #322622;
-    color: #f0c4b0;
-    font-size: 10px;
-    font-weight: 400;
-    line-height: 1.35;
-    overflow-wrap: anywhere;
-    white-space: normal;
-    user-select: text;
-    pointer-events: none;
-  }
 </style>

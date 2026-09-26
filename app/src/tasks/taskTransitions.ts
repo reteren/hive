@@ -11,11 +11,6 @@ export interface TaskTransitionStore {
   removeLogEntry(entry: TaskLogEntry): void;
 }
 
-export interface CompletionCheck {
-  ok: boolean;
-  blockers: string[];
-}
-
 export function cloneTaskState(task: TaskState | null | undefined): TaskState | null {
   return task ? { done: task.done, doneAt: task.doneAt } : null;
 }
@@ -47,34 +42,27 @@ export function createTaskFlagCommand(
   };
 }
 
-export function attemptTaskCompletion(
+export function createTaskCompletionCommand(
   store: TaskTransitionStore,
   noteId: string,
   target: string,
   doneAt: number,
-  canComplete: (id: string) => CompletionCheck,
-): { command: HistoryCommand | null; blockers: string[] } {
+): HistoryCommand | null {
   const before = cloneTaskState(store.getTask(noteId));
-  if (!before || before.done) return { command: null, blockers: [] };
-
-  const check = canComplete(noteId);
-  if (!check.ok) return { command: null, blockers: [...check.blockers] };
+  if (!before || before.done) return null;
 
   const after: TaskState = { done: true, doneAt };
   const entry: TaskLogEntry = { noteId, name: target, doneAt };
   return {
-    blockers: [],
-    command: {
-      label: "Complete task",
-      target,
-      do: () => {
-        store.setTask(noteId, after);
-        store.addLogEntry(entry);
-      },
-      undo: () => {
-        store.setTask(noteId, before);
-        store.removeLogEntry(entry);
-      },
+    label: "Complete task",
+    target,
+    do: () => {
+      store.setTask(noteId, after);
+      store.addLogEntry(entry);
+    },
+    undo: () => {
+      store.setTask(noteId, before);
+      store.removeLogEntry(entry);
     },
   };
 }
