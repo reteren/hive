@@ -51,6 +51,15 @@ button {
   outline-offset: 1px;
 }
 
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Board controls are pointer-driven; leave keyboard focus rings to editors and floating UI. */
+.board :focus-visible:not(input):not(textarea):not(select):not([contenteditable="true"]):not(.cm-editor):not(.cm-content):not([data-selection-ignore]):not([data-selection-ignore] *) {
+  outline: none;
+}
+
 ::selection {
   color: #fff4d0;
   background: #665421;
