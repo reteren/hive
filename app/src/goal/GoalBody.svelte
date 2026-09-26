@@ -1,33 +1,31 @@
 <script lang="ts">
   import type { Note } from "../model/note";
-  import { goalState } from "./goal";
+  import { goalState, visibleGoalRows } from "./goal";
 
   let { note }: { note: Note } = $props();
   let state = $derived(goalState(note.id));
+  let rows = $derived(visibleGoalRows(state));
 </script>
 
 <div
   class="goal-summary"
   data-gold={state.gold ? "true" : "false"}
+  data-row-count={rows.length}
   role="status"
   aria-live="polite"
-  aria-label={state.connected > 0
-    ? `${state.done} of ${state.connected} connected tasks done${state.subtasks > 0 ? `; ${state.doneSubtasks} of ${state.subtasks} subtasks done` : ""}`
-    : "No connected tasks"}
+  aria-label={rows.length > 0
+    ? rows.map((row) => `${row.done} of ${row.total} ${row.label}`).join("; ")
+    : "No connected tasks or goals"}
 >
-  {#if state.connected === 0}
-    <span>No connected tasks</span>
+  {#if rows.length === 0}
+    <span>No connected tasks or goals</span>
   {:else}
-    <div class="goal-row">
-      <strong>{state.done} / {state.connected}</strong>
-      <span>{state.connected === 1 ? "task done" : "tasks done"}</span>
-    </div>
-    {#if state.subtasks > 0}
-      <div class="goal-row goal-subtasks">
-        <strong>{state.doneSubtasks} / {state.subtasks}</strong>
-        <span>subtasks</span>
+    {#each rows as row (row.kind)}
+      <div class="goal-row" class:goal-secondary={row.kind !== "tasks"} data-goal-row={row.kind}>
+        <strong>{row.done} / {row.total}</strong>
+        <span>{row.label}</span>
       </div>
-    {/if}
+    {/each}
   {/if}
 </div>
 
@@ -51,17 +49,21 @@
     gap: 5px;
   }
 
+  .goal-summary[data-row-count="3"] {
+    min-height: 58px;
+  }
+
   .goal-summary strong {
     color: #e8c85e;
     font-size: 14px;
     font-variant-numeric: tabular-nums;
   }
 
-  .goal-subtasks {
+  .goal-secondary {
     font-size: 10px;
   }
 
-  .goal-subtasks strong {
+  .goal-secondary strong {
     font-size: 12px;
   }
 </style>
