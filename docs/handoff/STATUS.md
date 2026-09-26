@@ -1,6 +1,6 @@
 # hive — состояние (обновлено 24.09.2026, после восстановления)
 
-**Актуально:** дебаг 1.1.7 закрыт, установщик **1.1.8** ждёт проверки. Все агенты свободны (хэндлы term_096d…, term_4093…, term_beff…, term_fd35…, term_3e02…, term_faa7…). Orca иногда отклоняет worker_done с «Dispatch capability is invalid» — принимать отчёт вручную (task-update completed + worker-abandon). Браузерные проверки — координатор (d16smoke.mjs, d17smoke.mjs, d17calc.mjs).
+**Актуально:** после 1.1.8: run `run_838f96db9e59` — A task_4782ccbe2878 (term_3e02…) перетаскивание Tierlist на pointer-событиях (HTML5 DnD не работает в Tauri/WebView2), B task_00919b3acd85 (term_beff…) Statistics → Tierlist. Проверка мышью — координатор (tierdrag.mjs). Затем 1.1.9.
 
 ---
 
