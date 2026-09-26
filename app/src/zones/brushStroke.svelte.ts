@@ -38,8 +38,6 @@ export interface CompletedBrushGesture {
 
 export const brushStrokeState = $state({
   cursor: null as Point | null,
-  /** Shift held: the brush and rectangles ignore the 10 u grid. */
-  free: false,
   gesture: null as BrushGesture | null,
 });
 
@@ -70,22 +68,22 @@ export function startBrushGesture(
     lastPoint: start,
     targetZoneId,
     shape: rectangle
-      ? brushRectangleShape(start, start, !brushStrokeState.free)
-      : shapeFromBounds(brushSquare(start, size, !brushStrokeState.free)),
+      ? brushRectangleShape(start, start)
+      : shapeFromBounds(brushSquare(start, size)),
   };
 }
 
 /** Add one sampled pointer position; callers batch samples at requestAnimationFrame cadence. */
-export function appendBrushGesturePoint(point: Point, size: number, free = brushStrokeState.free): void {
+export function appendBrushGesturePoint(point: Point, size: number): void {
   const gesture = brushStrokeState.gesture;
   if (!gesture) return;
   const nextPoint = { x: point.x, y: point.y };
   brushStrokeState.cursor = nextPoint;
   gesture.current = nextPoint;
   if (gesture.rectangle) {
-    gesture.shape = brushRectangleShape(gesture.start, nextPoint, !free);
+    gesture.shape = brushRectangleShape(gesture.start, nextPoint);
   } else {
-    const segment = brushSegmentShape(gesture.lastPoint, nextPoint, size, !free);
+    const segment = brushSegmentShape(gesture.lastPoint, nextPoint, size);
     gesture.shape = unionShapes([gesture.shape, segment]) ?? gesture.shape;
     gesture.lastPoint = nextPoint;
   }

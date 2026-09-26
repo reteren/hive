@@ -7,6 +7,8 @@
   import { tool } from "../tools/tool.svelte";
   import { brushState, stepBrushSize } from "./brushState.svelte";
   import { brushSquare } from "./brush";
+  import { zoneMode, setZoneToolMode, toggleZoneMoveMode } from "./zoneMode.svelte";
+  import { shouldShowZoneBrushCursor } from "./zoneMode";
   import {
     appendBrushGesturePoint,
     brushStrokeState,
@@ -24,17 +26,27 @@
   let surface: HTMLElement | null = null;
   let animationFrame: number | null = null;
   let wheelRemainder = 0;
-  /** Pointer samples waiting for the next frame; `free` = Shift was held (no grid snapping). */
-  const pendingPoints: { point: Point; free: boolean }[] = [];
+  /** Pointer samples waiting for the next frame. */
+  const pendingPoints: Point[] = [];
 
   const transform = $derived(
     `translate(${viewport.width / 2} ${viewport.height / 2}) scale(${camera.zoom * PX_PER_UNIT}) translate(${-camera.x} ${-camera.y})`,
   );
   const cursorBounds = $derived(
-    brushStrokeState.cursor && !brushStrokeState.gesture?.rectangle
-      ? brushSquare(brushStrokeState.cursor, brushState.size, !brushStrokeState.free)
+    shouldShowZoneBrushCursor(tool.active, zoneMode.active, brushStrokeState.cursor !== null) &&
+      brushStrokeState.cursor && !brushStrokeState.gesture?.rectangle
+      ? brushSquare(brushStrokeState.cursor, brushState.size)
       : null,
   );
+
+  $effect(() => {
+    const enabled = tool.active === "zone" && zoneMode.active === "brush";
+    if (!enabled) {
+      if (brushStrokeState.gesture) finishCurrentBrush();
+      setBrushCursor(null);
+    }
+    if (tool.active !== "zone" && zoneMode.active !== "brush") setZoneToolMode("brush");
+  });
 
   function local(clientX: number, clientY: number, allowOutside = false): Point | null {
     if (!surface) return null;
@@ -73,7 +85,7 @@
       animationFrame = null;
     }
     const points = pendingPoints.splice(0);
-    for (const { point, free } of points) appendBrushGesturePoint(point, brushState.size, free);
+    for (const point of points) appendBrushGesturePoint(point, brushState.size);
   }
 
   function clearStroke(): void {
@@ -83,12 +95,22 @@
     cancelBrushGesture();
   }
 
+  function finishCurrentBrush(): void {
+    const gesture = brushStrokeState.gesture;
+    if (!gesture) return;
+    flushPendingPoints();
+    const completed = finishBrushGesture();
+    pendingPoints.length = 0;
+    if (surface?.hasPointerCapture(gesture.pointerId)) surface.releasePointerCapture(gesture.pointerId);
+    if (completed) commitBrushGesture(completed);
+  }
+
   onMount(() => {
     surface = layer.parentElement;
     if (!surface) return;
 
     function onPointerDown(event: PointerEvent): void {
-      if (tool.active !== "zone" || (event.button !== 0 && event.button !== 2) ||
+      if (tool.active !== "zone" || zoneMode.active !== "brush" || (event.button !== 0 && event.button !== 2) ||
         isTextEditingTarget(event.target) || shouldIgnoreTarget(event.target)) return;
       const point = world(event.clientX, event.clientY);
       if (!point) return;
@@ -97,7 +119,6 @@
       surface?.setPointerCapture(event.pointerId);
       const mode: BrushMode = event.button === 0 ? "paint" : "erase";
       const targetZoneId = mode === "paint" ? resolvePaintTarget(point, entries()) : null;
-      brushStrokeState.free = event.shiftKey;
       pendingPoints.length = 0;
       startBrushGesture(event.pointerId, mode, point, event.ctrlKey, targetZoneId, brushState.size);
     }
@@ -105,17 +126,20 @@
     function onPointerMove(event: PointerEvent): void {
       const gesture = brushStrokeState.gesture;
       if (gesture && gesture.pointerId !== event.pointerId) return;
+      if (tool.active !== "zone" || zoneMode.active !== "brush") {
+        if (!gesture) setBrushCursor(null);
+        return;
+      }
       const point = world(event.clientX, event.clientY, gesture !== null);
       if (!point) {
         if (!gesture) setBrushCursor(null);
         return;
       }
-      brushStrokeState.free = event.shiftKey;
       setBrushCursor(point);
       if (!gesture || gesture.pointerId !== event.pointerId) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      pendingPoints.push({ point, free: event.shiftKey });
+      pendingPoints.push(point);
       scheduleFlush();
     }
 
@@ -123,7 +147,7 @@
       const active = brushStrokeState.gesture;
       if (!active || active.pointerId !== event.pointerId) return;
       const point = world(event.clientX, event.clientY, true);
-      if (point) pendingPoints.push({ point, free: event.shiftKey });
+      if (point) pendingPoints.push(point);
       flushPendingPoints();
       const completed = finishBrushGesture();
       pendingPoints.length = 0;
@@ -165,13 +189,15 @@
       for (let notch = 0; notch < Math.abs(notches); notch += 1) stepBrushSize(notches > 0 ? -1 : 1);
     }
 
-    /** Shift toggles grid-free painting; update the cursor preview without waiting for a mouse move. */
-    function onShift(event: KeyboardEvent): void {
-      if (event.key === "Shift") brushStrokeState.free = event.type === "keydown";
-    }
-
     function onKeyDown(event: KeyboardEvent): void {
-      onShift(event);
+      if ((event.code === "ShiftLeft" || event.code === "ShiftRight") && !event.repeat &&
+        !event.defaultPrevented && tool.active === "zone" && !isTextEditingTarget(event.target)) {
+        event.preventDefault();
+        finishCurrentBrush();
+        toggleZoneMoveMode();
+        setBrushCursor(null);
+        return;
+      }
       if (event.code !== "Escape" || event.defaultPrevented || tool.active !== "zone" || !brushStrokeState.gesture) return;
       const pointerId = brushStrokeState.gesture.pointerId;
       clearStroke();
@@ -184,6 +210,15 @@
       if (!brushStrokeState.gesture) setBrushCursor(null);
     }
 
+    function onWindowBlur(): void {
+      if (brushStrokeState.gesture) {
+        const pointerId = brushStrokeState.gesture.pointerId;
+        clearStroke();
+        if (surface?.hasPointerCapture(pointerId)) surface.releasePointerCapture(pointerId);
+      }
+      setBrushCursor(null);
+    }
+
     surface.addEventListener("pointerdown", onPointerDown, true);
     surface.addEventListener("contextmenu", onContextMenu, true);
     surface.addEventListener("wheel", onWheel, { capture: true, passive: false });
@@ -192,7 +227,7 @@
     window.addEventListener("pointerup", finish, true);
     window.addEventListener("pointercancel", cancel, true);
     window.addEventListener("keydown", onKeyDown, true);
-    window.addEventListener("keyup", onShift, true);
+    window.addEventListener("blur", onWindowBlur);
     return () => {
       surface?.removeEventListener("pointerdown", onPointerDown, true);
       surface?.removeEventListener("contextmenu", onContextMenu, true);
@@ -202,8 +237,7 @@
       window.removeEventListener("pointerup", finish, true);
       window.removeEventListener("pointercancel", cancel, true);
       window.removeEventListener("keydown", onKeyDown, true);
-      window.removeEventListener("keyup", onShift, true);
-      brushStrokeState.free = false;
+      window.removeEventListener("blur", onWindowBlur);
       clearStroke();
       setBrushCursor(null);
     };

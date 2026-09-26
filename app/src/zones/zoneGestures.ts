@@ -63,6 +63,7 @@ export function updateZoneMoveGesture(
   cursorWorld: Point,
   snap: boolean,
   step: number,
+  carryMembers = true,
 ): ZoneMoveGesture {
   const before = zoneBounds(gesture.beforeZone);
   let desired = {
@@ -77,9 +78,9 @@ export function updateZoneMoveGesture(
   return {
     ...gesture,
     afterZone: { ...copyZone(gesture.beforeZone), ...translateShape(gesture.beforeZone, applied) },
-    afterMembers: gesture.beforeMembers.map((member) => ({
-      ...member, x: member.x + applied.x, y: member.y + applied.y,
-    })),
+    afterMembers: gesture.beforeMembers.map((member) => carryMembers
+      ? { ...member, x: member.x + applied.x, y: member.y + applied.y }
+      : { ...member }),
     blocked: applied.x !== desired.x || applied.y !== desired.y,
   };
 }

@@ -4,6 +4,7 @@
   import { board as boardState, updateNote } from "../model/board.svelte";
   import { camera, pointer, viewport } from "../board/camera.svelte";
   import { pixelsPerUnit, screenToWorld, worldToScreen, type Point } from "../board/cameraMath";
+  import { boardPopupStyle, dismissBoardPopup } from "../ui/boardAnchor";
   import { grid } from "../board/grid.svelte";
   import { execute, record, type HistoryCommand } from "../history/history.svelte";
   import { editing } from "../notes/editing.svelte";
@@ -75,7 +76,8 @@ import { preferences } from "../settings/preferences.svelte";
   import { hasResizeHandle, isStandaloneModuleKind, maximumWidthForKind, RESIZE_EDGES, resizeEdgeAxes, type ResizeEdge } from "./resize";
   import { resizeDoubleClickAction } from "./resizeDoubleClick";
   import { startNoteEditing } from "../editor/editorSession";
-  import { isLineTool, tool } from "../tools/tool.svelte";
+import { isLineTool, tool } from "../tools/tool.svelte";
+import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
   import {
     createPrecisionDeltaTracker,
     setPrecisionAlt,
@@ -192,6 +194,7 @@ import { preferences } from "../settings/preferences.svelte";
   let boardElement: HTMLElement | null = null;
   let activeGesture: ActivePointerGesture | null = null;
   let grabGesture: MoveGesture | null = null;
+  let zoneGrabGesture: ZoneMoveGesture | null = null;
   let grabStartWorld: Point | null = null;
   let grabPrecision: PrecisionDeltaTracker | null = null;
   let pendingAltContextPick: PendingAltContextPick | null = null;
@@ -201,6 +204,8 @@ import { preferences } from "../settings/preferences.svelte";
   let zoneCollisionHint = $state(false);
   let lineToolActive = $derived(isLineTool());
   let noteOutlineCornerRadius = $derived(`${noteSelectionCornerRadius(camera.zoom)}px`);
+  let previousTool = tool.active;
+  let previousZoneFinishRequest = zoneMode.finishRequest;
 
   let outlines = $derived.by((): Outline[] => {
     const ppu = pixelsPerUnit(camera);
@@ -299,6 +304,19 @@ import { preferences } from "../settings/preferences.svelte";
     }
   });
 
+  $effect(() => {
+    const activeTool = tool.active;
+    const finishRequest = zoneMode.finishRequest;
+    if (activeTool !== previousTool || finishRequest !== previousZoneFinishRequest) {
+      previousTool = activeTool;
+      previousZoneFinishRequest = finishRequest;
+      finishZoneMoves();
+    }
+
+    const request = takeZoneMoveRequest();
+    if (request) startZoneFollowMove(request.zoneId, request.startWorld);
+  });
+
   onMount(() => {
     boardElement = layer.parentElement;
     if (!boardElement) return;
@@ -306,6 +324,22 @@ import { preferences } from "../settings/preferences.svelte";
     const boardEl = boardElement;
 
     function onPointerDown(event: PointerEvent): void {
+      if (event.button === 2 && activeGesture?.kind === "zone-move") {
+        suppressContextMenuUntil = performance.now() + 750;
+        event.preventDefault();
+        event.stopPropagation();
+        finishPointerGesture(activeGesture.pointerId, false);
+        return;
+      }
+      if (event.button === 2 && zoneGrabGesture) {
+        suppressContextMenuUntil = performance.now() + 750;
+        event.preventDefault();
+        event.stopPropagation();
+        const local = localPoint(event);
+        if (local) updateZoneGrabAt(screenToWorld(camera, viewport, local), event.ctrlKey);
+        commitZoneGrab();
+        return;
+      }
       if (event.button === 2 && grabGesture) {
         suppressContextMenuUntil = performance.now() + 750;
         event.preventDefault();
@@ -332,9 +366,27 @@ import { preferences } from "../settings/preferences.svelte";
         return;
       }
 
-      if (tool.active === "zone" || lineToolActive) return;
+      if (zoneGrabGesture) {
+        event.preventDefault();
+        event.stopPropagation();
+        updateZoneGrabAt(screenToWorld(camera, viewport, local), event.ctrlKey);
+        commitZoneGrab();
+        return;
+      }
+
+      if (lineToolActive) return;
 
       const world = screenToWorld(camera, viewport, local);
+      if (tool.active === "zone") {
+        if (zoneMode.active !== "move") return;
+        const zoneId = hitTestZones(world, zones.byId, zones.order);
+        if (!zoneId || !zones.byId[zoneId]) return;
+        event.preventDefault();
+        event.stopPropagation();
+        startZoneMove(event, zoneId, local, world);
+        capturePointer(event.pointerId);
+        return;
+      }
       const groupHandle = target.closest<HTMLElement>("[data-group-scale-handle]");
       const resizeHandle = target.closest<HTMLElement>("[data-resize-handle]");
       const zoneResizeHandle = target.closest<HTMLElement>("[data-zone-resize-handle]");
@@ -455,7 +507,6 @@ import { preferences } from "../settings/preferences.svelte";
                 next.zoneIds = [...next.zoneIds.filter((id) => id !== zoneId), zoneId];
               }
             }, undefined, true);
-            startZoneMove(event, zoneId, local, world, event.shiftKey);
           }
           return;
         }
@@ -485,6 +536,11 @@ import { preferences } from "../settings/preferences.svelte";
 
       if (activeGesture && activeGesture.pointerId === event.pointerId) {
         updatePointerGesture(event, local);
+        return;
+      }
+
+      if (zoneGrabGesture) {
+        updateZoneGrabAt(screenToWorld(camera, viewport, local), event.ctrlKey, event.altKey);
         return;
       }
 
@@ -621,11 +677,12 @@ import { preferences } from "../settings/preferences.svelte";
     }
 
     function onContextMenu(event: MouseEvent): void {
-      if (!grabGesture && performance.now() > suppressContextMenuUntil) return;
+      if (!grabGesture && !zoneGrabGesture && performance.now() > suppressContextMenuUntil) return;
       suppressContextMenuUntil = 0;
       event.preventDefault();
       event.stopPropagation();
       if (grabGesture) cancelGrab();
+      else if (zoneGrabGesture) commitZoneGrab();
     }
 
     function onNativeDragStart(event: DragEvent): void {
@@ -646,6 +703,21 @@ import { preferences } from "../settings/preferences.svelte";
       rebasePrecision(altHeld);
     }
 
+    function onZoneMoveKeyDown(event: KeyboardEvent): void {
+      if (event.defaultPrevented || event.isComposing || isTextEditingTarget(event.target)) return;
+      if (event.code === "Enter" && (zoneGrabGesture || activeGesture?.kind === "zone-move")) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (activeGesture?.kind === "zone-move") finishPointerGesture(activeGesture.pointerId, false);
+        else commitZoneGrab();
+      } else if (event.code === "Escape" && (zoneGrabGesture || activeGesture?.kind === "zone-move")) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (activeGesture?.kind === "zone-move") finishPointerGesture(activeGesture.pointerId, true);
+        else cancelZoneGrab();
+      }
+    }
+
     boardEl.addEventListener("pointerdown", onPointerDown, true);
     boardEl.addEventListener("dragstart", onNativeDragStart, true);
     window.addEventListener("pointermove", onPointerMove, true);
@@ -657,12 +729,14 @@ import { preferences } from "../settings/preferences.svelte";
     boardEl.addEventListener("contextmenu", onContextMenu, true);
     window.addEventListener("keydown", onPrecisionKeyDown, true);
     window.addEventListener("keyup", onPrecisionKeyUp, true);
+    window.addEventListener("keydown", onZoneMoveKeyDown, true);
 
     const detachController = attachSelectionController({ escape, startGrab });
 
     function onWindowBlur(): void {
       if (activeGesture) finishPointerGesture(activeGesture.pointerId, true);
       if (grabGesture) cancelGrab();
+      if (zoneGrabGesture) cancelZoneGrab();
       altHeld = false;
     }
 
@@ -671,10 +745,12 @@ import { preferences } from "../settings/preferences.svelte";
     return () => {
       if (activeGesture) finishPointerGesture(activeGesture.pointerId, true);
       if (grabGesture) cancelGrab();
+      if (zoneGrabGesture) cancelZoneGrab();
       detachController();
       window.removeEventListener("blur", onWindowBlur);
       window.removeEventListener("keydown", onPrecisionKeyDown, true);
       window.removeEventListener("keyup", onPrecisionKeyUp, true);
+      window.removeEventListener("keydown", onZoneMoveKeyDown, true);
       window.removeEventListener("pointermove", onPointerMove, true);
       window.removeEventListener("pointerup", onPointerUp, true);
       window.removeEventListener("pointercancel", onPointerCancel, true);
@@ -822,16 +898,10 @@ import { preferences } from "../settings/preferences.svelte";
     id: string,
     screen: Point,
     world: Point,
-    carryMembers: boolean,
   ): void {
     const zone = zones.byId[id];
     if (!zone) return;
-    const members: MemberPosition[] = carryMembers
-      ? zoneMembers(id).flatMap((memberId) => {
-        const note = boardState.notes[memberId];
-        return note ? [{ id: memberId, x: note.x, y: note.y }] : [];
-      })
-      : [];
+    const members = memberPositions(id);
     activeGesture = {
       kind: "zone-move",
       pointerId: event.pointerId,
@@ -843,6 +913,73 @@ import { preferences } from "../settings/preferences.svelte";
         zone, Object.values(zones.byId).filter((other) => other.id !== id), members, world,
       ),
     };
+  }
+
+  function memberPositions(id: string): MemberPosition[] {
+    return zoneMembers(id).flatMap((memberId) => {
+      const note = boardState.notes[memberId];
+      return note ? [{ id: memberId, x: note.x, y: note.y }] : [];
+    });
+  }
+
+  function startZoneFollowMove(id: string, startWorld: Point): void {
+    const zone = zones.byId[id];
+    if (!zone || activeGesture || grabGesture || zoneGrabGesture) return;
+    zoneGrabGesture = createZoneMoveGesture(
+      zone,
+      Object.values(zones.byId).filter((other) => other.id !== id),
+      memberPositions(id),
+      startWorld,
+    );
+    zoneCollisionHint = false;
+  }
+
+  function updateZoneGrabAt(world: Point, carryMembers: boolean, _alt = false): void {
+    if (!zoneGrabGesture) return;
+    zoneGrabGesture = updateZoneMoveGesture(
+      zoneGrabGesture,
+      world,
+      grid.snap || carryMembers,
+      grid.step,
+      carryMembers,
+    );
+    applyZoneMove(zoneGrabGesture.afterZone, zoneGrabGesture.afterMembers);
+    zoneCollisionHint = zoneGrabGesture.blocked;
+  }
+
+  function commitZoneGrab(): void {
+    const gesture = zoneGrabGesture;
+    if (!gesture) return;
+    zoneGrabGesture = null;
+    zoneCollisionHint = false;
+    recordZoneMove(gesture);
+  }
+
+  function cancelZoneGrab(): void {
+    const gesture = zoneGrabGesture;
+    if (!gesture) return;
+    zoneGrabGesture = null;
+    zoneCollisionHint = false;
+    applyZoneMove(gesture.beforeZone, gesture.beforeMembers);
+  }
+
+  function recordZoneMove(gesture: ZoneMoveGesture): void {
+    if (!zoneGestureChanged(gesture.beforeZone, gesture.afterZone)) return;
+    const beforeZone = gesture.beforeZone;
+    const afterZone = gesture.afterZone;
+    const beforeMembers = gesture.beforeMembers;
+    const afterMembers = gesture.afterMembers;
+    record({
+      label: "Move zone",
+      target: beforeZone.name,
+      do: () => applyZoneMove(afterZone, afterMembers),
+      undo: () => applyZoneMove(beforeZone, beforeMembers),
+    });
+  }
+
+  function finishZoneMoves(): void {
+    if (activeGesture?.kind === "zone-move") finishPointerGesture(activeGesture.pointerId, false);
+    if (zoneGrabGesture) commitZoneGrab();
   }
 
   function startZoneResize(
@@ -935,7 +1072,7 @@ import { preferences } from "../settings/preferences.svelte";
 
     if (gesture.kind === "zone-move") {
       gesture.gesture = updateZoneMoveGesture(
-        gesture.gesture, adjustedWorld, grid.snap || event.ctrlKey, grid.step,
+        gesture.gesture, adjustedWorld, grid.snap || event.ctrlKey, grid.step, event.ctrlKey,
       );
       applyZoneMove(gesture.gesture.afterZone, gesture.gesture.afterMembers);
       zoneCollisionHint = gesture.gesture.blocked;
@@ -1052,18 +1189,7 @@ import { preferences } from "../settings/preferences.svelte";
     } else if (gesture.kind === "zone-move") {
       if (cancelled) {
         applyZoneMove(gesture.gesture.beforeZone, gesture.gesture.beforeMembers);
-      } else if (gesture.started && zoneGestureChanged(gesture.gesture.beforeZone, gesture.gesture.afterZone)) {
-        const beforeZone = gesture.gesture.beforeZone;
-        const afterZone = gesture.gesture.afterZone;
-        const beforeMembers = gesture.gesture.beforeMembers;
-        const afterMembers = gesture.gesture.afterMembers;
-        record({
-          label: "Move zone",
-          target: beforeZone.name,
-          do: () => applyZoneMove(afterZone, afterMembers),
-          undo: () => applyZoneMove(beforeZone, beforeMembers),
-        });
-      }
+      } else if (gesture.started) recordZoneMove(gesture.gesture);
     } else if (gesture.kind === "zone-resize") {
       if (cancelled) {
         applyZoneGeometry(gesture.gesture.beforeZone);
@@ -1115,6 +1241,12 @@ import { preferences } from "../settings/preferences.svelte";
   }
 
   function startGrab(): void {
+    if (tool.active === "zone") {
+      const point = pointer.world;
+      const id = point ? hitTestZones(point, zones.byId, zones.order) : null;
+      if (point && id) startZoneFollowMove(id, point);
+      return;
+    }
     if (grabGesture || selection.ids.length === 0) return;
     const frames = framesForSelection();
     if (frames.length === 0) return;
@@ -1155,6 +1287,10 @@ import { preferences } from "../settings/preferences.svelte";
     }
     if (grabGesture) {
       cancelGrab();
+      return;
+    }
+    if (zoneGrabGesture) {
+      cancelZoneGrab();
       return;
     }
     if (selection.contextPick) {
@@ -1469,8 +1605,8 @@ import { preferences } from "../settings/preferences.svelte";
       class="selection-context-pick"
       role="listbox"
       aria-label="Choose overlapping note"
-      style:left="{selection.contextPick.x}px"
-      style:top="{selection.contextPick.y}px"
+      style={boardPopupStyle(camera, viewport, { x: selection.contextPick.x, y: selection.contextPick.y })}
+      use:dismissBoardPopup={{ close: closeContextPick, escape: false }}
     >
       {#each contextNotes as note (note.id)}
         <button

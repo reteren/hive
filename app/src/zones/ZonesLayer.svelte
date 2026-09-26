@@ -2,13 +2,14 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import { camera, viewport } from "../board/camera.svelte";
-  import { PX_PER_UNIT, type Point } from "../board/cameraMath";
+  import { PX_PER_UNIT, screenToWorld, type Point } from "../board/cameraMath";
   import { zones } from "../model/zones.svelte";
   import type { Zone } from "../model/zone";
   import { zoneNameEdge } from "../model/zone";
   import { tool } from "../tools/tool.svelte";
   import { deleteZone, recolorZone, renameZone, ZONE_COLORS } from "./commands";
   import { startZoneMembershipSync } from "./membership.svelte";
+  import { boardPopupStyle, dismissBoardPopup, fitBoardPopupAnchor } from "../ui/boardAnchor";
 
   type Menu = { id: string; x: number; y: number; rename: boolean };
   let layer: HTMLDivElement;
@@ -36,13 +37,21 @@
     const zone = zones.byId[id];
     if (!zone) return;
     draftName = zone.name;
+    const world = screenToWorld(camera, viewport, point);
+    const anchor = fitBoardPopupAnchor(camera, viewport, world, { width: 176, height: 158 });
     menu = {
       id,
-      x: Math.max(8, Math.min(point.x, viewport.width - 190)),
-      y: Math.max(8, Math.min(point.y, viewport.height - 158)),
+      x: anchor.x,
+      y: anchor.y,
       rename,
     };
     if (rename) void tick().then(() => { renameInput?.focus(); renameInput?.select(); });
+  }
+
+  function startRename(): void {
+    if (!menu) return;
+    menu.rename = true;
+    void tick().then(() => { renameInput?.focus(); renameInput?.select(); });
   }
 
   function commitRename(): void {
@@ -140,7 +149,11 @@
                 tabindex="0"
                 aria-label={`Rename ${zone.name}`}
                 style:pointer-events={tool.active === "select" ? "visiblePainted" : "none"}
-                onkeydown={(event) => { if (event.code === "Enter") { event.preventDefault(); openMenu(id, { x: 12, y: 12 }, true); } }}
+                onkeydown={(event) => { if (event.code === "Enter") {
+                  event.preventDefault();
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  openMenu(id, local(rect.left, rect.bottom), true);
+                } }}
               >{zone.name}</text>
             </svg>
           </g>
@@ -149,14 +162,16 @@
     </g>
   </svg>
   {#if menu && zones.byId[menu.id]}
-    <div class="zone-menu" data-zone-menu data-selection-ignore role="menu" aria-label="Zone actions" style:left={`${menu.x}px`} style:top={`${menu.y}px`}>
+    <div class="zone-menu" data-zone-menu data-selection-ignore role="menu" aria-label="Zone actions"
+      style={boardPopupStyle(camera, viewport, { x: menu.x, y: menu.y })}
+      use:dismissBoardPopup={{ close: () => { menu = null; }, escape: false }}>
       {#if menu.rename}
         <input bind:this={renameInput} bind:value={draftName} aria-label="Zone name" onkeydown={(event) => {
           if (event.code === "Enter") { event.preventDefault(); commitRename(); }
           else if (event.code === "Escape") { event.preventDefault(); menu = null; }
         }} onblur={commitRename} />
       {:else}
-        <button type="button" role="menuitem" onclick={() => { if (menu) openMenu(menu.id, { x: menu.x, y: menu.y }, true); }}>Rename</button>
+        <button type="button" role="menuitem" onclick={startRename}>Rename</button>
         <div class="zone-colours" aria-label="Zone colour">
           <span>Colour</span>
           {#each ZONE_COLORS as color}

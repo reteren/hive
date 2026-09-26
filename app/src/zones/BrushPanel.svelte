@@ -3,6 +3,7 @@
   import { formatKey } from "../commands/keys";
   import { getCommand } from "../commands/registry.svelte";
   import { tool } from "../tools/tool.svelte";
+  import { zoneMode, toggleZoneMoveMode } from "./zoneMode.svelte";
   import { BRUSH_MAX, BRUSH_MIN } from "./brush";
   import { brushState, setBrushSize, stepBrushSize } from "./brushState.svelte";
 
@@ -78,8 +79,18 @@
     role="group"
     aria-label="Zone brush size"
   >
-    <span class="panel-label">Brush size</span>
-    <div class="brush-controls">
+    <span class="panel-label">Zone tool</span>
+    <button
+      class:move-mode={zoneMode.active === "move"}
+      class="mode-toggle"
+      type="button"
+      aria-pressed={zoneMode.active === "move"}
+      title="Shift toggles between painting and moving zones"
+      onclick={toggleZoneMoveMode}
+    >{zoneMode.active === "move" ? "Move zones (Shift)" : "Brush (Shift)"}</button>
+    {#if zoneMode.active === "brush"}
+      <span class="panel-label">Brush size</span>
+      <div class="brush-controls">
       <div class="size-field" use:brushSizeWheel>
         {#if editing}
           <input
@@ -121,7 +132,8 @@
         onpointerdown={keepInputFocused}
         onclick={() => adjustSize(1)}
       >+</button>
-    </div>
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -158,6 +170,25 @@
     grid-template-columns: minmax(42px, 1fr) 25px 25px;
     align-items: center;
     gap: 4px;
+  }
+
+  .mode-toggle {
+    min-height: 25px;
+    padding: 4px 7px;
+    border: 1px solid #484848;
+    border-radius: 4px;
+    background: #242424;
+    color: var(--text);
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+  }
+
+  .mode-toggle:hover,
+  .mode-toggle.move-mode {
+    border-color: #806b2d;
+    background: #332d1c;
+    color: #fff0be;
   }
 
   .size-field {
