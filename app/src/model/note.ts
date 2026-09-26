@@ -5,17 +5,22 @@ import type { NodeScope, TierRow } from "./nodeData";
  * "importance"/"purpose"/"mood" — a standalone (external) module on the board (R3.6): no text, its
  * value lives in `importance` / `purposes` / `moods`, and it applies to the notes it links to;
  * "beacon" — an organising beacon (R4): fixed 7.2 u circle, name + `color`, only outgoing links;
- * R5 nodes that show and calculate: "goal", "progress", "calculator", "tierlist", "stats".
+ * R5 nodes that show and calculate: "goal", "progress", "calculator", "tierlist", "stats";
+ * R6 view nodes: "archive", "trash".
  */
 export type NoteKind =
   | "note" | "pro" | "con" | "importance" | "purpose" | "mood" | "beacon"
-  | "goal" | "progress" | "calculator" | "tierlist" | "stats";
+  | "goal" | "progress" | "calculator" | "tierlist" | "stats"
+  | "archive" | "trash";
 
 /** R5 kinds, in create-menu order. */
 export const R5_KINDS = ["goal", "progress", "calculator", "tierlist", "stats"] as const;
 
+/** R6 view nodes: Archive and Trash show the project-wide archive / trash (all instances show the same data). */
+export const R6_KINDS = ["archive", "trash"] as const;
+
 /** Default R5 node widths (u), shared by creation and resize limits. */
-export const R5_BASE_WIDTHS = { goal: 30, progress: 30, calculator: 40, tierlist: 60, stats: 30 } as const;
+export const R5_BASE_WIDTHS = { goal: 30, progress: 30, calculator: 40, tierlist: 60, stats: 30, archive: 40, trash: 40 } as const;
 
 /** Importance levels (R3.3): white / yellow / red / purple / rainbow. */
 export const IMPORTANCE_LEVELS = ["basic", "medium", "important", "immediately", "absolute"] as const;

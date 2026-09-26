@@ -401,7 +401,8 @@ function validateUniqueNotes(notes: readonly IndexedNote[]): void {
 function parseNoteKind(value: unknown): NoteKind | null {
   return value === "note" || value === "pro" || value === "con" ||
     value === "importance" || value === "purpose" || value === "mood" || value === "beacon" ||
-    value === "goal" || value === "progress" || value === "calculator" || value === "tierlist" || value === "stats"
+    value === "goal" || value === "progress" || value === "calculator" || value === "tierlist" || value === "stats" ||
+    value === "archive" || value === "trash"
     ? value
     : null;
 }

@@ -186,6 +186,8 @@ function kindLabel(kind: NoteKind): string {
   if (kind === "calculator") return "Calculator";
   if (kind === "tierlist") return "Tierlist";
   if (kind === "stats") return "Statistics";
+  if (kind === "archive") return "Archive";
+  if (kind === "trash") return "Trash";
   return "Note";
 }
 
