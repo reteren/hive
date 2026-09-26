@@ -1,8 +1,20 @@
 import { execute, type HistoryCommand } from "../history/history.svelte";
-import { board, updateNote } from "../model/board.svelte";
-import { newId } from "../model/note";
+import { addNote, board, removeNote, updateNote } from "../model/board.svelte";
+import { DEFAULT_NOTE_WIDTH, newId, type Note } from "../model/note";
 import type { TierCard, TierRow } from "../model/nodeData";
+import type { Point } from "../board/cameraMath";
+import { grid } from "../board/grid.svelte";
+import { estimatedCreationHeight, notePositionAt } from "../notes/creationPosition";
+import { editing } from "../notes/editing.svelte";
+import { clearSelectedLink } from "../links/selection.svelte";
 import {
+  captureSelectionSnapshot,
+  clearSelection,
+  restoreSelectionSnapshot,
+  selectOnly,
+} from "../selection/selection.svelte";
+import {
+  DEFAULT_NEW_TIER_COLOR,
   addTierCard,
   appendTierRow,
   copyTierRows,
@@ -13,6 +25,7 @@ import {
   recolorTierRow,
   renameTierRow,
   reorderTierRow,
+  nextTierlistNoteName,
   tierRowsEqual,
   updateTierCardText,
 } from "./logic";
@@ -50,8 +63,7 @@ export function createTierlistChangeCommand(
 
 export function addTierlistRow(noteId: string): void {
   const rows = rowsForTierlist(noteId);
-  const defaultColor = "#545b68";
-  changeTierlist(noteId, "Add tier row", appendTierRow(rows, "New tier", defaultColor));
+  changeTierlist(noteId, "Add tier row", appendTierRow(rows, "New tier", DEFAULT_NEW_TIER_COLOR));
 }
 
 export function renameTierlistRow(noteId: string, rowId: string, name: string): void {
@@ -90,6 +102,62 @@ export function addNoteTierCard(noteId: string, rowId: string, sourceNoteId: str
     "Add node preview to Tierlist",
     addTierCard(rowsForTierlist(noteId), rowId, card),
   );
+}
+
+/** Create a normal note from a text card and remove the card as one Undoable action. */
+export function createTierlistTextCardNoteCommand(
+  noteId: string,
+  rowId: string,
+  cardId: string,
+  center: Point,
+): HistoryCommand | null {
+  const tierlist = board.notes[noteId];
+  if (!tierlist || tierlist.type !== "tierlist") return null;
+
+  const beforeRows = effectiveTierRows(tierlist);
+  const card = beforeRows.find((row) => row.id === rowId)?.cards.find((item) => item.id === cardId);
+  if (card?.kind !== "text") return null;
+
+  const name = nextTierlistNoteName(Object.values(board.notes).map((item) => item.name));
+  const width = DEFAULT_NOTE_WIDTH;
+  const text = card.text;
+  const height = estimatedCreationHeight({ type: "note", width, height: null, text });
+  const position = notePositionAt(center, width, height, false, grid.step);
+  const id = newId();
+  const note: Note = {
+    id,
+    type: "note",
+    name,
+    text,
+    x: position.x,
+    y: position.y,
+    width,
+    height: null,
+    createdAt: Date.now(),
+  };
+  const afterRows = deleteTierCard(beforeRows, rowId, cardId);
+  const index = board.order.length;
+  const previousSelection = captureSelectionSnapshot();
+  const previousEditing = editing.noteId;
+
+  return {
+    label: "Move text card to board",
+    target: `${tierlist.name} → ${note.name}`,
+    do: () => {
+      updateNote(tierlist.id, { tiers: copyTierRows(afterRows) });
+      addNote(note, index);
+      clearSelection();
+      clearSelectedLink();
+      selectOnly(id);
+      editing.noteId = id;
+    },
+    undo: () => {
+      removeNote(id);
+      updateNote(tierlist.id, { tiers: copyTierRows(beforeRows) });
+      restoreSelectionSnapshot(previousSelection);
+      if (editing.noteId === id) editing.noteId = previousEditing;
+    },
+  };
 }
 
 export function moveTierlistCard(

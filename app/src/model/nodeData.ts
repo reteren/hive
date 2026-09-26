@@ -21,6 +21,8 @@ export interface TierRow {
   /** Hex "#rrggbb". */
   color: string;
   cards: TierCard[];
+  /** Persisted hint dismissal for this tierlist; duplicated across rows so row edits keep it. */
+  hintsDismissed?: boolean;
 }
 
 /** One line of the calculator history; the result is always recomputed from the expression. */
@@ -85,7 +87,13 @@ export function parseTiers(value: unknown): TierRow[] | null {
       if (card.kind === "text" && typeof card.text === "string") cards.push({ id: card.id, kind: "text", text: card.text });
       else if (card.kind === "note" && nonEmptyString(card.noteId)) cards.push({ id: card.id, kind: "note", noteId: card.noteId });
     }
-    rows.push({ id: row.id, name: row.name, color: typeof row.color === "string" && HEX.test(row.color) ? row.color : "#808080", cards });
+    rows.push({
+      id: row.id,
+      name: row.name,
+      color: typeof row.color === "string" && HEX.test(row.color) ? row.color : "#808080",
+      cards,
+      ...(row.hintsDismissed === true ? { hintsDismissed: true } : {}),
+    });
   }
   return rows;
 }

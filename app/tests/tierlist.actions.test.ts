@@ -6,6 +6,7 @@ import {
   addNoteTierCard,
   addTierlistRow,
   changeTierlist,
+  createTierlistTextCardNoteCommand,
   deleteTierlistCard,
   rowsForTierlist,
 } from "../src/tierlist/actions.svelte";
@@ -46,9 +47,9 @@ describe("Tierlist history actions", () => {
   it("undoes a row add as one step", () => {
     addTierlistRow("tierlist");
     expect(history.entries).toHaveLength(1);
-    expect(board.notes.tierlist.tiers).toHaveLength(7);
+    expect(board.notes.tierlist.tiers).toHaveLength(8);
     undo();
-    expect(board.notes.tierlist.tiers).toHaveLength(6);
+    expect(board.notes.tierlist.tiers).toHaveLength(7);
   });
 
   it("adds and removes a live preview card without moving or deleting its source", () => {
@@ -78,5 +79,44 @@ describe("Tierlist history actions", () => {
     if (cardId) deleteTierlistCard("tierlist", rowId, cardId);
     expect(board.notes.source).toBeDefined();
     expect(board.notes.tierlist.tiers?.[0].cards).toEqual([]);
+  });
+
+  it("turns a dragged text card into a named board note in one undo step", () => {
+    const rowId = rowsForTierlist("tierlist")[0].id;
+    const rows = rowsForTierlist("tierlist");
+    rows[0].cards.push({ id: "dragged", kind: "text", text: "Keep this text" });
+    changeTierlist("tierlist", "Prepare text card", rows);
+    clearHistory();
+
+    const command = createTierlistTextCardNoteCommand("tierlist", rowId, "dragged", { x: 200, y: 80 });
+    expect(command).not.toBeNull();
+    if (!command) return;
+    execute(command);
+
+    const created = Object.values(board.notes).find((item) => item.name === "Tierlist note #1");
+    expect(created).toBeDefined();
+    if (!created) return;
+    expect(created).toMatchObject({ type: "note", text: "Keep this text", width: 30 });
+    expect(created?.x).toBe(185);
+    expect(created.x + created.width / 2).toBe(200);
+    expect(rowsForTierlist("tierlist")[0].cards).toEqual([]);
+    expect(history.entries).toHaveLength(1);
+
+    undo();
+    expect(created.id in board.notes).toBe(false);
+    expect(rowsForTierlist("tierlist")[0].cards).toEqual([{ id: "dragged", kind: "text", text: "Keep this text" }]);
+  });
+
+  it("does not turn a live node preview card into a board note", () => {
+    const rowId = rowsForTierlist("tierlist")[0].id;
+    const rows = rowsForTierlist("tierlist");
+    rows[0].cards.push({ id: "preview", kind: "note", noteId: "source" });
+    changeTierlist("tierlist", "Prepare node preview", rows);
+    clearHistory();
+
+    expect(createTierlistTextCardNoteCommand("tierlist", rowId, "preview", { x: 200, y: 80 })).toBeNull();
+    expect(rowsForTierlist("tierlist")[0].cards).toEqual([{ id: "preview", kind: "note", noteId: "source" }]);
+    expect(board.notes.source).toBeDefined();
+    expect(history.entries).toHaveLength(0);
   });
 });

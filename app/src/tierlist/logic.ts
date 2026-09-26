@@ -2,13 +2,16 @@ import { newId, type Note } from "../model/note";
 import type { TierCard, TierRow } from "../model/nodeData";
 
 export const DEFAULT_TIERS = [
-  { name: "S", color: "#8e3d46" },
-  { name: "A", color: "#a36536" },
-  { name: "B", color: "#8a7628" },
-  { name: "C", color: "#3f754c" },
-  { name: "D", color: "#315f83" },
-  { name: "F", color: "#654985" },
+  { name: "S", color: "#FF4B5C" },
+  { name: "A", color: "#FFB347" },
+  { name: "B", color: "#FFE66D" },
+  { name: "C", color: "#C3FF68" },
+  { name: "D", color: "#7DFFB3" },
+  { name: "E", color: "#5CD8FF" },
+  { name: "F", color: "#9F8BFF" },
 ] as const;
+
+export const DEFAULT_NEW_TIER_COLOR = "#545b68";
 
 export type TierRowDeleteChoice = "move-below" | "delete-cards" | "cancel";
 
@@ -45,6 +48,23 @@ export function recolorTierRow(rows: readonly TierRow[], rowId: string, color: s
   return rows.map((row) => row.id === rowId ? { ...row, color } : row);
 }
 
+export function areTierHintsDismissed(rows: readonly TierRow[]): boolean {
+  return rows.some((row) => row.hintsDismissed === true);
+}
+
+export function markTierHintsDismissed(rows: readonly TierRow[]): TierRow[] {
+  return rows.map((row) => ({ ...row, hintsDismissed: true, cards: row.cards.map((card) => ({ ...card })) }));
+}
+
+export function tierLabelTextColor(color: string): "#202126" | "#f6f4f1" {
+  const match = /^#([0-9a-f]{6})$/i.exec(color);
+  if (!match) return "#f6f4f1";
+  const channels = [0, 2, 4].map((offset) => Number.parseInt(match[1].slice(offset, offset + 2), 16) / 255);
+  const linear = channels.map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+  const luminance = linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+  return luminance >= 0.179 ? "#202126" : "#f6f4f1";
+}
+
 /** Move the dragged row before the target row, or to the end when targetIndex is the length. */
 export function reorderTierRow(rows: readonly TierRow[], rowId: string, targetIndex: number): TierRow[] {
   const sourceIndex = rows.findIndex((row) => row.id === rowId);
@@ -58,7 +78,10 @@ export function reorderTierRow(rows: readonly TierRow[], rowId: string, targetIn
 }
 
 export function appendTierRow(rows: readonly TierRow[], name: string, color: string, id = newId()): TierRow[] {
-  return [...copyTierRows(rows), { id, name, color, cards: [] }];
+  return [
+    ...copyTierRows(rows),
+    { id, name, color, cards: [], ...(areTierHintsDismissed(rows) ? { hintsDismissed: true } : {}) },
+  ];
 }
 
 /** A cancelled/invalid removal returns null; callers should record only non-null results. */
@@ -140,4 +163,13 @@ export function tierCardPreview(card: TierCard, notes: Readonly<Record<string, N
 
 export function tierRowsEqual(first: readonly TierRow[], second: readonly TierRow[]): boolean {
   return JSON.stringify(first) === JSON.stringify(second);
+}
+
+export function nextTierlistNoteName(existingNames: readonly string[]): string {
+  const occupied = new Set(existingNames.map((name) => name.toLocaleLowerCase()));
+  for (let index = 1; index < Number.MAX_SAFE_INTEGER; index += 1) {
+    const candidate = `Tierlist note #${index}`;
+    if (!occupied.has(candidate.toLocaleLowerCase())) return candidate;
+  }
+  throw new Error("Could not find a free Tierlist note number.");
 }

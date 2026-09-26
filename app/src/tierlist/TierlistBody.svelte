@@ -2,14 +2,16 @@
   import { onMount, tick } from "svelte";
   import type { Note } from "../model/note";
   import type { TierCard, TierRow } from "../model/nodeData";
-  import { board } from "../model/board.svelte";
+  import { board, updateNote } from "../model/board.svelte";
+  import { execute } from "../history/history.svelte";
   import { camera, viewport } from "../board/camera.svelte";
-  import { worldToScreen, type Point } from "../board/cameraMath";
+  import { screenToWorld, worldToScreen, type Point } from "../board/cameraMath";
   import { activeDropTarget, registerDropTarget, type DropTargetMatch } from "../selection/dropTargets";
   import {
     addNoteTierCard,
     addTextTierCard,
     addTierlistRow,
+    createTierlistTextCardNoteCommand,
     deleteTierlistCard,
     editTextTierCard,
     moveTierlistCard,
@@ -19,11 +21,18 @@
     reorderTierlistRow,
     rowsForTierlist,
   } from "./actions.svelte";
-  import { tierCardPreview } from "./logic";
+  import {
+    areTierHintsDismissed,
+    DEFAULT_NEW_TIER_COLOR,
+    markTierHintsDismissed,
+    tierCardPreview,
+    tierLabelTextColor,
+  } from "./logic";
 
   let { note }: { note: Note } = $props();
   let root: HTMLDivElement;
   let rows = $derived(rowsForTierlist(note.id));
+  let hintsDismissed = $derived(areTierHintsDismissed(rows));
   let contextRowId = $state<string | null>(null);
   let deletingRowId = $state<string | null>(null);
   let editingRowId = $state<string | null>(null);
@@ -37,8 +46,9 @@
   let cardInput: HTMLTextAreaElement | undefined = $state();
   let selectedCard = $state<{ rowId: string; cardId: string } | null>(null);
   let draggedCard = $state<{ rowId: string; cardId: string } | null>(null);
+  let cardDropIndicator = $state<{ rowId: string; cardId: string | null; side: "before" | "after" | "end" } | null>(null);
 
-  const rowColors = ["#8e3d46", "#a36536", "#8a7628", "#3f754c", "#315f83", "#654985", "#545b68"];
+  const rowColors = ["#FF4B5C", "#FFB347", "#FFE66D", "#C3FF68", "#7DFFB3", "#5CD8FF", "#9F8BFF", DEFAULT_NEW_TIER_COLOR];
   const ROW_MIME = "application/x-hive-tier-row";
   const CARD_MIME = "application/x-hive-tier-card";
 
@@ -48,7 +58,9 @@
     drop: (noteIds, match) => {
       const sourceNoteId = noteIds[0];
       const rowId = (match.payload as { rowId?: string } | undefined)?.rowId;
-      return rowId && sourceNoteId ? addNoteTierCard(note.id, rowId, sourceNoteId) : null;
+      if (!rowId || !sourceNoteId) return null;
+      dismissTierHints();
+      return addNoteTierCard(note.id, rowId, sourceNoteId);
     },
   }));
 
@@ -69,9 +81,13 @@
     };
     document.addEventListener("pointerdown", onDocumentPointerDown);
     document.addEventListener("keydown", onDocumentKeydown);
+    document.addEventListener("dragover", onDocumentDragOver);
+    document.addEventListener("drop", onDocumentDrop);
     return () => {
       document.removeEventListener("pointerdown", onDocumentPointerDown);
       document.removeEventListener("keydown", onDocumentKeydown);
+      document.removeEventListener("dragover", onDocumentDragOver);
+      document.removeEventListener("drop", onDocumentDrop);
     };
   });
 
@@ -191,6 +207,11 @@
     selectedCard = null;
   }
 
+  function dismissTierHints(): void {
+    if (areTierHintsDismissed(rows)) return;
+    updateNote(note.id, { tiers: markTierHintsDismissed(rows) });
+  }
+
   function dragTypes(event: DragEvent, mime: string): boolean {
     return Array.from(event.dataTransfer?.types ?? []).includes(mime);
   }
@@ -228,16 +249,29 @@
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData(CARD_MIME, JSON.stringify({ tierlistId: note.id, rowId, cardId: card.id }));
     draggedCard = { rowId, cardId: card.id };
+    cardDropIndicator = null;
   }
 
   function allowCardDrop(event: DragEvent): void {
-    if (!dragTypes(event, CARD_MIME)) return;
+    if (!draggedCard || !dragTypes(event, CARD_MIME)) return;
     event.preventDefault();
     if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+    const target = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-tier-card-id]") : null;
+    const targetCardId = target?.dataset.tierCardId ?? null;
+    if (!target || !targetCardId) {
+      cardDropIndicator = { rowId: rowIdForDrop(event), cardId: null, side: "end" };
+      return;
+    }
+    const rect = target.getBoundingClientRect();
+    cardDropIndicator = {
+      rowId: rowIdForDrop(event),
+      cardId: targetCardId,
+      side: event.clientX >= rect.left + rect.width / 2 ? "after" : "before",
+    };
   }
 
   function dropCard(rowId: string, event: DragEvent): void {
-    if (!event.dataTransfer || !dragTypes(event, CARD_MIME)) return;
+    if (!draggedCard || !event.dataTransfer || !dragTypes(event, CARD_MIME)) return;
     event.preventDefault();
     event.stopPropagation();
     try {
@@ -257,9 +291,69 @@
       }
       moveTierlistCard(note.id, payload.rowId, payload.cardId, rowId, targetIndex);
       draggedCard = null;
+      cardDropIndicator = null;
     } catch {
       draggedCard = null;
+      cardDropIndicator = null;
     }
+  }
+
+  function rowIdForDrop(event: DragEvent): string {
+    const rowArea = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-tier-row-cards]") : null;
+    return rowArea?.dataset.tierRowCards ?? "";
+  }
+
+  function onDocumentDragOver(event: DragEvent): void {
+    if (!dragTypes(event, CARD_MIME) || !isBoardDropOutsideTierlists(event.target)) return;
+    const dragging = draggedCard;
+    const sourceCard = dragging
+      ? rows.find((row) => row.id === dragging.rowId)?.cards.find((card) => card.id === dragging.cardId)
+      : null;
+    if (sourceCard?.kind !== "text") return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+  }
+
+  function onDocumentDrop(event: DragEvent): void {
+    if (!draggedCard || !event.dataTransfer || !dragTypes(event, CARD_MIME) || !isBoardDropOutsideTierlists(event.target)) return;
+    event.preventDefault();
+    let payload: { tierlistId?: string; rowId?: string; cardId?: string };
+    try {
+      payload = JSON.parse(event.dataTransfer.getData(CARD_MIME)) as typeof payload;
+    } catch {
+      return;
+    }
+    const dragging = draggedCard;
+    if (!dragging || payload.tierlistId !== note.id || !payload.rowId || !payload.cardId ||
+        payload.rowId !== dragging.rowId || payload.cardId !== dragging.cardId) return;
+    const card = rows.find((row) => row.id === payload.rowId)?.cards.find((item) => item.id === payload.cardId);
+    if (card?.kind !== "text") return;
+
+    const boardElement = root.closest<HTMLElement>(".board");
+    const boardRect = boardElement?.getBoundingClientRect();
+    if (!boardRect) return;
+    const local = { x: event.clientX - boardRect.left, y: event.clientY - boardRect.top };
+    if (local.x < 0 || local.y < 0 || local.x > viewport.width || local.y > viewport.height) return;
+
+    dismissTierHints();
+    const command = createTierlistTextCardNoteCommand(
+      note.id,
+      payload.rowId,
+      payload.cardId,
+      screenToWorld(camera, viewport, local),
+    );
+    if (command) execute(command);
+  }
+
+  function isBoardDropOutsideTierlists(target: EventTarget | null): boolean {
+    if (!(target instanceof Element) || !root) return false;
+    const boardElement = root.closest<HTMLElement>(".board");
+    return !!boardElement?.contains(target) && !target.closest(".tierlist-body");
+  }
+
+  function cardDropPosition(row: TierRow, cardId: string): "before" | "after" | null {
+    if (cardDropIndicator?.rowId !== row.id || cardDropIndicator.cardId !== cardId) return null;
+    return cardDropIndicator.side === "end" ? null : cardDropIndicator.side;
   }
 
   function cardPreview(card: TierCard) {
@@ -274,12 +368,21 @@
 <div
   class="tierlist-body note-body"
   data-selection-ignore
+  data-tierlist-id={note.id}
   role="group"
   aria-label={`Tierlist ${note.name}`}
   bind:this={root}
 >
   {#each rows as row, rowIndex (row.id)}
-    <section class="tier-row" style:--tier-color={row.color}>
+    <section
+      class="tier-row"
+      data-tier-row-id={row.id}
+      style:--tier-color={row.color}
+      style:--tier-label-text={tierLabelTextColor(row.color)}
+      role="group"
+      aria-label={`${row.name} tier row`}
+      onpointerdown={dismissTierHints}
+    >
       <div class="tier-label-wrap">
         {#if editingRowId === row.id}
           <input
@@ -335,6 +438,8 @@
         class="tier-row-cards"
         data-tier-row-cards={row.id}
         class:drop-target={$activeDropTarget?.targetId === `${note.id}:${row.id}`}
+        class:card-drop-target={cardDropIndicator?.rowId === row.id}
+        class:drop-end={cardDropIndicator?.rowId === row.id && cardDropIndicator.side === "end"}
         role="group"
         ondragover={allowCardDrop}
         ondrop={(event) => dropCard(row.id, event)}
@@ -346,12 +451,15 @@
           <div
             class="tier-card-wrap"
             class:dragging={draggedCard?.cardId === card.id}
+            class:drop-before={cardDropPosition(row, card.id) === "before"}
+            class:drop-after={cardDropPosition(row, card.id) === "after"}
             data-tier-card-id={card.id}
+            data-tier-card-kind={card.kind}
             role="group"
             aria-label={`Tier card in ${row.name}`}
             draggable={editingCardId !== card.id}
             ondragstart={(event) => beginCardDrag(row.id, card, event)}
-            ondragend={() => { draggedCard = null; }}
+            ondragend={() => { draggedCard = null; cardDropIndicator = null; }}
           >
             {#if editingCardId === card.id && card.kind === "text"}
               <textarea
@@ -400,14 +508,14 @@
             >×</button>
           </div>
         {/each}
-        {#if row.cards.length === 0}
-          <span class="tier-empty-hint">Double-click to add a text card or drop a node here</span>
+        {#if row.cards.length === 0 && !hintsDismissed}
+          <span class="tier-empty-hint" data-tier-hint>Double-click to add a text card or drop a node here</span>
         {/if}
       </div>
     </section>
   {/each}
 
-  <button class="tier-add-row" type="button" onclick={() => addTierlistRow(note.id)}>+ Add row</button>
+  <button class="tier-add-row" type="button" aria-label="Add row" title="Add row" onclick={() => { dismissTierHints(); addTierlistRow(note.id); }}>+</button>
 
   {#if deletingRowId}
     {@const deletingRow = rows.find((row) => row.id === deletingRowId)}
@@ -431,7 +539,7 @@
     display: flex;
     min-width: 0;
     flex-direction: column;
-    gap: 5px;
+    gap: 0;
     padding: 2px 1px;
   }
 
@@ -440,17 +548,18 @@
     min-height: 72px;
     grid-template-columns: 52px minmax(0, 1fr);
     overflow: visible;
-    border: 1px solid #41444a;
-    border-radius: 4px;
+    border-bottom: 1px solid #41444a;
     background: #1a1b1e;
   }
+
+  .tier-row:first-of-type { border-top: 1px solid #41444a; }
 
   .tier-label-wrap {
     position: relative;
     display: flex;
     min-width: 0;
     align-items: stretch;
-    border-radius: 3px 0 0 3px;
+    border-radius: 0;
     background: var(--tier-color);
   }
 
@@ -461,7 +570,7 @@
     justify-content: center;
     overflow: hidden;
     padding: 5px;
-    color: #f6f4f1;
+    color: var(--tier-label-text);
     font-size: 14px;
     font-weight: 750;
     text-overflow: ellipsis;
@@ -513,13 +622,24 @@
     flex-wrap: wrap;
     gap: 5px;
     padding: 5px;
-    border-radius: 0 3px 3px 0;
+    border-radius: 0;
     transition: background-color 90ms ease, box-shadow 90ms ease;
   }
 
   .tier-row-cards.drop-target {
     background: #f5cd4d17;
     box-shadow: inset 0 0 0 2px var(--accent);
+  }
+
+  .tier-row-cards.card-drop-target { background: #f5cd4d0c; }
+  .tier-row-cards.drop-end::after {
+    align-self: stretch;
+    width: 3px;
+    min-height: 56px;
+    border-radius: 2px;
+    background: var(--accent);
+    box-shadow: 0 0 7px #f5cd4d90;
+    content: "";
   }
 
   .tier-empty-hint { align-self: center; padding: 7px; color: #747780; font-size: 10px; pointer-events: none; }
@@ -532,6 +652,23 @@
   }
 
   .tier-card-wrap:has(.tier-card-editor) { border: 1px solid var(--accent); border-radius: 4px; background: #292c31; }
+
+  .tier-card-wrap.drop-before::before,
+  .tier-card-wrap.drop-after::after {
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--accent);
+    box-shadow: 0 0 7px #f5cd4d90;
+    content: "";
+    pointer-events: none;
+  }
+
+  .tier-card-wrap.drop-before::before { left: -4px; }
+  .tier-card-wrap.drop-after::after { right: -4px; }
 
   .tier-card {
     position: relative;
@@ -565,7 +702,24 @@
   .tier-card-wrap:hover .tier-card-delete, .tier-card-wrap:focus-within .tier-card-delete { opacity: 1; }
   .tier-card-delete:hover { color: white; background: #663c40; }
 
-  .tier-add-row { align-self: flex-start; padding: 5px 9px; border: 1px dashed #50535a; border-radius: 3px; color: #c0c1c5; background: #222428; font: inherit; font-size: 11px; cursor: pointer; }
+  .tier-add-row {
+    box-sizing: border-box;
+    display: grid;
+    width: 100%;
+    height: 20px;
+    flex: 0 0 20px;
+    place-items: center;
+    padding: 0;
+    border: 1px solid #41444a;
+    border-top: 0;
+    border-radius: 0;
+    color: #c0c1c5;
+    background: #222428;
+    font: inherit;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+  }
   .tier-add-row:hover { border-color: var(--accent); color: var(--accent); }
 
   .tier-dialog-backdrop { position: absolute; z-index: 10; inset: 0; display: grid; place-items: center; padding: 10px; background: #08090bcc; }
