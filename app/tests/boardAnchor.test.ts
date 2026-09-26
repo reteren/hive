@@ -6,9 +6,9 @@ describe("board popup anchor", () => {
 
   it("follows camera pan and scales with zoom from its world corner", () => {
     const anchor = { x: 12, y: -3 };
-    expect(boardPopupPlacement({ x: 0, y: 0, zoom: 1 }, viewport, anchor)).toEqual({ x: 520, y: 270, scale: 1 });
-    expect(boardPopupPlacement({ x: 2, y: 1, zoom: 0.5 }, viewport, anchor)).toEqual({ x: 450, y: 280, scale: 0.5 });
-    expect(boardPopupPlacement({ x: 2, y: 1, zoom: 0.5 }, viewport, anchor, { x: 12, y: 10 }))
+    expect(boardPopupPlacement({ x: 0, y: 0, zoom: 1 }, viewport, anchor, 1)).toEqual({ x: 520, y: 270, scale: 1 });
+    expect(boardPopupPlacement({ x: 2, y: 1, zoom: 0.5 }, viewport, anchor, 1)).toEqual({ x: 450, y: 280, scale: 0.5 });
+    expect(boardPopupPlacement({ x: 2, y: 1, zoom: 0.5 }, viewport, anchor, 1, { x: 12, y: 10 }))
       .toEqual({ x: 438, y: 270, scale: 0.5 });
   });
 
@@ -16,12 +16,23 @@ describe("board popup anchor", () => {
     const camera = { x: 0, y: 0, zoom: 2 };
     const world = { x: 19, y: 14 };
     const anchor = fitBoardPopupAnchor(camera, viewport, world, { width: 164, height: 180 });
-    const initial = boardPopupPlacement(camera, viewport, anchor);
+    const initial = boardPopupPlacement(camera, viewport, anchor, camera.zoom);
     expect(initial.x).toBeGreaterThanOrEqual(8);
     expect(initial.y).toBeGreaterThanOrEqual(8);
-    expect(initial.x + 328).toBeLessThanOrEqual(792);
-    expect(initial.y + 360).toBeLessThanOrEqual(592);
-    expect(boardPopupPlacement({ x: 10, y: 10, zoom: 0.5 }, viewport, anchor).scale).toBe(0.5);
+    expect(initial.x + 164).toBeLessThanOrEqual(792);
+    expect(initial.y + 180).toBeLessThanOrEqual(592);
+    expect(boardPopupPlacement({ x: 10, y: 10, zoom: 1 }, viewport, anchor, camera.zoom).scale).toBe(0.5);
+  });
+
+  it.each([0.25, 4])("opens at base screen size at zoom %s then scales with the board", (zoom) => {
+    const anchor = { x: 0, y: 0 };
+    const opened = boardPopupPlacement({ x: 0, y: 0, zoom }, viewport, anchor, zoom);
+    const afterZoom = boardPopupPlacement({ x: 0, y: 0, zoom: zoom * 2 }, viewport, anchor, zoom);
+
+    expect(opened.scale).toBe(1);
+    expect(164 * opened.scale).toBe(164);
+    expect(afterZoom.scale).toBe(2);
+    expect(164 * afterZoom.scale).toBe(328);
   });
 
   it("dismisses only paths outside the popup and allowed opener", () => {

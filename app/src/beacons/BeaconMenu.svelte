@@ -21,7 +21,9 @@
   let controls: HTMLDivElement;
   let toggleButton: HTMLButtonElement;
   let beaconAnchor = $state<Point | null>(null);
+  let beaconZoomAtOpen = $state(1);
   let meContextMenu = $state<Point | null>(null);
+  let meContextMenuZoomAtOpen = $state(1);
 
   function boardPoint(clientX: number, clientY: number): Point {
     const rect = document.querySelector<HTMLElement>(".board")!.getBoundingClientRect();
@@ -40,7 +42,10 @@
   }
 
   $effect(() => {
-    if (beaconState.menuOpen && toggleButton && !beaconAnchor) beaconAnchor = anchorBelowToggle();
+    if (beaconState.menuOpen && toggleButton && !beaconAnchor) {
+      beaconZoomAtOpen = camera.zoom;
+      beaconAnchor = anchorBelowToggle();
+    }
     else if (!beaconState.menuOpen) beaconAnchor = null;
   });
 
@@ -50,6 +55,7 @@
       event.preventDefault();
       event.stopImmediatePropagation();
       closeLinkContextMenu();
+      meContextMenuZoomAtOpen = camera.zoom;
       meContextMenu = fitBoardPopupAnchor(camera, viewport, boardPoint(event.clientX, event.clientY), { width: 180, height: 84 });
     }
     window.addEventListener("contextmenu", onMeContextMenu, true);
@@ -94,7 +100,7 @@
   {/if}
   {#if beaconState.menuOpen && beaconAnchor}
     <div id="beacon-menu" class="beacon-menu" data-beacon-menu role="group" aria-label="Beacon focus"
-      style={`${boardPopupStyle(camera, viewport, beaconAnchor, controlsOrigin())};position:absolute`}
+      style={`${boardPopupStyle(camera, viewport, beaconAnchor, beaconZoomAtOpen, controlsOrigin())};position:absolute`}
       use:dismissBoardPopup={{ close: () => { beaconState.menuOpen = false; }, ignoreSelector: ".beacon-menu-toggle", escape: false }}>
       <div class="beacon-menu-title">Beacon focus</div>
       {#each beacons as id (id)}
@@ -113,7 +119,7 @@
       data-selection-ignore
       role="menu"
       aria-label="ME beacon actions"
-      style={`${boardPopupStyle(camera, viewport, meContextMenu, controlsOrigin())};position:absolute`}
+      style={`${boardPopupStyle(camera, viewport, meContextMenu, meContextMenuZoomAtOpen, controlsOrigin())};position:absolute`}
       use:dismissBoardPopup={{ close: () => { meContextMenu = null; }, escape: false }}
     >
       <button type="button" role="menuitem" onclick={() => { toggleBeaconMark(ME_OBJECT_ID); meContextMenu = null; }}>

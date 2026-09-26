@@ -26,6 +26,7 @@ export interface ContextPickState {
   /** World-space popup corner, captured when the overlapping-note picker opens. */
   x: number;
   y: number;
+  zoomAtOpen: number;
 }
 
 export const selection = $state({
@@ -293,11 +294,13 @@ export function setMarquee(marquee: Bounds | null): void {
 export function setContextPick(noteIds: readonly string[], point: Point, viewport: { width: number; height: number }): void {
   const width = 184;
   const estimatedHeight = Math.min(240, noteIds.length * 30 + 12);
+  const zoomAtOpen = camera.zoom;
   const anchor = fitBoardPopupAnchor(camera, viewport, screenToWorld(camera, viewport, point), { width, height: estimatedHeight });
   selection.contextPick = {
     noteIds: [...noteIds],
     x: anchor.x,
     y: anchor.y,
+    zoomAtOpen,
   };
 }
 

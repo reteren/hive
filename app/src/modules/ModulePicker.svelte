@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
+  import { camera } from "../board/camera.svelte";
   import { dismissBoardPopup } from "../ui/boardAnchor";
   import ModuleChip from "./ModuleChip.svelte";
   import type { ModuleOption } from "./moduleLogic";
@@ -40,6 +41,7 @@
 
   let draftId = $state<string | null>(null);
   let pickerElement: HTMLDivElement;
+  const zoomAtOpen = camera.zoom;
 
   function placeFloatingPicker(): void {
     if (!floating || !pickerElement) return;
@@ -65,10 +67,10 @@
     const gap = 8;
     const rightFits = cardRect.right + gap + width <= visibleRight;
     const leftFits = cardRect.left - gap - width >= visibleLeft;
+    let maxHeightScreen: number | null = null;
     let left: number;
     let top: number;
     if (rightFits || leftFits) {
-      pickerElement.style.maxHeight = "";
       pickerElement.style.overflowY = "";
       left = rightFits ? cardRect.right + gap : cardRect.left - gap - width;
       top = Math.max(visibleTop, Math.min(cardRect.top, visibleBottom - height));
@@ -78,12 +80,16 @@
       const placeBelow = below >= height || below >= above;
       left = Math.max(visibleLeft, Math.min(cardRect.left, visibleRight - width));
       top = placeBelow ? cardRect.bottom + gap : cardRect.top - gap - height;
-      pickerElement.style.maxHeight = `${Math.max(90, (placeBelow ? below : above) / (host.offsetWidth > 0 ? hostRect.width / host.offsetWidth : 1))}px`;
+      maxHeightScreen = placeBelow ? below : above;
       pickerElement.style.overflowY = "auto";
     }
-    const scale = host.offsetWidth > 0 ? hostRect.width / host.offsetWidth : 1;
-    pickerElement.style.left = `${(left - hostRect.left) / scale}px`;
-    pickerElement.style.top = `${(top - hostRect.top) / scale}px`;
+    const hostScale = host.offsetWidth > 0 ? hostRect.width / host.offsetWidth : 1;
+    const popupScale = hostScale / zoomAtOpen;
+    pickerElement.style.maxHeight = maxHeightScreen === null
+      ? ""
+      : `${Math.max(90, maxHeightScreen / popupScale)}px`;
+    pickerElement.style.left = `${(left - hostRect.left) / hostScale}px`;
+    pickerElement.style.top = `${(top - hostRect.top) / hostScale}px`;
   }
 
   function onWindowKeydown(event: KeyboardEvent): void {
@@ -120,6 +126,8 @@
   data-selection-ignore
   role="group"
   aria-label={title}
+  style:transform={`scale(${1 / zoomAtOpen})`}
+  style:transform-origin="0 0"
   style:position={floating ? undefined : "absolute"}
   style:left={floating ? undefined : "0px"}
   style:top={floating ? undefined : "calc(100% + 4px)"}

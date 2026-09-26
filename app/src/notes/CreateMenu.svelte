@@ -5,7 +5,7 @@
   import { creationMenu, closeCreationMenu } from "./creation.svelte";
   import { boardPopupStyle, dismissBoardPopup } from "../ui/boardAnchor";
 
-  const menuStyle = $derived(boardPopupStyle(camera, viewport, creationMenu.menuAnchor));
+  const menuStyle = $derived(boardPopupStyle(camera, viewport, creationMenu.menuAnchor, creationMenu.zoomAtOpen));
 
   function createNoteFromMenu(): void {
     createNote();

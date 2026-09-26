@@ -8,6 +8,7 @@ export const creationMenu = $state({
   origin: { x: 0, y: 0 },
   screenAnchor: { x: 0, y: 0 },
   menuAnchor: { x: 0, y: 0 },
+  zoomAtOpen: 1,
   pendingTrigger: null as CreationTrigger | null,
 });
 
@@ -19,6 +20,7 @@ export function openCreationMenu(trigger: CreationTrigger): void {
   const origin = chooseCreationOrigin(trigger, pointer.world, camera, viewport);
   creationMenu.origin = origin.world;
   creationMenu.screenAnchor = origin.screen;
+  creationMenu.zoomAtOpen = camera.zoom;
   creationMenu.menuAnchor = fitBoardPopupAnchor(camera, viewport, origin.world, { width: 164, height: 430 });
   creationMenu.pinned = false;
   creationMenu.open = true;
