@@ -14,6 +14,7 @@
   import { closeLinkContextMenu, linkContext } from "../links-in-text/contextMenu.svelte";
   import { formatPointAddress } from "../links-in-text/format";
   import TasksPanel from "../tasks/TasksPanel.svelte";
+  import { boardPopupStyle, dismissBoardPopup, fitBoardPopupAnchor } from "../ui/boardAnchor";
 
   registerNoteMenuItem({
     id: "notes.copyLink",
@@ -44,11 +45,12 @@
         event.preventDefault();
         event.stopPropagation();
         const menuHeight = Math.max(44, noteMenuItems(noteId).length * 32 + 8);
+        const anchor = fitBoardPopupAnchor(camera, viewport, point, { width: 196, height: menuHeight });
         linkContext.menu = {
           kind: "note",
           noteId,
-          x: clampMenuPosition(local.x, viewport.width, 196),
-          y: clampMenuPosition(local.y, viewport.height, menuHeight),
+          x: anchor.x,
+          y: anchor.y,
         };
         linkContext.commandNoteId = noteId;
         linkContext.commandPoint = point;
@@ -57,11 +59,12 @@
 
       event.preventDefault();
       event.stopPropagation();
+      const anchor = fitBoardPopupAnchor(camera, viewport, point, { width: 224, height: 44 });
       linkContext.menu = {
         kind: "board",
         point,
-        x: clampMenuPosition(local.x, viewport.width, 224),
-        y: clampMenuPosition(local.y, viewport.height, 44),
+        x: anchor.x,
+        y: anchor.y,
       };
       linkContext.commandNoteId = null;
       linkContext.commandPoint = point;
@@ -101,10 +104,6 @@
       window.removeEventListener("click", onWindowClick, true);
     };
   });
-
-  function clampMenuPosition(position: number, extent: number, menuExtent: number): number {
-    return Math.max(8, Math.min(position + 5, Math.max(8, extent - menuExtent - 8)));
-  }
 
   function coordinateLabel(point: { x: number; y: number }): string {
     return formatPointAddress(point).replace("hive://point/", "");
@@ -186,8 +185,8 @@
       role="menu"
       tabindex="-1"
       aria-label={linkContext.menu.kind === "board" ? "Board actions" : "Note actions"}
-      style:left={`${linkContext.menu.x}px`}
-      style:top={`${linkContext.menu.y}px`}
+      style={boardPopupStyle(camera, viewport, { x: linkContext.menu.x, y: linkContext.menu.y })}
+      use:dismissBoardPopup={{ close: closeLinkContextMenu }}
       oncontextmenu={(event) => event.preventDefault()}
     >
       {#if linkContext.menu.kind === "board"}

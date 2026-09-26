@@ -1,11 +1,13 @@
 import { camera, pointer, viewport } from "../board/camera.svelte";
 import { chooseCreationOrigin, type CreationTrigger } from "./creationPosition";
+import { fitBoardPopupAnchor } from "../ui/boardAnchor";
 
 export const creationMenu = $state({
   open: false,
   pinned: false,
   origin: { x: 0, y: 0 },
   screenAnchor: { x: 0, y: 0 },
+  menuAnchor: { x: 0, y: 0 },
   pendingTrigger: null as CreationTrigger | null,
 });
 
@@ -17,6 +19,7 @@ export function openCreationMenu(trigger: CreationTrigger): void {
   const origin = chooseCreationOrigin(trigger, pointer.world, camera, viewport);
   creationMenu.origin = origin.world;
   creationMenu.screenAnchor = origin.screen;
+  creationMenu.menuAnchor = fitBoardPopupAnchor(camera, viewport, origin.world, { width: 164, height: 430 });
   creationMenu.pinned = false;
   creationMenu.open = true;
 }

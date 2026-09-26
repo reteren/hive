@@ -1,15 +1,11 @@
 <script lang="ts">
-  import { viewport } from "../board/camera.svelte";
+  import { camera, viewport } from "../board/camera.svelte";
   import { createNote, createNoteKind } from "./noteCommands";
   import { R5_KINDS } from "../model/note";
-  import { createMenuPosition } from "./creationPosition";
   import { creationMenu, closeCreationMenu } from "./creation.svelte";
+  import { boardPopupStyle, dismissBoardPopup } from "../ui/boardAnchor";
 
-  const menuPosition = $derived(createMenuPosition(
-    creationMenu.screenAnchor,
-    viewport,
-    { width: 164, height: 268 },
-  ));
+  const menuStyle = $derived(boardPopupStyle(camera, viewport, creationMenu.menuAnchor));
 
   function createNoteFromMenu(): void {
     createNote();
@@ -51,8 +47,8 @@
     data-create-menu
     data-selection-ignore
     aria-label="Create list"
-    style:left={`${menuPosition.x}px`}
-    style:top={`${menuPosition.y}px`}
+    style={menuStyle}
+    use:dismissBoardPopup={{ close: closeCreationMenu }}
   >
     <header class="menu-header">
       <span>Create</span>

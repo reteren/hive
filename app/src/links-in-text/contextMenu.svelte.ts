@@ -1,6 +1,7 @@
 import type { Point } from "../board/cameraMath";
 
 export type LinkContextMenu =
+  /** x/y are the popup corner in board world units. */
   | { kind: "board"; x: number; y: number; point: Point }
   | { kind: "note"; x: number; y: number; noteId: string };
 

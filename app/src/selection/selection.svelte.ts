@@ -1,6 +1,8 @@
 import { registerCommand } from "../commands/registry.svelte";
 import { execute } from "../history/history.svelte";
-import type { Point } from "../board/cameraMath";
+import { screenToWorld, type Point } from "../board/cameraMath";
+import { camera } from "../board/camera.svelte";
+import { fitBoardPopupAnchor } from "../ui/boardAnchor";
 import type { Bounds } from "../notes/layout.svelte";
 
 /** A reversible snapshot of the board selection, including registered selection domains. */
@@ -21,6 +23,7 @@ export interface SelectionSnapshotExtension {
 
 export interface ContextPickState {
   noteIds: string[];
+  /** World-space popup corner, captured when the overlapping-note picker opens. */
   x: number;
   y: number;
 }
@@ -290,10 +293,11 @@ export function setMarquee(marquee: Bounds | null): void {
 export function setContextPick(noteIds: readonly string[], point: Point, viewport: { width: number; height: number }): void {
   const width = 184;
   const estimatedHeight = Math.min(240, noteIds.length * 30 + 12);
+  const anchor = fitBoardPopupAnchor(camera, viewport, screenToWorld(camera, viewport, point), { width, height: estimatedHeight });
   selection.contextPick = {
     noteIds: [...noteIds],
-    x: Math.max(8, Math.min(point.x + 8, viewport.width - width - 8)),
-    y: Math.max(8, Math.min(point.y + 8, viewport.height - estimatedHeight - 8)),
+    x: anchor.x,
+    y: anchor.y,
   };
 }
 

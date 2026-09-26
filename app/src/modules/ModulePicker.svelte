@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { onDestroy, onMount, tick } from "svelte";
-  import { camera, viewport } from "../board/camera.svelte";
+  import { onDestroy, onMount } from "svelte";
+  import { dismissBoardPopup } from "../ui/boardAnchor";
   import ModuleChip from "./ModuleChip.svelte";
   import type { ModuleOption } from "./moduleLogic";
 
@@ -86,12 +86,6 @@
     pickerElement.style.top = `${(top - hostRect.top) / scale}px`;
   }
 
-  function onWindowPointerDown(event: PointerEvent): void {
-    const target = event.target;
-    if (!(target instanceof Element) || target.closest("[data-module-picker], [data-module-trigger]")) return;
-    onClose();
-  }
-
   function onWindowKeydown(event: KeyboardEvent): void {
     if (event.code !== "Escape") return;
     event.preventDefault();
@@ -100,26 +94,12 @@
   }
 
   onMount(() => {
-    window.addEventListener("pointerdown", onWindowPointerDown, true);
     window.addEventListener("keydown", onWindowKeydown, true);
-    if (floating) {
-      placeFloatingPicker();
-      window.addEventListener("resize", placeFloatingPicker);
-    }
-  });
-
-  $effect(() => {
-    if (!floating) return;
-    camera.x; camera.y; camera.zoom;
-    viewport.width; viewport.height;
-    selected.length;
-    void tick().then(placeFloatingPicker);
+    if (floating) placeFloatingPicker();
   });
 
   onDestroy(() => {
-    window.removeEventListener("pointerdown", onWindowPointerDown, true);
     window.removeEventListener("keydown", onWindowKeydown, true);
-    window.removeEventListener("resize", placeFloatingPicker);
   });
 
   $effect(() => {
@@ -140,6 +120,10 @@
   data-selection-ignore
   role="group"
   aria-label={title}
+  style:position={floating ? undefined : "absolute"}
+  style:left={floating ? undefined : "0px"}
+  style:top={floating ? undefined : "calc(100% + 4px)"}
+  use:dismissBoardPopup={{ close: onClose, ignoreSelector: "[data-module-trigger]", escape: false }}
 >
   <div class="module-picker-heading">
     <span>{title}</span>
@@ -186,3 +170,7 @@
     {/if}
   </div>
 </div>
+
+<style>
+  :global(.note-card:has(.note-modules > .module-picker)) { overflow: visible; }
+</style>

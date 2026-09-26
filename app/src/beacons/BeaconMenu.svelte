@@ -1,5 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { camera, viewport } from "../board/camera.svelte";
+  import { screenToWorld, type Point } from "../board/cameraMath";
+  import { boardPopupStyle, dismissBoardPopup, fitBoardPopupAnchor } from "../ui/boardAnchor";
   import { board } from "../model/board.svelte";
   import { ME_OBJECT_ID } from "../model/link";
   import { editing } from "../notes/editing.svelte";
@@ -15,7 +18,31 @@
 
   let beacons = $derived(allBeacons());
   let focused = $derived(validFocused());
-  let meContextMenu = $state<null | { x: number; y: number }>(null);
+  let controls: HTMLDivElement;
+  let toggleButton: HTMLButtonElement;
+  let beaconAnchor = $state<Point | null>(null);
+  let meContextMenu = $state<Point | null>(null);
+
+  function boardPoint(clientX: number, clientY: number): Point {
+    const rect = document.querySelector<HTMLElement>(".board")!.getBoundingClientRect();
+    return screenToWorld(camera, viewport, { x: clientX - rect.left, y: clientY - rect.top });
+  }
+
+  function anchorBelowToggle(): Point {
+    const rect = toggleButton.getBoundingClientRect();
+    return fitBoardPopupAnchor(camera, viewport, boardPoint(rect.left, rect.bottom), { width: 230, height: 320 });
+  }
+
+  function controlsOrigin(): Point {
+    const boardRect = document.querySelector<HTMLElement>(".board")!.getBoundingClientRect();
+    const controlsRect = controls.getBoundingClientRect();
+    return { x: controlsRect.left - boardRect.left, y: controlsRect.top - boardRect.top };
+  }
+
+  $effect(() => {
+    if (beaconState.menuOpen && toggleButton && !beaconAnchor) beaconAnchor = anchorBelowToggle();
+    else if (!beaconState.menuOpen) beaconAnchor = null;
+  });
 
   onMount(() => {
     function onMeContextMenu(event: MouseEvent): void {
@@ -23,10 +50,7 @@
       event.preventDefault();
       event.stopImmediatePropagation();
       closeLinkContextMenu();
-      meContextMenu = {
-        x: Math.max(8, Math.min(event.clientX, window.innerWidth - 180)),
-        y: Math.max(8, Math.min(event.clientY, window.innerHeight - 84)),
-      };
+      meContextMenu = fitBoardPopupAnchor(camera, viewport, boardPoint(event.clientX, event.clientY), { width: 180, height: 84 });
     }
     window.addEventListener("contextmenu", onMeContextMenu, true);
     return () => window.removeEventListener("contextmenu", onMeContextMenu, true);
@@ -48,17 +72,13 @@
     event.stopImmediatePropagation();
   }
 
-  function onOutsideClick(event: PointerEvent): void {
-    if (!(event.target instanceof Element)) return;
-    if (meContextMenu && !event.target.closest("[data-me-beacon-menu]")) meContextMenu = null;
-    if (beaconState.menuOpen && !event.target.closest("[data-beacon-menu], .beacon-menu-toggle")) beaconState.menuOpen = false;
-  }
 </script>
 
-<svelte:window onkeydown={onEscape} onpointerdown={onOutsideClick} />
+<svelte:window onkeydown={onEscape} />
 
-<div class="beacon-controls" data-selection-ignore>
+<div class="beacon-controls" data-selection-ignore bind:this={controls}>
   <button
+    bind:this={toggleButton}
     class="beacon-menu-toggle"
     type="button"
     aria-label="Beacon menu"
@@ -72,8 +92,10 @@
       <button type="button" aria-label="Exit beacon focus" onclick={clearFocus}>✕</button>
     </div>
   {/if}
-  {#if beaconState.menuOpen}
-    <div id="beacon-menu" class="beacon-menu" data-beacon-menu role="group" aria-label="Beacon focus">
+  {#if beaconState.menuOpen && beaconAnchor}
+    <div id="beacon-menu" class="beacon-menu" data-beacon-menu role="group" aria-label="Beacon focus"
+      style={`${boardPopupStyle(camera, viewport, beaconAnchor, controlsOrigin())};position:absolute`}
+      use:dismissBoardPopup={{ close: () => { beaconState.menuOpen = false; }, ignoreSelector: ".beacon-menu-toggle", escape: false }}>
       <div class="beacon-menu-title">Beacon focus</div>
       {#each beacons as id (id)}
         <label class="beacon-menu-row">
@@ -91,8 +113,8 @@
       data-selection-ignore
       role="menu"
       aria-label="ME beacon actions"
-      style:left={`${meContextMenu.x}px`}
-      style:top={`${meContextMenu.y}px`}
+      style={`${boardPopupStyle(camera, viewport, meContextMenu, controlsOrigin())};position:absolute`}
+      use:dismissBoardPopup={{ close: () => { meContextMenu = null; }, escape: false }}
     >
       <button type="button" role="menuitem" onclick={() => { toggleBeaconMark(ME_OBJECT_ID); meContextMenu = null; }}>
         {beaconMarkActionLabel(ME_OBJECT_ID)}
