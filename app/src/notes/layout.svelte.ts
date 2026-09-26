@@ -66,6 +66,13 @@ export interface RenderedNoteMetrics {
   lineHeight: number;
 }
 
+const RENDERED_NOTE_BODY_SELECTOR = ".markdown-preview, .cm-scroller, .cm-content, .note-body, .calculator-body";
+
+/** Find the natural content surface used to size notes, including custom calculator bodies. */
+export function renderedNoteBodyElement(content: Pick<HTMLElement, "querySelector">): HTMLElement | null {
+  return content.querySelector<HTMLElement>(RENDERED_NOTE_BODY_SELECTOR);
+}
+
 /** Maximum manual height: at least 1.5 base heights, with five rendered lines beyond the text. */
 export function maximumResizableHeight(
   contentHeight: number,
@@ -84,8 +91,7 @@ export function renderedNoteMetrics(noteId: string): RenderedNoteMetrics | null 
   const root = [...document.querySelectorAll<HTMLElement>(".note-card[data-note-id]")]
     .find((element) => element.dataset.noteId === noteId);
   const content = root?.querySelector<HTMLElement>(".note-content");
-  const body = content?.querySelector<HTMLElement>(".markdown-preview, .cm-scroller, .cm-content")
-    ?? content?.querySelector<HTMLElement>(".note-body");
+  const body = content ? renderedNoteBodyElement(content) : null;
   if (!root || !content || !body) return null;
 
   const style = getComputedStyle(body);

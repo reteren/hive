@@ -13,7 +13,7 @@ import { maximumResizableHeight, maximumResizableHeightForNote, minimumTextWidth
 import { preferences } from "../settings/preferences.svelte";
   import { zoneBounds, type Zone } from "../model/zone";
   import { zones, updateZone } from "../model/zones.svelte";
-  import { zoneMembers } from "../zones/membership.svelte";
+  import { beginZoneMembershipBatch, endZoneMembershipBatch, zoneMembers } from "../zones/membership.svelte";
   import { isDimmed } from "../beacons/focus.svelte";
   import {
     createZoneMoveGesture,
@@ -80,6 +80,7 @@ import { preferences } from "../settings/preferences.svelte";
   import { startNoteEditing } from "../editor/editorSession";
 import { isLineTool, tool } from "../tools/tool.svelte";
 import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
+import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zones/zoneMovePreview.svelte";
   import {
     createPrecisionDeltaTracker,
     setPrecisionAlt,
@@ -192,6 +193,12 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
     primaryId: string | null;
   }
 
+  type GesturePointerInput = Pick<PointerEvent, "pointerId" | "altKey" | "ctrlKey" | "shiftKey" | "preventDefault">;
+
+  type PendingBoardMove =
+    | { kind: "gesture"; pointerId: number; screen: Point; event: GesturePointerInput }
+    | { kind: "zone-grab" | "grab"; pointerId: number; world: Point; ctrl: boolean; alt: boolean };
+
   let layer: HTMLDivElement;
   let boardElement: HTMLElement | null = null;
   let activeGesture: ActivePointerGesture | null = null;
@@ -199,9 +206,18 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
   let zoneGrabGesture: ZoneMoveGesture | null = null;
   let zoneGrabStartWorld: Point | null = null;
   let zoneGrabPrecision: PrecisionDeltaTracker | null = null;
+  let zoneMembershipBatchOpen = false;
+  let pointerMoveFrame: number | null = null;
+  let pendingBoardMove: PendingBoardMove | null = null;
   let grabStartWorld: Point | null = null;
   let grabPrecision: PrecisionDeltaTracker | null = null;
   let pendingAltContextPick: PendingAltContextPick | null = null;
+  const zoneOutlinePathCache = new WeakMap<Zone, {
+    parts: Zone["parts"];
+    holes: Zone["holes"];
+    ppu: number;
+    value: string;
+  }>();
   let altHeld = false;
   let suppressContextMenuUntil = 0;
   let suppressBodyClickUntil = 0;
@@ -253,19 +269,28 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
       const zone = zones.byId[id];
       if (!zone) return [];
       const bounds = zoneBounds(zone);
-      const screen = worldToScreen(camera, viewport, { x: bounds.x, y: bounds.y });
+      const offset = zoneMovePreview.zoneId === id ? zoneMovePreview.offset : { x: 0, y: 0 };
+      const screen = worldToScreen(camera, viewport, { x: bounds.x + offset.x, y: bounds.y + offset.y });
       return [{
         id, name: zone.name, color: zone.color,
         left: screen.x, top: screen.y,
         width: bounds.width * ppu, height: bounds.height * ppu,
         primary: selection.zoneIds.at(-1) === id,
         resizable: isRectZone(zone),
-        path: [...zone.parts, ...zone.holes].map((ring) =>
-          `M ${ring.map((point) => `${(point.x - bounds.x) * ppu} ${(point.y - bounds.y) * ppu}`).join(" L ")} Z`,
-        ).join(" "),
+        path: zoneOutlinePath(zone, bounds, ppu),
       }];
     });
   });
+
+  function zoneOutlinePath(zone: Zone, bounds: ReturnType<typeof zoneBounds>, ppu: number): string {
+    const cached = zoneOutlinePathCache.get(zone);
+    if (cached?.parts === zone.parts && cached.holes === zone.holes && cached.ppu === ppu) return cached.value;
+    const value = [...zone.parts, ...zone.holes].map((ring) =>
+      `M ${ring.map((point) => `${(point.x - bounds.x) * ppu} ${(point.y - bounds.y) * ppu}`).join(" L ")} Z`,
+    ).join(" ");
+    zoneOutlinePathCache.set(zone, { parts: zone.parts, holes: zone.holes, ppu, value });
+    return value;
+  }
 
   let groupBounds = $derived.by(() => {
     if (selection.ids.length < 2 || selection.zoneIds.length > 0) return null;
@@ -541,18 +566,45 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
       }
 
       if (activeGesture && activeGesture.pointerId === event.pointerId) {
-        updatePointerGesture(event, local);
+        if (activeGesture.kind === "marquee") updatePointerGesture(event, local);
+        else {
+          if (activeGesture.kind === "body-move") event.preventDefault();
+          queueBoardMove({
+            kind: "gesture",
+            pointerId: event.pointerId,
+            screen: local,
+            event: {
+              pointerId: event.pointerId,
+              altKey: event.altKey,
+              ctrlKey: event.ctrlKey,
+              shiftKey: event.shiftKey,
+              preventDefault: () => {},
+            },
+          });
+        }
         return;
       }
 
       if (zoneGrabGesture) {
-        updateZoneGrabAt(screenToWorld(camera, viewport, local), event.ctrlKey, event.altKey);
+        queueBoardMove({
+          kind: "zone-grab",
+          pointerId: event.pointerId,
+          world: screenToWorld(camera, viewport, local),
+          ctrl: event.ctrlKey,
+          alt: event.altKey,
+        });
         return;
       }
 
       // A middle-button pan remains owned by the camera while G move mode is active.
       if (grabGesture && event.buttons === 0 && isPointInsideBoard(local)) {
-        updateGrabAt(screenToWorld(camera, viewport, local), event.ctrlKey, event.altKey);
+        queueBoardMove({
+          kind: "grab",
+          pointerId: event.pointerId,
+          world: screenToWorld(camera, viewport, local),
+          ctrl: event.ctrlKey,
+          alt: event.altKey,
+        });
       }
     }
 
@@ -565,19 +617,23 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
         pendingAltContextPick = null;
       }
       if (activeGesture?.pointerId !== event.pointerId) {
+        flushBoardMove(event.pointerId);
         completePendingAltContextPick(event.pointerId, false);
         return;
       }
+      cancelBoardMove(event.pointerId);
       if (local) updatePointerGesture(event, local, false);
       finishPointerGesture(event.pointerId, false);
     }
 
     function onPointerCancel(event: PointerEvent): void {
+      cancelBoardMove(event.pointerId);
       if (activeGesture?.pointerId === event.pointerId) finishPointerGesture(event.pointerId, true);
       else completePendingAltContextPick(event.pointerId, true);
     }
 
     function onLostPointerCapture(event: PointerEvent): void {
+      cancelBoardMove(event.pointerId);
       if (activeGesture?.pointerId === event.pointerId) finishPointerGesture(event.pointerId, true, false);
     }
 
@@ -770,6 +826,43 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
     };
   });
 
+  function queueBoardMove(move: PendingBoardMove): void {
+    pendingBoardMove = move;
+    if (pointerMoveFrame !== null) return;
+    pointerMoveFrame = requestAnimationFrame(() => {
+      pointerMoveFrame = null;
+      const latest = pendingBoardMove;
+      pendingBoardMove = null;
+      if (latest) runBoardMove(latest);
+    });
+  }
+
+  function flushBoardMove(pointerId?: number): void {
+    const pending = pendingBoardMove;
+    if (!pending || (pointerId !== undefined && pending.pointerId !== pointerId)) return;
+    if (pointerMoveFrame !== null) cancelAnimationFrame(pointerMoveFrame);
+    pointerMoveFrame = null;
+    pendingBoardMove = null;
+    runBoardMove(pending);
+  }
+
+  function cancelBoardMove(pointerId?: number): void {
+    if (!pendingBoardMove || (pointerId !== undefined && pendingBoardMove.pointerId !== pointerId)) return;
+    if (pointerMoveFrame !== null) cancelAnimationFrame(pointerMoveFrame);
+    pointerMoveFrame = null;
+    pendingBoardMove = null;
+  }
+
+  function runBoardMove(move: PendingBoardMove): void {
+    if (move.kind === "gesture") {
+      if (activeGesture?.pointerId === move.pointerId) updatePointerGesture(move.event, move.screen);
+    } else if (move.kind === "zone-grab") {
+      if (zoneGrabGesture) updateZoneGrabAt(move.world, move.ctrl, move.alt);
+    } else if (grabGesture) {
+      updateGrabAt(move.world, move.ctrl, move.alt);
+    }
+  }
+
   function localPoint(event: Pick<PointerEvent, "clientX" | "clientY">): Point | null {
     if (!boardElement) return null;
     const rect = boardElement.getBoundingClientRect();
@@ -908,6 +1001,7 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
     const zone = zones.byId[id];
     if (!zone) return;
     const members = memberPositions(id);
+    beginZoneMoveBatch();
     activeGesture = {
       kind: "zone-move",
       pointerId: event.pointerId,
@@ -931,12 +1025,14 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
   function startZoneFollowMove(id: string, startWorld: Point): void {
     const zone = zones.byId[id];
     if (!zone || activeGesture || grabGesture || zoneGrabGesture) return;
+    const members = memberPositions(id);
     zoneGrabGesture = createZoneMoveGesture(
       zone,
       Object.values(zones.byId).filter((other) => other.id !== id),
-      memberPositions(id),
+      members,
       startWorld,
     );
+    beginZoneMoveBatch();
     zoneMode.followMoveActive = true;
     zoneGrabStartWorld = { ...startWorld };
     zoneGrabPrecision = createPrecisionDeltaTracker(startWorld, altHeld);
@@ -955,11 +1051,12 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
       grid.step,
       carryMembers,
     );
-    applyZoneMove(zoneGrabGesture.afterZone, zoneGrabGesture.afterMembers);
+    applyZoneMovePreview(zoneGrabGesture);
     zoneCollisionHint = zoneGrabGesture.blocked;
   }
 
   function commitZoneGrab(): void {
+    flushBoardMove();
     const gesture = zoneGrabGesture;
     if (!gesture) return;
     zoneGrabGesture = null;
@@ -967,10 +1064,15 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
     zoneGrabStartWorld = null;
     zoneGrabPrecision = null;
     zoneCollisionHint = false;
-    recordZoneMove(gesture);
+    if (zoneGestureChanged(gesture.beforeZone, gesture.afterZone)) {
+      applyZoneMove(gesture.afterZone, gesture.afterMembers);
+      recordZoneMove(gesture);
+    }
+    endZoneMoveBatch();
   }
 
   function cancelZoneGrab(): void {
+    cancelBoardMove();
     const gesture = zoneGrabGesture;
     if (!gesture) return;
     zoneGrabGesture = null;
@@ -979,7 +1081,8 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
     zoneGrabPrecision = null;
     zoneCollisionHint = false;
     const cancelled = cancelZoneMoveGesture(gesture);
-    applyZoneMove(cancelled.beforeZone, cancelled.beforeMembers);
+    applyMemberPositions(cancelled.beforeMembers);
+    endZoneMoveBatch();
   }
 
   function recordZoneMove(gesture: ZoneMoveGesture): void {
@@ -1001,6 +1104,7 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
   ): void {
     const zone = zones.byId[id];
     if (!zone || !isRectZone(zone)) return;
+    beginZoneMoveBatch();
     activeGesture = {
       kind: "zone-resize",
       pointerId: event.pointerId,
@@ -1014,7 +1118,7 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
     };
   }
 
-  function updatePointerGesture(event: PointerEvent, screen: Point, captureForFollowup = true): void {
+  function updatePointerGesture(event: GesturePointerInput, screen: Point, captureForFollowup = true): void {
     const gesture = activeGesture;
     if (!gesture) return;
 
@@ -1084,7 +1188,7 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
       gesture.gesture = updateZoneMoveGesture(
         gesture.gesture, adjustedWorld, grid.snap || event.ctrlKey, grid.step, event.ctrlKey,
       );
-      applyZoneMove(gesture.gesture.afterZone, gesture.gesture.afterMembers);
+      applyZoneMovePreview(gesture.gesture);
       zoneCollisionHint = gesture.gesture.blocked;
       return;
     }
@@ -1133,6 +1237,8 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
   }
 
   function finishPointerGesture(pointerId: number, cancelled: boolean, release = true): void {
+    if (cancelled) cancelBoardMove(pointerId);
+    else flushBoardMove(pointerId);
     const gesture = activeGesture;
     if (!gesture || gesture.pointerId !== pointerId) return;
     activeGesture = null;
@@ -1199,8 +1305,12 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
     } else if (gesture.kind === "zone-move") {
       if (cancelled) {
         const before = cancelZoneMoveGesture(gesture.gesture);
-        applyZoneMove(before.beforeZone, before.beforeMembers);
-      } else if (gesture.started) recordZoneMove(gesture.gesture);
+        applyMemberPositions(before.beforeMembers);
+      } else if (gesture.started && zoneGestureChanged(gesture.gesture.beforeZone, gesture.gesture.afterZone)) {
+        applyZoneMove(gesture.gesture.afterZone, gesture.gesture.afterMembers);
+        recordZoneMove(gesture.gesture);
+      }
+      endZoneMoveBatch();
     } else if (gesture.kind === "zone-resize") {
       if (cancelled) {
         applyZoneGeometry(gesture.gesture.beforeZone);
@@ -1214,6 +1324,7 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
           undo: () => applyZoneGeometry(beforeZone),
         });
       }
+      endZoneMoveBatch();
     } else if (cancelled) {
       applyFrames(cancelGroupScaleGesture(gesture.gesture));
     } else if (gesture.started) {
@@ -1271,6 +1382,7 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
   }
 
   function commitGrab(world: Point): void {
+    flushBoardMove();
     if (!grabGesture) return;
     commitMoveGesture(grabGesture, world);
     clearModuleDropPreview();
@@ -1282,6 +1394,7 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
   }
 
   function cancelGrab(): void {
+    cancelBoardMove();
     if (!grabGesture) return;
     applyFrames(cancelMoveGesture(grabGesture));
     clearModuleDropPreview();
@@ -1396,7 +1509,34 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
 
   function applyZoneMove(zone: Zone, members: readonly MemberPosition[]): void {
     applyZoneGeometry(zone);
-    for (const member of members) updateNote(member.id, { x: member.x, y: member.y });
+    applyMemberPositions(members);
+  }
+
+  function applyZoneMovePreview(gesture: ZoneMoveGesture): void {
+    setZoneMovePreview(gesture.beforeZone.id, gesture.offset);
+    applyMemberPositions(gesture.afterMembers);
+  }
+
+  function applyMemberPositions(members: readonly MemberPosition[]): void {
+    for (const member of members) {
+      const note = boardState.notes[member.id];
+      if (note && (note.x !== member.x || note.y !== member.y)) {
+        updateNote(member.id, { x: member.x, y: member.y });
+      }
+    }
+  }
+
+  function beginZoneMoveBatch(): void {
+    if (zoneMembershipBatchOpen) return;
+    beginZoneMembershipBatch();
+    zoneMembershipBatchOpen = true;
+  }
+
+  function endZoneMoveBatch(): void {
+    clearZoneMovePreview();
+    if (!zoneMembershipBatchOpen) return;
+    zoneMembershipBatchOpen = false;
+    endZoneMembershipBatch();
   }
 
   function commitMoveGesture(gesture: MoveGesture, worldPoint: Point): void {
@@ -1617,7 +1757,7 @@ import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
       class="selection-context-pick"
       role="listbox"
       aria-label="Choose overlapping note"
-      style={boardPopupStyle(camera, viewport, { x: selection.contextPick.x, y: selection.contextPick.y })}
+      style={boardPopupStyle(camera, viewport, { x: selection.contextPick.x, y: selection.contextPick.y }, selection.contextPick.zoomAtOpen)}
       use:dismissBoardPopup={{ close: closeContextPick, escape: false }}
     >
       {#each contextNotes as note (note.id)}

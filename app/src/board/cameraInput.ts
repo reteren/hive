@@ -12,6 +12,10 @@ const SHIFT_SPEED_MULTIPLIER = 2.5;
 export function attachCameraInput(board: HTMLElement): () => void {
   let dragPointerId: number | null = null;
   let lastDragPosition: Point | null = null;
+  let dragFrameId: number | null = null;
+  let pendingWorldDelta = { x: 0, y: 0 };
+  let pendingPointerScreen: Point | null = null;
+  let hasPendingPointerScreen = false;
   let frameId: number | null = null;
   let lastFrameTime: number | null = null;
   let shiftHeld = false;
@@ -92,9 +96,31 @@ export function attachCameraInput(board: HTMLElement): () => void {
     }
   }
 
+  function scheduleDragFrame(): void {
+    if (dragFrameId !== null) return;
+    dragFrameId = requestAnimationFrame(flushDragFrame);
+  }
+
+  function flushDragFrame(): void {
+    if (dragFrameId !== null) cancelAnimationFrame(dragFrameId);
+    dragFrameId = null;
+    if (hasPendingPointerScreen) {
+      setPointerScreen(pendingPointerScreen);
+      pendingPointerScreen = null;
+      hasPendingPointerScreen = false;
+    }
+    if (pendingWorldDelta.x !== 0 || pendingWorldDelta.y !== 0) {
+      camera.x += pendingWorldDelta.x;
+      camera.y += pendingWorldDelta.y;
+      pendingWorldDelta = { x: 0, y: 0 };
+      refreshPointerWorld();
+    }
+  }
+
   function endDrag(pointerId: number, releaseCapture: boolean): void {
     if (dragPointerId !== pointerId) return;
 
+    flushDragFrame();
     dragPointerId = null;
     lastDragPosition = null;
     board.style.cursor = "grab";
@@ -110,6 +136,9 @@ export function attachCameraInput(board: HTMLElement): () => void {
     event.preventDefault();
     dragPointerId = event.pointerId;
     lastDragPosition = { x: event.clientX, y: event.clientY };
+    pendingWorldDelta = { x: 0, y: 0 };
+    pendingPointerScreen = null;
+    hasPendingPointerScreen = false;
     board.setPointerCapture(event.pointerId);
     board.style.cursor = "grabbing";
     updatePointer(event.clientX, event.clientY);
@@ -120,12 +149,12 @@ export function attachCameraInput(board: HTMLElement): () => void {
       const deltaX = event.clientX - lastDragPosition.x;
       const deltaY = event.clientY - lastDragPosition.y;
       lastDragPosition = { x: event.clientX, y: event.clientY };
-      updatePointer(event.clientX, event.clientY);
-
       const ppu = pixelsPerUnit(camera);
-      camera.x -= deltaX / ppu;
-      camera.y -= deltaY / ppu;
-      refreshPointerWorld();
+      pendingWorldDelta.x -= deltaX / ppu;
+      pendingWorldDelta.y -= deltaY / ppu;
+      pendingPointerScreen = localPoint(event.clientX, event.clientY);
+      hasPendingPointerScreen = true;
+      scheduleDragFrame();
       return;
     }
 
@@ -205,6 +234,7 @@ export function attachCameraInput(board: HTMLElement): () => void {
   return () => {
     clearHeldKeys();
     if (dragPointerId !== null) endDrag(dragPointerId, true);
+    if (dragFrameId !== null) cancelAnimationFrame(dragFrameId);
 
     board.removeEventListener("pointerdown", onPointerDown);
     board.removeEventListener("pointermove", onPointerMove);

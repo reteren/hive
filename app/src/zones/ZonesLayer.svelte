@@ -6,6 +6,7 @@
   import { zones } from "../model/zones.svelte";
   import type { Zone } from "../model/zone";
   import { zoneNameEdge } from "../model/zone";
+  import { zoneMovePreview } from "./zoneMovePreview.svelte";
   import { tool } from "../tools/tool.svelte";
   import { deleteZone, recolorZone, renameZone, ZONE_COLORS } from "./commands";
   import { startZoneMembershipSync } from "./membership.svelte";
@@ -15,22 +16,41 @@
   import { hitTestZones } from "../selection/hitTesting";
   import { requestZoneMove, zoneMode } from "./zoneMode.svelte";
 
-  type Menu = { id: string; x: number; y: number; rename: boolean };
+  type Menu = { id: string; x: number; y: number; zoomAtOpen: number; rename: boolean };
   let layer: HTMLDivElement;
   let surface: HTMLElement | null = null;
   let menu = $state<Menu | null>(null);
   let draftName = $state("");
   let renameInput = $state<HTMLInputElement>();
   const moveKeys = $derived(getCommand("select.move")?.keys.map(formatKey).join(", ") ?? "");
+  const pathCache = new WeakMap<Zone, { parts: Zone["parts"]; holes: Zone["holes"]; value: string }>();
+  const nameEdgeCache = new WeakMap<Zone, { parts: Zone["parts"]; value: ReturnType<typeof zoneNameEdge> }>();
 
   const transform = $derived(
     `translate(${viewport.width / 2} ${viewport.height / 2}) scale(${camera.zoom * PX_PER_UNIT}) translate(${-camera.x} ${-camera.y})`,
   );
 
   function pathFor(zone: Zone): string {
-    return [...zone.parts, ...zone.holes].map((polygon) => polygon.length
+    const cached = pathCache.get(zone);
+    if (cached?.parts === zone.parts && cached.holes === zone.holes) return cached.value;
+    const value = [...zone.parts, ...zone.holes].map((polygon) => polygon.length
       ? `M ${polygon.map((point) => `${point.x} ${point.y}`).join(" L ")} Z`
       : "").join(" ");
+    pathCache.set(zone, { parts: zone.parts, holes: zone.holes, value });
+    return value;
+  }
+
+  function cachedNameEdge(zone: Zone): ReturnType<typeof zoneNameEdge> {
+    const cached = nameEdgeCache.get(zone);
+    if (cached?.parts === zone.parts) return cached.value;
+    const value = zoneNameEdge(zone);
+    nameEdgeCache.set(zone, { parts: zone.parts, value });
+    return value;
+  }
+
+  function previewTransform(id: string): string | undefined {
+    if (zoneMovePreview.zoneId !== id) return undefined;
+    return `translate(${zoneMovePreview.offset.x} ${zoneMovePreview.offset.y})`;
   }
 
   function local(clientX: number, clientY: number): Point {
@@ -43,11 +63,13 @@
     if (!zone) return;
     draftName = zone.name;
     const world = screenToWorld(camera, viewport, point);
+    const zoomAtOpen = camera.zoom;
     const anchor = fitBoardPopupAnchor(camera, viewport, world, { width: 176, height: 190 });
     menu = {
       id,
       x: anchor.x,
       y: anchor.y,
+      zoomAtOpen,
       rename,
     };
     if (rename) void tick().then(() => { renameInput?.focus(); renameInput?.select(); });
@@ -143,8 +165,8 @@
       {#each zones.order as id (id)}
         {@const zone = zones.byId[id]}
         {#if zone}
-          {@const nameEdge = zoneNameEdge(zone)}
-          <g data-zone-id={id}>
+          {@const nameEdge = cachedNameEdge(zone)}
+          <g data-zone-id={id} transform={previewTransform(id)}>
             <path
               d={pathFor(zone)}
               fill={zone.color}
@@ -179,7 +201,7 @@
   </svg>
   {#if menu && zones.byId[menu.id]}
     <div class="zone-menu" data-zone-menu data-selection-ignore role="menu" aria-label="Zone actions"
-      style={boardPopupStyle(camera, viewport, { x: menu.x, y: menu.y })}
+      style={boardPopupStyle(camera, viewport, { x: menu.x, y: menu.y }, menu.zoomAtOpen)}
       use:dismissBoardPopup={{ close: () => { menu = null; }, escape: false }}>
       {#if menu.rename}
         <input bind:this={renameInput} bind:value={draftName} aria-label="Zone name" onkeydown={(event) => {

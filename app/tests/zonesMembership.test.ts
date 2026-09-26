@@ -3,7 +3,7 @@ import { board, replaceBoard, updateNote } from "../src/model/board.svelte";
 import type { Note } from "../src/model/note";
 import { rectContour, type Zone } from "../src/model/zone";
 import { replaceZones } from "../src/model/zones.svelte";
-import { recomputeZoneMembership, zoneMembers, zoneOf } from "../src/zones/membership.svelte";
+import { beginZoneMembershipBatch, endZoneMembershipBatch, recomputeZoneMembership, zoneMembers, zoneOf } from "../src/zones/membership.svelte";
 
 function note(id: string, x: number, y: number): Note {
   return { id, name: id, type: "note", text: "", x, y, width: 4, height: 4 };
@@ -57,5 +57,24 @@ describe("reactive zone membership computation", () => {
     replaceZones([]);
     recomputeZoneMembership();
     expect(board.notes.member.zoneId).toBeNull();
+  });
+
+  it("keeps membership stable during a move batch and recomputes on release", () => {
+    replaceBoard([note("member", 2, 2)]);
+    replaceZones([zone("a", 0, 0), zone("b", 20, 0)]);
+    recomputeZoneMembership();
+    expect(board.notes.member.zoneId).toBe("a");
+
+    beginZoneMembershipBatch();
+    try {
+      updateNote("member", { x: 22 });
+      expect(zoneOf("member")).toBe("a");
+      expect(board.notes.member.zoneId).toBe("a");
+    } finally {
+      endZoneMembershipBatch();
+    }
+
+    expect(board.notes.member.zoneId).toBe("b");
+    expect(zoneOf("member")).toBe("b");
   });
 });

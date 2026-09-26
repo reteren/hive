@@ -27,6 +27,7 @@
     const menu = linkContext.menu;
     return menu?.kind === "note" ? noteMenuItems(menu.noteId) : [];
   });
+  let contextMenuZoomAtOpen = $state(1);
 
   onMount(() => {
     const boardElement = document.querySelector<HTMLElement>(".board");
@@ -45,6 +46,7 @@
         event.preventDefault();
         event.stopPropagation();
         const menuHeight = Math.max(44, noteMenuItems(noteId).length * 32 + 8);
+        contextMenuZoomAtOpen = camera.zoom;
         const anchor = fitBoardPopupAnchor(camera, viewport, point, { width: 196, height: menuHeight });
         linkContext.menu = {
           kind: "note",
@@ -59,6 +61,7 @@
 
       event.preventDefault();
       event.stopPropagation();
+      contextMenuZoomAtOpen = camera.zoom;
       const anchor = fitBoardPopupAnchor(camera, viewport, point, { width: 224, height: 44 });
       linkContext.menu = {
         kind: "board",
@@ -185,7 +188,7 @@
       role="menu"
       tabindex="-1"
       aria-label={linkContext.menu.kind === "board" ? "Board actions" : "Note actions"}
-      style={boardPopupStyle(camera, viewport, { x: linkContext.menu.x, y: linkContext.menu.y })}
+      style={boardPopupStyle(camera, viewport, { x: linkContext.menu.x, y: linkContext.menu.y }, contextMenuZoomAtOpen)}
       use:dismissBoardPopup={{ close: closeLinkContextMenu }}
       oncontextmenu={(event) => event.preventDefault()}
     >

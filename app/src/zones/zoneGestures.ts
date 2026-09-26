@@ -5,6 +5,7 @@ import { addZone, removeZone, zones } from "../model/zones.svelte";
 import { rectContour, zoneBounds, type Zone, type ZoneBounds } from "../model/zone";
 import { resizeEdgeAxes, type ResizeEdge } from "../selection/resize";
 import { MIN_ZONE_SIZE } from "./geometry";
+import { roundCoordinate } from "./shapeGrid";
 import { shapesOverlap, translateShape } from "./shape";
 
 export interface MemberPosition {
@@ -16,10 +17,15 @@ export interface MemberPosition {
 export interface ZoneMoveGesture {
   beforeZone: Zone;
   afterZone: Zone;
+  beforeBounds: ZoneBounds;
+  beforeIsRect: boolean;
   beforeMembers: MemberPosition[];
   afterMembers: MemberPosition[];
   obstacles: Zone[];
+  obstacleBounds: ZoneBounds[];
+  obstacleIsRect: boolean[];
   startWorld: Point;
+  offset: Point;
   blocked: boolean;
 }
 
@@ -46,14 +52,20 @@ export function createZoneMoveGesture(
   startWorld: Point,
 ): ZoneMoveGesture {
   const beforeZone = copyZone(zone);
+  const obstacleCopies = obstacles.map(copyZone);
   const beforeMembers = membersAtStart.map((member) => ({ ...member }));
   return {
     beforeZone,
     afterZone: copyZone(beforeZone),
+    beforeBounds: zoneBounds(beforeZone),
+    beforeIsRect: isRectZone(beforeZone),
     beforeMembers,
     afterMembers: beforeMembers.map((member) => ({ ...member })),
-    obstacles: obstacles.map(copyZone),
+    obstacles: obstacleCopies,
+    obstacleBounds: obstacleCopies.map(zoneBounds),
+    obstacleIsRect: obstacleCopies.map(isRectZone),
     startWorld: { ...startWorld },
+    offset: { x: 0, y: 0 },
     blocked: false,
   };
 }
@@ -65,7 +77,7 @@ export function updateZoneMoveGesture(
   step: number,
   carryMembers = true,
 ): ZoneMoveGesture {
-  const before = zoneBounds(gesture.beforeZone);
+  const before = gesture.beforeBounds;
   let desired = {
     x: cursorWorld.x - gesture.startWorld.x,
     y: cursorWorld.y - gesture.startWorld.y,
@@ -74,10 +86,11 @@ export function updateZoneMoveGesture(
     const target = snapToGrid({ x: before.x + desired.x, y: before.y + desired.y }, step);
     desired = { x: target.x - before.x, y: target.y - before.y };
   }
-  const applied = moveAroundObstacles(gesture.beforeZone, desired, gesture.obstacles);
+  const applied = moveAroundObstacles(gesture, desired);
   return {
     ...gesture,
-    afterZone: { ...copyZone(gesture.beforeZone), ...translateShape(gesture.beforeZone, applied) },
+    afterZone: translateZone(gesture.beforeZone, applied),
+    offset: applied,
     afterMembers: gesture.beforeMembers.map((member) => carryMembers
       ? { ...member, x: member.x + applied.x, y: member.y + applied.y }
       : { ...member }),
@@ -195,24 +208,98 @@ function copyZone(zone: Zone): Zone {
   };
 }
 
-function moveAroundObstacles(before: Zone, desired: Point, obstacles: readonly Zone[]): Point {
-  const xy = moveInOrder(before, desired, obstacles, "xy");
-  const yx = moveInOrder(before, desired, obstacles, "yx");
+function moveAroundObstacles(gesture: ZoneMoveGesture, desired: Point): Point {
+  const xy = moveInOrder(gesture, desired, "xy");
+  const yx = moveInOrder(gesture, desired, "yx");
   return distanceSquared(xy, desired) <= distanceSquared(yx, desired) ? xy : yx;
 }
 
-function moveInOrder(before: Zone, desired: Point, obstacles: readonly Zone[], order: "xy" | "yx"): Point {
+function moveInOrder(gesture: ZoneMoveGesture, desired: Point, order: "xy" | "yx"): Point {
   const applied = { x: 0, y: 0 };
   for (const axis of axisOrder(order)) {
     const amount = desired[axis];
     if (amount === 0) continue;
-    const at = (fraction: number): Zone => ({
-      ...before,
-      ...translateShape(before, { ...applied, [axis]: amount * fraction }),
-    });
-    applied[axis] = amount * firstCollisionFraction(at, axis, obstacles);
+    applied[axis] = amount * firstMoveCollisionFraction(gesture, applied, axis, amount);
   }
   return applied;
+}
+
+/** Translation preserves a zone's topology, so moving it does not need grid normalization. */
+function translateZone(zone: Zone, delta: Point): Zone {
+  if (delta.x === 0 && delta.y === 0) return zone;
+  const moveRing = (ring: readonly Point[]) => ring.map((point) => ({
+    x: roundCoordinate(point.x + delta.x),
+    y: roundCoordinate(point.y + delta.y),
+  }));
+  return {
+    ...zone,
+    parts: zone.parts.map(moveRing),
+    holes: zone.holes.map(moveRing),
+  };
+}
+
+/** Collision samples use cached bounds and avoid the full shape grid for rectangle pairs. */
+function firstMoveCollisionFraction(
+  gesture: ZoneMoveGesture,
+  applied: Point,
+  axis: "x" | "y",
+  amount: number,
+): number {
+  const startBounds = translatedBounds(gesture.beforeBounds, applied);
+  const endOffset = { ...applied, [axis]: applied[axis] + amount };
+  const endBounds = translatedBounds(gesture.beforeBounds, endOffset);
+  const sweep = {
+    x: Math.min(startBounds.x, endBounds.x),
+    y: Math.min(startBounds.y, endBounds.y),
+    width: Math.max(startBounds.x + startBounds.width, endBounds.x + endBounds.width) - Math.min(startBounds.x, endBounds.x),
+    height: Math.max(startBounds.y + startBounds.height, endBounds.y + endBounds.height) - Math.min(startBounds.y, endBounds.y),
+  };
+  const nearby: number[] = [];
+  for (let index = 0; index < gesture.obstacles.length; index += 1) {
+    if (boundsOverlap(sweep, gesture.obstacleBounds[index])) nearby.push(index);
+  }
+  if (nearby.length === 0) return 1;
+
+  const sourcePoints = [...gesture.beforeZone.parts.flat(), ...gesture.beforeZone.holes.flat()];
+  const obstacleCoordinates = new Set<number>();
+  for (const index of nearby) {
+    const obstacle = gesture.obstacles[index];
+    for (const ring of [...obstacle.parts, ...obstacle.holes]) {
+      for (const point of ring) obstacleCoordinates.add(point[axis]);
+    }
+  }
+  const coordinates = [...obstacleCoordinates];
+  const fractions = new Set<number>([0, 1]);
+  for (const point of sourcePoints) {
+    const coordinate = point[axis] + applied[axis];
+    for (const obstacleCoordinate of coordinates) {
+      const fraction = (obstacleCoordinate - coordinate) / amount;
+      if (fraction > 0 && fraction < 1) fractions.add(fraction);
+    }
+  }
+
+  const sorted = [...fractions].sort((first, second) => first - second);
+  for (let index = 0; index < sorted.length - 1; index += 1) {
+    const fraction = (sorted[index] + sorted[index + 1]) / 2;
+    const offset = { ...applied, [axis]: applied[axis] + amount * fraction };
+    const candidateBounds = translatedBounds(gesture.beforeBounds, offset);
+    const candidate = translateZone(gesture.beforeZone, offset);
+    for (const obstacleIndex of nearby) {
+      const obstacleBounds = gesture.obstacleBounds[obstacleIndex];
+      if (!boundsOverlap(candidateBounds, obstacleBounds)) continue;
+      if (gesture.beforeIsRect && gesture.obstacleIsRect[obstacleIndex]) return sorted[index];
+      if (shapesOverlap(candidate, gesture.obstacles[obstacleIndex])) return sorted[index];
+    }
+  }
+  return 1;
+}
+
+function translatedBounds(bounds: ZoneBounds, delta: Point): ZoneBounds {
+  const x = roundCoordinate(bounds.x + delta.x);
+  const y = roundCoordinate(bounds.y + delta.y);
+  const right = roundCoordinate(bounds.x + bounds.width + delta.x);
+  const bottom = roundCoordinate(bounds.y + bounds.height + delta.y);
+  return { x, y, width: right - x, height: bottom - y };
 }
 
 function resizeAroundObstacles(

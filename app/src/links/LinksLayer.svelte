@@ -51,6 +51,22 @@
     };
   }
 
+  interface LinkRenderCache {
+    link: Link;
+    from: string;
+    to: string;
+    kind: Link["kind"];
+    shape: Link["shape"];
+    fromAnchor: string;
+    toAnchor: string;
+    source: Bounds;
+    target: Bounds;
+    fromColor: string;
+    toColor: string;
+    selected: boolean;
+    rendered: RenderedLink;
+  }
+
   type PointerGesture =
     | {
         kind: "link";
@@ -73,6 +89,7 @@
   }
 
   let layer: HTMLDivElement;
+  const renderedLinkCache = new Map<string, LinkRenderCache>();
   let gesture: PointerGesture | null = null;
   let linkMarquee = $state<{ start: Point; end: Point } | null>(null);
   let lastBodyClick: { id: string; at: number } | null = null;
@@ -86,44 +103,76 @@
       `translate(${-camera.x} ${-camera.y})`,
   );
 
-  let renderedLinks = $derived.by((): RenderedLink[] => Object.values(links.byId).flatMap((link) => {
-    const geometry = geometryForLink(link);
-    if (!geometry) return [];
-    const first = geometry.polyline[0];
-    const last = geometry.polyline.at(-1);
-    if (!first || !last) return [];
+  let renderedLinks = $derived.by((): RenderedLink[] => {
+    const selectedIds = new Set(selectedLinkIds());
+    const activeIds = new Set<string>();
+    const rendered: RenderedLink[] = [];
+    for (const link of Object.values(links.byId)) {
+      activeIds.add(link.id);
+      const source = objectBounds(link.from);
+      const target = objectBounds(link.to);
+      if (!source || !target) continue;
+      const fromColor = objectColor(link.from);
+      const toColor = objectColor(link.to);
+      const selected = selectedIds.has(link.id);
+      const cache = renderedLinkCache.get(link.id);
+      if (cache && sameLinkRenderInputs(cache, link, source, target, fromColor, toColor, selected)) {
+        rendered.push(cache.rendered);
+        continue;
+      }
 
-    const fromColor = objectColor(link.from);
-    const toColor = objectColor(link.to);
-    const gradient = fromColor.toLowerCase() === toColor.toLowerCase()
-      ? null
-      : {
-          id: `hive-link-${safeId(link.id)}`,
-          x1: first.x,
-          y1: first.y,
-          x2: last.x,
-          y2: last.y,
-          fromColor,
-          toColor,
-        };
-    const arrow = buildArrowGeometry(link.shape, geometry);
-    const shapeDashes = link.kind === "weak" && (link.shape === "wave" || link.shape === "zigzag")
-      ? buildShapeDashPaths(link.shape, geometry, arrow.shaftLength)
-      : [];
-    const dashPaths = shapeDashes.length > 0 ? shapeDashes : null;
+      const geometry = geometryForLink(link, source, target);
+      if (!geometry) continue;
+      const first = geometry.polyline[0];
+      const last = geometry.polyline.at(-1);
+      if (!first || !last) continue;
 
-    return [{
-      id: link.id,
-      kind: link.kind,
-      geometry,
-      path: geometry.path,
-      shaftPath: arrow.shaftPath,
-      headPath: arrow.headPath,
-      dashPaths,
-      selected: selectedLinkIds().includes(link.id),
-      gradient,
-    }];
-  }));
+      const gradient = fromColor.toLowerCase() === toColor.toLowerCase()
+        ? null
+        : {
+            id: `hive-link-${safeId(link.id)}`,
+            x1: first.x,
+            y1: first.y,
+            x2: last.x,
+            y2: last.y,
+            fromColor,
+            toColor,
+          };
+      const arrow = buildArrowGeometry(link.shape, geometry);
+      const shapeDashes = link.kind === "weak" && (link.shape === "wave" || link.shape === "zigzag")
+        ? buildShapeDashPaths(link.shape, geometry, arrow.shaftLength)
+        : [];
+      const value: RenderedLink = {
+        id: link.id,
+        kind: link.kind,
+        geometry,
+        path: geometry.path,
+        shaftPath: arrow.shaftPath,
+        headPath: arrow.headPath,
+        dashPaths: shapeDashes.length > 0 ? shapeDashes : null,
+        selected,
+        gradient,
+      };
+      renderedLinkCache.set(link.id, {
+        link,
+        from: link.from,
+        to: link.to,
+        kind: link.kind,
+        shape: link.shape,
+        fromAnchor: anchorKey(link.fromAnchor),
+        toAnchor: anchorKey(link.toAnchor),
+        source,
+        target,
+        fromColor,
+        toColor,
+        selected,
+        rendered: value,
+      });
+      rendered.push(value);
+    }
+    for (const id of renderedLinkCache.keys()) if (!activeIds.has(id)) renderedLinkCache.delete(id);
+    return rendered;
+  });
 
   let gradients = $derived(renderedLinks.flatMap((link) => link.gradient ? [link.gradient] : []));
 
@@ -530,10 +579,7 @@
     };
   });
 
-  function geometryForLink(link: Link): ShapeResult | null {
-    const source = objectBounds(link.from);
-    const target = objectBounds(link.to);
-    if (!source || !target) return null;
+  function geometryForLink(link: Link, source: Bounds, target: Bounds): ShapeResult {
     const circularSource = isBeacon(link.from);
     const circularTarget = isBeacon(link.to);
     const endpoints = shapeEndpoints(
@@ -551,6 +597,31 @@
       sourceBounds: circularSource ? undefined : source,
       targetBounds: circularTarget ? undefined : target,
     });
+  }
+
+  function sameLinkRenderInputs(
+    cache: LinkRenderCache,
+    link: Link,
+    source: Bounds,
+    target: Bounds,
+    fromColor: string,
+    toColor: string,
+    selected: boolean,
+  ): boolean {
+    return cache.link === link && cache.from === link.from && cache.to === link.to &&
+      cache.kind === link.kind && cache.shape === link.shape &&
+      cache.fromAnchor === anchorKey(link.fromAnchor) && cache.toAnchor === anchorKey(link.toAnchor) &&
+      sameBounds(cache.source, source) && sameBounds(cache.target, target) &&
+      cache.fromColor === fromColor && cache.toColor === toColor && cache.selected === selected;
+  }
+
+  function sameBounds(first: Bounds, second: Bounds): boolean {
+    return first.x === second.x && first.y === second.y &&
+      first.width === second.width && first.height === second.height;
+  }
+
+  function anchorKey(anchor: LinkAnchor | undefined): string {
+    return anchor ? `${anchor.x},${anchor.y}` : "";
   }
 
   function circleSource(endpoints: ReturnType<typeof shapeEndpoints>, bounds: Bounds): ReturnType<typeof shapeEndpoints> {

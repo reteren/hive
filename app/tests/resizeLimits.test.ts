@@ -5,11 +5,26 @@ import {
   growWidthToTextMinimum,
   maximumResizableHeight,
   minimumWidthForText,
+  renderedNoteBodyElement,
   RESIZE_EXTRA_LINES,
 } from "../src/notes/layout.svelte";
 import { resizeNote } from "../src/selection/resize";
 
 describe("manual note height limit", () => {
+  it("measures the calculator's custom body when calculating its resize limit", () => {
+    const calculatorBody = {} as HTMLElement;
+    let requestedSelector = "";
+    const content = {
+      querySelector: (selector: string) => {
+        requestedSelector = selector;
+        return selector.includes(".calculator-body") ? calculatorBody : null;
+      },
+    } as unknown as Pick<HTMLElement, "querySelector">;
+
+    expect(renderedNoteBodyElement(content)).toBe(calculatorBody);
+    expect(requestedSelector).toContain(".calculator-body");
+  });
+
   it("keeps the minimum 1.5× base height for short content", () => {
     expect(maximumResizableHeight(0, 2, 6)).toBe(9);
     expect(maximumResizableHeight(4, 2, 6)).toBe(14);
