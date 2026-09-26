@@ -13,11 +13,14 @@ import {
   moveTierCard,
   markTierHintsDismissed,
   nextTierlistNoteName,
+  pointerDragThresholdPassed,
   recolorTierRow,
   renameTierRow,
   reorderTierRow,
   tierCardPreview,
   tierLabelTextColor,
+  tierCardDropTargetAt,
+  tierRowInsertionIndexAt,
 } from "../src/tierlist/logic";
 
 const row = (id: string, name = id, cards: TierRow["cards"] = []): TierRow => ({
@@ -93,6 +96,32 @@ describe("Tierlist data", () => {
     expect(moved[1].cards.map(({ id }) => id)).toEqual(["one"]);
     expect(deleteTierCard(moved, "b", "one")[1].cards).toEqual([]);
     expect(initial[0].cards.map(({ id }) => id)).toEqual(["one", "two", "three"]);
+  });
+
+  it("computes card and row insertion positions from pointer geometry", () => {
+    const geometry = [
+      {
+        rowId: "top",
+        rect: { left: 0, top: 0, right: 220, bottom: 80 },
+        cards: [
+          { cardId: "one", rect: { left: 60, top: 10, right: 100, bottom: 50 } },
+          { cardId: "two", rect: { left: 110, top: 10, right: 150, bottom: 50 } },
+        ],
+      },
+      { rowId: "below", rect: { left: 0, top: 81, right: 220, bottom: 161 }, cards: [] },
+    ];
+    expect(tierCardDropTargetAt({ x: 105, y: 30 }, geometry)).toEqual({ rowId: "top", index: 1 });
+    expect(tierCardDropTargetAt({ x: 145, y: 30 }, geometry)).toEqual({ rowId: "top", index: 2 });
+    expect(tierCardDropTargetAt({ x: 200, y: 100 }, geometry)).toEqual({ rowId: "below", index: 0 });
+    expect(tierCardDropTargetAt({ x: 250, y: 30 }, geometry)).toBeNull();
+    expect(tierRowInsertionIndexAt(39, geometry)).toBe(0);
+    expect(tierRowInsertionIndexAt(45, geometry)).toBe(1);
+    expect(tierRowInsertionIndexAt(200, geometry)).toBe(2);
+  });
+
+  it("starts a pointer drag only after four pixels and leaves short motion cancellable", () => {
+    expect(pointerDragThresholdPassed({ x: 10, y: 10 }, { x: 13, y: 10 })).toBe(false);
+    expect(pointerDragThresholdPassed({ x: 10, y: 10 }, { x: 14, y: 10 })).toBe(true);
   });
 
   it("moves a deleted row's cards down, deletes cards only by explicit choice, or cancels", () => {

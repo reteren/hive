@@ -20,6 +20,71 @@ export type TierCardPreview =
   | { kind: "note"; name: string; lines: string[]; missing: false }
   | { kind: "note"; name: "content missing"; lines: []; missing: true };
 
+export interface TierRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+export interface TierRowDropGeometry {
+  rowId: string;
+  rect: TierRect;
+  cards: Array<{ cardId: string; rect: TierRect }>;
+}
+
+export interface TierCardDropTarget {
+  rowId: string;
+  index: number;
+}
+
+export function pointerDragThresholdPassed(start: { x: number; y: number }, current: { x: number; y: number }, threshold = 4): boolean {
+  return (current.x - start.x) ** 2 + (current.y - start.y) ** 2 >= threshold ** 2;
+}
+
+/** Find the row under a pointer and the nearest insertion boundary within that row. */
+export function tierCardDropTargetAt(
+  point: { x: number; y: number },
+  rows: readonly TierRowDropGeometry[],
+): TierCardDropTarget | null {
+  const containingRows = rows.filter(({ rect }) =>
+    point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom,
+  );
+  const row = containingRows.sort((first, second) =>
+    Math.abs((first.rect.top + first.rect.bottom) / 2 - point.y) -
+    Math.abs((second.rect.top + second.rect.bottom) / 2 - point.y),
+  )[0];
+  if (!row) return null;
+  if (row.cards.length === 0) return { rowId: row.rowId, index: 0 };
+
+  let index = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (let cardIndex = 0; cardIndex < row.cards.length; cardIndex += 1) {
+    const { rect } = row.cards[cardIndex];
+    const centerY = (rect.top + rect.bottom) / 2;
+    const beforeDistance = (point.x - rect.left) ** 2 + (point.y - centerY) ** 2;
+    if (beforeDistance < bestDistance) {
+      bestDistance = beforeDistance;
+      index = cardIndex;
+    }
+    const afterDistance = (point.x - rect.right) ** 2 + (point.y - centerY) ** 2;
+    if (afterDistance < bestDistance) {
+      bestDistance = afterDistance;
+      index = cardIndex + 1;
+    }
+  }
+  return { rowId: row.rowId, index };
+}
+
+/** Return the row index before which a dragged row should be inserted. */
+export function tierRowInsertionIndexAt(
+  y: number,
+  rows: readonly Pick<TierRowDropGeometry, "rect">[],
+): number {
+  const index = rows.findIndex(({ rect }) => y < (rect.top + rect.bottom) / 2);
+  return index < 0 ? rows.length : index;
+}
+
 export function createDefaultTierRows(idFactory: () => string = newId): TierRow[] {
   return DEFAULT_TIERS.map(({ name, color }) => ({ id: idFactory(), name, color, cards: [] }));
 }
