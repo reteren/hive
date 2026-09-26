@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { isTextEditingTarget } from "../commands/focus";
   import type { Note } from "../model/note";
   import { calculatorData } from "./calculators.svelte";
+  import { calculatorInputKey } from "./input";
   import { addCalculatorEntry, deleteCalculatorEntry, editCalculatorEntry } from "./calculatorActions.svelte";
   import { formatCalculatorResult, recomputeCalculatorEntries } from "./expression";
   import BankPanel from "./BankPanel.svelte";
@@ -14,25 +14,27 @@
   let editExpression = $state("");
 
   function handleNewKeydown(event: KeyboardEvent): void {
-    if (!isTextEditingTarget(event.target)) return;
+    const key = calculatorInputKey(event);
+    if (key === null) return;
     event.stopPropagation();
-    if (event.key === "Enter") {
+    if (key === "enter") {
       event.preventDefault();
       if (addCalculatorEntry(note.name, newExpression)) newExpression = "";
-    } else if (event.key === "Escape") {
+    } else if (key === "escape") {
       event.preventDefault();
       newExpression = "";
     }
   }
 
   function handleEditKeydown(event: KeyboardEvent, entryId: string): void {
-    if (!isTextEditingTarget(event.target)) return;
+    const key = calculatorInputKey(event);
+    if (key === null) return;
     event.stopPropagation();
-    if (event.key === "Enter") {
+    if (key === "enter") {
       event.preventDefault();
       editCalculatorEntry(note.name, entryId, editExpression);
       editingId = null;
-    } else if (event.key === "Escape") {
+    } else if (key === "escape") {
       event.preventDefault();
       editingId = null;
     }
@@ -44,7 +46,7 @@
   }
 </script>
 
-<section class="calculator-body" aria-label="Calculator">
+<section class="calculator-body" data-selection-ignore aria-label="Calculator">
   <div class="calculator-entry-form">
     <input
       bind:value={newExpression}
@@ -105,6 +107,7 @@
   .calculator-body {
     display: grid;
     min-width: 0;
+    min-height: max-content;
     gap: 7px;
     color: var(--text);
     font-size: 11px;
