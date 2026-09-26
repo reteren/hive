@@ -1,6 +1,6 @@
 # hive — состояние (обновлено 24.09.2026, после восстановления)
 
-**Актуально:** дебаг 1.1.6 (d16common.md, d16_a…d.md), run `run_0624a6375fba`: A task_e70d16ed8be0 зоны (баг курсора кисти, перемещение зон G/ПКМ/Shift, сетка всегда), B task_29453a394fbe Goal subtasks + рамка, снятие блокировки задач, C task_3a30abe806ce Auto-охват и связь Progress/Stats → маяк, D task_979eeecce2eb меню привязаны к точке доски + закрытие по клику мимо. Хэндлы: A term_a4d3…, B term_873c…, C term_0242…, D term_1e6b…, E term_e8b3…, F term_5806…. После волны — 1.1.7.
+**Актуально:** дебаг 1.1.6: B, C, D готовы и закоммичены; A (зоны) прерван выключением ПК — WIP в коммите ec06e44, продолжение resume_d16a.md, run `run_aadbca9058e5`, task_8640595bbaa2 на term_befffa94…. Хэндлы после перезапуска Orca: term_096d…, term_4093…, term_beff…, term_fd35…, term_3e02…, term_faa7…. После A — 1.1.7.
 
 ---
 
