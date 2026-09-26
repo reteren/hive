@@ -38,6 +38,13 @@ export interface TierCardDropTarget {
   index: number;
 }
 
+export interface TierCardInsertionIndicator {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
 export function pointerDragThresholdPassed(start: { x: number; y: number }, current: { x: number; y: number }, threshold = 4): boolean {
   return (current.x - start.x) ** 2 + (current.y - start.y) ** 2 >= threshold ** 2;
 }
@@ -74,6 +81,40 @@ export function tierCardDropTargetAt(
     }
   }
   return { rowId: row.rowId, index };
+}
+
+/** Convert an insertion boundary from screen coordinates into Tierlist node units. */
+export function tierCardInsertionIndicatorAt(
+  target: TierCardDropTarget,
+  rows: readonly TierRowDropGeometry[],
+  cardsAreaRect: TierRect,
+  rootRect: TierRect,
+  zoomX: number,
+  zoomY: number,
+): TierCardInsertionIndicator | null {
+  const row = rows.find((candidate) => candidate.rowId === target.rowId);
+  if (!row) return null;
+
+  const beforeCard = row.cards[target.index];
+  const lastCard = row.cards.at(-1);
+  const markerRect = beforeCard?.rect ?? lastCard?.rect;
+  const markerLeft = beforeCard
+    ? markerRect!.left - 4 * zoomX
+    : markerRect
+      ? markerRect.right + 1 * zoomX
+      : cardsAreaRect.left + 5 * zoomX;
+  const markerTop = markerRect?.top ?? cardsAreaRect.top + 7 * zoomY;
+  const markerWidth = 3 * zoomX;
+  const markerHeight = markerRect ? markerRect.bottom - markerRect.top : 56 * zoomY;
+  const safeZoomX = Math.max(zoomX, Number.EPSILON);
+  const safeZoomY = Math.max(zoomY, Number.EPSILON);
+
+  return {
+    left: (markerLeft - rootRect.left) / safeZoomX,
+    top: (markerTop - rootRect.top) / safeZoomY,
+    width: markerWidth / safeZoomX,
+    height: markerHeight / safeZoomY,
+  };
 }
 
 /** Return the row index before which a dragged row should be inserted. */

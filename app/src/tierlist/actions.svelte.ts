@@ -104,6 +104,28 @@ export function addNoteTierCard(noteId: string, rowId: string, sourceNoteId: str
   );
 }
 
+/** Copy a card between Tierlists while preserving the source and making the copy independently undoable. */
+export function duplicateTierlistCard(
+  sourceNoteId: string,
+  sourceRowId: string,
+  cardId: string,
+  targetNoteId: string,
+  targetRowId: string,
+  targetIndex?: number,
+): boolean {
+  if (sourceNoteId === targetNoteId) return false;
+  const sourceCard = rowsForTierlist(sourceNoteId)
+    .find((row) => row.id === sourceRowId)?.cards.find((card) => card.id === cardId);
+  if (!sourceCard) return false;
+
+  const duplicate: TierCard = { ...sourceCard, id: newId() };
+  return changeTierlist(
+    targetNoteId,
+    "Copy tier card",
+    addTierCard(rowsForTierlist(targetNoteId), targetRowId, duplicate, targetIndex),
+  );
+}
+
 /** Create a normal note from a text card and remove the card as one Undoable action. */
 export function createTierlistTextCardNoteCommand(
   noteId: string,

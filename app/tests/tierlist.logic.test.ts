@@ -19,7 +19,9 @@ import {
   reorderTierRow,
   tierCardPreview,
   tierLabelTextColor,
+  type TierRowDropGeometry,
   tierCardDropTargetAt,
+  tierCardInsertionIndicatorAt,
   tierRowInsertionIndexAt,
 } from "../src/tierlist/logic";
 
@@ -117,6 +119,47 @@ describe("Tierlist data", () => {
     expect(tierRowInsertionIndexAt(39, geometry)).toBe(0);
     expect(tierRowInsertionIndexAt(45, geometry)).toBe(1);
     expect(tierRowInsertionIndexAt(200, geometry)).toBe(2);
+  });
+
+  it("keeps the card insertion indicator in Tierlist node units at every zoom", () => {
+    const indicatorAtZoom = (zoom: number) => {
+      const root = { left: 120, top: 80, right: 420, bottom: 380 };
+      const rectAtZoom = (rect: TierRowDropGeometry["rect"]) => ({
+        left: root.left + rect.left * zoom,
+        top: root.top + rect.top * zoom,
+        right: root.left + rect.right * zoom,
+        bottom: root.top + rect.bottom * zoom,
+      });
+      const geometry: TierRowDropGeometry[] = [{
+        rowId: "target",
+        rect: rectAtZoom({ left: 0, top: 0, right: 300, bottom: 90 }),
+        cards: [
+          { cardId: "one", rect: rectAtZoom({ left: 65, top: 16, right: 157, bottom: 72 }) },
+          { cardId: "two", rect: rectAtZoom({ left: 162, top: 16, right: 254, bottom: 72 }) },
+        ],
+      }];
+      return tierCardInsertionIndicatorAt(
+        { rowId: "target", index: 1 },
+        geometry,
+        rectAtZoom({ left: 52, top: 0, right: 300, bottom: 90 }),
+        { ...rectAtZoom({ left: 0, top: 0, right: 300, bottom: 300 }) },
+        zoom,
+        zoom,
+      );
+    };
+
+    const lowZoom = indicatorAtZoom(0.35);
+    const highZoom = indicatorAtZoom(1.8);
+    expect(lowZoom).not.toBeNull();
+    expect(highZoom).not.toBeNull();
+    expect(lowZoom?.left).toBeCloseTo(158);
+    expect(lowZoom?.top).toBeCloseTo(16);
+    expect(lowZoom?.width).toBeCloseTo(3);
+    expect(lowZoom?.height).toBeCloseTo(56);
+    expect(highZoom?.left).toBeCloseTo(lowZoom!.left);
+    expect(highZoom?.top).toBeCloseTo(lowZoom!.top);
+    expect(highZoom?.width).toBeCloseTo(lowZoom!.width);
+    expect(highZoom?.height).toBeCloseTo(lowZoom!.height);
   });
 
   it("starts a pointer drag only after four pixels and leaves short motion cancellable", () => {

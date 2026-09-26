@@ -8,6 +8,7 @@ import {
   changeTierlist,
   createTierlistTextCardNoteCommand,
   deleteTierlistCard,
+  duplicateTierlistCard,
   rowsForTierlist,
 } from "../src/tierlist/actions.svelte";
 import { createDefaultTierRows } from "../src/tierlist/logic";
@@ -118,5 +119,45 @@ describe("Tierlist history actions", () => {
     expect(rowsForTierlist("tierlist")[0].cards).toEqual([{ id: "preview", kind: "note", noteId: "source" }]);
     expect(board.notes.source).toBeDefined();
     expect(history.entries).toHaveLength(0);
+  });
+
+  it("duplicates text cards into another Tierlist with one undo step", () => {
+    const sourceRows = defaultRows().map((row, index) => ({ ...row, id: `source-row-${index}` }));
+    sourceRows[0].cards.push({ id: "text-card", kind: "text", text: "Copied text" });
+    const targetRows = defaultRows().map((row, index) => ({ ...row, id: `target-row-${index}` }));
+    const target: Note = { ...tierlist, id: "target-tierlist", name: "Archive", tiers: targetRows };
+    replaceBoard([{ ...tierlist, tiers: sourceRows }, target, { ...source }]);
+    clearHistory();
+
+    expect(duplicateTierlistCard("tierlist", "source-row-0", "text-card", "target-tierlist", "target-row-0", 0)).toBe(true);
+    const copy = board.notes["target-tierlist"].tiers?.[0].cards[0];
+    expect(copy).toMatchObject({ kind: "text", text: "Copied text" });
+    expect(copy?.id).not.toBe("text-card");
+    expect(rowsForTierlist("tierlist")[0].cards).toEqual([{ id: "text-card", kind: "text", text: "Copied text" }]);
+    expect(history.entries).toHaveLength(1);
+
+    undo();
+    expect(rowsForTierlist("target-tierlist")[0].cards).toEqual([]);
+    expect(rowsForTierlist("tierlist")[0].cards).toEqual([{ id: "text-card", kind: "text", text: "Copied text" }]);
+  });
+
+  it("duplicates node previews while keeping their original note reference and supports undo", () => {
+    const sourceRows = defaultRows().map((row, index) => ({ ...row, id: `source-row-${index}` }));
+    sourceRows[0].cards.push({ id: "preview-card", kind: "note", noteId: "source" });
+    const targetRows = defaultRows().map((row, index) => ({ ...row, id: `target-row-${index}` }));
+    const target: Note = { ...tierlist, id: "target-tierlist", name: "Archive", tiers: targetRows };
+    replaceBoard([{ ...tierlist, tiers: sourceRows }, target, { ...source }]);
+    clearHistory();
+
+    expect(duplicateTierlistCard("tierlist", "source-row-0", "preview-card", "target-tierlist", "target-row-1", 0)).toBe(true);
+    const copy = board.notes["target-tierlist"].tiers?.[1].cards[0];
+    expect(copy).toMatchObject({ kind: "note", noteId: "source" });
+    expect(copy?.id).not.toBe("preview-card");
+    expect(board.notes.source).toMatchObject({ name: "Source", text: "Original content" });
+    expect(history.entries).toHaveLength(1);
+
+    undo();
+    expect(rowsForTierlist("target-tierlist")[1].cards).toEqual([]);
+    expect(rowsForTierlist("tierlist")[0].cards).toEqual([{ id: "preview-card", kind: "note", noteId: "source" }]);
   });
 });

@@ -13,6 +13,7 @@
     addTierlistRow,
     createTierlistTextCardNoteCommand,
     deleteTierlistCard,
+    duplicateTierlistCard,
     editTextTierCard,
     moveTierlistCard,
     recolorTierlistRow,
@@ -29,6 +30,7 @@
     tierLabelTextColor,
     pointerDragThresholdPassed,
     tierCardDropTargetAt,
+    tierCardInsertionIndicatorAt,
     tierRowInsertionIndexAt,
     type TierCardDropTarget,
     type TierRowDropGeometry,
@@ -61,8 +63,8 @@
         kind: "card";
         sourceRowId: string;
         card: TierCard;
+        targetNoteId: string | null;
         target: TierCardDropTarget | null;
-        insertionMarker: { left: number; top: number; height: number } | null;
       }
     | {
         kind: "row";
@@ -91,6 +93,9 @@
   let dragDisplay = $state<DragDisplay | null>(null);
   let activePointerDrag: PointerDrag | null = null;
   let dragGhost: HTMLDivElement | null = null;
+  let cardInsertionIndicator: HTMLSpanElement | null = null;
+  let cardInsertionIndicatorRoot: HTMLElement | null = null;
+  let cardDropTargetArea: HTMLElement | null = null;
 
   const rowColors = ["#FF4B5C", "#FFB347", "#FFE66D", "#C3FF68", "#7DFFB3", "#5CD8FF", "#9F8BFF", DEFAULT_NEW_TIER_COLOR];
 
@@ -306,17 +311,21 @@
     event.preventDefault();
     updateDragGhost(drag, point);
 
-    const geometry = measureTierRows();
     if (drag.kind === "card") {
-      const target = tierCardDropTargetAt(point, geometry);
+      const targetRoot = tierlistRootAt(point);
+      const targetNoteId = targetRoot?.dataset.tierlistId ?? null;
+      const geometry = measureTierRows(targetRoot);
+      const target = targetRoot ? tierCardDropTargetAt(point, geometry) : null;
+      updateCardInsertionIndicator(targetRoot, target, targetRoot && target ? cardInsertionMarker(target, targetRoot, geometry) : null);
       dragDisplay = {
         kind: "card",
         sourceRowId: drag.sourceRowId,
         card: drag.card,
+        targetNoteId,
         target,
-        insertionMarker: target ? cardInsertionMarker(target, geometry) : null,
       };
     } else {
+      const geometry = measureTierRows();
       dragDisplay = {
         kind: "row",
         rowId: drag.rowId,
@@ -335,14 +344,21 @@
     activePointerDrag = null;
     dragDisplay = null;
     removeDragGhost();
+    clearCardInsertionIndicator();
     releasePointer(drag);
     if (!drag.moved && !pointerDragThresholdPassed(drag.start, point)) return;
 
-    const geometry = measureTierRows();
     if (drag.kind === "card") {
-      const target = tierCardDropTargetAt(point, geometry);
+      const targetRoot = tierlistRootAt(point);
+      const targetNoteId = targetRoot?.dataset.tierlistId;
+      const geometry = measureTierRows(targetRoot);
+      const target = targetRoot ? tierCardDropTargetAt(point, geometry) : null;
       if (target) {
-        moveTierlistCard(note.id, drag.sourceRowId, drag.card.id, target.rowId, target.index);
+        if (!targetNoteId || targetNoteId === note.id) {
+          moveTierlistCard(note.id, drag.sourceRowId, drag.card.id, target.rowId, target.index);
+        } else {
+          duplicateTierlistCard(note.id, drag.sourceRowId, drag.card.id, targetNoteId, target.rowId, target.index);
+        }
         return;
       }
       if (drag.card.kind !== "text") return;
@@ -353,6 +369,7 @@
       return;
     }
 
+    const geometry = measureTierRows();
     const rootRect = root?.getBoundingClientRect();
     if (!rootRect || !pointInsideRect(point, rootRect)) return;
     const targetIndex = tierRowInsertionIndexAt(point.y, geometry);
@@ -375,6 +392,7 @@
     activePointerDrag = null;
     dragDisplay = null;
     removeDragGhost();
+    clearCardInsertionIndicator();
     if (drag) releasePointer(drag);
   }
 
@@ -389,6 +407,13 @@
     dragGhost.replaceChildren();
     dragGhost.style.left = `${point.x + 12}px`;
     dragGhost.style.top = `${point.y + 12}px`;
+    const rootRect = root.getBoundingClientRect();
+    const zoomX = rootRect.width / Math.max(root.offsetWidth, 1);
+    const zoomY = rootRect.height / Math.max(root.offsetHeight, 1);
+    const sourceRect = drag.captureTarget.getBoundingClientRect();
+    dragGhost.style.width = `${sourceRect.width / zoomX}px`;
+    dragGhost.style.height = `${sourceRect.height / zoomY}px`;
+    dragGhost.style.transform = `scale(${zoomX}, ${zoomY})`;
 
     const preview = drag.kind === "card" ? cardPreview(drag.card) : null;
     const ghostContent = document.createElement("span");
@@ -420,9 +445,9 @@
     }
   }
 
-  function measureTierRows(): TierRowDropGeometry[] {
-    if (!root) return [];
-    return Array.from(root.querySelectorAll<HTMLElement>("[data-tier-row-id]")).flatMap((rowElement) => {
+  function measureTierRows(container: HTMLElement | null = root ?? null): TierRowDropGeometry[] {
+    if (!container) return [];
+    return Array.from(container.querySelectorAll<HTMLElement>("[data-tier-row-id]")).flatMap((rowElement) => {
       const rowId = rowElement.dataset.tierRowId;
       if (!rowId) return [];
       const rect = toTierRect(rowElement.getBoundingClientRect());
@@ -440,6 +465,13 @@
 
   function pointInsideRect(point: Point, rect: TierRect | DOMRect): boolean {
     return point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom;
+  }
+
+  function tierlistRootAt(point: Point): HTMLElement | null {
+    const boardElement = root?.closest<HTMLElement>(".board");
+    const hit = document.elementFromPoint(point.x, point.y);
+    const candidate = hit?.closest<HTMLElement>("[data-tierlist-id]") ?? null;
+    return candidate && boardElement?.contains(candidate) ? candidate : null;
   }
 
   function boardDropWorldPoint(point: Point): Point | null {
@@ -465,32 +497,67 @@
 
   function cardInsertionMarker(
     target: TierCardDropTarget,
+    targetRoot: HTMLElement,
     geometry: readonly TierRowDropGeometry[],
-  ): { left: number; top: number; height: number } | null {
-    const row = geometry.find((candidate) => candidate.rowId === target.rowId);
-    const rowArea = Array.from(root?.querySelectorAll<HTMLElement>("[data-tier-row-cards]") ?? [])
+  ): { left: number; top: number; width: number; height: number } | null {
+    const rowArea = Array.from(targetRoot.querySelectorAll<HTMLElement>("[data-tier-row-cards]"))
       .find((element) => element.dataset.tierRowCards === target.rowId);
-    const rootRect = root?.getBoundingClientRect();
+    const rootRect = targetRoot.getBoundingClientRect();
     const areaRect = rowArea?.getBoundingClientRect();
-    if (!row || !rootRect || !areaRect) return null;
+    if (!rowArea || !areaRect) return null;
+    const zoomX = rootRect.width / Math.max(targetRoot.offsetWidth, 1);
+    const zoomY = rootRect.height / Math.max(targetRoot.offsetHeight, 1);
+    return tierCardInsertionIndicatorAt(
+      target,
+      geometry,
+      toTierRect(areaRect),
+      toTierRect(rootRect),
+      zoomX,
+      zoomY,
+    );
+  }
 
-    const beforeCard = row.cards[target.index];
-    const lastCard = row.cards.at(-1);
-    const markerRect = beforeCard?.rect ?? lastCard?.rect;
-    const markerLeft = beforeCard
-      ? markerRect!.left - 2
-      : markerRect
-        ? markerRect.right + 2
-        : areaRect.left + 5;
-    const markerTop = markerRect?.top ?? areaRect.top + 7;
-    const markerHeight = markerRect ? markerRect.bottom - markerRect.top : 56;
-    const scaleX = rootRect.width / Math.max(root.offsetWidth, 1);
-    const scaleY = rootRect.height / Math.max(root.offsetHeight, 1);
-    return {
-      left: (markerLeft - rootRect.left) / scaleX,
-      top: (markerTop - rootRect.top) / scaleY,
-      height: markerHeight / scaleY,
-    };
+  function updateCardInsertionIndicator(
+    targetRoot: HTMLElement | null,
+    target: TierCardDropTarget | null,
+    marker: { left: number; top: number; width: number; height: number } | null,
+  ): void {
+    const targetArea = targetRoot && target
+      ? Array.from(targetRoot.querySelectorAll<HTMLElement>("[data-tier-row-cards]"))
+        .find((element) => element.dataset.tierRowCards === target.rowId) ?? null
+      : null;
+    if (!targetRoot || !targetArea || !marker) {
+      clearCardInsertionIndicator();
+      return;
+    }
+
+    if (!cardInsertionIndicator) {
+      cardInsertionIndicator = document.createElement("span");
+      cardInsertionIndicator.className = "tier-card-insertion-indicator";
+      cardInsertionIndicator.dataset.tierInsertionIndicator = "";
+      cardInsertionIndicator.setAttribute("aria-hidden", "true");
+    }
+    if (cardInsertionIndicatorRoot !== targetRoot) {
+      cardInsertionIndicatorRoot = targetRoot;
+      targetRoot.append(cardInsertionIndicator);
+    }
+    if (cardDropTargetArea !== targetArea) {
+      cardDropTargetArea?.classList.remove("card-drop-target");
+      cardDropTargetArea = targetArea;
+      cardDropTargetArea.classList.add("card-drop-target");
+    }
+    cardInsertionIndicator.style.left = `${marker.left}px`;
+    cardInsertionIndicator.style.top = `${marker.top}px`;
+    cardInsertionIndicator.style.width = `${marker.width}px`;
+    cardInsertionIndicator.style.height = `${marker.height}px`;
+  }
+
+  function clearCardInsertionIndicator(): void {
+    cardInsertionIndicator?.remove();
+    cardInsertionIndicator = null;
+    cardInsertionIndicatorRoot = null;
+    cardDropTargetArea?.classList.remove("card-drop-target");
+    cardDropTargetArea = null;
   }
 
   function cardIsDragSource(row: TierRow, card: TierCard): boolean {
@@ -582,7 +649,7 @@
         class="tier-row-cards"
         data-tier-row-cards={row.id}
         class:drop-target={$activeDropTarget?.targetId === `${note.id}:${row.id}`}
-        class:card-drop-target={dragDisplay?.kind === "card" && dragDisplay.target?.rowId === row.id}
+        class:card-drop-target={dragDisplay?.kind === "card" && dragDisplay.targetNoteId === note.id && dragDisplay.target?.rowId === row.id}
         role="group"
         ondblclick={(event) => addTextCard(row.id, event)}
         aria-label={`${row.name} tier cards`}
@@ -646,7 +713,11 @@
                 deleteTierlistCard(note.id, row.id, card.id);
                 selectedCard = null;
               }}
-            >×</button>
+            >
+              <svg aria-hidden="true" viewBox="0 0 12 12" width="10" height="10" focusable="false">
+                <path d="M3 3l6 6M9 3 3 9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+              </svg>
+            </button>
           </div>
         {/each}
         {#if row.cards.length === 0 && !hintsDismissed}
@@ -655,17 +726,6 @@
       </div>
     </section>
   {/each}
-
-  {#if dragDisplay?.kind === "card" && dragDisplay.insertionMarker}
-    <span
-      class="tier-card-insertion-indicator"
-      data-tier-insertion-indicator
-      style:left={`${dragDisplay.insertionMarker.left}px`}
-      style:top={`${dragDisplay.insertionMarker.top}px`}
-      style:height={`${dragDisplay.insertionMarker.height}px`}
-      aria-hidden="true"
-    ></span>
-  {/if}
 
   {#if dragDisplay?.kind === "row"}
     <span
@@ -796,7 +856,7 @@
 
   .tier-row-cards.card-drop-target { background: #f5cd4d0c; }
 
-  .tier-card-insertion-indicator {
+  :global(.tier-card-insertion-indicator) {
     position: absolute;
     z-index: 12;
     width: 3px;
@@ -864,15 +924,17 @@
     position: fixed;
     z-index: 2147483000;
     display: block;
-    max-width: 180px;
     pointer-events: none;
     opacity: 0.95;
+    transform-origin: top left;
   }
 
   :global(.tier-drag-ghost-card),
   :global(.tier-drag-ghost-label) {
+    box-sizing: border-box;
     display: block;
-    max-width: 180px;
+    width: 100%;
+    height: 100%;
     overflow: hidden;
     padding: 7px 9px;
     border: 1px solid var(--accent);
