@@ -9,7 +9,9 @@ export function resizeDoubleClickAction(
   allowAutoHeight = true,
   autoHeightWithinLimit = true,
   allowAutoWidth = true,
+  fixedSize = false,
 ): ResizeDoubleClickAction {
+  if (fixedSize) return "none";
   if (edge === "left" || edge === "right") {
     return insideEditableBody ? "none" : allowAutoWidth ? "auto-width" : "none";
   }

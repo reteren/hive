@@ -75,7 +75,7 @@ import { preferences } from "../settings/preferences.svelte";
     notePressIntent,
     shouldToggleSelectedHeaderAfterGesture,
   } from "./noteMoveIntent";
-  import { hasResizeHandle, isStandaloneModuleKind, maximumWidthForKind, RESIZE_EDGES, resizeEdgeAxes, type ResizeEdge } from "./resize";
+  import { hasResizeHandle, isFixedSizeNodeKind, isStandaloneModuleKind, maximumWidthForKind, RESIZE_EDGES, resizeEdgeAxes, type ResizeEdge } from "./resize";
   import { resizeDoubleClickAction } from "./resizeDoubleClick";
   import { startNoteEditing } from "../editor/editorSession";
 import { isLineTool, tool } from "../tools/tool.svelte";
@@ -702,6 +702,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
           !isStandaloneModuleKind(note.type),
           autoHeightWithinLimit,
           preferences.fitWidthToText,
+          isFixedSizeNodeKind(note.type),
         );
         if (action === "edit") {
           event.preventDefault();

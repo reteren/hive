@@ -21,12 +21,18 @@ export const RESIZE_EDGES = [
 
 export type ResizeEdge = (typeof RESIZE_EDGES)[number];
 
+const FIXED_SIZE_NODE_KINDS = new Set<NoteKind>(["beacon", "stats", "progress", "goal", "trash", "archive"]);
+
+export function isFixedSizeNodeKind(kind: NoteKind | undefined): boolean {
+  return kind !== undefined && FIXED_SIZE_NODE_KINDS.has(kind);
+}
+
 export function isStandaloneModuleKind(kind: NoteKind | undefined): boolean {
   return kind === "importance" || kind === "purpose" || kind === "mood";
 }
 
 export function hasResizeHandle(kind: NoteKind | undefined, edge: ResizeEdge): boolean {
-  if (kind === "beacon") return false;
+  if (isFixedSizeNodeKind(kind)) return false;
   if (kind === "purpose" || kind === "mood") return false;
   return !isStandaloneModuleKind(kind) || (edge !== "left" && edge !== "right");
 }
@@ -87,6 +93,10 @@ export function resizeNote(
   standaloneModule = false,
   limits: ResizeLimits = {},
 ): ResizedGeometry {
+  if (isFixedSizeNodeKind(initial.type)) {
+    return { x: initial.x, y: initial.y, width: initial.width, height: initial.height };
+  }
+
   const axes = resizeEdgeAxes(edge);
   const maxWidth = limits.maxWidth ?? initial.maxWidth ?? maximumWidthForKind(initial.type);
   const maxHeight = limits.maxHeight ?? initial.maxHeight ?? (initial.type ? MIN_NOTE_HEIGHT * 1.5 : Number.POSITIVE_INFINITY);

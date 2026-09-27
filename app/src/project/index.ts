@@ -8,6 +8,7 @@ import {
   type NoteKind,
   type PurposeKind,
   type TaskState,
+  R5_BASE_WIDTHS,
 } from "../model/note";
 import { ME_OBJECT_ID, pairKey, type Link, type LinkAnchor } from "../model/link";
 import { isFrameAnchor } from "../links/anchors";
@@ -210,6 +211,7 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       || note.width !== entry.width || note.height !== entry.height) {
       throw new Error(`Loaded note ${entry.id} does not match board.json.`);
     }
+    const fixedDimensions = fixedNodeDimensions(entry.type);
     return {
       id: entry.id,
       type: entry.type,
@@ -217,9 +219,9 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       text: entry.type === "calculator" ? "" : note.text,
       x: entry.x,
       y: entry.y,
-      width: entry.width,
+      width: fixedDimensions?.width ?? entry.width,
       // Standalone Mood/Purpose nodes always size to their chips (auto height).
-      height: entry.type === "mood" || entry.type === "purpose" ? null : entry.height,
+      height: fixedDimensions ? fixedDimensions.height : entry.type === "mood" || entry.type === "purpose" ? null : entry.height,
       task: copyTaskState(entry.task),
       taskMemory: copyTaskState(entry.taskMemory),
       importance: entry.importance,
@@ -234,6 +236,17 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
         : {}),
     };
   });
+}
+
+function fixedNodeDimensions(type: NoteKind): { width: number; height: number | null } | null {
+  switch (type) {
+    case "goal": return { width: R5_BASE_WIDTHS.goal, height: null };
+    case "progress": return { width: R5_BASE_WIDTHS.progress, height: null };
+    case "stats": return { width: R5_BASE_WIDTHS.stats, height: null };
+    case "trash": return { width: R5_BASE_WIDTHS.trash, height: 40 };
+    case "archive": return { width: R5_BASE_WIDTHS.archive, height: 40 };
+    default: return null;
+  }
 }
 
 function sanitizeCalculators(value: unknown): { values: Record<string, CalculatorData>; warnings: string[] } {

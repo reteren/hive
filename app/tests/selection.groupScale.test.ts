@@ -51,6 +51,31 @@ describe("group scale", () => {
     ]);
   });
 
+  it("moves fixed-size R5 and R6 nodes during group scaling without resizing them", () => {
+    const frames: NoteFrame[] = [
+      { id: "goal", type: "goal", x: 10, y: 10, width: 30, height: null },
+      { id: "progress", type: "progress", x: 20, y: 20, width: 30, height: null },
+      { id: "stats", type: "stats", x: 30, y: 30, width: 30, height: null },
+      { id: "trash", type: "trash", x: 40, y: 40, width: 40, height: 40 },
+      { id: "archive", type: "archive", x: 50, y: 50, width: 40, height: 40 },
+      { id: "note", type: "note", x: 60, y: 60, width: 20, height: 20 },
+    ];
+
+    const scaled = scaleGroupFrames(frames, groupBounds, "bottom-right", { x: 100, y: 100 }, false, 10);
+
+    expect(scaled.map(({ width, height }) => [width, height])).toEqual([
+      [30, null],
+      [30, null],
+      [30, null],
+      [40, 40],
+      [40, 40],
+      [40, 40],
+    ]);
+    expect(scaled.slice(0, 5).map(({ x, y }) => [x, y])).toEqual([
+      [20, 20], [40, 40], [60, 60], [80, 80], [100, 100],
+    ]);
+  });
+
   it("keeps group-scaled notes at their text-fit minimum width", () => {
     cacheMinimumTextWidth("wide-line", 30);
     try {

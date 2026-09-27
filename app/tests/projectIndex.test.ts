@@ -139,6 +139,35 @@ describe("project index", () => {
     expect(migrated.warnings).toEqual([]);
   });
 
+  it("normalizes fixed-size R5 and R6 node dimensions when loading notes", () => {
+    const notes: Note[] = [
+      { id: "goal", type: "goal", name: "Goal", text: "", x: 0, y: 0, width: 88, height: 62 },
+      { id: "progress", type: "progress", name: "Progress", text: "", x: 50, y: 0, width: 88, height: 62 },
+      { id: "stats", type: "stats", name: "Statistics", text: "", x: 100, y: 0, width: 88, height: 62 },
+      { id: "trash", type: "trash", name: "Trash", text: "", x: 150, y: 0, width: 88, height: 62 },
+      { id: "archive", type: "archive", name: "Archive", text: "", x: 200, y: 0, width: 88, height: 62 },
+    ];
+    const index = parseProjectIndex(serializeProjectIndex(notes));
+    const loaded = mergeLoadedNotes(index, index.notes.map((note) => ({
+      id: note.id,
+      name: note.name,
+      file: note.file,
+      text: "",
+      x: note.x,
+      y: note.y,
+      width: note.width,
+      height: note.height,
+    })));
+
+    expect(loaded.map(({ width, height }) => [width, height])).toEqual([
+      [30, null],
+      [30, null],
+      [30, null],
+      [40, 40],
+      [40, 40],
+    ]);
+  });
+
   it("round trips beacon colour, zone membership, undersized legacy zones and ordered marks", () => {
     const zone = {
       id: "zone-a",

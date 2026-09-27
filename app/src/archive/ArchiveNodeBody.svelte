@@ -103,13 +103,13 @@
 </div>
 
 <style>
-  .archive-body { display: grid; min-width: 0; gap: 7px; font-size: 11px; }
+  .archive-body { display: flex; min-width: 0; min-height: 0; height: 100%; flex: 1 1 auto; flex-direction: column; gap: 7px; overflow: hidden; font-size: 11px; }
   .archive-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .archive-heading span, .archive-empty, .archive-preview, .archive-item time { color: var(--text-dim); }
   .archive-heading strong { color: var(--accent); font-size: 12px; }
   .archive-empty, .archive-feedback, .archive-preview, .archive-notice { margin: 0; }
   .archive-feedback { color: #d9cb92; }
-  .archive-list { display: grid; max-height: 270px; overflow: auto; gap: 5px; }
+  .archive-list { display: grid; min-height: 0; flex: 1 1 auto; overflow: auto; gap: 5px; }
   .archive-item { display: grid; gap: 5px; padding: 7px; border: 1px solid #49443a; border-radius: 4px; background: #22211f; }
   .archive-item-heading { display: flex; min-width: 0; align-items: center; gap: 6px; }
   .archive-kind { display: grid; width: 18px; height: 18px; flex: none; place-items: center; border: 1px solid #8c7944; border-radius: 3px; color: #e2c56d; font-weight: 700; }
@@ -125,4 +125,5 @@
   .archive-actions button:hover:not(:disabled) { border-color: var(--accent); }
   .archive-actions button:disabled { opacity: 0.45; cursor: default; }
   .archive-actions .danger { color: #f0c2bd; border-color: #704344; }
+  :global(.note-card[data-kind="archive"] .note-content) { display: flex; min-height: 0; padding: 3px 5px; overflow: hidden; }
 </style>

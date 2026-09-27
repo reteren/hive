@@ -28,4 +28,9 @@ describe("resize handle double-click", () => {
     expect(resizeDoubleClickAction("bottom", false, true, false)).toBe("none");
     expect(resizeDoubleClickAction("bottom", true, true, false)).toBe("edit");
   });
+
+  it("does nothing for fixed-size node handles", () => {
+    expect(resizeDoubleClickAction("bottom", false, true, true, true, true)).toBe("none");
+    expect(resizeDoubleClickAction("right", false, true, true, true, true)).toBe("none");
+  });
 });
