@@ -3,10 +3,12 @@
   import type { Note } from "../model/note";
   import ScopePicker from "../scope/ScopePicker.svelte";
   import { resolveScope, scopeForNote } from "../scope/scope.svelte";
+  import { listViewForStats } from "./linkedList.svelte";
   import { tierlistViewForStats } from "./linkedTierlist.svelte";
   import { summarizeTextStatistics } from "./statistics";
 
   let { note }: { note: Note } = $props();
+  let listView = $derived(listViewForStats(note.id));
   let tierlistView = $derived(tierlistViewForStats(note.id));
   let summary = $derived.by(() => {
     const selectedScope = scopeForNote(note);
@@ -14,8 +16,15 @@
   });
 </script>
 
-<div class="statistics-body" data-stats-view={tierlistView ? "tierlist" : "text"}>
-  {#if tierlistView}
+<div class="statistics-body" data-stats-view={listView ? "list" : tierlistView ? "tierlist" : "text"}>
+  {#if listView}
+    <div class="tierlist-lock" data-stats-list-lock title="Remove the link to change">Linked to {listView.list.name}</div>
+    <div class="statistics-list-rows" role="status" aria-live="polite" aria-label={`Statistics for ${listView.list.name}`}>
+      {#each listView.rows as row (row.item.id)}
+        <div class="statistics-list-row" data-stats-list-row={row.item.id}>{row.text}</div>
+      {/each}
+    </div>
+  {:else if tierlistView}
     <div class="tierlist-lock" data-stats-tierlist-lock title="Remove the link to change">Linked to {tierlistView.tierlist.name}</div>
     <div class="tierlist-summary" role="status" aria-live="polite" aria-label={`Tierlist statistics for ${tierlistView.tierlist.name}`}>
       <strong class="tierlist-total" data-stats-tierlist-total>{tierlistView.summary.total} {tierlistView.summary.total === 1 ? "item" : "items"} total</strong>
@@ -91,6 +100,23 @@
     font-size: 10px;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .statistics-list-rows {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .statistics-list-row {
+    overflow-wrap: anywhere;
+    padding: 4px 6px;
+    border: 1px solid #3e3e3e;
+    border-radius: 3px;
+    background: #202020;
+    color: var(--text);
+    font-size: 10px;
+    line-height: 1.35;
   }
 
   .tierlist-summary {
