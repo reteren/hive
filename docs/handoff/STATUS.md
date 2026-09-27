@@ -1,6 +1,6 @@
 # hive — состояние (обновлено 24.09.2026, после восстановления)
 
-**Актуально:** 1.2.2 принят, идёт R7 (r7common.md, r7_a…f.md; контракты 64bc158), run `run_3f081177648e`: A task_33e322597549 трей+глобальный бинд+окно быстрого ввода (term_487f…), B task_837b52dc5087 Inbox-нода и двойники (term_57f5…), C task_becc363b15a0 List + Random (term_deb8…), D task_de075f16a3d2 Source (term_91dc…), E task_02756bbc04e3 орфография из MarkNote + общий словарь (term_af75…), F task_909bd44fb81d Map (term_7db8…). Проверки мышью — координатор. Затем 1.2.3.
+**Актуально:** R7 реализован, установщик **1.2.3** ждёт проверки пользователем (трей, Ctrl+Alt+Space, Inbox, List, Random, Source, орфография ru/en + словарь, Map на Shift+M). Все агенты свободны; хэндлы term_487f…, term_57f5…, term_deb8…, term_91dc…, term_af75…, term_7db8…. Важно: @tauri-apps/api закреплён ~2.11 и plugin-global-shortcut ~2.3 — версии должны совпадать с Rust-крейтами, иначе tauri build падает. Тест runesPlacement ловит руны в обычных .ts (иначе пустое окно).
 
 ---
 
