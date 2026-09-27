@@ -1,0 +1,10 @@
+TASK A — debug 8: p.1 Inbox node, p.2 Q-menu → select tool, p.3 random placement, p.10 Smooth lines
+
+Read C:\hive\docs\handoff\d8common.md and debug 8.md first.
+Your files: src/inbox/**, src/notes/creationPosition.ts (+ its callers' placement calls), src/notes/CreateMenu.svelte / src/notes/noteCommands.ts (only the tool switch after creation), new src/links/smoothLines.ts + its note-menu item (src/notes/noteMenu.ts registry), tests. Size rules for Inbox → send to worker E via the coordinator (see 1).
+
+1. Inbox node: no manual resize at all except shrinking height; width locked. Default height = the created height; every new entry grows the node by one row. Each row: entry name + creation time (HH:MM, date if not today). The user may shrink the height (down to 2 rows minimum); then a right scrollbar appears to scroll the list. (Tell E: kind "inbox" → no width handles, no enlarge, shrink-only height with min 2 rows; E implements the handle rules, you implement auto-height + scrolling in the body.) Replace the "entities N" header text with something clear ("12 entries").
+2. After creating ANY node from the Q menu (or button), switch to the select tool (tool 1) if a zone/line tool was active.
+3. Random placement (decision in d8common): when a new node would be created on top of another node (Q at a point inside a node, paste/duplicate onto nodes) and for Inbox entries (relative to the Inbox node), place it at a random side with a random edge gap 10–35 u per axis; if that spot collides, step further by another random 10–35 u from the conflicting node; never overlap; deterministic in tests via injectable RNG.
+4. Smooth lines (p.10): RMB on a node/beacon/anything with links → "Smooth lines": re-anchors every incoming and outgoing link of that object so each attaches at the point of its frame closest to the other end (and sets the other end's anchor facing back, if that end is a note frame). One Undo step. Also an F3 command for the selection.
+Tests for placement, smoothing geometry, inbox rows/time formatting.
