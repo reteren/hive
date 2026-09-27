@@ -1,7 +1,7 @@
 <script lang="ts">
   import { camera, viewport } from "../board/camera.svelte";
   import { createNote, createNoteKind } from "./noteCommands";
-  import { R5_KINDS, R6_KINDS } from "../model/note";
+  import { R5_KINDS, R6_KINDS, R7_KINDS } from "../model/note";
   import { creationMenu, closeCreationMenu } from "./creation.svelte";
   import { boardPopupStyle, dismissBoardPopup } from "../ui/boardAnchor";
 
@@ -22,7 +22,13 @@
     if (!creationMenu.pinned) closeCreationMenu();
   }
 
-  const R5_LABELS: Record<(typeof R5_KINDS)[number] | (typeof R6_KINDS)[number], string> = {
+  const R5_LABELS: Record<(typeof R5_KINDS)[number] | (typeof R6_KINDS)[number] | (typeof R7_KINDS)[number], string> = {
+    inbox: "Inbox",
+    list: "List",
+    source: "Source",
+    glossary: "Dictionary",
+    map: "Map",
+    random: "Random Choice",
     archive: "Archive",
     trash: "Trash",
     goal: "Goal",
@@ -32,7 +38,7 @@
     stats: "Statistics",
   };
 
-  function createR5FromMenu(kind: (typeof R5_KINDS)[number] | (typeof R6_KINDS)[number]): void {
+  function createR5FromMenu(kind: (typeof R5_KINDS)[number] | (typeof R6_KINDS)[number] | (typeof R7_KINDS)[number]): void {
     createNoteKind(kind);
     if (!creationMenu.pinned) closeCreationMenu();
   }
@@ -111,7 +117,7 @@
         <span class="beacon-icon" aria-hidden="true"></span>
         <span>Beacon</span>
       </button>
-      {#each [...R5_KINDS, ...R6_KINDS] as kind (kind)}
+      {#each [...R5_KINDS, ...R6_KINDS, ...R7_KINDS] as kind (kind)}
         <button class="create-item" type="button" data-create-kind={kind} onclick={() => createR5FromMenu(kind)}>
           <span class="r5-icon" aria-hidden="true"></span>
           <span>{R5_LABELS[kind]}</span>

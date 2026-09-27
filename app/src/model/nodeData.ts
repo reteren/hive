@@ -113,3 +113,46 @@ export function parseCalculatorData(value: unknown): CalculatorData | null {
       : []);
   return { entries, bank, rows };
 }
+
+/** R7.3 List row: a link to a board object (targetId) with its label snapshot; null target = plain text row. */
+export interface ListItem {
+  id: string;
+  targetId: string | null;
+  label: string;
+}
+
+/** R7.4 Source: at least one of url / filePath; description stays when the resource is unavailable. */
+export interface SourceData {
+  url: string | null;
+  filePath: string | null;
+  description: string;
+}
+
+/** R7.7 Random Choice: which list item was picked, from which List node, and when. */
+export interface RandomPick {
+  listId: string;
+  itemId: string;
+  pickedAt: number;
+}
+
+export function parseListItems(value: unknown): ListItem[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.flatMap((item) => isRecord(item) && nonEmptyString(item.id) && typeof item.label === "string"
+    ? [{ id: item.id, targetId: nonEmptyString(item.targetId) ? item.targetId : null, label: item.label }]
+    : []);
+}
+
+export function parseSource(value: unknown): SourceData | null {
+  if (!isRecord(value)) return null;
+  return {
+    url: nonEmptyString(value.url) ? value.url : null,
+    filePath: nonEmptyString(value.filePath) ? value.filePath : null,
+    description: typeof value.description === "string" ? value.description : "",
+  };
+}
+
+export function parseRandomPick(value: unknown): RandomPick | null {
+  return isRecord(value) && nonEmptyString(value.listId) && nonEmptyString(value.itemId) && Number.isFinite(value.pickedAt)
+    ? { listId: value.listId, itemId: value.itemId, pickedAt: value.pickedAt as number }
+    : null;
+}

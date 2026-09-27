@@ -188,6 +188,12 @@ function kindLabel(kind: NoteKind): string {
   if (kind === "stats") return "Statistics";
   if (kind === "archive") return "Archive";
   if (kind === "trash") return "Trash";
+  if (kind === "inbox") return "Inbox";
+  if (kind === "list") return "List";
+  if (kind === "source") return "Source";
+  if (kind === "glossary") return "Dictionary";
+  if (kind === "map") return "Map";
+  if (kind === "random") return "Random Choice";
   return "Note";
 }
 

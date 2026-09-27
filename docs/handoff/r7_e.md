@@ -1,0 +1,10 @@
+TASK E — R7.5 Spellcheck + shared user dictionary + Dictionary node (port from MarkNote)
+
+Read C:\hive\docs\handoff\r7common.md first.
+Your files: app/src-tauri/src/spellcheck.rs (new, ported), app/src-tauri/dictionaries/{ru,en} (copied from C:\marknote\src-tauri\dictionaries with their README/licence notes), Cargo.toml (spellbook only), lib.rs (register commands — append), tauri.conf.json bundle resources (dictionaries), new src/spell/** (engine, CodeMirror extension, context menu, DictionaryNodeBody.svelte for kind "glossary"), the editor integration point in src/editor/createNoteEditor.ts (add the extension — minimal diff), tests.
+
+1. Port MarkNote's spellcheck (C:\marknote\src-tauri\src\spellcheck.rs, C:\marknote\src\editor\spellcheck.ts, spellEngine.ts; contract in C:\marknote\docs\CONTRACTS.md "Spellcheck IPC additions"): commands spellcheck_languages / spellcheck_check / spellcheck_suggest / spellcheck_add_word; ranges in UTF-16; words checked against dictionaries of their script. Bundle only ru + en now; loading must discover available dictionaries from the folder so adding more MarkNote languages later = copy files.
+2. Editor: red wavy underline on misspelled words in note editing (and in the rendered preview? — editor only is fine; say), debounced checks, skip code/links/URLs. RMB on a misspelled word → up to 5 suggestions (replace = one Undo step merged with text edit rules), "Add to dictionary". Must coexist with the existing links-in-text context menu (ask the coordinator if the menus collide).
+3. ONE user dictionary for all projects: stored in the app config dir (not in the project). Export → save a .txt/.json file; Import → merge words. Settings toggle "Spellcheck" on/off and language choice (ru, en).
+4. Dictionary node (kind "glossary"): shows the user dictionary words (search, remove word, Export, Import); all instances show the same data; changes are app-level (not project Undo — confirm removal instead).
+5. Tests: Rust — check/suggest/add for ru & en, discovery; TS — range mapping, word extraction skipping links/code.

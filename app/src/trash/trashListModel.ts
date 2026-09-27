@@ -24,6 +24,12 @@ const noteKindLabels: Record<NoteKind, string> = {
   stats: "Statistics",
   archive: "Archive",
   trash: "Trash",
+  inbox: "Inbox",
+  list: "List",
+  source: "Source",
+  glossary: "Dictionary",
+  map: "Map",
+  random: "Random Choice",
 };
 
 /** Format one grouped delete entry for the list without counting its attached links as objects. */

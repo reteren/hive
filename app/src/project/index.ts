@@ -17,7 +17,7 @@ import type { Point } from "../board/cameraMath";
 import { beaconPaletteColor, normalizeBeaconColor } from "../beacons/beaconPalette";
 import { calculatorNoteFileName, noteFileKey, noteMarkdownFileName, sanitizeNoteName } from "./fileNames";
 import type { TaskLogEntry } from "../tasks/taskLog.svelte";
-import { calculatorKey, parseCalculatorData, parseScope, parseTiers, type CalculatorData, type NodeScope, type TierRow } from "../model/nodeData";
+import { calculatorKey, parseCalculatorData, parseScope, parseTiers, type CalculatorData, type NodeScope, type TierRow, parseListItems, parseRandomPick, parseSource, type ListItem, type RandomPick, type SourceData } from "../model/nodeData";
 import type { ArchiveEntry, TrashEntry } from "../model/retention.svelte";
 import { copyArchiveEntry, sanitizeArchiveEntries } from "../archive/serialization";
 import { copyTrashEntry } from "../trash/trash";
@@ -41,6 +41,10 @@ export interface IndexedNote {
   zoneId?: string | null;
   scope?: NodeScope;
   tiers?: TierRow[];
+  listItems?: ListItem[];
+  source?: SourceData;
+  inboxGroup?: string;
+  randomPick?: RandomPick;
   [key: string]: unknown;
 }
 
@@ -175,6 +179,10 @@ export function serializeProjectIndex(
       zoneId: note.zoneId && validZoneIds.has(note.zoneId) ? note.zoneId : null,
       ...(note.scope ? { scope: note.scope } : {}),
       ...(note.tiers ? { tiers: note.tiers } : {}),
+      ...(note.listItems ? { listItems: note.listItems } : {}),
+      ...(note.source ? { source: note.source } : {}),
+      ...(note.inboxGroup ? { inboxGroup: note.inboxGroup } : {}),
+      ...(note.randomPick ? { randomPick: note.randomPick } : {}),
     };
   });
   validateUniqueNotes(indexedNotes);
@@ -231,6 +239,10 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       ...(entry.zoneId ? { zoneId: entry.zoneId } : {}),
       ...(entry.scope ? { scope: entry.scope } : {}),
       ...(entry.tiers ? { tiers: entry.tiers } : {}),
+      ...(entry.listItems ? { listItems: entry.listItems } : {}),
+      ...(entry.source ? { source: entry.source } : {}),
+      ...(entry.inboxGroup ? { inboxGroup: entry.inboxGroup } : {}),
+      ...(entry.randomPick ? { randomPick: entry.randomPick } : {}),
       ...(typeof entry.createdAt === "number" && Number.isFinite(entry.createdAt) && entry.createdAt >= 0
         ? { createdAt: entry.createdAt }
         : {}),
@@ -421,6 +433,10 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
       zoneId,
       scope: parseScope(value.scope) ?? undefined,
       tiers: parseTiers(value.tiers) ?? undefined,
+      listItems: parseListItems(value.listItems) ?? undefined,
+      source: parseSource(value.source) ?? undefined,
+      inboxGroup: typeof value.inboxGroup === "string" && value.inboxGroup ? value.inboxGroup : undefined,
+      randomPick: parseRandomPick(value.randomPick) ?? undefined,
     },
     warnings,
   };
@@ -442,7 +458,8 @@ function parseNoteKind(value: unknown): NoteKind | null {
   return value === "note" || value === "pro" || value === "con" ||
     value === "importance" || value === "purpose" || value === "mood" || value === "beacon" ||
     value === "goal" || value === "progress" || value === "calculator" || value === "tierlist" || value === "stats" ||
-    value === "archive" || value === "trash"
+    value === "archive" || value === "trash" ||
+    value === "inbox" || value === "list" || value === "source" || value === "glossary" || value === "map" || value === "random"
     ? value
     : null;
 }
