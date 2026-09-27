@@ -57,7 +57,7 @@ export function createNoteKind(kind: NoteKind): string {
   const height = estimatedCreationHeight({
     type: kind,
     width,
-    height: kind === "beacon" ? BEACON_SIZE : kind === "importance" ? MODULE_NOTE_HEIGHT : kind === "trash" || kind === "archive" ? 40 : null,
+    height: kind === "beacon" ? BEACON_SIZE : kind === "importance" ? MODULE_NOTE_HEIGHT : kind === "trash" || kind === "archive" ? 40 : kind === "map" ? 30 : null,
     text: "",
   });
   const id = newId();
@@ -165,7 +165,7 @@ function makeNote(kind: NoteKind, id: string, position: Point, createdAt: number
       : kind === "importance" || kind === "purpose" || kind === "mood"
         ? MODULE_NOTE_WIDTH
         : DEFAULT_MINI_NOTE_WIDTH,
-    height: kind === "beacon" ? BEACON_SIZE : kind === "importance" ? MODULE_NOTE_HEIGHT : kind === "trash" || kind === "archive" ? 40 : null,
+    height: kind === "beacon" ? BEACON_SIZE : kind === "importance" ? MODULE_NOTE_HEIGHT : kind === "trash" || kind === "archive" ? 40 : kind === "map" ? 30 : null,
     createdAt,
     ...(kind === "importance" ? { importance: "basic" as const } : {}),
     ...(kind === "purpose" ? { purposes: [] } : {}),

@@ -21,7 +21,7 @@ export const RESIZE_EDGES = [
 
 export type ResizeEdge = (typeof RESIZE_EDGES)[number];
 
-const FIXED_SIZE_NODE_KINDS = new Set<NoteKind>(["beacon", "stats", "progress", "goal", "trash", "archive"]);
+const FIXED_SIZE_NODE_KINDS = new Set<NoteKind>(["beacon", "stats", "progress", "goal", "trash", "archive", "map"]);
 
 export function isFixedSizeNodeKind(kind: NoteKind | undefined): boolean {
   return kind !== undefined && FIXED_SIZE_NODE_KINDS.has(kind);
