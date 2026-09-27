@@ -156,3 +156,21 @@ export function parseRandomPick(value: unknown): RandomPick | null {
     ? { listId: value.listId, itemId: value.itemId, pickedAt: value.pickedAt as number }
     : null;
 }
+
+/** Mark as tag (27.09): user text up to 30 characters and a colour. */
+export interface CustomMark {
+  id: string;
+  text: string;
+  /** Hex "#rrggbb". */
+  color: string;
+}
+
+export const CUSTOM_MARK_MAX_LENGTH = 30;
+
+export function parseCustomMarks(value: unknown): CustomMark[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.flatMap((mark) => isRecord(mark) && nonEmptyString(mark.id) && typeof mark.text === "string" &&
+    typeof mark.color === "string" && HEX.test(mark.color)
+    ? [{ id: mark.id, text: mark.text.slice(0, CUSTOM_MARK_MAX_LENGTH), color: mark.color }]
+    : []);
+}

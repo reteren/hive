@@ -1,6 +1,6 @@
 import { isFrameAnchor } from "../links/anchors";
 import { pairKey, type Link } from "../model/link";
-import { parseCalculatorData, parseScope, parseTiers, parseListItems, parseRandomPick, parseSource } from "../model/nodeData";
+import { parseCalculatorData, parseScope, parseTiers, parseListItems, parseRandomPick, parseSource, parseCustomMarks } from "../model/nodeData";
 import { IMPORTANCE_LEVELS, MOOD_KINDS, PURPOSE_KINDS, type Note, type NoteKind, type TaskState } from "../model/note";
 import type { ArchiveEntry } from "../model/retention.svelte";
 import { copyArchivedLink, copyArchivedNote } from "./logic";
@@ -8,7 +8,7 @@ import { copyArchivedLink, copyArchivedNote } from "./logic";
 const ARCHIVABLE_KINDS = new Set<NoteKind>([
   "note", "pro", "con", "importance", "purpose", "mood",
   "goal", "progress", "calculator", "tierlist", "stats",
-  "inbox", "list", "source", "glossary", "map", "random",
+  "inbox", "list", "source", "glossary", "map", "random", "markas",
 ]);
 const LINK_SHAPES = new Set<Link["shape"]>(["base", "orthogonal", "zigzag", "wave"]);
 
@@ -111,6 +111,9 @@ function parseArchivedNote(value: unknown): Note | null {
     ...(parseSource(value.source) ? { source: parseSource(value.source)! } : {}),
     ...(typeof value.inboxGroup === "string" && value.inboxGroup ? { inboxGroup: value.inboxGroup } : {}),
     ...(parseRandomPick(value.randomPick) ? { randomPick: parseRandomPick(value.randomPick)! } : {}),
+    ...(parseCustomMarks(value.customMarks) ? { customMarks: parseCustomMarks(value.customMarks)! } : {}),
+    ...(value.customMarkFrame === true ? { customMarkFrame: true } : {}),
+    ...(value.listStats === true ? { listStats: true } : {}),
     ...(typeof value.color === "string" ? { color: value.color } : {}),
     ...(typeof value.zoneId === "string" ? { zoneId: value.zoneId } : {}),
     ...(typeof value.createdAt === "number" ? { createdAt: value.createdAt } : {}),

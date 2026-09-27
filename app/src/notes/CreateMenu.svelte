@@ -29,6 +29,7 @@
     glossary: "Dictionary",
     map: "Map",
     random: "Random Choice",
+    markas: "Mark as",
     archive: "Archive",
     trash: "Trash",
     goal: "Goal",

@@ -17,7 +17,7 @@ import type { Point } from "../board/cameraMath";
 import { beaconPaletteColor, normalizeBeaconColor } from "../beacons/beaconPalette";
 import { calculatorNoteFileName, noteFileKey, noteMarkdownFileName, sanitizeNoteName } from "./fileNames";
 import type { TaskLogEntry } from "../tasks/taskLog.svelte";
-import { calculatorKey, parseCalculatorData, parseScope, parseTiers, type CalculatorData, type NodeScope, type TierRow, parseListItems, parseRandomPick, parseSource, type ListItem, type RandomPick, type SourceData } from "../model/nodeData";
+import { calculatorKey, parseCalculatorData, parseScope, parseTiers, type CalculatorData, type NodeScope, type TierRow, parseListItems, parseRandomPick, parseSource, parseCustomMarks, type CustomMark, type ListItem, type RandomPick, type SourceData } from "../model/nodeData";
 import type { ArchiveEntry, TrashEntry } from "../model/retention.svelte";
 import { copyArchiveEntry, sanitizeArchiveEntries } from "../archive/serialization";
 import { copyTrashEntry } from "../trash/trash";
@@ -45,6 +45,9 @@ export interface IndexedNote {
   source?: SourceData;
   inboxGroup?: string;
   randomPick?: RandomPick;
+  customMarks?: CustomMark[];
+  customMarkFrame?: boolean;
+  listStats?: boolean;
   [key: string]: unknown;
 }
 
@@ -183,6 +186,9 @@ export function serializeProjectIndex(
       ...(note.source ? { source: note.source } : {}),
       ...(note.inboxGroup ? { inboxGroup: note.inboxGroup } : {}),
       ...(note.randomPick ? { randomPick: note.randomPick } : {}),
+      ...(note.customMarks?.length ? { customMarks: note.customMarks } : {}),
+      ...(note.customMarkFrame ? { customMarkFrame: true } : {}),
+      ...(note.listStats ? { listStats: true } : {}),
     };
   });
   validateUniqueNotes(indexedNotes);
@@ -243,6 +249,9 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       ...(entry.source ? { source: entry.source } : {}),
       ...(entry.inboxGroup ? { inboxGroup: entry.inboxGroup } : {}),
       ...(entry.randomPick ? { randomPick: entry.randomPick } : {}),
+      ...(entry.customMarks?.length ? { customMarks: entry.customMarks } : {}),
+      ...(entry.customMarkFrame ? { customMarkFrame: true } : {}),
+      ...(entry.listStats ? { listStats: true } : {}),
       ...(typeof entry.createdAt === "number" && Number.isFinite(entry.createdAt) && entry.createdAt >= 0
         ? { createdAt: entry.createdAt }
         : {}),
@@ -438,6 +447,9 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
       source: parseSource(value.source) ?? undefined,
       inboxGroup: typeof value.inboxGroup === "string" && value.inboxGroup ? value.inboxGroup : undefined,
       randomPick: parseRandomPick(value.randomPick) ?? undefined,
+      customMarks: parseCustomMarks(value.customMarks) ?? undefined,
+      customMarkFrame: value.customMarkFrame === true ? true : undefined,
+      listStats: value.listStats === true ? true : undefined,
     },
     warnings,
   };
@@ -460,7 +472,7 @@ function parseNoteKind(value: unknown): NoteKind | null {
     value === "importance" || value === "purpose" || value === "mood" || value === "beacon" ||
     value === "goal" || value === "progress" || value === "calculator" || value === "tierlist" || value === "stats" ||
     value === "archive" || value === "trash" ||
-    value === "inbox" || value === "list" || value === "source" || value === "glossary" || value === "map" || value === "random"
+    value === "inbox" || value === "list" || value === "source" || value === "glossary" || value === "map" || value === "random" || value === "markas"
     ? value
     : null;
 }

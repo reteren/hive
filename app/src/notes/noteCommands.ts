@@ -194,6 +194,7 @@ function kindLabel(kind: NoteKind): string {
   if (kind === "glossary") return "Dictionary";
   if (kind === "map") return "Map";
   if (kind === "random") return "Random Choice";
+  if (kind === "markas") return "Mark as";
   return "Note";
 }
 

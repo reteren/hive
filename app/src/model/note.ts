@@ -1,4 +1,4 @@
-import type { ListItem, NodeScope, RandomPick, SourceData, TierRow } from "./nodeData";
+import type { CustomMark, ListItem, NodeScope, RandomPick, SourceData, TierRow } from "./nodeData";
 
 /**
  * "note" — ordinary text node; "pro"/"con" — the green/red plus/minus mini-nodes (R3.5);
@@ -12,7 +12,8 @@ export type NoteKind =
   | "note" | "pro" | "con" | "importance" | "purpose" | "mood" | "beacon"
   | "goal" | "progress" | "calculator" | "tierlist" | "stats"
   | "archive" | "trash"
-  | "inbox" | "list" | "source" | "glossary" | "map" | "random";
+  | "inbox" | "list" | "source" | "glossary" | "map" | "random"
+  | "markas";
 
 /** R5 kinds, in create-menu order. */
 export const R5_KINDS = ["goal", "progress", "calculator", "tierlist", "stats"] as const;
@@ -21,10 +22,10 @@ export const R5_KINDS = ["goal", "progress", "calculator", "tierlist", "stats"] 
 export const R6_KINDS = ["archive", "trash"] as const;
 
 /** R7 organisational nodes. */
-export const R7_KINDS = ["inbox", "list", "source", "glossary", "map", "random"] as const;
+export const R7_KINDS = ["inbox", "list", "source", "glossary", "map", "random", "markas"] as const;
 
 /** Default R5 node widths (u), shared by creation and resize limits. */
-export const R5_BASE_WIDTHS = { goal: 30, progress: 30, calculator: 40, tierlist: 60, stats: 30, archive: 40, trash: 40, inbox: 30, list: 30, source: 30, glossary: 40, map: 40, random: 30 } as const;
+export const R5_BASE_WIDTHS = { goal: 30, progress: 30, calculator: 40, tierlist: 60, stats: 30, archive: 40, trash: 40, inbox: 30, list: 30, source: 30, glossary: 40, map: 40, random: 30, markas: 14 } as const;
 
 /** Importance levels (R3.3): white / yellow / red / purple / rainbow. */
 export const IMPORTANCE_LEVELS = ["basic", "medium", "important", "immediately", "absolute"] as const;
@@ -120,6 +121,12 @@ export interface Note {
   inboxGroup?: string;
   /** Random Choice (R7.7): the last picked list item. */
   randomPick?: RandomPick;
+  /** Mark as (custom module, 27.09): user tags; on a "markas" node its own tags, on other notes the inserted tags. */
+  customMarks?: CustomMark[];
+  /** Mark as: colour the node frame with the tag colours (several → animated gradient). */
+  customMarkFrame?: boolean;
+  /** List: a Statistics extension inserted into this list (shows per-row stats on the right). */
+  listStats?: boolean;
 }
 
 /** Beacon diameter in u (fixed size, ROADMAP R4.0). */
