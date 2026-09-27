@@ -1,6 +1,6 @@
 # hive — состояние (обновлено 24.09.2026, после восстановления)
 
-**Актуально:** дебаг 8 (old debug message/debug 8.md; d8common.md, d8_a…f.md; контракты d9a14c3), run `run_fdc500a33c63`: A task_fa47dd540458 Inbox+размещение+Smooth lines (term_57f5…), B task_1f2c82bc4779 List перетаскивание+иконки (term_deb8…), C task_997a1a55be07 Statistics с List (term_af75…), D task_a09179160b76 Source (term_91dc…), E task_8be6f5281e61 правила размеров+Map+Dictionary (term_7db8…), F task_62f6c8d286a9 Mark as (term_487f…). Затем 1.2.4.
+**Актуально:** дебаг 8 закрыт, установщик **1.2.4** ждёт проверки. Все агенты свободны (term_57f5…, term_deb8…, term_af75…, term_91dc…, term_7db8…, term_487f…). Смоук: d8smoke.mjs (держать проверяемые ноды в видимой части окна — иначе клики мимо). Random Choice под вопросом у пользователя.
 
 ---
 
