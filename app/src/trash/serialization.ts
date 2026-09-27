@@ -1,6 +1,6 @@
 import { isFrameAnchor } from "../links/anchors";
 import { ME_OBJECT_ID, pairKey, type Link } from "../model/link";
-import { calculatorKey, parseCalculatorData, parseScope, parseTiers, type CalculatorData } from "../model/nodeData";
+import { calculatorKey, parseCalculatorData, parseScope, parseTiers, type CalculatorData, parseListItems, parseRandomPick, parseSource } from "../model/nodeData";
 import { IMPORTANCE_LEVELS, MOOD_KINDS, PURPOSE_KINDS, type Note, type NoteKind, type TaskState } from "../model/note";
 import type { TrashEntry } from "../model/retention.svelte";
 import type { Zone } from "../model/zone";
@@ -9,6 +9,7 @@ import { copyTrashEntry } from "./trash";
 const NOTE_KINDS = new Set<NoteKind>([
   "note", "pro", "con", "importance", "purpose", "mood", "beacon",
   "goal", "progress", "calculator", "tierlist", "stats", "archive", "trash",
+  "inbox", "list", "source", "glossary", "map", "random",
 ]);
 const LINK_SHAPES = new Set<Link["shape"]>(["base", "orthogonal", "zigzag", "wave"]);
 const MAX_ENTRIES = 10_000;
@@ -134,6 +135,10 @@ function parseTrashNote(value: unknown): Note | null {
     ...(value.moods ? { moods: value.moods as Note["moods"] } : {}),
     ...(scope ? { scope } : {}),
     ...(tiers ? { tiers } : {}),
+    ...(parseListItems(value.listItems) ? { listItems: parseListItems(value.listItems)! } : {}),
+    ...(parseSource(value.source) ? { source: parseSource(value.source)! } : {}),
+    ...(typeof value.inboxGroup === "string" && value.inboxGroup ? { inboxGroup: value.inboxGroup } : {}),
+    ...(parseRandomPick(value.randomPick) ? { randomPick: parseRandomPick(value.randomPick)! } : {}),
     ...(typeof value.color === "string" ? { color: value.color } : {}),
     ...(typeof value.zoneId === "string" ? { zoneId: value.zoneId } : {}),
     ...(finite(value.createdAt) ? { createdAt: value.createdAt } : {}),
