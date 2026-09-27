@@ -1,9 +1,18 @@
 import type { Point } from "../board/cameraMath";
 import { snapToGrid } from "../board/gridMath";
 import type { Bounds } from "../notes/layout.svelte";
-import { MIN_NOTE_HEIGHT, MIN_NOTE_WIDTH, maximumNoteWidthForKind, minimumTextWidthForNote } from "../notes/layout.svelte";
+import { MIN_NOTE_HEIGHT, maximumNoteWidthForKind, minimumTextWidthForNote } from "../notes/layout.svelte";
 import { preferences } from "../settings/preferences.svelte";
-import { clampModuleHeight, isFixedSizeNodeKind, maximumWidthForKind, resizeEdgeAxes, type ResizeEdge } from "./resize";
+import {
+  clampModuleHeight,
+  isFixedSizeNodeKind,
+  maximumWidthForKind,
+  minimumHeightForKind,
+  minimumWidthForKind,
+  resizeEdgeAxes,
+  resizeRuleForKind,
+  type ResizeEdge,
+} from "./resize";
 import type { GeometryChange, NoteFrame } from "./gestures";
 
 export interface GroupScaleGesture {
@@ -104,12 +113,12 @@ export function scaleGroupFrames(
     y: axes.vertical === "top"
       ? bounds.y + bounds.height - (bounds.y + bounds.height - frame.y) * scaleY
       : bounds.y + (frame.y - bounds.y) * scaleY,
-    width: moduleIds.has(frame.id) || preservesFixedSize(frame, beaconIds)
+    width: moduleIds.has(frame.id) || preservesGroupDimensions(frame, beaconIds)
       ? frame.width
-      : Math.max(MIN_NOTE_WIDTH, Math.min(frame.maxWidth ?? maximumWidthForKind(frame.type), frame.width * scaleX)),
-    height: preservesFixedSize(frame, beaconIds) ? frame.height : moduleIds.has(frame.id)
+      : Math.max(minimumWidthForKind(frame.type), Math.min(frame.maxWidth ?? maximumWidthForKind(frame.type), frame.width * scaleX)),
+    height: preservesGroupDimensions(frame, beaconIds) ? frame.height : moduleIds.has(frame.id)
       ? clampModuleHeight((frame.height ?? MIN_NOTE_HEIGHT) * scaleY)
-      : frame.height === null ? null : Math.max(MIN_NOTE_HEIGHT, Math.min(frame.maxHeight ?? Infinity, frame.height * scaleY)),
+      : frame.height === null ? null : Math.max(minimumHeightForKind(frame.type), Math.min(frame.maxHeight ?? Infinity, frame.height * scaleY)),
   }));
 }
 
@@ -160,22 +169,24 @@ function edgeScales(
 }
 
 function minimumWidthScale(frames: readonly NoteFrame[], moduleIds: ReadonlySet<string>, beaconIds: ReadonlySet<string>): number {
-  return Math.max(0, ...frames.flatMap((frame) => moduleIds.has(frame.id) || preservesFixedSize(frame, beaconIds)
+  return Math.max(0, ...frames.flatMap((frame) => moduleIds.has(frame.id) || preservesGroupDimensions(frame, beaconIds)
     ? []
-    : [(preferences.fitWidthToText
-      ? minimumTextWidthForNote(frame.id, frame.maxWidth ?? maximumNoteWidthForKind(frame.type))
-      : MIN_NOTE_WIDTH) / frame.width]));
+    : [(frame.type === "map"
+      ? minimumWidthForKind(frame.type)
+      : preferences.fitWidthToText
+        ? Math.max(minimumWidthForKind(frame.type), minimumTextWidthForNote(frame.id, frame.maxWidth ?? maximumNoteWidthForKind(frame.type)))
+        : minimumWidthForKind(frame.type)) / frame.width]));
 }
 
 function minimumHeightScale(frames: readonly NoteFrame[], moduleIds: ReadonlySet<string>, beaconIds: ReadonlySet<string>): number {
-  const manualHeights = frames.flatMap((frame) => frame.height === null || moduleIds.has(frame.id) || preservesFixedSize(frame, beaconIds)
+  const manualHeights = frames.flatMap((frame) => frame.height === null || moduleIds.has(frame.id) || preservesGroupDimensions(frame, beaconIds)
     ? []
-    : [MIN_NOTE_HEIGHT / frame.height]);
+    : [minimumHeightForKind(frame.type) / frame.height]);
   return Math.max(0, ...manualHeights);
 }
 
-function preservesFixedSize(frame: NoteFrame, beaconIds: ReadonlySet<string>): boolean {
-  return beaconIds.has(frame.id) || isFixedSizeNodeKind(frame.type);
+function preservesGroupDimensions(frame: NoteFrame, beaconIds: ReadonlySet<string>): boolean {
+  return beaconIds.has(frame.id) || resizeRuleForKind(frame.type).groupDimensions === "preserve" || isFixedSizeNodeKind(frame.type);
 }
 
 function clampScale(scale: number, minimum: number): number {

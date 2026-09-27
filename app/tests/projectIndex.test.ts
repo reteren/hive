@@ -146,6 +146,7 @@ describe("project index", () => {
       { id: "stats", type: "stats", name: "Statistics", text: "", x: 100, y: 0, width: 88, height: 62 },
       { id: "trash", type: "trash", name: "Trash", text: "", x: 150, y: 0, width: 88, height: 62 },
       { id: "archive", type: "archive", name: "Archive", text: "", x: 200, y: 0, width: 88, height: 62 },
+      { id: "source", type: "source", name: "Source", text: "", x: 250, y: 0, width: 88, height: 62 },
     ];
     const index = parseProjectIndex(serializeProjectIndex(notes));
     const loaded = mergeLoadedNotes(index, index.notes.map((note) => ({
@@ -165,7 +166,18 @@ describe("project index", () => {
       [30, null],
       [40, 40],
       [40, 40],
+      [34, 24],
     ]);
+  });
+
+  it("preserves saved Map dimensions after the node becomes resizable", () => {
+    const map: Note = { id: "map", type: "map", name: "Map", text: "", x: 0, y: 0, width: 82, height: 56 };
+    const index = parseProjectIndex(serializeProjectIndex([map]));
+    const loaded = mergeLoadedNotes(index, [{
+      id: map.id, name: map.name, file: index.notes[0]!.file, text: "", x: map.x, y: map.y, width: map.width, height: map.height,
+    }]);
+
+    expect(loaded[0]).toMatchObject({ width: 82, height: 56 });
   });
 
   it("round trips beacon colour, zone membership, undersized legacy zones and ordered marks", () => {

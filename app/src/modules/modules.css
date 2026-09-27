@@ -367,3 +367,51 @@
   font-size: 10px;
   line-height: 1.3;
 }
+
+/* Importance owns the frame when both systems are active; Mark as fills the frame otherwise. */
+.note-card[data-custom-mark-frame="true"]:not([data-importance]) {
+  border: 4px solid transparent;
+  background:
+    linear-gradient(var(--note-frame), var(--note-frame)) padding-box,
+    var(--custom-mark-gradient) border-box;
+  background-size: 100% 100%, 100% 100%;
+  box-shadow: 0 3px 12px rgb(0 0 0 / 28%), 0 0 8px rgb(181 155 210 / 14%);
+}
+
+.note-card[data-custom-mark-frame="true"][data-custom-mark-animate="true"]:not([data-importance]) {
+  background-size: 100% 100%, 200% 100%;
+  animation: custom-mark-frame-flow 8s linear infinite;
+}
+
+@keyframes custom-mark-frame-flow {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 0 0, -100% 0; }
+}
+
+:root[data-reduce-motion="true"] .note-card[data-custom-mark-animate="true"] {
+  animation: none;
+  background-position: 0 0, 0 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .note-card[data-custom-mark-animate="true"] {
+    animation: none;
+    background-position: 0 0, 0 0;
+  }
+}
+
+.note-markas-frame {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 3px;
+  color: #b8b8b8;
+  font-size: 9px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.note-markas-frame input {
+  margin: 0;
+  accent-color: #b59bd2;
+}

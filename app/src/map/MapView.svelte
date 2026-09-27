@@ -8,17 +8,23 @@
   import { ME_POSITION, camera, cameraSettings, refreshPointerWorld, viewport } from "../board/camera.svelte";
   import { zoomAt, type Point } from "../board/cameraMath";
   import { ME_OBJECT_ID } from "../model/link";
+  import { links as boardLinks } from "../model/links.svelte";
   import {
     cameraViewportRect,
     fitMap,
+    MAX_PROJECTED_MAP_LINKS,
     mapToWorld,
+    projectMapLinks,
     wholeBoardBounds,
     worldToMap,
+    zoomMapTransform,
     type MapNoteBounds,
+    type MapLinkInput,
     type MapTransform,
     type WorldRect,
   } from "./mapMath";
-  import { cameraSnapshot, recordMapCameraChange, restoreCamera, type CameraSnapshot } from "./cameraHistory";
+  import { cameraSnapshot, recordMapCameraChange, recordMapInternalZoomChange, restoreCamera, type CameraSnapshot } from "./cameraHistory";
+  import { mapViewState, setMapInternalZoom } from "./mapViewState.svelte";
 
   const MAP_WIDTH = 400;
   const MAP_HEIGHT = 300;
@@ -59,9 +65,12 @@
     zones: { id: string; color: string; path: string }[];
     notes: MapRectMark[];
     beacons: MapDotMark[];
+    links: { id: string; kind: "strong" | "weak"; from: Point; to: Point }[];
+    linksSkipped: boolean;
     me: Point;
     viewport: WorldRect;
     camera: CameraSnapshot;
+    internalZoom: number;
   }
 
   let svg: SVGSVGElement;
@@ -71,16 +80,21 @@
     zones: [],
     notes: [],
     beacons: [],
+    links: [],
+    linksSkipped: false,
     me: worldToMap(ME_POSITION, fitMap({ x: 0, y: 0, width: 0, height: 0 }, { width: MAP_WIDTH, height: MAP_HEIGHT }, MAP_PADDING)),
     viewport: { x: 0, y: 0, width: 0, height: 0 },
     camera: { x: camera.x, y: camera.y, zoom: camera.zoom },
+    internalZoom: mapViewState.zoom,
   });
   let cachedBoundsKey = "";
   let cachedBounds: WorldRect = { x: 0, y: 0, width: 0, height: 0 };
   let pendingFrame = 0;
   let dragBefore: CameraSnapshot | null = null;
   let wheelBefore: CameraSnapshot | null = null;
-  let wheelTimer: ReturnType<typeof setTimeout> | undefined;
+  let internalWheelBefore: number | null = null;
+  let cameraWheelTimer: ReturnType<typeof setTimeout> | undefined;
+  let internalWheelTimer: ReturnType<typeof setTimeout> | undefined;
 
   function zonePath(parts: readonly (readonly Point[])[], holes: readonly (readonly Point[])[], transform: MapTransform): string {
     return [...parts, ...holes].map((ring) => {
@@ -127,8 +141,19 @@
     });
   }
 
-  function makeFrame(notes: NoteSnapshot[], boardZones: ZoneSnapshot[], bounds: WorldRect): MapFrame {
-    const transform = fitMap(bounds, { width: MAP_WIDTH, height: MAP_HEIGHT }, MAP_PADDING);
+  function makeFrame(
+    notes: NoteSnapshot[],
+    boardZones: ZoneSnapshot[],
+    linkSnapshots: MapLinkInput[],
+    linksSkipped: boolean,
+    bounds: WorldRect,
+  ): MapFrame {
+    const box = { width: MAP_WIDTH, height: MAP_HEIGHT };
+    const transform = zoomMapTransform(
+      fitMap(bounds, box, MAP_PADDING),
+      box,
+      mapViewState.zoom,
+    );
     const mapNotes: MapRectMark[] = [];
     const beacons: MapDotMark[] = [];
 
@@ -157,21 +182,27 @@
       })),
       notes: mapNotes,
       beacons,
+      links: projectMapLinks(linkSnapshots, notes, transform, ME_OBJECT_ID, ME_POSITION),
+      linksSkipped,
       me: worldToMap(ME_POSITION, transform),
       viewport: cameraViewportRect(camera, viewport, transform),
       camera: cameraSnapshot(),
+      internalZoom: mapViewState.zoom,
     };
   }
 
   $effect(() => {
     const notes = captureNotes();
     const boardZones = captureZones();
+    const sourceLinks = Object.values(boardLinks.byId);
+    const linksSkipped = sourceLinks.length > MAX_PROJECTED_MAP_LINKS;
+    const linkSnapshots: MapLinkInput[] = linksSkipped ? [] : sourceLinks.map(({ id, from, to, kind }) => ({ id, from, to, kind }));
     const key = geometryKey(notes, boardZones);
     if (key !== cachedBoundsKey) {
       cachedBounds = wholeBoardBounds(notes, boardZones, ME_POSITION);
       cachedBoundsKey = key;
     }
-    const next = makeFrame(notes, boardZones, cachedBounds);
+    const next = makeFrame(notes, boardZones, linkSnapshots, linksSkipped, cachedBounds);
     if (pendingFrame) cancelAnimationFrame(pendingFrame);
     pendingFrame = requestAnimationFrame(() => {
       frame = next;
@@ -198,7 +229,8 @@
 
   function onPointerDown(event: PointerEvent): void {
     if (event.button !== 0 || !event.isPrimary) return;
-    finishWheelZoom();
+    finishCameraWheelZoom();
+    finishInternalWheelZoom();
     dragBefore = cameraSnapshot();
     event.preventDefault();
     svg.setPointerCapture(event.pointerId);
@@ -226,20 +258,43 @@
     dragBefore = null;
   }
 
-  function finishWheelZoom(): void {
-    if (wheelTimer !== undefined) clearTimeout(wheelTimer);
-    wheelTimer = undefined;
+  function finishCameraWheelZoom(): void {
+    if (cameraWheelTimer !== undefined) clearTimeout(cameraWheelTimer);
+    cameraWheelTimer = undefined;
     if (wheelBefore) recordMapCameraChange(wheelBefore, "Map zoom");
     wheelBefore = null;
   }
 
+  function finishInternalWheelZoom(): void {
+    if (internalWheelTimer !== undefined) clearTimeout(internalWheelTimer);
+    internalWheelTimer = undefined;
+    if (internalWheelBefore !== null) {
+      setMapInternalZoom(mapViewState.zoom);
+      recordMapInternalZoomChange(internalWheelBefore, mapViewState.zoom);
+    }
+    internalWheelBefore = null;
+  }
+
   const captureWheel: Action<SVGSVGElement> = (element) => {
     const onWheel = (event: WheelEvent): void => {
+      if (variant === "node" && !event.ctrlKey) return;
       event.preventDefault();
       event.stopPropagation();
-      finishWheelZoomTimerOnly();
+      const scale = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? 16
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? 300 : 1;
+      const delta = Math.max(-2000, Math.min(2000, event.deltaY * scale));
+      if (event.ctrlKey) {
+        finishCameraWheelZoom();
+        if (internalWheelTimer !== undefined) clearTimeout(internalWheelTimer);
+        if (internalWheelBefore === null) internalWheelBefore = mapViewState.zoom;
+        setMapInternalZoom(mapViewState.zoom * Math.exp(-delta * cameraSettings.zoomSensitivity), false);
+        internalWheelTimer = setTimeout(finishInternalWheelZoom, 240);
+        return;
+      }
+      finishInternalWheelZoom();
+      if (cameraWheelTimer !== undefined) clearTimeout(cameraWheelTimer);
       if (!wheelBefore) wheelBefore = cameraSnapshot();
-      const delta = event.deltaY * (event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? 300 : 1);
       const zoomed = zoomAt(
         camera,
         viewport,
@@ -251,21 +306,17 @@
       camera.y = zoomed.y;
       camera.zoom = zoomed.zoom;
       refreshPointerWorld();
-      wheelTimer = setTimeout(finishWheelZoom, 240);
+      cameraWheelTimer = setTimeout(finishCameraWheelZoom, 240);
     };
     element.addEventListener("wheel", onWheel, { passive: false });
     return { destroy: () => element.removeEventListener("wheel", onWheel) };
   };
 
-  function finishWheelZoomTimerOnly(): void {
-    if (wheelTimer !== undefined) clearTimeout(wheelTimer);
-    wheelTimer = undefined;
-  }
-
   onDestroy(() => {
     if (pendingFrame) cancelAnimationFrame(pendingFrame);
     if (dragBefore) restoreCamera(dragBefore);
-    finishWheelZoom();
+    finishCameraWheelZoom();
+    finishInternalWheelZoom();
   });
 </script>
 
@@ -281,6 +332,9 @@
   data-map-center-x={frame.camera.x}
   data-map-center-y={frame.camera.y}
   data-map-zoom={frame.camera.zoom}
+  data-map-internal-zoom={frame.internalZoom}
+  data-map-link-count={frame.links.length}
+  data-map-links-skipped={frame.linksSkipped ? "true" : undefined}
   use:captureWheel
   onpointerdown={onPointerDown}
   onpointermove={onPointerMove}
@@ -299,6 +353,21 @@
       stroke-width="1.2"
       vector-effect="non-scaling-stroke"
       data-map-zone={zone.id}
+    />
+  {/each}
+  {#each frame.links as link (link.id)}
+    <line
+      x1={link.from.x}
+      y1={link.from.y}
+      x2={link.to.x}
+      y2={link.to.y}
+      stroke={link.kind === "strong" ? "#b6b8ad" : "#929c9b"}
+      stroke-opacity={link.kind === "strong" ? "0.42" : "0.32"}
+      stroke-width="0.75"
+      stroke-dasharray={link.kind === "weak" ? "3 3" : undefined}
+      vector-effect="non-scaling-stroke"
+      data-map-link={link.id}
+      data-map-link-kind={link.kind}
     />
   {/each}
   {#each frame.notes as mark (mark.id)}

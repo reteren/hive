@@ -3,6 +3,7 @@ import type { Point } from "../board/cameraMath";
 import { execute } from "../history/history.svelte";
 import { addNote, board, orderIndex, removeNote, updateNote } from "../model/board.svelte";
 import { newId, type ImportanceLevel, type MoodKind, type Note, type PurposeKind } from "../model/note";
+import type { CustomMark } from "../model/nodeData";
 import { addLink, links, linksOf, removeLink } from "../model/links.svelte";
 import type { Link } from "../model/link";
 import { grid } from "../board/grid.svelte";
@@ -17,7 +18,14 @@ import {
 } from "../notes/creationPosition";
 import { editing } from "../notes/editing.svelte";
 import { selection } from "../selection/selection.svelte";
-import { planModuleMerge } from "./moduleMerge";
+import { planModuleMerge, type ModuleMergePlan } from "./moduleMerge";
+import {
+  customMarkFrameColorsFor,
+  effectiveCustomMarkFrameFor,
+  effectiveCustomMarksFor,
+  linkedCustomMarksFor,
+  mergeCustomMarks,
+} from "../markas/markasLogic";
 import {
   createImportanceCommand,
   createMoodToggleCommand,
@@ -35,6 +43,7 @@ import {
   type ModuleDataPatch,
 } from "./moduleLogic";
 import { closeModulePicker, openModulePicker, toggleModulePicker } from "./pickerState.svelte";
+import { insertStatisticsIntoList } from "../stats/listStatsActions.svelte";
 
 export { closeModulePicker, openModulePicker, toggleModulePicker };
 
@@ -62,6 +71,22 @@ export function effectivePurposes(noteId: string): PurposeKind[] {
 
 export function effectiveMoods(noteId: string): MoodKind[] {
   return effectiveMoodsFor(noteId, board.notes, Object.values(links.byId));
+}
+
+export function effectiveCustomMarks(noteId: string): CustomMark[] {
+  return effectiveCustomMarksFor(noteId, board.notes, Object.values(links.byId));
+}
+
+export function linkedCustomMarks(noteId: string): CustomMark[] {
+  return linkedCustomMarksFor(noteId, board.notes, Object.values(links.byId));
+}
+
+export function effectiveCustomMarkFrame(noteId: string): boolean {
+  return effectiveCustomMarkFrameFor(noteId, board.notes, Object.values(links.byId));
+}
+
+export function effectiveCustomMarkFrameColors(noteId: string): string[] {
+  return customMarkFrameColorsFor(noteId, board.notes, Object.values(links.byId));
 }
 
 export function isLinkedImportance(noteId: string): boolean {
@@ -150,8 +175,14 @@ export function toggleMood(noteId: string, mood: MoodKind): void {
 /** Update the board-space target highlight while an external module is being dragged. */
 export function updateModuleDropPreview(moduleId: string, worldPoint: Point): void {
   const module = board.notes[moduleId];
-  const target = module && isExternalModule(module) ? targetAtPoint(worldPoint, moduleId) : null;
-  const reason = target && module ? dropRefusal(module, target) : null;
+  const target = module?.type === "stats"
+    ? listTargetAtPoint(worldPoint, moduleId)
+    : module && isExternalModule(module)
+      ? targetAtPoint(worldPoint, moduleId)
+      : null;
+  const reason = module?.type === "stats" && target
+    ? target.listStats === true ? "This List already has Statistics." : null
+    : target && module ? dropRefusal(module, target) : null;
   moduleDropPreview.moduleId = moduleId;
   moduleDropPreview.targetId = target?.id ?? null;
   moduleDropPreview.allowed = Boolean(target && !reason);
@@ -168,6 +199,22 @@ export function clearModuleDropPreview(): void {
 /** Insert an external module into the note under the drop point as one reversible operation. */
 export function tryInsertModuleOnDrop(moduleId: string, worldPoint: Point): boolean {
   const module = board.notes[moduleId];
+  if (module?.type === "stats") {
+    const targetList = listTargetAtPoint(worldPoint, moduleId);
+    if (!targetList) {
+      clearModuleDropPreview();
+      return false;
+    }
+    if (targetList.listStats === true) {
+      showModuleFeedback(targetList.id, "This List already has Statistics.");
+      clearModuleDropPreview();
+      return false;
+    }
+    const inserted = insertStatisticsIntoList(moduleId, targetList.id);
+    clearModuleDropPreview();
+    return inserted;
+  }
+
   const target = module && isExternalModule(module) ? targetAtPoint(worldPoint, moduleId) : null;
   if (!module || !target) {
     clearModuleDropPreview();
@@ -181,7 +228,7 @@ export function tryInsertModuleOnDrop(moduleId: string, worldPoint: Point): bool
     return false;
   }
 
-  if (module.type === target.type && (module.type === "purpose" || module.type === "mood")) {
+  if (module.type === target.type && (module.type === "purpose" || module.type === "mood" || module.type === "markas")) {
     return mergeArrayModuleNodes(module, target);
   }
 
@@ -240,20 +287,18 @@ function mergeArrayModuleNodes(source: Note, target: Note): boolean {
   const { plan } = result;
   const sourceSnapshot = copyNote(source);
   const sourceIndex = orderIndex(source.id);
-  const previousValues = plan.field === "purposes"
-    ? target.purposes ? [...target.purposes] : target.purposes
-    : target.moods ? [...target.moods] : target.moods;
+  const previousPatch = copyModulePatch(target);
   const previousSelection = [...selection.ids];
   const previousPrimary = selection.primaryId;
   const previousEditing = editing.noteId;
   const nextSelection = [...new Set(previousSelection.map((id) => id === source.id ? target.id : id))];
 
   execute({
-    label: `Merge ${source.type === "purpose" ? "Purpose" : "Mood"}`,
+    label: `Merge ${kindLabel(source.type as ExternalModuleKind)}`,
     target: target.name,
     do: () => {
       for (const link of plan.removedLinks) removeLink(link.id);
-      writeModulePatch(target.id, { [plan.field]: plan.values });
+      writeModulePatch(target.id, mergePlanPatch(plan));
       removeNote(source.id);
       for (const link of plan.addedLinks) addLink(copyLink(link));
       selection.ids = nextSelection;
@@ -264,7 +309,7 @@ function mergeArrayModuleNodes(source: Note, target: Note): boolean {
     undo: () => {
       for (const link of plan.addedLinks) removeLink(link.id);
       addNote(copyNote(sourceSnapshot), sourceIndex);
-      writeModulePatch(target.id, { [plan.field]: previousValues });
+      writeModulePatch(target.id, patchForMergeUndo(plan.field, previousPatch));
       for (const link of plan.removedLinks) addLink(copyLink(link));
       selection.ids = [...previousSelection];
       selection.primaryId = previousPrimary;
@@ -279,7 +324,7 @@ function mergeArrayModuleNodes(source: Note, target: Note): boolean {
 export function extractModuleFromNote(
   noteId: string,
   kind: ExternalModuleKind,
-  value: ImportanceLevel | PurposeKind | MoodKind,
+  value: string,
   worldPoint: Point,
 ): boolean {
   const target = board.notes[noteId];
@@ -302,12 +347,21 @@ export function extractModuleFromNote(
     if (!current.includes(purpose)) return false;
     nextPatch = { purposes: current.filter((item) => item !== purpose) };
     module = createExternalModule("purpose", purpose, worldPoint);
-  } else {
+  } else if (kind === "mood") {
     const mood = value as MoodKind;
     const current = target.moods ?? [];
     if (!current.includes(mood)) return false;
     nextPatch = { moods: current.filter((item) => item !== mood) };
     module = createExternalModule("mood", mood, worldPoint);
+  } else {
+    const mark = (target.customMarks ?? []).find((item) => item.id === value);
+    if (!mark) return false;
+    const remaining = (target.customMarks ?? []).filter((item) => item.id !== mark.id);
+    nextPatch = {
+      customMarks: remaining,
+      ...(remaining.length === 0 && target.customMarkFrame === true ? { customMarkFrame: false } : {}),
+    };
+    module = createExternalModule("markas", mark, worldPoint, target.customMarkFrame === true);
   }
 
   const noteIndex = board.order.length;
@@ -359,8 +413,9 @@ export function showModuleFeedback(noteId: string, message: string): void {
 
 function createExternalModule(
   kind: ExternalModuleKind,
-  value: ImportanceLevel | PurposeKind | MoodKind,
+  value: ImportanceLevel | PurposeKind | MoodKind | CustomMark,
   worldPoint: Point,
+  customMarkFrame = false,
 ): Note {
   const id = newId();
   const height = estimatedCreationHeight({
@@ -394,7 +449,9 @@ function createExternalModule(
       ? { importance: value as ImportanceLevel }
       : kind === "purpose"
         ? { purposes: [value as PurposeKind] }
-        : { moods: [value as MoodKind] }),
+        : kind === "mood"
+          ? { moods: [value as MoodKind] }
+          : { customMarks: [{ ...(value as CustomMark) }], customMarkFrame }),
   };
 }
 
@@ -412,6 +469,14 @@ function valuePatchForInsertion(module: Note, target: Note): ModuleDataPatch | n
     if (values.length === 0) return null;
     return { moods: appendUnique(target.moods ?? [], values) };
   }
+  if (module.type === "markas") {
+    const values = module.customMarks ?? [];
+    if (values.length === 0) return null;
+    return {
+      customMarks: mergeCustomMarks(target.customMarks ?? [], values),
+      customMarkFrame: target.customMarkFrame === true || module.customMarkFrame === true,
+    };
+  }
   return null;
 }
 
@@ -421,16 +486,37 @@ function appendUnique<T>(current: readonly T[], additions: readonly T[]): T[] {
   return result;
 }
 
+function mergePlanPatch(plan: ModuleMergePlan): ModuleDataPatch {
+  if (plan.field === "customMarks") {
+    return { customMarks: plan.values, customMarkFrame: plan.frame };
+  }
+  return plan.field === "purposes" ? { purposes: plan.values } : { moods: plan.values };
+}
+
+function patchForMergeUndo(
+  field: ModuleMergePlan["field"],
+  previous: ModuleDataPatch,
+): ModuleDataPatch {
+  if (field === "customMarks") {
+    return { customMarks: previous.customMarks, customMarkFrame: previous.customMarkFrame };
+  }
+  return field === "purposes"
+    ? { purposes: previous.purposes }
+    : { moods: previous.moods };
+}
+
 function copyModulePatch(note: Note): ModuleDataPatch {
   return {
     importance: note.importance,
     purposes: note.purposes ? [...note.purposes] : note.purposes,
     moods: note.moods ? [...note.moods] : note.moods,
+    customMarks: note.customMarks ? note.customMarks.map((mark) => ({ ...mark })) : note.customMarks,
+    customMarkFrame: note.customMarkFrame,
   };
 }
 
 function kindLabel(kind: ExternalModuleKind): string {
-  return kind === "importance" ? "Importance" : kind === "purpose" ? "Purpose" : "Mood";
+  return kind === "importance" ? "Importance" : kind === "purpose" ? "Purpose" : kind === "mood" ? "Mood" : "Mark as";
 }
 
 function targetAtPoint(point: Point, excludedId: string): Note | null {
@@ -440,14 +526,27 @@ function targetAtPoint(point: Point, excludedId: string): Note | null {
     const bounds = noteBounds(note);
     if (point.x >= bounds.x && point.x <= bounds.x + bounds.width &&
       point.y >= bounds.y && point.y <= bounds.y + bounds.height) {
-      return isAssignableNote(note) || note.type === "purpose" || note.type === "mood" ? note : null;
+      return isAssignableNote(note) || note.type === "purpose" || note.type === "mood" || note.type === "markas" ? note : null;
+    }
+  }
+  return null;
+}
+
+function listTargetAtPoint(point: Point, excludedId: string): Note | null {
+  for (let index = board.order.length - 1; index >= 0; index -= 1) {
+    const note = board.notes[board.order[index]];
+    if (!note || note.id === excludedId) continue;
+    const bounds = noteBounds(note);
+    if (point.x >= bounds.x && point.x <= bounds.x + bounds.width &&
+      point.y >= bounds.y && point.y <= bounds.y + bounds.height) {
+      return note.type === "list" ? note : null;
     }
   }
   return null;
 }
 
 function dropRefusal(module: Note, target: Note): string | null {
-  if (module.type === target.type && (module.type === "purpose" || module.type === "mood")) {
+  if (module.type === target.type && (module.type === "purpose" || module.type === "mood" || module.type === "markas")) {
     const result = planModuleMerge(module, target, Object.values(links.byId), board.notes);
     return result.ok ? null : result.reason;
   }
@@ -463,6 +562,8 @@ function insertionRefusal(module: Note, target: Note): string | null {
     return "Purpose module has no label.";
   } else if (module.type === "mood" && !module.moods?.length) {
     return "Mood module has no value.";
+  } else if (module.type === "markas" && !module.customMarks?.length) {
+    return "Mark as node has no tags.";
   }
   return null;
 }
@@ -478,7 +579,7 @@ function hasExternalImportance(noteId: string, exceptModuleId?: string): boolean
 }
 
 function isExternalModule(note: Note): boolean {
-  return note.type === "importance" || note.type === "purpose" || note.type === "mood";
+  return note.type === "importance" || note.type === "purpose" || note.type === "mood" || note.type === "markas";
 }
 
 function isAssignableNote(note: Note): boolean {
@@ -501,6 +602,14 @@ function writeModulePatch(noteId: string, patch: ModuleDataPatch): void {
     if (patch.moods === undefined) delete note.moods;
     else updateNote(noteId, { moods: [...patch.moods] });
   }
+  if ("customMarks" in patch) {
+    if (patch.customMarks === undefined) delete note.customMarks;
+    else updateNote(noteId, { customMarks: patch.customMarks.map((mark) => ({ ...mark })) });
+  }
+  if ("customMarkFrame" in patch) {
+    if (patch.customMarkFrame === undefined) delete note.customMarkFrame;
+    else updateNote(noteId, { customMarkFrame: patch.customMarkFrame });
+  }
 }
 
 function copyNote(note: Note): Note {
@@ -509,6 +618,7 @@ function copyNote(note: Note): Note {
     task: note.task ? { ...note.task } : note.task,
     purposes: note.purposes ? [...note.purposes] : note.purposes,
     moods: note.moods ? [...note.moods] : note.moods,
+    customMarks: note.customMarks ? note.customMarks.map((mark) => ({ ...mark })) : note.customMarks,
   };
 }
 

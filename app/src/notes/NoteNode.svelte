@@ -16,7 +16,8 @@
   import ModuleNodeBody from "../modules/ModuleNodeBody.svelte";
   import MoodNodeBody from "../moods/MoodNodeBody.svelte";
   import { nodeBodyFor } from "./nodeBodies";
-  import { effectiveImportance } from "../modules/moduleActions.svelte";
+  import { effectiveCustomMarkFrameColors, effectiveImportance } from "../modules/moduleActions.svelte";
+  import { customMarkGradientFor } from "../markas/markasLogic";
   import { startNoteEditing } from "../editor/editorSession";
   import { tool } from "../tools/tool.svelte";
   import { zones } from "../model/zones.svelte";
@@ -29,6 +30,8 @@
   let renameInput = $state<HTMLInputElement>();
   let renameError = $state("");
   let memberZone = $derived(zones.byId[zoneOf(note.id) ?? ""]);
+  let customMarkFrameColors = $derived(effectiveCustomMarkFrameColors(note.id));
+  let customMarkGradient = $derived(customMarkGradientFor(customMarkFrameColors));
 
   function beginRename(): void {
     draftName = note.name;
@@ -108,7 +111,7 @@
 
   function beginEditingFromDoubleClick(event: MouseEvent): void {
     if (editing.noteId === note.id || !(event.target instanceof Element)) return;
-    if (note.type === "importance" || note.type === "purpose" || note.type === "mood") return;
+    if (note.type === "importance" || note.type === "purpose" || note.type === "mood" || note.type === "markas") return;
     if (event.target.closest(".note-header, [data-text-link], input, button")) return;
     tool.active = "select";
     startNoteEditing(note.id, { x: event.clientX, y: event.clientY });
@@ -123,7 +126,10 @@
   data-kind={note.type}
   data-task={note.task ? (note.task.done ? "done" : "open") : undefined}
   data-importance={effectiveImportance(note.id) ?? undefined}
+  data-custom-mark-frame={customMarkFrameColors.length > 0 ? "true" : undefined}
+  data-custom-mark-animate={customMarkFrameColors.length > 1 ? "true" : undefined}
   data-member-zone-id={memberZone?.id}
+  style:--custom-mark-gradient={customMarkGradient}
   style:left={`${note.x * PX_PER_UNIT}px`}
   style:top={`${note.y * PX_PER_UNIT}px`}
   style:width={`${note.width * PX_PER_UNIT}px`}

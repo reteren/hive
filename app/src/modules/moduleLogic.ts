@@ -1,4 +1,5 @@
 import type { HistoryCommand } from "../history/historyStack";
+import type { CustomMark } from "../model/nodeData";
 import {
   IMPORTANCE_LEVELS,
   MOOD_KINDS,
@@ -64,11 +65,11 @@ export const MODULE_NOTE_WIDTH = 14;
 export const MODULE_NOTE_HEIGHT = 4;
 
 export type ModuleArrayKind = "purpose" | "mood";
-export type ExternalModuleKind = "importance" | ModuleArrayKind;
+export type ExternalModuleKind = "importance" | ModuleArrayKind | "markas";
 export type ModuleRowKind = ExternalModuleKind;
-export type ModuleDataPatch = Partial<Pick<Note, "importance" | "purposes" | "moods">>;
+export type ModuleDataPatch = Partial<Pick<Note, "importance" | "purposes" | "moods" | "customMarks" | "customMarkFrame">>;
 export type ModuleDataWriter = (noteId: string, patch: ModuleDataPatch) => void;
-export type ModuleNoteValue = Pick<Note, "id" | "type" | "importance" | "purposes" | "moods">;
+export type ModuleNoteValue = Pick<Note, "id" | "type" | "importance" | "purposes" | "moods" | "customMarks" | "customMarkFrame">;
 export type ModuleNoteLookup = Readonly<Record<string, ModuleNoteValue | undefined>>;
 export type ModuleEdge = Pick<Link, "from" | "to" | "kind">;
 
@@ -150,11 +151,13 @@ export function moduleRowsFor(
   importance: ImportanceLevel | null,
   purposes: readonly PurposeKind[],
   moods: readonly MoodKind[],
+  customMarks: readonly CustomMark[] = [],
 ): ModuleRowKind[] {
   const rows: ModuleRowKind[] = [];
   if (importance) rows.push("importance");
   if (purposes.length > 0) rows.push("purpose");
   if (moods.length > 0) rows.push("mood");
+  if (customMarks.length > 0) rows.push("markas");
   return rows;
 }
 

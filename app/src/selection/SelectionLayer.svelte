@@ -11,6 +11,9 @@
   import type { NoteKind } from "../model/note";
 import { maximumResizableHeight, maximumResizableHeightForNote, minimumTextWidthForNote, noteBounds, renderedNoteMetrics, type Bounds } from "../notes/layout.svelte";
 import { preferences } from "../settings/preferences.svelte";
+import { inboxAutoHeight, inboxMinHeight } from "../inbox/inboxLayout";
+import { userDictionary } from "../spell/dictionary.svelte";
+import { measureDictionaryHeightLimits } from "../spell/dictionarySizing";
   import { zoneBounds, type Zone } from "../model/zone";
   import { zones, updateZone } from "../model/zones.svelte";
   import { beginZoneMembershipBatch, endZoneMembershipBatch, zoneMembers } from "../zones/membership.svelte";
@@ -894,12 +897,32 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
   function frameForNote(id: string): NoteFrame {
     const note = boardState.notes[id];
     const bounds = noteBounds(note);
+    const maxHeight = note.type === "inbox"
+      ? inboxAutoHeight(note)
+      : note.type === "glossary"
+        ? measureDictionaryHeightLimits(id, userDictionary.words.length, bounds.height).autoHeight
+        : note.type === "map" ? Number.POSITIVE_INFINITY : maximumResizableHeightForNote(id);
     return {
       ...boundsAsFrame(id, bounds, note.height),
       type: note.type,
       maxWidth: maximumWidthForKind(note.type),
-      maxHeight: maximumResizableHeightForNote(id),
+      maxHeight,
     };
+  }
+
+  function canShrinkBelowAutoHeight(id: string): boolean {
+    const note = boardState.notes[id];
+    if (!note) return false;
+    if (note.type === "inbox") {
+      const minimum = inboxMinHeight(note);
+      const current = note.height ?? inboxAutoHeight(note);
+      return current > minimum + 0.01 && inboxAutoHeight(note) > minimum + 0.01;
+    }
+    if (note.type === "glossary") {
+      const limits = measureDictionaryHeightLimits(id, userDictionary.words.length, noteBounds(note).height);
+      return limits.canShrink && (note.height ?? limits.autoHeight) > limits.minimumHeight + 0.01;
+    }
+    return false;
   }
 
   function startMove(
@@ -1586,7 +1609,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
   function updateModulePreview(frames: readonly NoteFrame[], worldPoint: Point): void {
     if (frames.length !== 1) return;
     const note = boardState.notes[frames[0].id];
-    if (note?.type === "importance" || note?.type === "purpose" || note?.type === "mood") {
+    if (note?.type === "importance" || note?.type === "purpose" || note?.type === "mood" || note?.type === "markas") {
       updateModuleDropPreview(note.id, worldPoint);
     }
   }
@@ -1700,7 +1723,8 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
       aria-label="Selected {outline.name}"
     >
       {#if selection.ids.length === 1 && selection.zoneIds.length === 0 && outline.primary}
-        {#each RESIZE_EDGES.filter((edge) => hasResizeHandle(outline.kind, edge)) as edge (edge)}
+        {@const canShrink = canShrinkBelowAutoHeight(outline.id)}
+        {#each RESIZE_EDGES.filter((edge) => hasResizeHandle(outline.kind, edge, canShrink)) as edge (edge)}
           <button
             class={`resize-handle resize-handle-${edge}`}
             class:resize-handle-corner={isCornerHandle(edge)}

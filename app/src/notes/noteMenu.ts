@@ -1,4 +1,6 @@
 import { board } from "../model/board.svelte";
+import { linksOf } from "../model/links.svelte";
+import { smoothLinesForObjects } from "../links/smoothLines";
 
 /**
  * Items of the note right-click menu. Features register their entries here instead of editing
@@ -16,6 +18,14 @@ export interface NoteMenuItem {
 }
 
 const items = new Map<string, NoteMenuItem>();
+
+registerNoteMenuItem({
+  id: "links.smoothLines",
+  label: () => "Smooth lines",
+  run: (noteId) => { smoothLinesForObjects([noteId]); },
+  visible: (noteId) => linksOf(noteId).length > 0,
+  order: 85,
+});
 
 export function registerNoteMenuItem(item: NoteMenuItem): void {
   items.set(item.id, item);

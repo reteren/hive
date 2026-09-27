@@ -2,7 +2,6 @@
   import { onDestroy } from "svelte";
   import { board } from "../model/board.svelte";
   import { noteBounds } from "../notes/layout.svelte";
-  import type { ImportanceLevel, MoodKind, PurposeKind } from "../model/note";
   import { extractModuleFromNote, worldPointFromClient } from "./moduleActions.svelte";
 
   let {
@@ -32,7 +31,7 @@
     onClick?: () => void;
     onDoubleClick?: () => void;
     onPointerDown?: (event: PointerEvent) => void;
-    dragKind?: "importance" | "purpose" | "mood";
+    dragKind?: "importance" | "purpose" | "mood" | "markas";
     dragValue?: string;
     dragNoteId?: string;
   } = $props();
@@ -102,7 +101,7 @@
     extractModuleFromNote(
       dragNoteId,
       dragKind,
-      dragValue as ImportanceLevel | PurposeKind | MoodKind,
+      dragValue,
       point,
     );
   }

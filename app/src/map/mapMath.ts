@@ -22,6 +22,22 @@ export interface MapTransform {
   offsetY: number;
 }
 
+export interface MapLinkInput {
+  id: string;
+  from: string;
+  to: string;
+  kind: "strong" | "weak";
+}
+
+export interface ProjectedMapLink {
+  id: string;
+  kind: "strong" | "weak";
+  from: Point;
+  to: Point;
+}
+
+export const MAX_PROJECTED_MAP_LINKS = 750;
+
 function includePoint(bounds: { left: number; top: number; right: number; bottom: number }, point: Point): void {
   if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
   bounds.left = Math.min(bounds.left, point.x);
@@ -90,6 +106,42 @@ export function mapToWorld(point: Point, transform: MapTransform): Point {
     x: (point.x - transform.offsetX) / transform.scale,
     y: (point.y - transform.offsetY) / transform.scale,
   };
+}
+
+/** Zoom an already fitted map around the centre of its view box. */
+export function zoomMapTransform(transform: MapTransform, box: Size, zoom: number): MapTransform {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  const centerMap = { x: box.width / 2, y: box.height / 2 };
+  const centerWorld = mapToWorld(centerMap, transform);
+  const scale = transform.scale * safeZoom;
+  return {
+    scale,
+    offsetX: centerMap.x - centerWorld.x * scale,
+    offsetY: centerMap.y - centerWorld.y * scale,
+  };
+}
+
+/** Project node-centre links for the map; large link sets are skipped to keep drawing cheap. */
+export function projectMapLinks(
+  links: readonly MapLinkInput[],
+  notes: readonly MapNoteBounds[],
+  transform: MapTransform,
+  meId = "me",
+  me: Point = { x: 0, y: 0 },
+  maximumLinks = MAX_PROJECTED_MAP_LINKS,
+): ProjectedMapLink[] {
+  if (links.length > maximumLinks) return [];
+  const centers = new Map<string, Point>([[meId, me]]);
+  for (const note of notes) {
+    centers.set(note.id, { x: note.x + note.width / 2, y: note.y + note.height / 2 });
+  }
+  return links.flatMap((link) => {
+    const from = centers.get(link.from);
+    const to = centers.get(link.to);
+    return from && to
+      ? [{ id: link.id, kind: link.kind, from: worldToMap(from, transform), to: worldToMap(to, transform) }]
+      : [];
+  });
 }
 
 /** Current camera viewport projected into map coordinates. */

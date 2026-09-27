@@ -1,10 +1,14 @@
 <script lang="ts">
   import type { ImportanceLevel, Note, PurposeKind } from "../model/note";
+  import { sameCustomMarkValue } from "../markas/markasLogic";
+  import { setCustomMarkFrame } from "../markas/markasActions.svelte";
   import {
     closeModulePicker,
     effectiveImportance,
+    effectiveCustomMarks,
     effectiveMoods,
     effectivePurposes,
+    linkedCustomMarks,
     linkedImportanceSource,
     linkedPurposes,
     makeImportanceLocal,
@@ -12,6 +16,7 @@
     moduleFeedback,
     setImportance,
     setLinkedImportance,
+    showModuleFeedback,
     toggleModulePicker,
     toggleMood,
     togglePurpose,
@@ -21,6 +26,7 @@
   import ModuleChip from "./ModuleChip.svelte";
   import ModulePicker from "./ModulePicker.svelte";
   import MoodRow from "../moods/MoodRow.svelte";
+  import "../markas/init";
   import "./commands";
 
   let { note }: { note: Note } = $props();
@@ -29,6 +35,7 @@
   let shownImportance = $derived(isContentNote ? effectiveImportance(note.id) : null);
   let shownPurposes = $derived(isContentNote ? effectivePurposes(note.id) : []);
   let shownMoods = $derived(isContentNote ? effectiveMoods(note.id) : []);
+  let shownCustomMarks = $derived(isContentNote ? effectiveCustomMarks(note.id) : []);
   let linkedImportance = $derived(isContentNote ? linkedImportanceSource(note.id) : null);
   let pickerImportance = $derived(linkedImportance?.importance ?? shownImportance);
   let importanceIsExternal = $derived(linkedImportance !== null);
@@ -37,7 +44,7 @@
     moduleDropPreview.moduleId && isDropTarget ? moduleDropPreview.reason :
       moduleFeedback.noteId === note.id ? moduleFeedback.message : null,
   );
-  let rows = $derived(moduleRowsFor(shownImportance, shownPurposes, shownMoods));
+  let rows = $derived(moduleRowsFor(shownImportance, shownPurposes, shownMoods, shownCustomMarks));
   let hasModules = $derived(rows.length > 0);
 
   function chooseImportance(id: string): void {
@@ -117,6 +124,35 @@
 
     {#if shownMoods.length > 0}
       <MoodRow {note} />
+    {/if}
+
+    {#if shownCustomMarks.length > 0}
+      <div class="note-module-row note-markas-row" data-module-row="markas">
+        {#each shownCustomMarks as mark (mark.id)}
+          {@const isExternal = linkedCustomMarks(note.id).some((linkedMark) => sameCustomMarkValue(linkedMark, mark))}
+          {@const isEmbedded = note.customMarks?.some((embeddedMark) => embeddedMark.id === mark.id) ?? false}
+          <ModuleChip
+            label={mark.text}
+            color={mark.color}
+            linked={isExternal}
+            interactive
+            onClick={() => showModuleFeedback(note.id, isExternal ? "Edit this tag on its linked Mark as node." : "Drag this tag away to create a Mark as node.")}
+            dragKind={isEmbedded && !isExternal ? "markas" : undefined}
+            dragValue={isEmbedded && !isExternal ? mark.id : undefined}
+            dragNoteId={isEmbedded && !isExternal ? note.id : undefined}
+          />
+        {/each}
+        {#if note.customMarks?.length}
+          <label class="note-markas-frame" data-selection-ignore>
+            <input
+              type="checkbox"
+              checked={note.customMarkFrame === true}
+              onchange={(event) => setCustomMarkFrame(note.id, event.currentTarget.checked)}
+            />
+            <span>Frame</span>
+          </label>
+        {/if}
+      </div>
     {/if}
 
     {#if dropMessage}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cameraViewportRect, fitMap, mapToWorld, wholeBoardBounds, worldToMap } from "../src/map/mapMath";
+import { cameraViewportRect, fitMap, mapToWorld, projectMapLinks, wholeBoardBounds, worldToMap, zoomMapTransform } from "../src/map/mapMath";
 
 describe("map geometry", () => {
   it("fits notes, zones, and ME inside the whole-board bounds", () => {
@@ -43,5 +43,35 @@ describe("map geometry", () => {
     expect(worldCenter.y).toBeCloseTo(camera.y);
     expect(rect.width).toBeCloseTo(40 * transform.scale);
     expect(rect.height).toBeCloseTo(30 * transform.scale);
+  });
+
+  it("keeps the map centre fixed while zooming its internal view", () => {
+    const transform = fitMap({ x: -100, y: -80, width: 400, height: 300 }, { width: 400, height: 300 }, 15);
+    const zoomed = zoomMapTransform(transform, { width: 400, height: 300 }, 2);
+    const centerBefore = mapToWorld({ x: 200, y: 150 }, transform);
+    const centerAfter = mapToWorld({ x: 200, y: 150 }, zoomed);
+
+    expect(centerAfter.x).toBeCloseTo(centerBefore.x);
+    expect(centerAfter.y).toBeCloseTo(centerBefore.y);
+    expect(zoomed.scale).toBe(transform.scale * 2);
+  });
+
+  it("projects strong and weak links between node centres and skips oversized link sets", () => {
+    const transform = fitMap({ x: 0, y: 0, width: 100, height: 100 }, { width: 400, height: 300 }, 10);
+    const notes = [
+      { id: "a", x: 10, y: 20, width: 20, height: 10 },
+      { id: "b", x: 60, y: 40, width: 20, height: 20 },
+    ];
+    const links = [
+      { id: "strong", from: "a", to: "b", kind: "strong" as const },
+      { id: "weak", from: "me", to: "b", kind: "weak" as const },
+    ];
+    const projected = projectMapLinks(links, notes, transform);
+
+    expect(projected).toHaveLength(2);
+    expect(projected[0]?.from).toEqual(worldToMap({ x: 20, y: 25 }, transform));
+    expect(projected[0]?.to).toEqual(worldToMap({ x: 70, y: 50 }, transform));
+    expect(projected.map(({ kind }) => kind)).toEqual(["strong", "weak"]);
+    expect(projectMapLinks([...links, { id: "extra", from: "a", to: "b", kind: "weak" }], notes, transform, "me", { x: 0, y: 0 }, 2)).toEqual([]);
   });
 });

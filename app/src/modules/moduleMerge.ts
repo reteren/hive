@@ -1,8 +1,14 @@
 import { pairKey, type Link } from "../model/link";
 import type { Note, PurposeKind, MoodKind } from "../model/note";
+import type { CustomMark } from "../model/nodeData";
 import { linkRefusalReason } from "../links/rules";
+import { mergeCustomMarks } from "../markas/markasLogic";
 
-export type ModuleMergePlan = ({ field: "purposes"; values: PurposeKind[] } | { field: "moods"; values: MoodKind[] }) & {
+export type ModuleMergePlan = (
+  | { field: "purposes"; values: PurposeKind[] }
+  | { field: "moods"; values: MoodKind[] }
+  | { field: "customMarks"; values: CustomMark[]; frame: boolean }
+) & {
   removedLinks: Link[];
   addedLinks: Link[];
 };
@@ -18,12 +24,19 @@ export function planModuleMerge(
   allLinks: readonly Link[],
   notes: Readonly<Record<string, Note>>,
 ): ModuleMergeResult {
-  if ((source.type !== "purpose" && source.type !== "mood") || target.type !== source.type || source.id === target.id) {
-    return { ok: false, reason: "Only matching Purpose or Mood nodes can merge." };
+  if ((source.type !== "purpose" && source.type !== "mood" && source.type !== "markas") ||
+    target.type !== source.type || source.id === target.id) {
+    return { ok: false, reason: "Only matching Purpose, Mood, or Mark as nodes can merge." };
   }
   const valueChange = source.type === "purpose"
     ? { field: "purposes" as const, values: appendUnique(target.purposes ?? [], source.purposes ?? []) }
-    : { field: "moods" as const, values: appendUnique(target.moods ?? [], source.moods ?? []) };
+    : source.type === "mood"
+      ? { field: "moods" as const, values: appendUnique(target.moods ?? [], source.moods ?? []) }
+      : {
+          field: "customMarks" as const,
+          values: mergeCustomMarks(target.customMarks ?? [], source.customMarks ?? []),
+          frame: target.customMarkFrame === true || source.customMarkFrame === true,
+        };
   const removedLinks = allLinks.filter((link) => link.from === source.id || link.to === source.id);
   const remaining = allLinks.filter((link) => !removedLinks.includes(link));
   const addedLinks: Link[] = [];

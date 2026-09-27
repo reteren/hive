@@ -4,6 +4,10 @@ import { MIN_NOTE_HEIGHT, MIN_NOTE_WIDTH, maximumNoteWidthForKind, minimumTextWi
 import { MODULE_NOTE_HEIGHT } from "../modules/moduleLogic";
 import { preferences } from "../settings/preferences.svelte";
 import { DEFAULT_NOTE_WIDTH, type NoteKind } from "../model/note";
+import { board } from "../model/board.svelte";
+import { inboxMinHeight } from "../inbox/inboxLayout";
+import { userDictionary } from "../spell/dictionary.svelte";
+import { measureDictionaryHeightLimits } from "../spell/dictionarySizing";
 import type { NoteFrame } from "./gestures";
 
 export { MIN_NOTE_WIDTH };
@@ -21,20 +25,66 @@ export const RESIZE_EDGES = [
 
 export type ResizeEdge = (typeof RESIZE_EDGES)[number];
 
-const FIXED_SIZE_NODE_KINDS = new Set<NoteKind>(["beacon", "stats", "progress", "goal", "trash", "archive", "map"]);
+export type ResizeDimensionMode = "free" | "locked" | "shrink-only";
+export type ResizeHandleMode = "all" | "vertical" | "bottom-if-shrinkable" | "none";
+
+export interface NodeResizeRule {
+  width: ResizeDimensionMode;
+  height: ResizeDimensionMode;
+  handles: ResizeHandleMode;
+  groupDimensions: "scale" | "preserve";
+}
+
+const FIXED_RULE: NodeResizeRule = { width: "locked", height: "locked", handles: "none", groupDimensions: "preserve" };
+const RULES: Partial<Record<NoteKind, NodeResizeRule>> = {
+  beacon: FIXED_RULE,
+  stats: FIXED_RULE,
+  progress: FIXED_RULE,
+  goal: FIXED_RULE,
+  trash: FIXED_RULE,
+  archive: FIXED_RULE,
+  source: FIXED_RULE,
+  markas: FIXED_RULE,
+  purpose: { width: "locked", height: "free", handles: "none", groupDimensions: "scale" },
+  mood: { width: "locked", height: "free", handles: "none", groupDimensions: "scale" },
+  inbox: { width: "locked", height: "shrink-only", handles: "bottom-if-shrinkable", groupDimensions: "preserve" },
+  glossary: { width: "locked", height: "shrink-only", handles: "bottom-if-shrinkable", groupDimensions: "preserve" },
+  map: { width: "free", height: "free", handles: "all", groupDimensions: "scale" },
+};
+
+const MODULE_RULE: NodeResizeRule = { width: "locked", height: "free", handles: "vertical", groupDimensions: "scale" };
+const DEFAULT_RULE: NodeResizeRule = { width: "free", height: "free", handles: "all", groupDimensions: "scale" };
+export const MAP_MIN_WIDTH = 20;
+export const MAP_MIN_HEIGHT = 15;
+
+export function resizeRuleForKind(kind: NoteKind | undefined): NodeResizeRule {
+  if (kind) {
+    const rule = RULES[kind];
+    if (rule) return rule;
+  }
+  return isStandaloneModuleKind(kind) ? MODULE_RULE : DEFAULT_RULE;
+}
 
 export function isFixedSizeNodeKind(kind: NoteKind | undefined): boolean {
-  return kind !== undefined && FIXED_SIZE_NODE_KINDS.has(kind);
+  const rule = resizeRuleForKind(kind);
+  return rule.width === "locked" && rule.height === "locked";
+}
+
+export function isResizeWidthLocked(kind: NoteKind | undefined): boolean {
+  return resizeRuleForKind(kind).width === "locked";
 }
 
 export function isStandaloneModuleKind(kind: NoteKind | undefined): boolean {
   return kind === "importance" || kind === "purpose" || kind === "mood";
 }
 
-export function hasResizeHandle(kind: NoteKind | undefined, edge: ResizeEdge): boolean {
-  if (isFixedSizeNodeKind(kind)) return false;
-  if (kind === "purpose" || kind === "mood") return false;
-  return !isStandaloneModuleKind(kind) || (edge !== "left" && edge !== "right");
+export function hasResizeHandle(kind: NoteKind | undefined, edge: ResizeEdge, canShrink = false): boolean {
+  switch (resizeRuleForKind(kind).handles) {
+    case "none": return false;
+    case "vertical": return resizeEdgeAxes(edge).vertical !== null;
+    case "bottom-if-shrinkable": return edge === "bottom" && canShrink;
+    case "all": return true;
+  }
 }
 
 export function clampModuleHeight(height: number): number {
@@ -78,6 +128,21 @@ export function maximumWidthForKind(kind: NoteKind | undefined): number {
   return maximumNoteWidthForKind(kind);
 }
 
+export function minimumWidthForKind(kind: NoteKind | undefined): number {
+  return kind === "map" ? MAP_MIN_WIDTH : MIN_NOTE_WIDTH;
+}
+
+export function minimumHeightForKind(kind: NoteKind | undefined): number {
+  return kind === "map" ? MAP_MIN_HEIGHT : MIN_NOTE_HEIGHT;
+}
+
+export function clampShrinkOnlyHeight(requested: number, minimum: number, autoHeight: number): number {
+  const safeAutoHeight = Number.isFinite(autoHeight) ? Math.max(0, autoHeight) : Math.max(0, requested);
+  const safeMinimum = Math.min(safeAutoHeight, Number.isFinite(minimum) ? Math.max(0, minimum) : 0);
+  const safeRequested = Number.isFinite(requested) ? requested : safeAutoHeight;
+  return Math.min(safeAutoHeight, Math.max(safeMinimum, safeRequested));
+}
+
 export function resizeEdgeAxes(edge: ResizeEdge): ResizeEdgeAxes {
   return EDGE_AXES[edge];
 }
@@ -97,22 +162,27 @@ export function resizeNote(
     return { x: initial.x, y: initial.y, width: initial.width, height: initial.height };
   }
 
+  const rule = resizeRuleForKind(initial.type);
   const axes = resizeEdgeAxes(edge);
   const maxWidth = limits.maxWidth ?? initial.maxWidth ?? maximumWidthForKind(initial.type);
-  const maxHeight = limits.maxHeight ?? initial.maxHeight ?? (initial.type ? MIN_NOTE_HEIGHT * 1.5 : Number.POSITIVE_INFINITY);
+  const maxHeight = initial.type === "map"
+    ? Number.POSITIVE_INFINITY
+    : limits.maxHeight ?? initial.maxHeight ?? (initial.type ? MIN_NOTE_HEIGHT * 1.5 : Number.POSITIVE_INFINITY);
   let x = initial.x;
   let y = initial.y;
   let width = initial.width;
   let height = initial.height;
-  const minimumWidth = preferences.fitWidthToText
+  const minimumWidth = initial.type === "map"
+    ? MAP_MIN_WIDTH
+    : preferences.fitWidthToText
     ? minimumTextWidthForNote(initial.id, maxWidth)
     : MIN_NOTE_WIDTH;
 
-  if (!standaloneModule && axes.horizontal === "right") {
+  if (!isResizeWidthLocked(initial.type) && !standaloneModule && axes.horizontal === "right") {
     let right = initial.x + initial.width + delta.x;
     if (snap) right = snapToGrid({ x: right, y: 0 }, step).x;
     width = Math.min(maxWidth, Math.max(minimumWidth, right - initial.x));
-  } else if (!standaloneModule && axes.horizontal === "left") {
+  } else if (!isResizeWidthLocked(initial.type) && !standaloneModule && axes.horizontal === "left") {
     let left = initial.x + delta.x;
     if (snap) left = snapToGrid({ x: left, y: 0 }, step).x;
     const fixedRight = initial.x + initial.width;
@@ -123,18 +193,39 @@ export function resizeNote(
   if (axes.vertical === "bottom") {
     let bottom = initial.y + visualHeight + delta.y;
     if (snap) bottom = snapToGrid({ x: 0, y: bottom }, step).y;
-    height = standaloneModule
+    if (rule.height === "shrink-only") {
+      const autoHeight = Math.max(0, limits.maxHeight ?? initial.maxHeight ?? visualHeight);
+      const requestedHeight = bottom - initial.y;
+      if (initial.height === null && requestedHeight >= autoHeight) {
+        height = null;
+      } else {
+        const minHeight = minimumShrinkHeight(initial, autoHeight);
+        const maximumHeight = initial.height === null ? autoHeight : Math.min(initial.height, autoHeight);
+        height = clampShrinkOnlyHeight(requestedHeight, minHeight, maximumHeight);
+      }
+    } else height = standaloneModule
       ? clampModuleHeight(bottom - initial.y)
-      : Math.min(maxHeight, Math.max(MIN_NOTE_HEIGHT, bottom - initial.y));
+      : Math.min(maxHeight, Math.max(minimumHeightForKind(initial.type), bottom - initial.y));
   } else if (axes.vertical === "top") {
     let top = initial.y + delta.y;
     if (snap) top = snapToGrid({ x: 0, y: top }, step).y;
     const fixedBottom = initial.y + visualHeight;
     height = standaloneModule
       ? clampModuleHeight(fixedBottom - top)
-      : Math.min(maxHeight, Math.max(MIN_NOTE_HEIGHT, fixedBottom - top));
+      : Math.min(maxHeight, Math.max(minimumHeightForKind(initial.type), fixedBottom - top));
     y = fixedBottom - height;
   }
 
   return { x, y, width, height };
+}
+
+function minimumShrinkHeight(initial: NoteFrame, autoHeight: number): number {
+  if (initial.type === "inbox") {
+    const note = board.notes[initial.id];
+    return note ? inboxMinHeight(note) : MIN_NOTE_HEIGHT;
+  }
+  if (initial.type === "glossary") {
+    return measureDictionaryHeightLimits(initial.id, userDictionary.words.length, autoHeight).minimumHeight;
+  }
+  return minimumHeightForKind(initial.type);
 }

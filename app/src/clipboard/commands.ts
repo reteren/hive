@@ -32,7 +32,7 @@ import { moveToTrash } from "../trash/trashActions.svelte";
 import {
   creationObstacleForNote,
   estimatedCreationHeight,
-  nearestFreeNoteCenter,
+  randomFreeNoteCenter,
   type CreationObstacle,
 } from "../notes/creationPosition";
 import {
@@ -363,7 +363,7 @@ function placeNewNotesWithoutOverlap(notes: readonly Note[], placementHeights?: 
   return notes.map((note) => {
     const height = estimatedCreationHeight(note, placementHeights?.get(note.id));
     const center = { x: note.x + note.width / 2, y: note.y + height / 2 };
-    const placedCenter = nearestFreeNoteCenter(center, note.width, height, obstacles, grid.snap, grid.step);
+    const placedCenter = randomFreeNoteCenter(center, note.width, height, obstacles, grid.snap, grid.step);
     const placed = { ...note, x: placedCenter.x - note.width / 2, y: placedCenter.y - height / 2 };
     obstacles.push(creationObstacleForNote(placed));
     return placed;

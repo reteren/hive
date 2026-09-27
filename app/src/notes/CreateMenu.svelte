@@ -4,21 +4,27 @@
   import { R5_KINDS, R6_KINDS, R7_KINDS } from "../model/note";
   import { creationMenu, closeCreationMenu } from "./creation.svelte";
   import { boardPopupStyle, dismissBoardPopup } from "../ui/boardAnchor";
+  import { tool } from "../tools/tool.svelte";
+  import { cancelLineDraft } from "../links/interaction.svelte";
+  import { clearSelectedLink } from "../links/selection.svelte";
 
   const menuStyle = $derived(boardPopupStyle(camera, viewport, creationMenu.menuAnchor, creationMenu.zoomAtOpen));
 
   function createNoteFromMenu(): void {
     createNote();
+    switchToSelectToolAfterCreation();
     if (!creationMenu.pinned) closeCreationMenu();
   }
 
   function createMiniNodeFromMenu(kind: "pro" | "con"): void {
     createNoteKind(kind);
+    switchToSelectToolAfterCreation();
     if (!creationMenu.pinned) closeCreationMenu();
   }
 
   function createModuleFromMenu(kind: "importance" | "purpose" | "mood"): void {
     createNoteKind(kind);
+    switchToSelectToolAfterCreation();
     if (!creationMenu.pinned) closeCreationMenu();
   }
 
@@ -41,12 +47,21 @@
 
   function createR5FromMenu(kind: (typeof R5_KINDS)[number] | (typeof R6_KINDS)[number] | (typeof R7_KINDS)[number]): void {
     createNoteKind(kind);
+    switchToSelectToolAfterCreation();
     if (!creationMenu.pinned) closeCreationMenu();
   }
 
   function createBeaconFromMenu(): void {
     createNoteKind("beacon");
+    switchToSelectToolAfterCreation();
     if (!creationMenu.pinned) closeCreationMenu();
+  }
+
+  function switchToSelectToolAfterCreation(): void {
+    if (tool.active !== "zone" && tool.active !== "line-strong" && tool.active !== "line-weak") return;
+    tool.active = "select";
+    cancelLineDraft();
+    clearSelectedLink();
   }
 </script>
 

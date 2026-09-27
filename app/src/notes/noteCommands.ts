@@ -12,7 +12,7 @@ import { tool } from "../tools/tool.svelte";
 import {
   creationObstacleForNote,
   estimatedCreationHeight,
-  nearestFreeNoteCenter,
+  randomFreeNoteCenter,
   notePositionAt,
 } from "./creationPosition";
 import type { Point } from "../board/cameraMath";
@@ -61,7 +61,7 @@ export function createNoteKind(kind: NoteKind): string {
     text: "",
   });
   const id = newId();
-  const freeCenter = nearestFreeNoteCenter(
+  const freeCenter = randomFreeNoteCenter(
     creationMenu.origin,
     width,
     height,

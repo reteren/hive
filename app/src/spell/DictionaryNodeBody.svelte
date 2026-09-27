@@ -59,7 +59,7 @@
   }
 </script>
 
-<div class="dictionary-node" data-dictionary-node data-note-id={note.id}>
+<div class="dictionary-node" class:manual-height={note.height !== null} data-dictionary-node={note.id} data-note-id={note.id}>
   <div class="dictionary-toolbar">
     <input bind:value={search} type="search" aria-label="Search dictionary" placeholder="Search words…" />
     <button type="button" onclick={openImport} disabled={busy}>Import…</button>
@@ -73,7 +73,7 @@
   {#if userDictionary.error || message}<div class="dictionary-status" role="status">{userDictionary.error || message}</div>{/if}
   <ul class="dictionary-words">
     {#each visibleWords as word (word)}
-      <li>
+      <li data-dictionary-word>
         <span>{word}</span>
         <button type="button" aria-label={`Remove ${word}`} title="Remove word" disabled={busy} onclick={() => void removeWord(word)}>×</button>
       </li>
@@ -84,7 +84,8 @@
 </div>
 
 <style>
-  .dictionary-node { display: flex; min-height: 0; height: 100%; flex-direction: column; gap: 5px; color: var(--text); font-size: 10px; user-select: text; }
+  .dictionary-node { display: flex; min-height: 0; flex-direction: column; gap: 5px; color: var(--text); font-size: 10px; user-select: text; }
+  .dictionary-node.manual-height { height: 100%; }
   .dictionary-toolbar, .dictionary-export { display: flex; align-items: center; gap: 4px; }
   .dictionary-toolbar input { min-width: 0; height: 24px; flex: 1; padding: 3px 5px; border: 1px solid #484848; border-radius: 3px; background: #181818; color: var(--text); font: inherit; }
   .dictionary-file-input { display: none; }
@@ -92,7 +93,8 @@
   .dictionary-node button:disabled { opacity: .55; cursor: default; }
   .dictionary-export span { margin-left: auto; color: var(--text-dim); white-space: nowrap; }
   .dictionary-status { color: #efaaa5; overflow-wrap: anywhere; }
-  .dictionary-words { min-height: 0; flex: 1; margin: 0; padding: 0; overflow: auto; list-style: none; }
+  .dictionary-words { min-height: 0; flex: 0 0 auto; margin: 0; padding: 0; overflow: visible; list-style: none; }
+  .dictionary-node.manual-height .dictionary-words { flex: 1 1 auto; overflow-x: hidden; overflow-y: auto; }
   .dictionary-words li { display: flex; min-height: 23px; align-items: center; justify-content: space-between; gap: 5px; padding: 2px 3px; border-bottom: 1px solid #393939; }
   .dictionary-words li span { min-width: 0; overflow-wrap: anywhere; }
   .dictionary-words li button { width: 20px; height: 20px; flex: 0 0 auto; padding: 0; color: var(--text-dim); font-size: 14px; line-height: 1; }

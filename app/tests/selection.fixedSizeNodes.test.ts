@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { hasResizeHandle, resizeNote, RESIZE_EDGES } from "../src/selection/resize";
 import type { NoteFrame } from "../src/selection/gestures";
 
-const fixedKinds = ["stats", "progress", "goal", "trash", "archive"] as const;
+const fixedKinds = ["stats", "progress", "goal", "trash", "archive", "source", "markas"] as const;
 
 describe("fixed-size node resize guards", () => {
   it("does not render resize handles for fixed-size kinds", () => {
