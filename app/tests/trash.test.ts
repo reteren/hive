@@ -48,7 +48,7 @@ afterEach(() => {
 });
 
 describe("trash actions", () => {
-  it("moves a mixed note and zone selection with attached links in one undoable step", () => {
+  it("creates one entry per selected object while keeping the batch in one Undo step", () => {
     const first = note("A", "Research");
     first.task = { done: true, doneAt: 100 };
     first.purposes = ["concept"];
@@ -64,11 +64,14 @@ describe("trash actions", () => {
     selection.primaryId = "A";
 
     const created = moveToTrash(["A"], ["zone-a"]);
-    expect(created?.notes[0]).toMatchObject({ text: "Text of A", task: { done: true }, purposes: ["concept"] });
+    expect(created).toHaveLength(2);
+    expect(created?.find((item) => item.notes.length > 0)?.notes[0]).toMatchObject({ text: "Text of A", task: { done: true }, purposes: ["concept"] });
     expect(board.order).toEqual(["B", "C"]);
     expect(zones.order).toEqual([]);
     expect(Object.keys(links.byId)).toEqual(["bc"]);
-    expect(trash.entries[0].links.map((edge) => edge.id)).toEqual(["ab"]);
+    expect(trash.entries).toHaveLength(2);
+    expect(trash.entries.find((item) => item.notes.length > 0)?.links.map((edge) => edge.id)).toEqual(["ab"]);
+    expect(trash.entries.find((item) => item.zones.length > 0)?.zones[0]?.id).toBe("zone-a");
     expect(history.entries).toHaveLength(1);
 
     undo();
@@ -77,7 +80,49 @@ describe("trash actions", () => {
     expect(links.byId.ab).toBeDefined();
     expect(trash.entries).toEqual([]);
     redo();
-    expect(trash.entries).toHaveLength(1);
+    expect(trash.entries).toHaveLength(2);
+  });
+
+  it("splits shared links across per-object entries and restores each link when its other end returns", () => {
+    replaceBoard([note("A"), note("B"), note("C")]);
+    replaceLinks([link("ab", "A", "B"), link("bc", "B", "C")]);
+
+    const created = moveToTrash(["A", "B", "C"]);
+    expect(created).toHaveLength(3);
+    expect(trash.entries.map((item) => item.notes[0]?.id)).toEqual(["A", "B", "C"]);
+    expect(trash.entries.map((item) => item.links.map((edge) => edge.id))).toEqual([[
+      "ab",
+    ], ["ab", "bc"], ["bc"]]);
+
+    const firstId = trash.entries.find((item) => item.notes[0]?.id === "A")!.id;
+    const secondId = trash.entries.find((item) => item.notes[0]?.id === "B")!.id;
+    expect(previewRestore(firstId)?.linksBroken.map(({ link: edge }) => edge.id)).toEqual(["ab"]);
+    restoreTrashEntry(firstId);
+    expect(board.notes.A).toBeDefined();
+    expect(links.byId.ab).toBeUndefined();
+
+    expect(previewRestore(secondId)?.linksRestored.map((edge) => edge.id)).toEqual(["ab"]);
+    restoreTrashEntry(secondId);
+    expect(links.byId.ab).toBeDefined();
+    expect(links.byId.bc).toBeUndefined();
+    const thirdId = trash.entries[0]!.id;
+    restoreTrashEntry(thirdId);
+    expect(links.byId.bc).toBeDefined();
+  });
+
+  it("restores legacy multi-object entries as a group", () => {
+    const legacy = entry("old-group", [note("A"), note("B")], [link("ab", "A", "B")]);
+    const loaded = parseProjectIndex(serializeProjectIndex([], undefined, [], [], [], [], {}, [], [legacy]));
+    replaceTrash(loaded.trash);
+
+    const restored = restoreTrashEntry(legacy.id);
+    expect(restored?.linksRestored.map((edge) => edge.id)).toEqual(["ab"]);
+    expect(board.order).toEqual(["A", "B"]);
+    expect(links.byId.ab).toBeDefined();
+    expect(trash.entries).toEqual([]);
+    undo();
+    expect(board.order).toEqual([]);
+    expect(trash.entries).toEqual([legacy]);
   });
 
   it("previews missing links and renames a collision before restoring", () => {
@@ -129,6 +174,19 @@ describe("trash actions", () => {
     expect(calculators.byKey.budget).toEqual(data);
   });
 
+  it("keeps calculator contents with the restored node when its name must change", () => {
+    const calculator = note("calc", "Budget", "calculator");
+    const data = { entries: [{ id: "e", expression: "9 * 8" }], bank: null, rows: [] };
+    const saved = entry("deleted", [calculator]);
+    saved.calculators = { budget: data };
+    replaceTrash([saved]);
+    replaceBoard([note("ordinary", "Budget")]);
+
+    restoreTrashEntry(saved.id);
+    expect(board.notes.calc?.name).toBe("Budget 2");
+    expect(calculators.byKey["budget 2"]).toEqual(data);
+  });
+
   it("purges one entry or all entries without creating history steps", () => {
     replaceTrash([entry("first", [note("A")]), entry("second", [note("B")])]);
     deletePermanently("first");
@@ -145,6 +203,18 @@ describe("trash actions", () => {
     undo();
     redo();
     expect(board.notes.A).toBeUndefined();
+    expect(trash.entries).toEqual([]);
+  });
+
+  it("keeps a purged object absent while Undo restores the other objects from the batch", () => {
+    replaceBoard([note("A"), note("B")]);
+    const created = moveToTrash(["A", "B"]);
+    const firstEntry = created![0]!;
+    deletePermanently(firstEntry.id);
+
+    undo();
+    expect(board.notes.A).toBeUndefined();
+    expect(board.notes.B).toBeDefined();
     expect(trash.entries).toEqual([]);
   });
 });
