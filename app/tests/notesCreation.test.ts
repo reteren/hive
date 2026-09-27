@@ -6,7 +6,10 @@ import {
   creationObstacleForNote,
   estimatedCreationHeight,
   nearestFreeNoteCenter,
+  RANDOM_CREATION_GAP_MAX,
+  RANDOM_CREATION_GAP_MIN,
   notePositionAt,
+  randomFreeNoteCenter,
   type CreationObstacle,
 } from "../src/notes/creationPosition";
 
@@ -147,6 +150,66 @@ describe("note creation placement", () => {
 
   it("treats the permanent ME beacon as an obstacle", () => {
     expect(nearestFreeNoteCenter({ x: 0, y: 0 }, 4, 4, [], false, 10)).toEqual({ x: 7.6, y: -1.6 });
+  });
+
+  it("keeps an unblocked random-placement origin and uses an injectable RNG for collisions", () => {
+    const origin = { x: 100, y: 100 };
+    expect(randomFreeNoteCenter(origin, 4, 4, [], false, 10, { rng: () => 0 })).toEqual(origin);
+    const placed = randomFreeNoteCenter(
+      origin,
+      4,
+      4,
+      [{ x: 98, y: 98, width: 4, height: 4 }],
+      false,
+      10,
+      { rng: () => 0.75 },
+    );
+    expect(placed).toEqual({ x: 132.75, y: 132.75 });
+    expect(RANDOM_CREATION_GAP_MIN).toBe(10);
+    expect(RANDOM_CREATION_GAP_MAX).toBe(35);
+  });
+
+  it("steps past each blocker with fresh random edge gaps and never overlaps", () => {
+    const values = [0.75, 0.75, 0, 0, 0, 0];
+    let index = 0;
+    const placed = randomFreeNoteCenter(
+      { x: 10, y: 10 },
+      4,
+      4,
+      [
+        { x: 8, y: 8, width: 4, height: 4 },
+        { x: 20, y: 20, width: 20, height: 20 },
+      ],
+      false,
+      10,
+      { rng: () => values[index++] ?? 0 },
+    );
+    expect(placed).toEqual({ x: 52, y: 52 });
+    for (const obstacle of [
+      { x: 8, y: 8, width: 4, height: 4 },
+      { x: 20, y: 20, width: 20, height: 20 },
+    ]) {
+      expect(placed.x - 2 < obstacle.x + obstacle.width && placed.x + 2 > obstacle.x &&
+        placed.y - 2 < obstacle.y + obstacle.height && placed.y + 2 > obstacle.y).toBe(false);
+    }
+  });
+
+  it("places Inbox entries at random 10–35 unit gaps from their anchor", () => {
+    const anchor = { x: 0, y: 0, width: 20, height: 20 };
+    const placed = randomFreeNoteCenter(
+      { x: 10, y: 10 },
+      4,
+      4,
+      [anchor],
+      false,
+      10,
+      { anchor, rng: () => 0.75 },
+    );
+    expect(placed).toEqual({ x: 50.75, y: 50.75 });
+    expect(placed.x - 2 - (anchor.x + anchor.width)).toBeGreaterThanOrEqual(RANDOM_CREATION_GAP_MIN);
+    expect(placed.x - 2 - (anchor.x + anchor.width)).toBeLessThanOrEqual(RANDOM_CREATION_GAP_MAX);
+    expect(placed.y - 2 - (anchor.y + anchor.height)).toBeGreaterThanOrEqual(RANDOM_CREATION_GAP_MIN);
+    expect(placed.y - 2 - (anchor.y + anchor.height)).toBeLessThanOrEqual(RANDOM_CREATION_GAP_MAX);
   });
 
   it("keeps the menu inside the viewport near the lower-right edge", () => {

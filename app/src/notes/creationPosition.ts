@@ -2,6 +2,7 @@ import { snapToGrid } from "../board/gridMath";
 import { worldToScreen, type Camera, type Point, type Size } from "../board/cameraMath";
 import { BEACON_SIZE } from "../model/note";
 import type { NoteKind } from "../model/note";
+import { inboxHeightForEntryCount } from "../inbox/inboxLayout";
 
 /** Keep newly created board objects visually distinct from their neighbours. */
 export const CREATION_GAP = 2;
@@ -23,6 +24,16 @@ export interface CreationObstacle {
   y: number;
   width: number;
   height: number;
+}
+
+export const RANDOM_CREATION_GAP_MIN = 10;
+export const RANDOM_CREATION_GAP_MAX = 35;
+
+export interface RandomPlacementOptions {
+  /** Optional deterministic source for tests. Values are clamped to 0..1. */
+  rng?: () => number;
+  /** Force a random placement beside this object, as Inbox entries do. */
+  anchor?: CreationObstacle;
 }
 
 export interface CreationNoteSize {
@@ -79,6 +90,7 @@ export function estimatedCreationHeight(note: CreationNoteSize, measuredHeight?:
   }
   if (Number.isFinite(measuredHeight) && measuredHeight! > 0) return measuredHeight!;
   if (note.type === "beacon") return 7.2;
+  if (note.type === "inbox") return inboxHeightForEntryCount(0);
   if (note.type === "importance") return 4;
   if (note.type === "purpose" || note.type === "mood") return 4.2;
 
@@ -161,6 +173,111 @@ export function nearestFreeNoteCenter(
   // Moving outward in any cardinal direction must eventually leave a finite set of
   // finite obstacles. Keep a defensive failure rather than placing an overlapping node.
   throw new Error("Could not find a free creation position.");
+}
+
+/**
+ * Keep a free requested centre, but when it overlaps an object place it in a random
+ * quadrant 10–35 units beyond that object's edges. Further collisions walk out from
+ * the blocking object using another random edge gap. The optional anchor always uses
+ * this behaviour, even when the requested centre itself is clear.
+ */
+export function randomFreeNoteCenter(
+  center: Point,
+  width: number,
+  height: number,
+  obstacles: readonly CreationObstacle[],
+  snap: boolean,
+  step: number,
+  options: RandomPlacementOptions = {},
+): Point {
+  if (![center.x, center.y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
+    throw new RangeError("Creation position and size must be finite, with positive dimensions.");
+  }
+  if (snap && (!Number.isFinite(step) || step <= 0)) {
+    throw new RangeError("Grid step must be a positive finite number when snapping is enabled.");
+  }
+
+  const base = snap ? snapToGrid(center, step) : { ...center };
+  const validObstacles = uniqueObstacles([
+    ...obstacles,
+    ...(options.anchor ? [options.anchor] : []),
+    { x: -BEACON_SIZE / 2, y: -BEACON_SIZE / 2, width: BEACON_SIZE, height: BEACON_SIZE },
+  ]);
+  const baseHits = validObstacles.filter((obstacle) => rectanglesOverlap(base, width, height, obstacle));
+  if (!options.anchor && baseHits.length === 0) return base;
+
+  let anchor = options.anchor ?? baseHits[0];
+  if (!anchor) return base;
+
+  const rng = options.rng ?? Math.random;
+  const signX = sampleRandom(rng) < 0.5 ? -1 : 1;
+  const signY = sampleRandom(rng) < 0.5 ? -1 : 1;
+  for (let attempt = 0; attempt <= validObstacles.length; attempt += 1) {
+    const candidate = randomAdjacentCenter(anchor, width, height, signX, signY, rng);
+    const blockers = validObstacles.filter((obstacle) => rectanglesOverlap(candidate, width, height, obstacle));
+    if (blockers.length === 0) return candidate;
+    anchor = furthestRandomBlocker(blockers, signX, signY);
+  }
+
+  // This defensive path is outside the union of every obstacle, so it cannot overlap.
+  const bounds = obstacleUnion(validObstacles);
+  return randomAdjacentCenter(bounds, width, height, signX, signY, rng);
+}
+
+function uniqueObstacles(obstacles: readonly CreationObstacle[]): CreationObstacle[] {
+  const seen = new Set<string>();
+  return obstacles.filter((obstacle) => {
+    if (![obstacle.x, obstacle.y, obstacle.width, obstacle.height].every(Number.isFinite) ||
+      obstacle.width <= 0 || obstacle.height <= 0) return false;
+    const key = `${obstacle.x}:${obstacle.y}:${obstacle.width}:${obstacle.height}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function randomAdjacentCenter(
+  obstacle: CreationObstacle,
+  width: number,
+  height: number,
+  signX: -1 | 1,
+  signY: -1 | 1,
+  rng: () => number,
+): Point {
+  const gapX = randomGap(rng);
+  const gapY = randomGap(rng);
+  return {
+    x: signX > 0
+      ? obstacle.x + obstacle.width + width / 2 + gapX
+      : obstacle.x - width / 2 - gapX,
+    y: signY > 0
+      ? obstacle.y + obstacle.height + height / 2 + gapY
+      : obstacle.y - height / 2 - gapY,
+  };
+}
+
+function randomGap(rng: () => number): number {
+  return RANDOM_CREATION_GAP_MIN + sampleRandom(rng) * (RANDOM_CREATION_GAP_MAX - RANDOM_CREATION_GAP_MIN);
+}
+
+function sampleRandom(rng: () => number): number {
+  const value = rng();
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0.5;
+}
+
+function furthestRandomBlocker(blockers: readonly CreationObstacle[], signX: -1 | 1, signY: -1 | 1): CreationObstacle {
+  const outwardExtent = (obstacle: CreationObstacle): number =>
+    (signX > 0 ? obstacle.x + obstacle.width : -obstacle.x) +
+    (signY > 0 ? obstacle.y + obstacle.height : -obstacle.y);
+  return [...blockers].sort((first, second) => outwardExtent(second) - outwardExtent(first))[0];
+}
+
+function obstacleUnion(obstacles: readonly CreationObstacle[]): CreationObstacle {
+  const minX = Math.min(...obstacles.map((obstacle) => obstacle.x));
+  const minY = Math.min(...obstacles.map((obstacle) => obstacle.y));
+  const maxX = Math.max(...obstacles.map((obstacle) => obstacle.x + obstacle.width));
+  const maxY = Math.max(...obstacles.map((obstacle) => obstacle.y + obstacle.height));
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
 type Direction = "right" | "below" | "left" | "above";

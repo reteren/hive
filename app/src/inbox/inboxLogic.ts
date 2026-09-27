@@ -1,10 +1,9 @@
 import { DEFAULT_NOTE_WIDTH, type Note } from "../model/note";
 import {
-  CREATION_GAP,
   creationObstacleForNote,
   estimatedCreationHeight,
-  nearestFreeNoteCenter,
   notePositionAt,
+  randomFreeNoteCenter,
 } from "../notes/creationPosition";
 import { uniqueName } from "../notes/naming";
 import type { Point } from "../board/cameraMath";
@@ -15,6 +14,7 @@ export interface InboxEntryPlacementOptions {
   nextId(): string;
   snap: boolean;
   step: number;
+  rng?: () => number;
   measuredHeights?: Readonly<Record<string, number | undefined>>;
 }
 
@@ -23,6 +23,21 @@ export function inboxEntryBaseName(text: string): string {
   const firstLine = text.split(/\r\n|\n|\r/, 1)[0] ?? "";
   const shortened = Array.from(firstLine.trim()).slice(0, 40).join("");
   return shortened || "Inbox entry";
+}
+
+/** Show a local HH:MM time and add a calendar date for entries from another day. */
+export function formatInboxEntryTime(createdAt: number | undefined, now = new Date()): string {
+  if (createdAt === undefined || !Number.isFinite(createdAt)) return "—";
+  const created = new Date(createdAt);
+  if (!Number.isFinite(created.getTime())) return "—";
+
+  const time = created.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const isToday = created.getFullYear() === now.getFullYear() &&
+    created.getMonth() === now.getMonth() &&
+    created.getDate() === now.getDate();
+  if (isToday) return time;
+  const date = created.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  return `${time} · ${date}`;
 }
 
 /** Build one note beside each Inbox, resolving collisions with the shared creation helper. */
@@ -42,17 +57,19 @@ export function placeInboxEntries(
   const notes: Note[] = [];
 
   for (const inbox of inboxes) {
+    const inboxObstacle = creationObstacleForNote(inbox, options.measuredHeights?.[inbox.id]);
     const preferredCenter: Point = {
-      x: inbox.x + inbox.width + CREATION_GAP + DEFAULT_NOTE_WIDTH / 2,
-      y: inbox.y + noteHeight / 2,
+      x: inbox.x + inbox.width / 2,
+      y: inbox.y + inboxObstacle.height / 2,
     };
-    const center = nearestFreeNoteCenter(
+    const center = randomFreeNoteCenter(
       preferredCenter,
       DEFAULT_NOTE_WIDTH,
       noteHeight,
       obstacles,
       options.snap,
       options.step,
+      { anchor: inboxObstacle, ...(options.rng ? { rng: options.rng } : {}) },
     );
     const position = notePositionAt(center, DEFAULT_NOTE_WIDTH, noteHeight, false, options.step);
     const note: Note = {

@@ -8,7 +8,9 @@ import { grid } from "../src/board/grid.svelte";
 import { parseProjectIndex, serializeProjectIndex } from "../src/project/index";
 import { selection } from "../src/selection/selection.svelte";
 import { resolveInboxInteraction, resolveInboxTwin, submitQuickInput } from "../src/inbox/inbox.svelte";
-import { inboxEntryBaseName } from "../src/inbox/inboxLogic";
+import { formatInboxEntryTime, inboxEntryBaseName } from "../src/inbox/inboxLogic";
+import { estimatedCreationHeight } from "../src/notes/creationPosition";
+import { INBOX_MIN_ROWS, INBOX_ROW_HEIGHT, inboxAutoHeight, inboxHeightForEntryCount, inboxMinHeight } from "../src/inbox/inboxLayout";
 
 function note(id: string, type: Note["type"], x: number, overrides: Partial<Note> = {}): Note {
   return {
@@ -64,8 +66,13 @@ describe("Inbox quick input", () => {
       width: 30,
       height: null,
     });
-    expect(entry.x).toBeGreaterThanOrEqual(blocker.x + blocker.width + 2);
-    expect(entry.y).toBe(inbox.y);
+    for (const obstacle of [inbox, blocker, occupied]) {
+      const entryHeight = estimatedCreationHeight(entry);
+      const obstacleHeight = estimatedCreationHeight(obstacle);
+      expect(entry.x < obstacle.x + obstacle.width && entry.x + entry.width > obstacle.x &&
+        entry.y < obstacle.y + obstacleHeight &&
+        entry.y + entryHeight > obstacle.y).toBe(false);
+    }
     const createdLink = Object.values(links.byId).find((link) => link.to === entry.id);
     expect(createdLink).toMatchObject({ from: inbox.id, to: entry.id, kind: "strong", shape: "base" });
     expect(history.cursor).toBe(1);
@@ -145,5 +152,27 @@ describe("Inbox quick input", () => {
     expect(parsed.notes[0]?.inboxGroup).toBe("group-1");
     expect(inboxEntryBaseName(`${"a".repeat(50)}\nbody`)).toBe("a".repeat(40));
     expect(inboxEntryBaseName("\nbody")).toBe("Inbox entry");
+  });
+
+  it("formats Inbox entry times in 24-hour time and includes the date only for older days", () => {
+    const now = new Date(2026, 8, 27, 15, 0);
+    expect(formatInboxEntryTime(new Date(2026, 8, 27, 9, 5).getTime(), now)).toBe("09:05");
+    expect(formatInboxEntryTime(new Date(2026, 8, 26, 18, 7).getTime(), now)).toBe("18:07 · 26 Sept 2026");
+    expect(formatInboxEntryTime(undefined, now)).toBe("—");
+  });
+
+  it("uses one row per entry and a two-row minimum for manual shrinking", () => {
+    const inbox = note("inbox", "inbox", 0);
+    expect(inboxHeightForEntryCount(1) - inboxHeightForEntryCount(0)).toBeCloseTo(INBOX_ROW_HEIGHT);
+    expect(inboxHeightForEntryCount(2) - inboxHeightForEntryCount(1)).toBeCloseTo(INBOX_ROW_HEIGHT);
+    expect(inboxMinHeight(inbox)).toBe(inboxHeightForEntryCount(INBOX_MIN_ROWS));
+
+    const entryA = note("entry-a", "note", 100);
+    const entryB = note("entry-b", "note", 200);
+    replaceBoard([inbox, entryA, entryB]);
+    addLink({ id: "inbox-a", from: inbox.id, to: entryA.id, kind: "strong", shape: "base" });
+    expect(inboxAutoHeight(inbox)).toBe(inboxHeightForEntryCount(1));
+    addLink({ id: "inbox-b", from: inbox.id, to: entryB.id, kind: "strong", shape: "base" });
+    expect(inboxAutoHeight(inbox)).toBe(inboxHeightForEntryCount(2));
   });
 });
