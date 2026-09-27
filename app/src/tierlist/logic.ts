@@ -1,5 +1,6 @@
 import { newId, type Note } from "../model/note";
 import type { TierCard, TierRow } from "../model/nodeData";
+import type { Zone } from "../model/zone";
 
 export const DEFAULT_TIERS = [
   { name: "S", color: "#FF4B5C" },
@@ -259,10 +260,14 @@ export function updateTierCardText(rows: readonly TierRow[], rowId: string, card
   }));
 }
 
-export function tierCardPreview(card: TierCard, notes: Readonly<Record<string, Note>>): TierCardPreview {
+export function tierCardPreview(card: TierCard, notes: Readonly<Record<string, Note>>, zones: Readonly<Record<string, Zone>> = {}): TierCardPreview {
   if (card.kind === "text") return { kind: "text", text: card.text };
   const source = notes[card.noteId];
-  if (!source) return { kind: "note", name: "content missing", lines: [], missing: true };
+  if (!source) {
+    const zone = zones[card.noteId];
+    return zone ? { kind: "note", name: zone.name, lines: ["Zone"], missing: false }
+      : { kind: "note", name: "content missing", lines: [], missing: true };
+  }
   const lines = source.text.split(/\r?\n/).filter((line) => line.trim()).slice(0, 3);
   return { kind: "note", name: source.name, lines, missing: false };
 }

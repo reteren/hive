@@ -2,6 +2,7 @@ import { execute, type HistoryCommand } from "../history/history.svelte";
 import { board, updateNote } from "../model/board.svelte";
 import { newId } from "../model/note";
 import type { ListItem } from "../model/nodeData";
+import { zones } from "../model/zones.svelte";
 import { copyListItems, insertListItem, removeListItem as withoutItem, reorderListItem as reordered } from "./logic";
 
 export function itemsForList(listId: string): ListItem[] {
@@ -25,7 +26,7 @@ export function createListChangeCommand(listId: string, label: string, nextItems
 
 export function addListTargetCommand(listId: string, targetId: string, index?: number): HistoryCommand | null {
   const list = board.notes[listId];
-  const target = board.notes[targetId];
+  const target = board.notes[targetId] ?? zones.byId[targetId];
   if (list?.type !== "list" || !target || listId === targetId) return null;
   const item: ListItem = { id: newId(), targetId, label: target.name };
   return createListChangeCommand(listId, "Add List link", insertListItem(itemsForList(listId), item, index));

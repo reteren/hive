@@ -1,8 +1,11 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
+  import { beginContentDrag, clearContentDrag, contentDragPreview, previewContentDrop, registerContentDropTarget, resolveContentDropTarget } from "../list/itemDrag";
+  import { createContentMoveCommand } from "../list/transfers.svelte";
   import type { Note } from "../model/note";
   import type { TierCard, TierRow } from "../model/nodeData";
   import { board, updateNote } from "../model/board.svelte";
+  import { zones } from "../model/zones.svelte";
   import { execute } from "../history/history.svelte";
   import { camera, viewport } from "../board/camera.svelte";
   import { screenToWorld, worldToScreen, type Point } from "../board/cameraMath";
@@ -110,6 +113,23 @@
       return addNoteTierCard(note.id, rowId, sourceNoteId);
     },
   }));
+
+  onMount(() => registerContentDropTarget((point, source) => {
+    if (source.kind !== "list" || tierlistRootAt(point) !== root) return null;
+    const target = tierCardDropTargetAt(point, measureTierRows());
+    return target ? { kind: "tierlist", noteId: note.id, rowId: target.rowId, index: target.index } : null;
+  }));
+
+  $effect(() => {
+    const preview = $contentDragPreview;
+    if (preview?.source.kind !== "list") return;
+    const target = preview.target;
+    if (target?.kind === "tierlist" && target.noteId === note.id && root) {
+      const geometry = measureTierRows();
+      updateCardInsertionIndicator(root, target, cardInsertionMarker(target, root, geometry));
+    }
+    return clearCardInsertionIndicator;
+  });
 
   onMount(() => {
     const onDocumentPointerDown = (event: PointerEvent): void => {
@@ -307,8 +327,12 @@
     event.stopPropagation();
     const point = { x: event.clientX, y: event.clientY };
     if (!drag.moved && !pointerDragThresholdPassed(drag.start, point)) return;
+    if (!drag.moved && drag.kind === "card") {
+      beginContentDrag({ kind: "tierlist", noteId: note.id, rowId: drag.sourceRowId, cardId: drag.card.id }, drag.captureTarget.offsetHeight);
+    }
     drag.moved = true;
     event.preventDefault();
+    if (drag.kind === "card") previewContentDrop(point);
     updateDragGhost(drag, point);
 
     if (drag.kind === "card") {
@@ -341,13 +365,21 @@
     if (!drag || drag.pointerId !== event.pointerId) return;
     event.stopPropagation();
     const point = { x: event.clientX, y: event.clientY };
+    const listTarget = drag.kind === "card"
+      ? resolveContentDropTarget(point, { kind: "tierlist", noteId: note.id, rowId: drag.sourceRowId, cardId: drag.card.id }) : null;
     activePointerDrag = null;
     dragDisplay = null;
     removeDragGhost();
     clearCardInsertionIndicator();
+    if (drag.kind === "card") clearContentDrag();
     releasePointer(drag);
     if (!drag.moved && !pointerDragThresholdPassed(drag.start, point)) return;
 
+    if (drag.kind === "card" && listTarget?.kind === "list") {
+      const command = createContentMoveCommand({ kind: "tierlist", noteId: note.id, rowId: drag.sourceRowId, cardId: drag.card.id }, listTarget);
+      if (command) execute(command);
+      return;
+    }
     if (drag.kind === "card") {
       const targetRoot = tierlistRootAt(point);
       const targetNoteId = targetRoot?.dataset.tierlistId;
@@ -393,6 +425,7 @@
     dragDisplay = null;
     removeDragGhost();
     clearCardInsertionIndicator();
+    if (drag?.kind === "card") clearContentDrag();
     if (drag) releasePointer(drag);
   }
 
@@ -480,7 +513,7 @@
     const boardRect = boardElement?.getBoundingClientRect();
     if (!boardRect || !pointInsideRect(point, boardRect)) return null;
     const target = document.elementFromPoint(point.x, point.y);
-    if (target?.closest("[data-tierlist-id], [data-create-menu]")) return null;
+    if (target?.closest("[data-tierlist-id], [data-list-node], [data-create-menu]")) return null;
     return screenToWorld(camera, viewport, { x: point.x - boardRect.left, y: point.y - boardRect.top });
   }
 
@@ -565,7 +598,7 @@
   }
 
   function cardPreview(card: TierCard) {
-    return tierCardPreview(card, board.notes);
+    return tierCardPreview(card, board.notes, zones.byId);
   }
 
   function rowIndexFor(rowId: string, currentRows: readonly TierRow[]): number {
@@ -648,7 +681,7 @@
       <div
         class="tier-row-cards"
         data-tier-row-cards={row.id}
-        class:drop-target={$activeDropTarget?.targetId === `${note.id}:${row.id}`}
+        class:drop-target={$activeDropTarget?.targetId === `${note.id}:${row.id}` || ($contentDragPreview?.target?.kind === "tierlist" && $contentDragPreview.target.noteId === note.id && $contentDragPreview.target.rowId === row.id)}
         class:card-drop-target={dragDisplay?.kind === "card" && dragDisplay.targetNoteId === note.id && dragDisplay.target?.rowId === row.id}
         role="group"
         ondblclick={(event) => addTextCard(row.id, event)}
