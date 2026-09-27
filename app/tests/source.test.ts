@@ -3,6 +3,9 @@ import { HistoryStack } from "../src/history/historyStack";
 import {
   createSourceEditCommand,
   emptySource,
+  parseSourceValue,
+  sourceDropTargetId,
+  sourceDropValue,
   sourceFileLabel,
   sourceResourceStatus,
   SourceFileAvailabilityCache,
@@ -43,6 +46,28 @@ describe("source display state", () => {
     const source: SourceData = { ...emptySource(), filePath: "C:\\Research\\paper.pdf", description: "Keep this note" };
     expect(sourceResourceStatus(source, "missing")).toEqual({ url: "empty", file: "missing" });
     expect(source.description).toBe("Keep this note");
+  });
+});
+
+describe("source field and OS drop parsing", () => {
+  it("distinguishes absolute local paths from URL or text input", () => {
+    expect(parseSourceValue("https://example.com/article")).toEqual({ kind: "url", value: "https://example.com/article" });
+    expect(parseSourceValue(" C:\\Research\\paper.mp4 ")).toEqual({ kind: "path", value: "C:\\Research\\paper.mp4" });
+    expect(parseSourceValue("/home/user/paper.pdf")).toEqual({ kind: "path", value: "/home/user/paper.pdf" });
+    expect(parseSourceValue("file:///C:/Research/paper.pdf")).toEqual({ kind: "path", value: "C:\\Research\\paper.pdf" });
+    expect(parseSourceValue("copied text")).toEqual({ kind: "url", value: "copied text" });
+    expect(parseSourceValue("")).toEqual({ kind: "empty", value: "" });
+  });
+
+  it("reads the first non-empty dropped value and only accepts a Source node target", () => {
+    expect(sourceDropValue(["", "  https://example.com  "])).toBe("https://example.com");
+    expect(sourceDropValue([])).toBeNull();
+
+    const sourceTarget = { dataset: { noteId: "source-1" } };
+    const target = { closest: () => sourceTarget } as unknown as Element;
+    expect(sourceDropTargetId(target)).toBe("source-1");
+    expect(sourceDropTargetId({ closest: () => null } as unknown as Element)).toBeNull();
+    expect(sourceDropTargetId(null)).toBeNull();
   });
 });
 
@@ -116,5 +141,17 @@ describe("source file availability cache", () => {
     now = 101;
     expect(await cache.check("C:\\missing.txt", load)).toBe("missing");
     expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not let a stale pending check overwrite a refreshed result", async () => {
+    const cache = new SourceFileAvailabilityCache(100);
+    let finishStale: ((state: "available" | "missing") => void) | undefined;
+    const staleRequest = cache.check("C:\\paper.pdf", () => new Promise((resolve) => { finishStale = resolve; }));
+    await Promise.resolve();
+    cache.invalidate("C:\\paper.pdf");
+    expect(await cache.check("C:\\paper.pdf", async () => "available")).toBe("available");
+    finishStale?.("missing");
+    await staleRequest;
+    expect(await cache.check("C:\\paper.pdf", async () => "missing")).toBe("available");
   });
 });

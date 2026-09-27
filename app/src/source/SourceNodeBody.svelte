@@ -1,38 +1,40 @@
 <script lang="ts">
+  import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
-  import { openPath, openUrl } from "@tauri-apps/plugin-opener";
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import type { Note } from "../model/note";
-  import { setSourceField } from "./actions.svelte";
+  import { setSourceField, setSourceResourceValue } from "./actions.svelte";
   import {
     emptySource,
-    sourceFileLabel,
-    sourceResourceStatus,
+    parseSourceValue,
     validateSourceUrl,
     type SourceEditMeta,
-    type SourceField,
+    type SourceEditField,
     type SourceTextEditKind,
   } from "./logic";
   import { checkSourceFileAvailability, invalidateSourceFileAvailability } from "./fileAvailability.svelte";
 
   let { note }: { note: Note } = $props();
   let source = $derived(note.source ?? emptySource());
-  let urlOpenFailed = $state(false);
+  let sourceValue = $derived(source.url ?? source.filePath ?? "");
+  let parsedValue = $derived(parseSourceValue(sourceValue));
   let urlOpenError = $state("");
   let fileError = $state("");
   let fileAvailability = $state<"available" | "missing" | "unknown">("unknown");
   let choosingFile = $state(false);
-  let openingFile = $state(false);
-  let openingUrl = $state(false);
-  let urlGroup = 0;
+  let opening = $state(false);
+  let resourceGroup = 0;
   let descriptionGroup = 0;
-  const selectionBeforeInput: Record<"url" | "description", { start: number; end: number } | null> = {
-    url: null,
+  const selectionBeforeInput: Record<"resource" | "description", { start: number; end: number } | null> = {
+    resource: null,
     description: null,
   };
 
-  const urlValidation = $derived(source.url ? validateSourceUrl(source.url) : null);
-  const resourceStatus = $derived(sourceResourceStatus(source, fileAvailability, urlOpenFailed));
-  const fileLabel = $derived(source.filePath ? sourceFileLabel(source.filePath) : null);
+  const urlValidation = $derived(parsedValue.kind === "url" ? validateSourceUrl(parsedValue.value) : null);
+  const isMissingSelectedPath = $derived(parsedValue.kind === "path" && source.filePath === parsedValue.value && fileAvailability === "missing");
+  const openDisabled = $derived(
+    opening || parsedValue.kind === "empty" || (parsedValue.kind === "url" && !urlValidation?.valid) || isMissingSelectedPath,
+  );
 
   $effect(() => {
     const path = note.source?.filePath;
@@ -41,7 +43,8 @@
       fileError = "";
       return;
     }
-    void refreshFileAvailability(path);
+    const timer = window.setTimeout(() => void refreshFileAvailability(path), 300);
+    return () => window.clearTimeout(timer);
   });
 
   async function refreshFileAvailability(path = note.source?.filePath): Promise<void> {
@@ -51,7 +54,7 @@
   }
 
   function meta(
-    field: SourceField,
+    field: SourceEditField,
     kind: SourceTextEditKind,
     group: number,
     before?: { start: number; end: number } | null,
@@ -71,19 +74,24 @@
     return { start: target.selectionStart ?? 0, end: target.selectionEnd ?? 0 };
   }
 
-  function rememberSelection(field: "url" | "description", event: Event): void {
+  function rememberSelection(field: "resource" | "description", event: Event): void {
     selectionBeforeInput[field] = selectionOf(event.currentTarget as HTMLInputElement | HTMLTextAreaElement);
   }
 
-  function editUrl(event: Event): void {
+  function editResource(event: Event): void {
     const target = event.currentTarget as HTMLInputElement;
     const value = target.value;
-    const before = selectionBeforeInput.url;
+    const before = selectionBeforeInput.resource;
     const after = selectionOf(target);
-    selectionBeforeInput.url = after;
-    urlOpenFailed = false;
+    selectionBeforeInput.resource = after;
     urlOpenError = "";
-    setSourceField(note.id, "url", value || null, meta("url", inputEditKind(event), urlGroup, before, after));
+    fileError = "";
+    const parsed = parseSourceValue(value);
+    if (parsed.kind === "path") {
+      invalidateSourceFileAvailability(parsed.value);
+      fileAvailability = "unknown";
+    }
+    setSourceResourceValue(note.id, value, meta("resource", inputEditKind(event), resourceGroup, before, after));
   }
 
   function editDescription(event: Event): void {
@@ -120,8 +128,9 @@
       });
       if (typeof selected !== "string" || !selected) return;
       invalidateSourceFileAvailability(selected);
-      setSourceField(note.id, "filePath", selected, meta("filePath", "atomic", 0));
+      setSourceResourceValue(note.id, selected, meta("resource", "atomic", 0));
       fileAvailability = "unknown";
+      urlOpenError = "";
     } catch {
       fileError = "Could not open the file picker.";
     } finally {
@@ -129,44 +138,38 @@
     }
   }
 
-  function clearFile(): void {
-    if (!source.filePath) return;
-    setSourceField(note.id, "filePath", null, meta("filePath", "atomic", 0));
-    fileAvailability = "unknown";
+  async function openResource(): Promise<void> {
+    if (opening || parsedValue.kind === "empty") return;
     fileError = "";
-  }
-
-  async function openSourceUrl(): Promise<void> {
-    const validation = source.url ? validateSourceUrl(source.url) : null;
-    if (!validation?.valid || openingUrl) return;
-    openingUrl = true;
-    urlOpenFailed = false;
     urlOpenError = "";
-    try {
-      await openUrl(validation.url);
-    } catch {
-      urlOpenFailed = true;
-      urlOpenError = "Could not open this URL.";
-    } finally {
-      openingUrl = false;
-    }
-  }
 
-  async function openSourceFile(): Promise<void> {
-    const path = source.filePath;
-    if (!path || openingFile || resourceStatus.file === "missing") return;
-    openingFile = true;
-    fileError = "";
+    if (parsedValue.kind === "url") {
+      const validation = validateSourceUrl(parsedValue.value);
+      if (!validation.valid) return;
+      opening = true;
+      try {
+        await openUrl(validation.url);
+      } catch {
+        urlOpenError = "Could not open this URL.";
+      } finally {
+        opening = false;
+      }
+      return;
+    }
+
+    const path = parsedValue.value;
+    if (isMissingSelectedPath) return;
+    opening = true;
     try {
-      await openPath(path);
+      await invoke("source_open_path", { filePath: path });
       fileAvailability = "available";
     } catch {
       invalidateSourceFileAvailability(path);
       const state = await checkSourceFileAvailability(path);
       if (note.source?.filePath === path) fileAvailability = state;
-      fileError = state === "missing" ? "File not found." : "Could not open this file.";
+      fileError = state === "missing" ? "File not found." : "Could not open this path.";
     } finally {
-      openingFile = false;
+      opening = false;
     }
   }
 </script>
@@ -180,18 +183,18 @@
   onfocusin={() => { if (source.filePath) void refreshFileAvailability(source.filePath); }}
 >
   <label class="source-field">
-    <span>URL</span>
+    <span>URL/File</span>
     <input
-      type="url"
-      value={source.url ?? ""}
-      placeholder="https://example.com"
-      aria-label="Source URL"
-      data-source-url
-      onkeydown={(event) => rememberSelection("url", event)}
-      onbeforeinput={(event) => rememberSelection("url", event)}
-      onselect={(event) => rememberSelection("url", event)}
-      oninput={editUrl}
-      onblur={() => { urlGroup += 1; }}
+      type="text"
+      value={sourceValue}
+      placeholder={'https://… or C:\\Users\\Example\\file.mp4'}
+      aria-label="Source URL or file path"
+      data-source-url-file
+      onkeydown={(event) => rememberSelection("resource", event)}
+      onbeforeinput={(event) => rememberSelection("resource", event)}
+      onselect={(event) => rememberSelection("resource", event)}
+      oninput={editResource}
+      onblur={() => { resourceGroup += 1; }}
     />
   </label>
   {#if urlValidation && !urlValidation.valid}
@@ -199,45 +202,22 @@
   {:else if urlOpenError}
     <p class="source-message error" data-source-url-error role="alert">{urlOpenError}</p>
   {/if}
-  {#if source.url}
-    <button
-      type="button"
-      class="source-action"
-      data-source-open-url
-      disabled={!urlValidation?.valid || openingUrl}
-      onclick={openSourceUrl}
-      onkeydown={stopBoardHotkeys}
-    >{openingUrl ? "Opening…" : "Open URL"}</button>
+  {#if source.filePath}
+    <p class="source-file" data-source-file-path title={source.filePath}>{source.filePath}</p>
   {/if}
-
-  <div class="source-file-row">
-    <span class="source-label">File</span>
-    <button type="button" class="source-action" data-source-choose-file disabled={choosingFile} onclick={chooseFile} onkeydown={stopBoardHotkeys}>
-      {choosingFile ? "Choosing…" : source.filePath ? "Choose another…" : "Choose file…"}
-    </button>
-  </div>
-  {#if fileLabel}
-    <div class="source-file" data-source-file={source.filePath}>
-      <strong title={fileLabel.name}>{fileLabel.name}</strong>
-      <span title={fileLabel.folder}>{fileLabel.folder}</span>
-      <button type="button" class="source-clear" aria-label="Remove source file" data-source-clear-file onclick={clearFile} onkeydown={stopBoardHotkeys}>×</button>
-    </div>
-  {/if}
-  {#if resourceStatus.file === "missing"}
+  {#if source.filePath && fileAvailability === "missing"}
     <p class="source-message error" data-source-file-missing role="status">File not found.</p>
   {:else if fileError}
     <p class="source-message error" data-source-file-error role="alert">{fileError}</p>
   {/if}
-  {#if source.filePath}
-    <button
-      type="button"
-      class="source-action"
-      data-source-open-file
-      disabled={openingFile || resourceStatus.file === "missing"}
-      onclick={openSourceFile}
-      onkeydown={stopBoardHotkeys}
-    >{openingFile ? "Opening…" : "Open file"}</button>
-  {/if}
+  <div class="source-actions">
+    <button type="button" class="source-action" data-source-open disabled={openDisabled} title={parsedValue.kind === "path" ? parsedValue.value : undefined} onclick={openResource} onkeydown={stopBoardHotkeys}>
+      {opening ? "Opening…" : "Open"}
+    </button>
+    <button type="button" class="source-action" data-source-choose-file disabled={choosingFile} onclick={chooseFile} onkeydown={stopBoardHotkeys}>
+      {choosingFile ? "Choosing…" : "Choose file…"}
+    </button>
+  </div>
 
   <label class="source-field source-description-field">
     <span>Description</span>
@@ -253,7 +233,6 @@
       onblur={() => { descriptionGroup += 1; }}
     ></textarea>
   </label>
-  <p class="source-hint">Add links and files with these fields; drag and drop is not supported.</p>
 </div>
 
 <style>
@@ -262,20 +241,13 @@
   .source-field input, .source-field textarea { box-sizing: border-box; width: 100%; min-width: 0; padding: 4px 5px; border: 1px solid #494949; border-radius: 3px; outline: none; color: var(--text); background: #202020; font: inherit; user-select: text; }
   .source-field input:focus, .source-field textarea:focus { border-color: #777; }
   .source-field textarea { min-height: 40px; resize: vertical; line-height: 1.4; }
-  .source-file-row { display: flex; align-items: center; gap: 6px; }
-  .source-label { color: var(--text-dim); }
-  .source-action, .source-clear { border: 1px solid #4b4b4b; border-radius: 3px; color: var(--text); background: #2a2a2a; font: inherit; cursor: pointer; }
+  .source-action { border: 1px solid #4b4b4b; border-radius: 3px; color: var(--text); background: #2a2a2a; font: inherit; cursor: pointer; }
   .source-action { align-self: flex-start; padding: 4px 6px; }
-  .source-file-row .source-action { margin-left: auto; }
-  .source-action:hover:not(:disabled), .source-clear:hover { border-color: var(--accent); }
+  .source-actions { display: flex; gap: 5px; }
+  .source-action:hover:not(:disabled) { border-color: var(--accent); }
   .source-action:disabled { opacity: 0.45; cursor: default; }
-  .source-file { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 5px; }
-  .source-file strong, .source-file span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .source-file strong { grid-column: 1; color: var(--text); }
-  .source-file span { grid-column: 1; color: var(--text-dim); font-size: 9px; }
-  .source-clear { grid-column: 2; grid-row: 1 / span 2; width: 20px; height: 20px; padding: 0; font-size: 14px; line-height: 1; }
-  .source-message, .source-hint { margin: 0; line-height: 1.35; }
+  .source-file { min-width: 0; margin: 0; overflow: hidden; color: var(--text-dim); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+  .source-message { margin: 0; line-height: 1.35; }
   .source-message.error { color: #df9089; }
-  .source-hint { color: var(--text-dim); font-size: 9px; }
   :global(.note-card[data-kind="source"] .note-content) { display: flex; min-height: 0; padding: 4px 5px; overflow: hidden; }
 </style>

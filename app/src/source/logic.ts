@@ -8,10 +8,11 @@ export const EMPTY_SOURCE: Readonly<SourceData> = {
 };
 
 export type SourceField = keyof SourceData;
+export type SourceEditField = SourceField | "resource";
 export type SourceTextEditKind = "typing" | "backspace" | "forward-delete" | "atomic";
 
 export interface SourceEditMeta {
-  field: SourceField;
+  field: SourceEditField;
   group: number;
   kind: SourceTextEditKind;
   at: number;
@@ -25,6 +26,16 @@ export type UrlValidation =
 
 export type FileAvailability = "available" | "missing" | "unknown";
 
+export type ParsedSourceValue =
+  | { kind: "empty"; value: "" }
+  | { kind: "url"; value: string }
+  | { kind: "path"; value: string };
+
+export interface SourceResourceValue {
+  url: string | null;
+  filePath: string | null;
+}
+
 interface CachedAvailability {
   state: FileAvailability;
   expiresAt: number;
@@ -34,6 +45,7 @@ interface CachedAvailability {
 export class SourceFileAvailabilityCache {
   private readonly entries = new Map<string, CachedAvailability>();
   private readonly pending = new Map<string, Promise<FileAvailability>>();
+  private readonly revisions = new Map<string, number>();
 
   constructor(
     private readonly ttlMs: number,
@@ -47,20 +59,29 @@ export class SourceFileAvailabilityCache {
     const inFlight = this.pending.get(path);
     if (inFlight) return inFlight;
 
-    const request = load()
+    const revision = this.revisions.get(path) ?? 0;
+    let request: Promise<FileAvailability>;
+    request = Promise.resolve()
+      .then(load)
       .catch((): FileAvailability => "unknown")
       .then((state) => {
-        const ttl = state === "unknown" ? Math.min(this.ttlMs, 1_000) : this.ttlMs;
-        this.entries.set(path, { state, expiresAt: this.now() + ttl });
+        if ((this.revisions.get(path) ?? 0) === revision) {
+          const ttl = state === "unknown" ? Math.min(this.ttlMs, 1_000) : this.ttlMs;
+          this.entries.set(path, { state, expiresAt: this.now() + ttl });
+        }
         return state;
       })
-      .finally(() => this.pending.delete(path));
+      .finally(() => {
+        if (this.pending.get(path) === request) this.pending.delete(path);
+      });
     this.pending.set(path, request);
     return request;
   }
 
   invalidate(path: string): void {
+    this.revisions.set(path, (this.revisions.get(path) ?? 0) + 1);
     this.entries.delete(path);
+    this.pending.delete(path);
   }
 }
 
@@ -97,6 +118,46 @@ export function validateSourceUrl(rawUrl: string): UrlValidation {
   }
 
   return { valid: true, url: parsed.href };
+}
+
+/** Parse the single URL/File field without treating plain dropped text as a local path. */
+export function parseSourceValue(rawValue: string): ParsedSourceValue {
+  const value = rawValue.trim();
+  if (!value) return { kind: "empty", value: "" };
+
+  const fileUrlPath = pathFromFileUrl(value);
+  if (fileUrlPath) return { kind: "path", value: fileUrlPath };
+  if (/^(?:[a-zA-Z]:[\\/]|\\\\|\/)/.test(value)) return { kind: "path", value };
+  return { kind: "url", value };
+}
+
+export function sourceDropValue(paths: string[]): string | null {
+  return paths.map((path) => path.trim()).find((path) => path.length > 0) ?? null;
+}
+
+export function sourceDropTargetId(target: Element | null): string | null {
+  const node = target?.closest<HTMLElement>('[data-note-id][data-kind="source"]');
+  return node?.dataset.noteId ?? null;
+}
+
+function pathFromFileUrl(value: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "file:") return null;
+
+  let path: string;
+  try {
+    path = decodeURIComponent(parsed.pathname);
+  } catch {
+    return null;
+  }
+  if (parsed.host) return `\\\\${parsed.host}${path.replaceAll("/", "\\")}`;
+  if (/^\/[a-zA-Z]:\//.test(path)) path = path.slice(1).replaceAll("/", "\\");
+  return path;
 }
 
 export function sourceResourceStatus(
