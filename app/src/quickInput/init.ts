@@ -5,6 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { initializeProjectPersistence } from "../project/persistence.svelte";
 import { initializeViewSettingsPersistence } from "../settings/persistence.svelte";
 import { initializeQuickInputShortcut } from "./shortcutRegistration";
+import { enableTrayCloseMode, markQuitRequested } from "../lifecycle/closeFlush";
 
 let toastTimer: number | null = null;
 let toastElement: HTMLElement | null = null;
@@ -14,6 +15,7 @@ if (isTauri()) void initializeQuickInputMain();
 
 async function initializeQuickInputMain(): Promise<void> {
   const window = getCurrentWindow();
+  enableTrayCloseMode();
 
   await listen("hive://tray-first-close", showFirstTrayNotice);
   await listen("hive://main-restored", clearTrayNotice);
@@ -23,9 +25,11 @@ async function initializeQuickInputMain(): Promise<void> {
     clearTrayNotice();
     try {
       await invoke("set_quit_requested", { requested: true });
+      markQuitRequested(true);
       await window.close();
     } catch (error) {
       quitRequested = false;
+      markQuitRequested(false);
       await invoke("set_quit_requested", { requested: false }).catch(() => undefined);
       console.error("Could not quit hive after the close flush.", error);
     }

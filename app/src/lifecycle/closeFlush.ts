@@ -8,6 +8,23 @@ const CLOSE_FLUSH_TIMEOUT_MS = 3_000;
 let listenerInstalled: Promise<void> | null = null;
 let closeInProgress = false;
 let allowClose = false;
+/**
+ * The main window's close button only hides hive to the tray (R7.1); a real exit is requested from
+ * the tray menu, which sets this flag first. A hide flushes pending saves but must not consume the
+ * one-shot close state, otherwise the later real quit would skip its final flush.
+ */
+let quitRequested = true;
+let trayMode = false;
+
+/** Tray mode on: a close request only hides the window unless markQuitRequested(true) was called. */
+export function enableTrayCloseMode(): void {
+  trayMode = true;
+  quitRequested = false;
+}
+
+export function markQuitRequested(requested: boolean): void {
+  quitRequested = requested;
+}
 
 /** Register a flush to run before the app's single close request is resumed. */
 export function registerCloseFlush(name: string, flush: Flush): () => void {
@@ -28,6 +45,12 @@ async function installCloseListener(): Promise<void> {
 }
 
 async function handleCloseRequested(event: { preventDefault(): void }): Promise<void> {
+  if (trayMode && !quitRequested) {
+    // Hide to tray: the Rust side prevents the close; just persist pending work.
+    event.preventDefault();
+    await flushRegisteredTasks();
+    return;
+  }
   if (allowClose) return;
   event.preventDefault();
   if (closeInProgress) return;
