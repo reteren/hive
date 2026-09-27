@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import MapView from "./MapView.svelte";
-  import { mapOverlayState, closeMapOverlay } from "./commands";
+  import { mapOverlayState, closeMapOverlay } from "./commands.svelte";
 
   onMount(() => {
     function closeOnEscape(event: KeyboardEvent): void {

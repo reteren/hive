@@ -1,0 +1,10 @@
+const page = (await fetch(`http://localhost:9334/json/list`).then((r) => r.json())).find((t) => t.type === "page");
+const ws = new WebSocket(page.webSocketDebuggerUrl); let id = 0; const pending = new Map(); const logs = [];
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.method === "Runtime.exceptionThrown") logs.push("EXC " + JSON.stringify(m.params.exceptionDetails).slice(0, 600)); if (m.method === "Runtime.consoleAPICalled" && m.params.type === "error") logs.push("ERR " + m.params.args.map(a => a.value ?? a.description).join(" ").slice(0, 600)); if (pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+await new Promise((r) => (ws.onopen = r));
+const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+await send("Runtime.enable"); await send("Page.reload", { ignoreCache: true });
+await new Promise(r => setTimeout(r, 6000));
+console.log(logs.join("\n") || "no errors");
+console.log((await send("Runtime.evaluate", { expression: "document.body.innerHTML.length", returnByValue: true })).result.result.value);
+ws.close();
