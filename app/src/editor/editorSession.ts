@@ -1,6 +1,7 @@
 import type { EditorView } from "@codemirror/view";
 import { board } from "../model/board.svelte";
 import { editing } from "../notes/editing.svelte";
+import { notifySelectionInteraction } from "../selection/selection.svelte";
 
 export interface ScreenPoint {
   x: number;
@@ -22,6 +23,7 @@ export function startNoteEditing(noteId: string, point: ScreenPoint): void {
 
   pendingClick = { noteId, point };
   editing.noteId = noteId;
+  notifySelectionInteraction([noteId], "editing");
 }
 
 export function consumePendingClick(noteId: string): ScreenPoint | null {

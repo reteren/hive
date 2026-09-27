@@ -8,6 +8,7 @@ import { getCommandKeyOverrides, setCommandKeyOverrides } from "../commands/regi
 import { applyReduceMotionPreference } from "./motion";
 import { preferences, setFitWidthToText, setReduceAnimations, setTransferHintsShown } from "./preferences.svelte";
 import { backupSettings, setBackupInterval } from "../backup/backupSettings.svelte";
+import { quickInputShortcut, setQuickInputShortcutValue } from "./quickInputShortcut.svelte";
 import { parseViewSettings, serializeViewSettings, type ViewSettings } from "./viewSettings";
 
 const SAVE_DEBOUNCE_MS = 400;
@@ -101,6 +102,7 @@ function currentSettings(): ViewSettings {
     transferHintsShown: preferences.transferHintsShown,
     fitWidthToText: preferences.fitWidthToText,
     backupIntervalMinutes: backupSettings.interval,
+    quickInputShortcut: quickInputShortcut.value,
   };
 }
 
@@ -122,4 +124,5 @@ function applySettings(settings: ViewSettings): void {
   setTransferHintsShown(settings.transferHintsShown);
   setFitWidthToText(settings.fitWidthToText);
   setBackupInterval(settings.backupIntervalMinutes);
+  setQuickInputShortcutValue(settings.quickInputShortcut);
 }

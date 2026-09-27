@@ -46,8 +46,31 @@ export interface SelectionController {
   startGrab(): void;
 }
 
+export type SelectionInteractionSource = "click" | "marquee" | "editing" | "move";
+
+export type SelectionInteractionListener = (
+  noteIds: readonly string[],
+  source: SelectionInteractionSource,
+) => void;
+
 let controller: SelectionController | null = null;
 const selectionExtensions = new Map<string, SelectionSnapshotExtension>();
+const selectionInteractionListeners = new Set<SelectionInteractionListener>();
+
+/** Subscribe to explicit note interactions without treating programmatic selection as user input. */
+export function registerSelectionInteractionListener(listener: SelectionInteractionListener): () => void {
+  selectionInteractionListeners.add(listener);
+  return () => selectionInteractionListeners.delete(listener);
+}
+
+export function notifySelectionInteraction(
+  noteIds: readonly string[],
+  source: SelectionInteractionSource,
+): void {
+  const uniqueIds = [...new Set(noteIds)];
+  if (uniqueIds.length === 0) return;
+  for (const listener of selectionInteractionListeners) listener(uniqueIds, source);
+}
 
 /** Add another selection domain to snapshots without coupling its store to this module. */
 export function registerSelectionSnapshotExtension(

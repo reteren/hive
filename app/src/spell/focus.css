@@ -1,0 +1,7 @@
+.note-card .cm-hive-misspelled {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: #ef6a67;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.16em;
+}

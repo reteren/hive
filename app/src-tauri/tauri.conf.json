@@ -21,6 +21,21 @@
         "backgroundColor": "#161616",
         "theme": "Dark",
         "resizable": true
+      },
+      {
+        "label": "quick-input",
+        "title": "Quick input",
+        "url": "quick-input.html",
+        "width": 540,
+        "height": 230,
+        "center": true,
+        "visible": false,
+        "alwaysOnTop": true,
+        "decorations": false,
+        "resizable": false,
+        "skipTaskbar": true,
+        "backgroundColor": "#161616",
+        "theme": "Dark"
       }
     ],
     "security": {
@@ -30,6 +45,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"]
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
+    "resources": ["dictionaries/**/*"]
   }
 }

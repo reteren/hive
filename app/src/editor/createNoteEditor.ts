@@ -21,6 +21,8 @@ import { hiveMarkdownExtensions } from "./markdownSyntax";
 import { collapsedLinkMarkup, visibleMarkdownLinksInTree } from "./linkPreview";
 import { applyTextEditEffects, captureTextEditEffects } from "../transfer/textEditHooks";
 import { measureAndCacheTextMinimumWidth } from "./textFitWidth";
+import { spellcheckExtension } from "../spell/spellcheck";
+import { spellSettings } from "../spell/settings.svelte";
 import {
   createTextEditRecord,
   mergeTextEditRecords,
@@ -109,6 +111,7 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
     drawSelection(),
     highlightColors,
     linkPreview,
+    spellcheckExtension(() => ({ enabled: spellSettings.enabled, languages: spellSettings.languages })),
     EditorView.atomicRanges.of((view) => view.plugin(linkPreview)?.atomicRanges ?? Decoration.none),
     EditorView.domEventHandlers({
       mousedown(event) {

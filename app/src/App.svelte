@@ -26,6 +26,7 @@
   import SettingsPanel from "./ui/SettingsPanel.svelte";
   import BeaconMenu from "./beacons/BeaconMenu.svelte";
   import TrashPanel from "./trash/TrashPanel.svelte";
+  import MapOverlay from "./map/MapOverlay.svelte";
 
   let undoLogCommand = $derived(getCommand("ui.toggleUndoLog"));
   let undoLogKeys = $derived(undoLogCommand?.keys.map(formatKey).join(", ") ?? "");
@@ -36,6 +37,7 @@
   <div class="left"><LeftToolbar /></div>
   <main class="center">
     <Board />
+    <MapOverlay />
     <BeaconMenu />
     <CommandSearch />
     <KeymapEditor />

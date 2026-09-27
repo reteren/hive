@@ -65,6 +65,7 @@ import { preferences } from "../settings/preferences.svelte";
     changeSelectionUndoable,
     clearSelectionUndoable,
     closeContextPick,
+    notifySelectionInteraction,
     selection,
     setContextPick,
     setMarquee,
@@ -662,6 +663,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
       if (editing.noteId === id) {
         changeSelectionUndoable(() => undefined, undefined, true);
         ensureEditingSelection(id);
+        notifySelectionInteraction([id], "click");
         return;
       }
 
@@ -669,6 +671,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
       else if (selection.ids.includes(id)) {
         changeSelectionUndoable(() => undefined, undefined, true);
         ensureEditingSelection(id);
+        notifySelectionInteraction([id], "click");
       } else selectNoteUndoable(id);
     }
 
@@ -1164,7 +1167,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
         } else if (selection.ids.includes(gesture.noteId)) {
           setPrimaryUndoable(gesture.noteId);
         } else {
-          selectNoteUndoable(gesture.noteId);
+          selectNoteUndoable(gesture.noteId, "move");
         }
         const frames = framesForSelection();
         if (frames.length === 0) return;
@@ -1265,6 +1268,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
           next.zoneIds = [...new Set([...next.zoneIds, ...zoneIds])];
           if (ids.length > 0) next.primaryId = ids.at(-1) ?? null;
         }, undefined, true);
+        notifySelectionInteraction(ids, "marquee");
         setMarquee(null);
       } else {
         setMarquee(null);
@@ -1434,15 +1438,17 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     if (open) setContextPick(pending.noteIds, pending.point, viewport);
   }
 
-  function selectNoteUndoable(noteId: string): void {
+  function selectNoteUndoable(noteId: string, source: "click" | "move" = "click"): void {
     changeSelectionUndoable((next) => {
       next.ids = [noteId];
       next.zoneIds = [];
       next.primaryId = noteId;
     }, undefined, true);
+    notifySelectionInteraction([noteId], source);
   }
 
   function toggleNoteUndoable(noteId: string): void {
+    const wasSelected = selection.ids.includes(noteId);
     changeSelectionUndoable((next) => {
       if (next.ids.includes(noteId)) {
         next.ids = next.ids.filter((id) => id !== noteId);
@@ -1452,12 +1458,14 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
         next.primaryId = noteId;
       }
     }, undefined, true);
+    if (!wasSelected && selection.ids.includes(noteId)) notifySelectionInteraction([noteId], "click");
   }
 
   function setPrimaryUndoable(noteId: string): void {
     changeSelectionUndoable((next) => {
       if (next.ids.includes(noteId)) next.primaryId = noteId;
     }, undefined, true);
+    notifySelectionInteraction([noteId], "click");
   }
 
   function toggleZoneUndoable(zoneId: string): void {
@@ -1545,6 +1553,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     if (dropCommand) {
       applyFrames(gesture.before);
       execute(dropCommand);
+      notifySelectionInteraction([gesture.anchorId, ...gesture.before.map((frame) => frame.id)], "move");
       return;
     }
 
@@ -1568,7 +1577,10 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     if (!decision.commitMove) return;
 
     const change = moveGestureChange(gesture);
-    if (change) recordGeometryChange("Move", targetForMove(change.before, gesture.anchorId), change);
+    if (change) {
+      recordGeometryChange("Move", targetForMove(change.before, gesture.anchorId), change);
+      notifySelectionInteraction([gesture.anchorId, ...gesture.before.map((frame) => frame.id)], "move");
+    }
   }
 
   function updateModulePreview(frames: readonly NoteFrame[], worldPoint: Point): void {

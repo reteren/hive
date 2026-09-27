@@ -20,6 +20,7 @@ describe("view settings serialization", () => {
       transferHintsShown: 3,
       fitWidthToText: false,
       backupIntervalMinutes: 15 as const,
+      quickInputShortcut: "Ctrl+Shift+Space",
     };
 
     const serialized = serializeViewSettings(settings);
@@ -83,6 +84,7 @@ describe("view settings serialization", () => {
       transferHintsShown: 0,
       fitWidthToText: true,
       backupIntervalMinutes: 30,
+      quickInputShortcut: DEFAULT_VIEW_SETTINGS.quickInputShortcut,
     });
   });
 
@@ -156,5 +158,14 @@ describe("view settings serialization", () => {
       expect(parseViewSettings(saved, DEFAULT_VIEW_SETTINGS).backupIntervalMinutes).toBe(backupIntervalMinutes);
     }
     expect(parseViewSettings('{"backupIntervalMinutes":20}', DEFAULT_VIEW_SETTINGS).backupIntervalMinutes).toBe(30);
+  });
+
+  it("normalizes supported quick input accelerators and defaults invalid values", () => {
+    expect(parseViewSettings('{"quickInputShortcut":"Alt+Ctrl+Space"}', DEFAULT_VIEW_SETTINGS).quickInputShortcut)
+      .toBe("Ctrl+Alt+Space");
+    expect(parseViewSettings('{"quickInputShortcut":"Shift+Q"}', DEFAULT_VIEW_SETTINGS).quickInputShortcut)
+      .toBe(DEFAULT_VIEW_SETTINGS.quickInputShortcut);
+    expect(parseViewSettings('{"quickInputShortcut":"Ctrl+Alt+Nope"}', DEFAULT_VIEW_SETTINGS).quickInputShortcut)
+      .toBe(DEFAULT_VIEW_SETTINGS.quickInputShortcut);
   });
 });

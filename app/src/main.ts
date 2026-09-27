@@ -18,6 +18,13 @@ import "./calculator/init";
 import "./tierlist/init";
 import "./backup/init";
 import "./archive/init";
+import "./map/init";
+import "./list/init";
+import "./random/init";
+import "./quickInput/init";
+import "./source/init";
+import "./spell/init";
+import "./inbox/init";
 
 await initializeViewSettingsPersistence();
 await initializeProjectPersistence();

@@ -17,5 +17,11 @@ export default defineConfig({
     target: "chrome105", // WebView2 on supported Windows 10 versions
     minify: "esbuild",
     sourcemap: false,
+    rollupOptions: {
+      input: {
+        main: "index.html",
+        quickInput: "quick-input.html",
+      },
+    },
   },
 });

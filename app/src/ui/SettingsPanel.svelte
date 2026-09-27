@@ -14,7 +14,9 @@
   import { exportState } from "../export/exportState.svelte";
   import { preferences, setFitWidthToText, setReduceAnimations } from "../settings/preferences.svelte";
   import { closeSettingsPanel, settingsPanel } from "../settings/settingsPanel.svelte";
+  import QuickInputShortcutSetting from "../settings/QuickInputShortcutSetting.svelte";
   import ExportStatus from "../export/ExportStatus.svelte";
+  import SpellcheckSettings from "../spell/SpellcheckSettings.svelte";
 
   let historyLimitDraft = $state(String(history.limit));
   let closeButton = $state<HTMLButtonElement | null>(null);
@@ -112,7 +114,10 @@
               onchange={(event) => setFitWidthToText(event.currentTarget.checked)}
             />
           </label>
+          <QuickInputShortcutSetting />
         </section>
+
+        <SpellcheckSettings />
 
         <section class="settings-section" aria-labelledby="history-settings-title">
           <h2 id="history-settings-title">History</h2>

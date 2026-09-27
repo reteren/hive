@@ -5,8 +5,9 @@ import { DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT, MIN_HISTORY_LIMIT } from "../
 import { BRUSH_MIN, normalizeBrushSize } from "../zones/brush";
 import { systemPrefersReducedMotion } from "./motion";
 import type { BackupInterval } from "../backup/backupSettings.svelte";
+import { DEFAULT_QUICK_INPUT_SHORTCUT, normalizeQuickInputShortcut } from "../quickInput/shortcutModel";
 
-export const VIEW_SETTINGS_VERSION = 7;
+export const VIEW_SETTINGS_VERSION = 8;
 
 export interface CameraSettings {
   minZoom: number;
@@ -44,6 +45,7 @@ export interface ViewSettings {
   transferHintsShown: number;
   fitWidthToText: boolean;
   backupIntervalMinutes: BackupInterval;
+  quickInputShortcut: string;
 }
 
 export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
@@ -62,6 +64,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
   transferHintsShown: 0,
   fitWidthToText: true,
   backupIntervalMinutes: 30,
+  quickInputShortcut: DEFAULT_QUICK_INPUT_SHORTCUT,
 };
 
 const MIN_ALLOWED_ZOOM_LIMIT = 0.001;
@@ -120,6 +123,7 @@ export function parseViewSettings(serialized: string | null | undefined, default
     transferHintsShown: hintCountOrDefault(parsed.transferHintsShown, defaults.transferHintsShown),
     fitWidthToText: booleanOrDefault(parsed.fitWidthToText, defaults.fitWidthToText),
     backupIntervalMinutes: backupIntervalOrDefault(parsed.backupIntervalMinutes, defaults.backupIntervalMinutes),
+    quickInputShortcut: normalizeQuickInputShortcut(parsed.quickInputShortcut) ?? defaults.quickInputShortcut,
   };
 }
 
@@ -142,6 +146,7 @@ export function serializeViewSettings(settings: ViewSettings): string {
     transferHintsShown: hintCountOrDefault(settings.transferHintsShown, 0),
     fitWidthToText: settings.fitWidthToText,
     backupIntervalMinutes: backupIntervalOrDefault(settings.backupIntervalMinutes, 30),
+    quickInputShortcut: normalizeQuickInputShortcut(settings.quickInputShortcut) ?? DEFAULT_QUICK_INPUT_SHORTCUT,
   });
 }
 
@@ -180,6 +185,7 @@ function cloneViewSettings(settings: ViewSettings): ViewSettings {
     transferHintsShown: settings.transferHintsShown,
     fitWidthToText: settings.fitWidthToText,
     backupIntervalMinutes: settings.backupIntervalMinutes,
+    quickInputShortcut: settings.quickInputShortcut,
   };
 }
 

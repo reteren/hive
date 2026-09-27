@@ -59,10 +59,18 @@ pub fn project_storage_stats(state: State<'_, ProjectState>) -> Result<StorageSt
 fn snapshot_storage(backups: &Path) -> Result<(u64, u64), String> {
     match fs::symlink_metadata(backups) {
         Ok(metadata) if metadata.file_type().is_symlink() => {
-            return Err(format!("refusing to measure symbolic link snapshots folder {}", backups.display()));
+            return Err(format!(
+                "refusing to measure symbolic link snapshots folder {}",
+                backups.display()
+            ));
         }
         Ok(metadata) if metadata.is_dir() => {}
-        Ok(_) => return Err(format!("snapshots path is not a folder: {}", backups.display())),
+        Ok(_) => {
+            return Err(format!(
+                "snapshots path is not a folder: {}",
+                backups.display()
+            ))
+        }
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok((0, 0)),
         Err(error) => return Err(format!("could not inspect snapshots folder: {error}")),
     }

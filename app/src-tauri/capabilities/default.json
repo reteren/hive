@@ -5,11 +5,19 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "core:window:allow-center",
+    "core:window:allow-close",
+    "core:window:allow-hide",
+    "core:window:allow-set-focus",
+    "core:window:allow-show",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
     "dialog:allow-open",
     "dialog:allow-save",
     {
       "identifier": "opener:allow-open-url",
       "allow": [{ "url": "http://**" }, { "url": "https://**" }]
-    }
+    },
+    "opener:allow-open-path"
   ]
 }
