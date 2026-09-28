@@ -5,7 +5,8 @@ import { links, replaceLinks } from "../src/model/links.svelte";
 import { clear, execute, history, redo, undo } from "../src/history/history.svelte";
 import { noteBounds } from "../src/notes/layout.svelte";
 import { insertStatisticsIntoList, extractStatisticsFromList } from "../src/stats/listStatsActions.svelte";
-import { alignedListStatistics, geometryFromListStatisticsFrame, listExtensionGeometry, listStatisticsFrameLimits, listStatisticsWidth, LIST_STATS_EXTENSION_WIDTH, widthWithListStatistics } from "../src/stats/listStatsLayout";
+import { alignedListStatistics, geometryFromListStatisticsFrame, listExtensionGeometry, listStatisticsFrameLimits, listStatisticsWidth, widthWithListStatistics } from "../src/stats/listStatsLayout";
+import { listStatisticsMeasurements } from "../src/stats/listStatsMeasurements.svelte";
 import { statisticsPullOutMoved } from "../src/stats/listStatsPullOut";
 import { parseProjectIndex, serializeProjectIndex, mergeLoadedNotes } from "../src/project/index";
 import { sanitizeArchiveEntries } from "../src/archive/serialization";
@@ -17,13 +18,13 @@ import { createGroupScaleGesture, updateGroupScaleGesture } from "../src/selecti
 function note(id: string, type: Note["type"], fields: Partial<Note> = {}): Note {
   return { id, type, name: id, text: "", x: 0, y: 0, width: 30, height: 20, ...fields };
 }
-beforeEach(() => { clear(); replaceBoard([]); replaceLinks([]); clearModuleDropPreview(); });
-afterEach(() => { clear(); replaceBoard([]); replaceLinks([]); clearModuleDropPreview(); });
+beforeEach(() => { clear(); replaceBoard([]); replaceLinks([]); clearModuleDropPreview(); listStatisticsMeasurements.list = 30; });
+afterEach(() => { clear(); replaceBoard([]); replaceLinks([]); clearModuleDropPreview(); delete listStatisticsMeasurements.list; });
 
 describe("attached Statistics geometry and row alignment", () => {
   it("extends the render and shared bounds width without modifying the persisted List width", () => {
     const list = note("list", "list", { listStats: true });
-    expect(listStatisticsWidth(list)).toBe(LIST_STATS_EXTENSION_WIDTH);
+    expect(listStatisticsWidth(list)).toBe(30);
     expect(widthWithListStatistics(list)).toBe(60);
     expect(noteBounds(list)).toMatchObject({ x: 0, y: 0, width: 60, height: 20 });
     expect(list.width).toBe(30);
@@ -143,31 +144,33 @@ describe("selection geometry with a fixed Statistics extension", () => {
     undo(); expect(board.notes.list).toMatchObject({ x: 0, y: 0, width: 30 });
     redo(); expect(board.notes.list.width).toBe(30);
   });
-  it("resizes the main width once and preserves the fixed extension at both limits and opposite anchors", () => {
+  it("keeps the List's base width unchanged when its horizontal resize is locked", () => {
     const before = initialFrame();
     const resized = updateResizeGesture(createResizeGesture(before, 20, "right", { x: 60, y: 0 }), { x: 70, y: 0 }, false, 1).after;
-    commit(before, resized); expect(board.notes.list.width).toBe(40);
+    commit(before, resized); expect(board.notes.list.width).toBe(30);
     undo(); expect(board.notes.list.width).toBe(30);
-    redo(); expect(board.notes.list.width).toBe(40);
+    redo(); expect(board.notes.list.width).toBe(30);
     const shrink = updateResizeGesture(createResizeGesture(before, 20, "left", { x: 0, y: 0 }), { x: 100, y: 0 }, false, 1).after;
-    apply(shrink); expect(board.notes.list).toMatchObject({ x: 18, width: 12 });
+    apply(shrink); expect(board.notes.list).toMatchObject({ x: 0, width: 30 });
     expect(noteBounds(board.notes.list).x + noteBounds(board.notes.list).width).toBe(60);
     const grow = updateResizeGesture(createResizeGesture(before, 20, "right", { x: 60, y: 0 }), { x: 1000, y: 0 }, false, 1).after;
-    apply(grow); expect(board.notes.list.width).toBe(75);
+    apply(grow); expect(board.notes.list.width).toBe(30);
   });
-  it("group-scales combined bounds and keeps a 30u extension without inflation or a negative main width", () => {
+  it("group-scales positions while preserving the List and its extension width through Undo", () => {
     const before = initialFrame();
-    const bounds = { x: 0, y: 0, width: 100, height: 20 };
-    const other = { id: "other", type: "note" as const, x: 80, y: 0, width: 20, height: 20 };
-    const gesture = createGroupScaleGesture([before, other], bounds, "right", { x: 100, y: 0 });
-    const resized = updateGroupScaleGesture(gesture, { x: 150, y: 0 }, false, 1).after[0];
-    commit(before, resized); expect(board.notes.list.width).toBe(60);
-    expect(noteBounds(board.notes.list).width).toBe(90);
+    const bounds = { x: 0, y: 0, width: 110, height: 20 };
+    const other = { id: "other", type: "note" as const, x: 80, y: 0, width: 30, height: 20 };
+    const gesture = createGroupScaleGesture([before, other], bounds, "left", { x: 0, y: 0 });
+    const resized = updateGroupScaleGesture(gesture, { x: -55, y: 0 }, false, 1).after[0];
+    commit(before, resized); expect(board.notes.list.width).toBe(30);
+    expect(board.notes.list.x).toBe(-55);
+    expect(noteBounds(board.notes.list).width).toBe(60);
     undo(); expect(board.notes.list.width).toBe(30);
-    redo(); expect(board.notes.list.width).toBe(60);
-    const shrunk = updateGroupScaleGesture(gesture, { x: 0, y: 0 }, false, 1).after[0];
-    apply(shrunk); expect(board.notes.list.width).toBe(12);
-    const largest = updateGroupScaleGesture(gesture, { x: 1000, y: 0 }, false, 1).after[0];
-    apply(largest); expect(board.notes.list.width).toBe(75);
+    redo(); expect(board.notes.list.width).toBe(30);
+    expect(board.notes.list.x).toBe(-55);
+    const shrunk = updateGroupScaleGesture(gesture, { x: 55, y: 0 }, false, 1).after[0];
+    apply(shrunk); expect(board.notes.list.width).toBe(30);
+    const largest = updateGroupScaleGesture(gesture, { x: -1000, y: 0 }, false, 1).after[0];
+    apply(largest); expect(board.notes.list.width).toBe(30);
   });
 });

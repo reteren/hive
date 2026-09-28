@@ -3,25 +3,35 @@ import type { ListItem } from "../model/nodeData";
 import type { Link } from "../model/link";
 import { statisticsForListRow, type ListRowStatistics } from "./listStatistics";
 import type { NoteFrame } from "../selection/gestures";
+import { listStatisticsMeasurements } from "./listStatsMeasurements.svelte";
 
-export const LIST_STATS_EXTENSION_WIDTH = 30;
+export const LIST_STATS_MIN_WIDTH = 12;
+type StatisticsHost = Pick<Note, "type" | "listStats"> & { id?: string };
+
+/** Measure natural text, including cell padding and the panel's separating border. */
+export function fittedListStatisticsWidth(contentWidthPx: number, pxPerUnit = 10): number {
+  return Math.max(LIST_STATS_MIN_WIDTH, Math.ceil(Math.max(0, contentWidthPx) + 1) / pxPerUnit);
+}
 
 /** Persisted width remains the main List width, including for projects saved before this panel. */
-export function listStatisticsWidth(note: Pick<Note, "type" | "listStats">): number {
-  return note.type === "list" && note.listStats === true ? LIST_STATS_EXTENSION_WIDTH : 0;
+export function listStatisticsWidth(note: StatisticsHost): number {
+  return note.type === "list" && note.listStats === true
+    ? (note.id ? listStatisticsMeasurements[note.id] : undefined) ?? LIST_STATS_MIN_WIDTH : 0;
 }
-export function widthWithListStatistics(note: Pick<Note, "type" | "width" | "listStats">): number {
+export function widthWithListStatistics(note: StatisticsHost & Pick<Note, "width">): number {
   return note.width + listStatisticsWidth(note);
 }
 
 /** Gesture frames describe the whole rendered node; the model stores only its main width. */
-export function geometryFromListStatisticsFrame(note: Pick<Note, "type" | "listStats">, frame: NoteFrame): Pick<Note, "x" | "y" | "width" | "height"> {
-  return { x: frame.x, y: frame.y, width: frame.width - listStatisticsWidth(note), height: frame.height };
+export function geometryFromListStatisticsFrame(note: StatisticsHost, frame: NoteFrame & { statisticsExtensionWidth?: number }): Pick<Note, "x" | "y" | "width" | "height"> {
+  const extension = frame.statisticsExtensionWidth ?? listStatisticsWidth(note);
+  return { x: frame.x, y: frame.y, width: frame.width - extension, height: frame.height };
 }
 
-export function listStatisticsFrameLimits(note: Pick<Note, "type" | "listStats">, minimum: number, maximum: number): { minWidth?: number; maxWidth: number } {
+export function listStatisticsFrameLimits(note: StatisticsHost, minimum: number, maximum: number): { minWidth?: number; maxWidth: number; statisticsExtensionWidth?: number } {
   const extension = listStatisticsWidth(note);
-  return extension ? { minWidth: minimum + extension, maxWidth: maximum + extension } : { maxWidth: maximum };
+  // The gesture owns its initial panel width even if live counters or font loading change it.
+  return extension ? { minWidth: minimum + extension, maxWidth: maximum + extension, statisticsExtensionWidth: extension } : { maxWidth: maximum };
 }
 
 /** Cells share the exact visual row sequence, including the empty live drag slot. */

@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { formatListRowExtension, type ListRowStatistics } from "./listStatistics";
-  let { itemId, statistics }: { itemId: string; statistics: ListRowStatistics } = $props();
-  let label = $derived(formatListRowExtension(statistics));
+  import { formatListRowExtension, formatListStatisticsTotal, type ListRowStatistics, type ListStatisticsTotal } from "./listStatistics";
+  let { itemId, statistics, total }: { itemId?: string; statistics?: ListRowStatistics; total?: ListStatisticsTotal } = $props();
+  let label = $derived(total ? formatListStatisticsTotal(total) : statistics ? formatListRowExtension(statistics) : "—");
 </script>
 
-<span class="list-statistics-cell" data-list-stats-row={itemId} title={label} aria-label={`Statistics: ${label}`}>{label}</span>
+<span class="list-statistics-cell" class:total={!!total} data-list-stats-row={itemId} data-list-stats-total={total ? "true" : undefined} title={label} aria-label={`Statistics: ${label}`}>{label}</span>
 
 <style>
   .list-statistics-cell {
@@ -28,4 +28,5 @@
     pointer-events: none;
     user-select: none;
   }
+  .list-statistics-cell.total { color: var(--text-dim); opacity: 0.75; border-bottom: 0; }
 </style>

@@ -1,5 +1,7 @@
-import { board } from "../model/board.svelte";
+import { board, updateNote } from "../model/board.svelte";
+import { NOTE_HEADER_HEIGHT_UNITS } from "../model/note";
 import { linksOf } from "../model/links.svelte";
+import { execute } from "../history/history.svelte";
 import { smoothLinesForObjects } from "../links/smoothLines";
 
 /**
@@ -26,6 +28,33 @@ registerNoteMenuItem({
   visible: (noteId) => linksOf(noteId).length > 0,
   order: 85,
 });
+
+registerNoteMenuItem({
+  id: "notes.toggleHeader",
+  label: (noteId) => board.notes[noteId]?.headerHidden ? "Show header" : "Hide header",
+  run: toggleNoteHeader,
+  visible: (noteId) => Boolean(board.notes[noteId] && board.notes[noteId].type !== "beacon"),
+  order: 90,
+});
+
+function toggleNoteHeader(noteId: string): void {
+  const note = board.notes[noteId];
+  if (!note || note.type === "beacon") return;
+
+  const beforeHeaderHidden = note.headerHidden;
+  const beforeHeight = note.height;
+  const headerHidden = note.headerHidden !== true;
+  const height = beforeHeight === null
+    ? null
+    : Math.max(0.1, beforeHeight + (headerHidden ? -NOTE_HEADER_HEIGHT_UNITS : NOTE_HEADER_HEIGHT_UNITS));
+  const patch = { headerHidden, height };
+  execute({
+    label: headerHidden ? "Hide header" : "Show header",
+    target: note.name,
+    do: () => updateNote(noteId, patch),
+    undo: () => updateNote(noteId, { headerHidden: beforeHeaderHidden, height: beforeHeight }),
+  });
+}
 
 export function registerNoteMenuItem(item: NoteMenuItem): void {
   items.set(item.id, item);

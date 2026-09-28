@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from "svelte";
   import type { Action } from "svelte/action";
-  import type { Note } from "../model/note";
+  import { NOTE_HEADER_HEIGHT_UNITS, type Note } from "../model/note";
   import { updateNote } from "../model/board.svelte";
   import { execute } from "../history/history.svelte";
   import { board } from "../model/board.svelte";
@@ -123,6 +123,7 @@
   class="note-card"
   class:list-with-statistics={note.type === "list" && note.listStats === true}
   data-note-id={note.id}
+  data-header-hidden={note.headerHidden ? "true" : undefined}
   data-dimmed={isDimmed(note.id)}
   data-editing={editing.noteId === note.id ? "true" : "false"}
   data-kind={note.type}
@@ -132,6 +133,7 @@
   data-custom-mark-animate={customMarkFrameColors.length > 1 ? "true" : undefined}
   data-member-zone-id={memberZone?.id}
   style:--custom-mark-gradient={customMarkGradient}
+  style:--note-header-height={`${NOTE_HEADER_HEIGHT_UNITS * PX_PER_UNIT}px`}
   style:left={`${note.x * PX_PER_UNIT}px`}
   style:top={`${note.y * PX_PER_UNIT}px`}
   style:width={`${widthWithListStatistics(note) * PX_PER_UNIT}px`}
@@ -144,29 +146,31 @@
   {#if memberZone}
     <div class="zone-marker" data-zone-marker title={memberZone.name} aria-label={`Zone: ${memberZone.name}`} style:--zone-color={memberZone.color}></div>
   {/if}
-  <header
-    class="note-header"
-    data-note-header
-    role="button"
-    tabindex="0"
-    ondblclick={startRename}
-    onkeydown={handleHeaderKeydown}
-  >
-    <TaskCheckbox {note} />
-    {#if renaming}
-      <input
-        bind:this={renameInput}
-        bind:value={draftName}
-        class="rename-input"
-        aria-label="Note name"
-        oninput={() => { renameError = ""; }}
-        onkeydown={handleRenameKeydown}
-        onblur={commitRename}
-      />
-    {:else}
-      <span class="note-name">{note.name}</span>
-    {/if}
-  </header>
+  {#if !note.headerHidden}
+    <header
+      class="note-header"
+      data-note-header
+      role="button"
+      tabindex="0"
+      ondblclick={startRename}
+      onkeydown={handleHeaderKeydown}
+    >
+      <TaskCheckbox {note} />
+      {#if renaming}
+        <input
+          bind:this={renameInput}
+          bind:value={draftName}
+          class="rename-input"
+          aria-label="Note name"
+          oninput={() => { renameError = ""; }}
+          onkeydown={handleRenameKeydown}
+          onblur={commitRename}
+        />
+      {:else}
+        <span class="note-name">{note.name}</span>
+      {/if}
+    </header>
+  {/if}
   {#if renameError}
     <div class="rename-error" role="alert">{renameError}</div>
   {/if}
@@ -198,6 +202,7 @@
 <style>
   .note-card {
     position: absolute;
+    isolation: isolate;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -212,7 +217,7 @@
 
   .note-header {
     display: flex;
-    min-height: 28px;
+    min-height: var(--note-header-height);
     align-items: center;
     padding: 0 8px;
     color: #e6e6e6;

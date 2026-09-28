@@ -23,6 +23,7 @@
   import ListStatsExtension from "../stats/ListStatsExtension.svelte";
   import ListStatisticsCell from "../stats/ListStatisticsCell.svelte";
   import { alignedListStatistics } from "../stats/listStatsLayout";
+  import { totalListStatistics } from "../stats/listStatistics";
   import { links } from "../model/links.svelte";
   import { beginContentDrag, clearContentDrag, contentDragPreview, previewContentDrop, registerContentDropTarget, type ContentSource } from "./itemDrag";
   import { createContentMoveCommand } from "./transfers.svelte";
@@ -31,6 +32,7 @@
   let { note }: { note: Note } = $props();
   let root: HTMLDivElement | undefined = $state();
   let rowContainer: HTMLDivElement | undefined = $state();
+  let footer: HTMLDivElement | undefined = $state();
   let searchInput: HTMLInputElement | undefined = $state();
   let adding = $state(false);
   let query = $state("");
@@ -49,6 +51,8 @@
   let dropIndex = $derived($activeDropTarget?.targetId === note.id
     ? (($activeDropTarget.payload as { index?: number } | undefined)?.index ?? null) : null);
   let statisticsRows = $derived(note.listStats ? alignedListStatistics(note.id, visibleRows, board.notes, links.byId) : []);
+  let allStatistics = $derived(note.listStats ? alignedListStatistics(note.id, items.map((item) => ({ item })), board.notes, links.byId) : []);
+  let statisticsTotal = $derived(totalListStatistics(allStatistics));
   let choices = $derived.by(() => {
     const candidates = [...board.order.flatMap((id) => {
       const item = board.notes[id];
@@ -197,7 +201,8 @@
     {/each}
     {#if dropIndex === items.length}<div class="list-end-slot" aria-hidden="true"></div>{/if}
   </div>
-  {#if note.listStats && root && rowContainer}<ListStatsExtension list={note} bodyElement={root} rowsElement={rowContainer} />{/if}
+  {#if note.listStats && root && rowContainer && footer}<ListStatsExtension list={note} bodyElement={root} rowsElement={rowContainer} footerElement={footer} statistics={allStatistics} total={statisticsTotal} />{/if}
+  <div class="list-footer" bind:this={footer}>
   {#if adding}
     <div class="list-picker" data-list-picker use:dismissBoardPopup={{ close: closePicker }} use:listPickerInput={closePicker}>
       <input data-list-search aria-label="Search board objects or type text" placeholder="Search board objects or type text" bind:this={searchInput} bind:value={query} onkeydown={handleSearchKeydown} />
@@ -211,6 +216,8 @@
       </div>
     </div>
   {:else}<button class="list-add" type="button" data-list-add onclick={openPicker}>+ Add</button>{/if}
+  {#if note.listStats}<ListStatisticsCell total={statisticsTotal} />{/if}
+  </div>
 </div>
 
 <style>
@@ -221,6 +228,7 @@
   .list-row { display: flex; min-width: 0; min-height: 26px; align-items: center; gap: 4px; border: 1px solid #41444a; border-radius: 3px; background: #24262b; }
   .list-content { min-width: 0; flex: 1; display: grid; gap: 2px; }
   .list-entry { position: relative; z-index: 2; }
+  .list-footer { position: relative; z-index: 2; display: grid; min-width: 0; }
   .list-drag-slot { box-sizing: border-box; border: 1px dashed var(--accent); border-radius: 3px; background: #f5cd4d12; }
   .list-row.insert-before { border-top: 2px solid var(--accent); }
   .list-row.missing { color: #898b90; background: #202125; }

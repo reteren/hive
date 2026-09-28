@@ -1,9 +1,10 @@
 import type { Point } from "../board/cameraMath";
 import { snapToGrid } from "../board/gridMath";
 import { MIN_NOTE_HEIGHT, MIN_NOTE_WIDTH, maximumNoteWidthForKind, minimumTextWidthForNote } from "../notes/layout.svelte";
-import { MODULE_NOTE_HEIGHT } from "../modules/moduleLogic";
+import { estimatedCreationHeight } from "../notes/creationPosition";
+import { MODULE_NOTE_HEIGHT, MODULE_NOTE_WIDTH } from "../modules/moduleLogic";
 import { preferences } from "../settings/preferences.svelte";
-import { DEFAULT_NOTE_WIDTH, type NoteKind } from "../model/note";
+import { BEACON_SIZE, DEFAULT_NOTE_WIDTH, R5_BASE_WIDTHS, type NoteKind } from "../model/note";
 import { board } from "../model/board.svelte";
 import { inboxMinHeight } from "../inbox/inboxLayout";
 import { userDictionary } from "../spell/dictionary.svelte";
@@ -45,6 +46,8 @@ const RULES: Partial<Record<NoteKind, NodeResizeRule>> = {
   archive: FIXED_RULE,
   source: FIXED_RULE,
   markas: FIXED_RULE,
+  tierlist: FIXED_RULE,
+  list: { width: "locked", height: "free", handles: "bottom-if-shrinkable", groupDimensions: "preserve" },
   purpose: { width: "locked", height: "free", handles: "none", groupDimensions: "scale" },
   mood: { width: "locked", height: "free", handles: "none", groupDimensions: "scale" },
   inbox: { width: "locked", height: "shrink-only", handles: "bottom-if-shrinkable", groupDimensions: "preserve" },
@@ -87,8 +90,9 @@ export function hasResizeHandle(kind: NoteKind | undefined, edge: ResizeEdge, ca
   }
 }
 
-export function clampModuleHeight(height: number): number {
-  return Math.min(MODULE_NOTE_HEIGHT * 2, Math.max(MODULE_NOTE_HEIGHT, height));
+export function clampModuleHeight(height: number, kind?: NoteKind): number {
+  const minimum = kind ? minimumHeightForKind(kind) : MODULE_NOTE_HEIGHT;
+  return Math.min(MODULE_NOTE_HEIGHT * 2, Math.max(minimum, height));
 }
 
 export interface ResizeEdgeAxes {
@@ -120,6 +124,10 @@ export interface ResizeLimits {
 }
 
 export function defaultWidthForKind(kind: NoteKind | undefined): number {
+  if (!kind) return DEFAULT_NOTE_WIDTH;
+  if (kind === "beacon") return BEACON_SIZE;
+  if (kind in R5_BASE_WIDTHS) return R5_BASE_WIDTHS[kind as keyof typeof R5_BASE_WIDTHS];
+  if (kind === "importance" || kind === "purpose" || kind === "mood") return MODULE_NOTE_WIDTH;
   return kind === "pro" || kind === "con" ? 18 : DEFAULT_NOTE_WIDTH;
 }
 
@@ -129,11 +137,14 @@ export function maximumWidthForKind(kind: NoteKind | undefined): number {
 }
 
 export function minimumWidthForKind(kind: NoteKind | undefined): number {
-  return kind === "map" ? MAP_MIN_WIDTH : MIN_NOTE_WIDTH;
+  return kind === "map" ? MAP_MIN_WIDTH : defaultWidthForKind(kind);
 }
 
 export function minimumHeightForKind(kind: NoteKind | undefined): number {
-  return kind === "map" ? MAP_MIN_HEIGHT : MIN_NOTE_HEIGHT;
+  if (kind === "map") return MAP_MIN_HEIGHT;
+  const width = defaultWidthForKind(kind);
+  const initialHeight = kind === "beacon" ? BEACON_SIZE : kind === "importance" ? MODULE_NOTE_HEIGHT : null;
+  return estimatedCreationHeight({ type: kind ?? "note", width, height: initialHeight, text: "" });
 }
 
 export function clampShrinkOnlyHeight(requested: number, minimum: number, autoHeight: number): number {
@@ -161,6 +172,12 @@ export function resizeNote(
   if (isFixedSizeNodeKind(initial.type)) {
     return { x: initial.x, y: initial.y, width: initial.width, height: initial.height };
   }
+  if (initial.type === "list") {
+    const list = board.notes[initial.id];
+    if (edge !== "bottom" || list?.type !== "list" || (list.listItems?.length ?? 0) <= 7) {
+      return { x: initial.x, y: initial.y, width: initial.width, height: initial.height };
+    }
+  }
 
   const rule = resizeRuleForKind(initial.type);
   const axes = resizeEdgeAxes(edge);
@@ -172,21 +189,24 @@ export function resizeNote(
   let y = initial.y;
   let width = initial.width;
   let height = initial.height;
-  const minimumWidth = initial.minWidth ?? (initial.type === "map"
-    ? MAP_MIN_WIDTH
-    : preferences.fitWidthToText
-    ? minimumTextWidthForNote(initial.id, maxWidth)
-    : MIN_NOTE_WIDTH);
+  const minimumWidth = initial.type === "map"
+    ? initial.minWidth ?? MAP_MIN_WIDTH
+    : Math.max(
+      minimumWidthForKind(initial.type),
+      initial.minWidth ?? (preferences.fitWidthToText
+        ? minimumTextWidthForNote(initial.id, maxWidth)
+        : MIN_NOTE_WIDTH),
+    );
 
   if (!isResizeWidthLocked(initial.type) && !standaloneModule && axes.horizontal === "right") {
     let right = initial.x + initial.width + delta.x;
     if (snap) right = snapToGrid({ x: right, y: 0 }, step).x;
-    width = Math.min(maxWidth, Math.max(minimumWidth, right - initial.x));
+    width = Math.max(minimumWidth, Math.min(maxWidth, right - initial.x));
   } else if (!isResizeWidthLocked(initial.type) && !standaloneModule && axes.horizontal === "left") {
     let left = initial.x + delta.x;
     if (snap) left = snapToGrid({ x: left, y: 0 }, step).x;
     const fixedRight = initial.x + initial.width;
-    width = Math.min(maxWidth, Math.max(minimumWidth, fixedRight - left));
+    width = Math.max(minimumWidth, Math.min(maxWidth, fixedRight - left));
     x = fixedRight - width;
   }
 
@@ -204,15 +224,15 @@ export function resizeNote(
         height = clampShrinkOnlyHeight(requestedHeight, minHeight, maximumHeight);
       }
     } else height = standaloneModule
-      ? clampModuleHeight(bottom - initial.y)
-      : Math.min(maxHeight, Math.max(minimumHeightForKind(initial.type), bottom - initial.y));
+      ? clampModuleHeight(bottom - initial.y, initial.type)
+      : Math.max(minimumHeightForKind(initial.type), Math.min(maxHeight, bottom - initial.y));
   } else if (axes.vertical === "top") {
     let top = initial.y + delta.y;
     if (snap) top = snapToGrid({ x: 0, y: top }, step).y;
     const fixedBottom = initial.y + visualHeight;
     height = standaloneModule
-      ? clampModuleHeight(fixedBottom - top)
-      : Math.min(maxHeight, Math.max(minimumHeightForKind(initial.type), fixedBottom - top));
+      ? clampModuleHeight(fixedBottom - top, initial.type)
+      : Math.max(minimumHeightForKind(initial.type), Math.min(maxHeight, fixedBottom - top));
     y = fixedBottom - height;
   }
 
@@ -222,10 +242,13 @@ export function resizeNote(
 function minimumShrinkHeight(initial: NoteFrame, autoHeight: number): number {
   if (initial.type === "inbox") {
     const note = board.notes[initial.id];
-    return note ? inboxMinHeight(note) : MIN_NOTE_HEIGHT;
+    return note ? Math.max(minimumHeightForKind(initial.type), inboxMinHeight(note)) : minimumHeightForKind(initial.type);
   }
   if (initial.type === "glossary") {
-    return measureDictionaryHeightLimits(initial.id, userDictionary.words.length, autoHeight).minimumHeight;
+    return Math.max(
+      minimumHeightForKind(initial.type),
+      measureDictionaryHeightLimits(initial.id, userDictionary.words.length, autoHeight).minimumHeight,
+    );
   }
   return minimumHeightForKind(initial.type);
 }

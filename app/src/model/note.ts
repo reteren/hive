@@ -93,6 +93,8 @@ export interface Note {
   width: number;
   /** Manual height in u, or null while the note grows with its text. */
   height: number | null;
+  /** When true, the note's title header is hidden. */
+  headerHidden?: boolean;
   /** Creation time (ms since epoch); older projects may lack it. Used by search ordering (R2.4). */
   createdAt?: number;
   /** Task flag and completion (R3.1). */
@@ -131,6 +133,9 @@ export interface Note {
 
 /** Beacon diameter in u (fixed size, ROADMAP R4.0). */
 export const BEACON_SIZE = 7.2;
+
+/** Title strip height in board units (28 CSS px at PX_PER_UNIT=10). */
+export const NOTE_HEADER_HEIGHT_UNITS = 2.8;
 
 /** New note width from the roadmap examples. */
 export const DEFAULT_NOTE_WIDTH = 30;

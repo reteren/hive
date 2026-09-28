@@ -224,6 +224,7 @@ describe("trash persistence", () => {
     const savedNote = note("A", "Resurfaced");
     savedNote.task = { done: true, doneAt: 100 };
     savedNote.moods = ["curiosity"];
+    savedNote.headerHidden = true;
     const saved = entry("deleted", [savedNote], [link("missing", "A", "removed")], [{
       id: "z", name: "Area", color: "#608ac1",
       parts: [[{ x: 1, y: 2 }, { x: 3, y: 2 }, { x: 3, y: 4 }]], holes: [],

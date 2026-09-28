@@ -115,9 +115,9 @@ export function scaleGroupFrames(
       : bounds.y + (frame.y - bounds.y) * scaleY,
     width: moduleIds.has(frame.id) || preservesGroupDimensions(frame, beaconIds)
       ? frame.width
-      : Math.max(frame.minWidth ?? minimumWidthForKind(frame.type), Math.min(frame.maxWidth ?? maximumWidthForKind(frame.type), frame.width * scaleX)),
+      : Math.max(minimumWidthForFrame(frame), Math.min(frame.maxWidth ?? maximumWidthForKind(frame.type), frame.width * scaleX)),
     height: preservesGroupDimensions(frame, beaconIds) ? frame.height : moduleIds.has(frame.id)
-      ? clampModuleHeight((frame.height ?? MIN_NOTE_HEIGHT) * scaleY)
+      ? clampModuleHeight((frame.height ?? MIN_NOTE_HEIGHT) * scaleY, frame.type)
       : frame.height === null ? null : Math.max(minimumHeightForKind(frame.type), Math.min(frame.maxHeight ?? Infinity, frame.height * scaleY)),
   }));
 }
@@ -171,11 +171,15 @@ function edgeScales(
 function minimumWidthScale(frames: readonly NoteFrame[], moduleIds: ReadonlySet<string>, beaconIds: ReadonlySet<string>): number {
   return Math.max(0, ...frames.flatMap((frame) => moduleIds.has(frame.id) || preservesGroupDimensions(frame, beaconIds)
     ? []
-    : [(frame.minWidth ?? (frame.type === "map"
-      ? minimumWidthForKind(frame.type)
-      : preferences.fitWidthToText
-        ? Math.max(minimumWidthForKind(frame.type), minimumTextWidthForNote(frame.id, frame.maxWidth ?? maximumNoteWidthForKind(frame.type)))
-        : minimumWidthForKind(frame.type))) / frame.width]));
+    : [minimumWidthForFrame(frame) / frame.width]));
+}
+
+function minimumWidthForFrame(frame: NoteFrame): number {
+  const minimum = minimumWidthForKind(frame.type);
+  const textMinimum = preferences.fitWidthToText
+    ? minimumTextWidthForNote(frame.id, frame.maxWidth ?? maximumNoteWidthForKind(frame.type))
+    : minimum;
+  return Math.max(minimum, frame.minWidth ?? minimum, textMinimum);
 }
 
 function minimumHeightScale(frames: readonly NoteFrame[], moduleIds: ReadonlySet<string>, beaconIds: ReadonlySet<string>): number {

@@ -10,6 +10,7 @@
   import { editing } from "../notes/editing.svelte";
   import type { NoteKind } from "../model/note";
   import { geometryFromListStatisticsFrame, listStatisticsFrameLimits, listStatisticsWidth } from "../stats/listStatsLayout";
+  import { raiseMovingCards } from "../stats/movingCards";
 import { MIN_NOTE_WIDTH, maximumResizableHeight, maximumResizableHeightForNote, minimumTextWidthForNote, noteBounds, renderedNoteMetrics, type Bounds } from "../notes/layout.svelte";
 import { preferences } from "../settings/preferences.svelte";
 import { inboxAutoHeight, inboxMinHeight } from "../inbox/inboxLayout";
@@ -226,6 +227,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
   let altHeld = false;
   let suppressContextMenuUntil = 0;
   let suppressBodyClickUntil = 0;
+  let restoreMovingStacking: (() => void) | null = null;
   let zoneCollisionHint = $state(false);
   let lineToolActive = $derived(isLineTool());
   let noteOutlineCornerRadius = $derived(`${noteSelectionCornerRadius(camera.zoom)}px`);
@@ -488,7 +490,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
       if (resizeHandle) {
         const id = resizeHandle.dataset.noteId;
         const edge = resizeHandle.dataset.resizeHandle as ResizeEdge | undefined;
-        if (id && edge && id === selection.primaryId && hasResizeHandle(boardState.notes[id]?.type, edge)) {
+        if (id && edge && id === selection.primaryId && hasResizeHandle(boardState.notes[id]?.type, edge, canResizeBottom(id))) {
           startResize(event, id, edge, local, world);
         }
         return;
@@ -928,6 +930,12 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     return false;
   }
 
+  function canResizeBottom(id: string): boolean {
+    const note = boardState.notes[id];
+    if (note?.type === "list") return (note.listItems?.length ?? 0) > 7;
+    return canShrinkBelowAutoHeight(id);
+  }
+
   function startMove(
     event: PointerEvent,
     screen: Point,
@@ -1180,6 +1188,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     }
     const justStarted = !gesture.started;
     gesture.started = true;
+    if (justStarted && gesture.kind === "move") beginMovingStacking(gesture.gesture.before);
 
     if (justStarted && gesture.kind === "move" && gesture.toggleOnClickId) {
       setPrimaryUndoable(gesture.toggleOnClickId);
@@ -1198,6 +1207,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
         const frames = framesForSelection();
         if (frames.length === 0) return;
         gesture.gesture = createMoveGesture(frames, gesture.noteId, gesture.startWorld);
+        beginMovingStacking(frames);
       }
       const adjustedWorld = addPoint(gesture.startWorld, precision.delta);
       gesture.gesture = updateMoveGesture(
@@ -1272,6 +1282,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     const gesture = activeGesture;
     if (!gesture || gesture.pointerId !== pointerId) return;
     activeGesture = null;
+    if (gesture.kind === "move" || gesture.kind === "body-move") endMovingStacking();
     zoneCollisionHint = false;
 
     if (gesture.kind === "marquee") {
@@ -1407,6 +1418,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
       ? selection.primaryId
       : frames[0].id;
     grabGesture = createMoveGesture(frames, anchorId, pointer.world ?? { x: frames[0].x, y: frames[0].y });
+    beginMovingStacking(frames);
     grabStartWorld = pointer.world ? { ...pointer.world } : null;
     grabPrecision = pointer.world ? createPrecisionDeltaTracker(pointer.world, altHeld) : null;
     selection.grabActive = true;
@@ -1416,6 +1428,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     flushBoardMove();
     if (!grabGesture) return;
     commitMoveGesture(grabGesture, world);
+    endMovingStacking();
     clearModuleDropPreview();
     clearDropTargetPreview();
     grabGesture = null;
@@ -1428,6 +1441,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     cancelBoardMove();
     if (!grabGesture) return;
     applyFrames(cancelMoveGesture(grabGesture));
+    endMovingStacking();
     clearModuleDropPreview();
     grabGesture = null;
     grabStartWorld = null;
@@ -1546,6 +1560,20 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
   function applyZoneMove(zone: Zone, members: readonly MemberPosition[]): void {
     applyZoneGeometry(zone);
     applyMemberPositions(members);
+  }
+
+  function beginMovingStacking(frames: readonly NoteFrame[]): void {
+    endMovingStacking();
+    if (!boardElement) return;
+    const ids = new Set(frames.map((frame) => frame.id));
+    const cards = [...boardElement.querySelectorAll<HTMLElement>(".note-card[data-note-id], .beacon-object[data-note-id]")]
+      .filter((card) => ids.has(card.dataset.noteId ?? ""));
+    restoreMovingStacking = raiseMovingCards(cards);
+  }
+
+  function endMovingStacking(): void {
+    restoreMovingStacking?.();
+    restoreMovingStacking = null;
   }
 
   function applyZoneMovePreview(gesture: ZoneMoveGesture): void {
@@ -1727,7 +1755,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
       aria-label="Selected {outline.name}"
     >
       {#if selection.ids.length === 1 && selection.zoneIds.length === 0 && outline.primary}
-        {@const canShrink = canShrinkBelowAutoHeight(outline.id)}
+        {@const canShrink = canResizeBottom(outline.id)}
         {#each RESIZE_EDGES.filter((edge) => hasResizeHandle(outline.kind, edge, canShrink)) as edge (edge)}
           <button
             class={`resize-handle resize-handle-${edge}`}

@@ -179,6 +179,7 @@ describe("archive persistence", () => {
     const item = note("A");
     item.task = { done: true, doneAt: 100 };
     item.purposes = ["concept"];
+    item.headerHidden = true;
     const archived = entry(item, [link("missing", "A", "removed")]);
     const parsed = parseProjectIndex(serializeProjectIndex([], undefined, [], [], [], [], {}, [archived]));
     expect(parsed.archive).toEqual([archived]);

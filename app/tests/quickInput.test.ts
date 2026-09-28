@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { installQuickInputShortcutCapture, shortcutFromKeyPress } from "../src/quickInput/keyCapture";
+import { showQuickInputWindow } from "../src/quickInput/windowActivation";
 import {
   finishSubmission,
   initialSubmissionState,
@@ -96,5 +97,45 @@ describe("quick input submission", () => {
 
   it("does not emit whitespace-only input", () => {
     expect(startSubmission(initialSubmissionState(" \n "), "request-5").request).toBeNull();
+  });
+});
+
+describe("quick input window activation", () => {
+  it("shows and focuses on every activation, including after a successful submit hides it", async () => {
+    let visible = false;
+    let showCount = 0;
+    let focusCount = 0;
+    let centerCount = 0;
+    const window = {
+      isVisible: async () => visible,
+      center: async () => { centerCount += 1; },
+      show: async () => { showCount += 1; visible = true; },
+      setFocus: async () => { focusCount += 1; },
+    };
+
+    await showQuickInputWindow(window);
+    expect(visible).toBe(true);
+    visible = false; // The successful-submission handler hides the native window.
+    await showQuickInputWindow(window);
+
+    expect(showCount).toBe(2);
+    expect(focusCount).toBe(2);
+    expect(centerCount).toBe(2);
+  });
+
+  it("still shows when the visibility read is stale", async () => {
+    let visible = false;
+    let showCount = 0;
+    let focusCount = 0;
+    await showQuickInputWindow({
+      isVisible: async () => true, // Can still report visible just after submit hides the native window.
+      center: async () => undefined,
+      show: async () => { showCount += 1; visible = true; },
+      setFocus: async () => { focusCount += 1; },
+    });
+
+    expect(visible).toBe(true);
+    expect(showCount).toBe(1);
+    expect(focusCount).toBe(1);
   });
 });

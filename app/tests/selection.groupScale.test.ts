@@ -39,15 +39,15 @@ describe("group scale", () => {
 
   it("clamps each scale axis for the whole group at the strictest node minimum", () => {
     const frames: NoteFrame[] = [
-      { id: "a", x: 0, y: 0, width: 20, height: 10 },
-      { id: "b", x: 50, y: 40, width: 40, height: 20 },
+      { id: "a", type: "note", x: 0, y: 0, width: 40, height: 10 },
+      { id: "b", type: "note", x: 50, y: 40, width: 50, height: 20 },
     ];
     const bounds = { x: 0, y: 0, width: 100, height: 100 };
 
     const scaled = scaleGroupFrames(frames, bounds, "bottom-right", { x: -70, y: -80 }, false, 10);
     expect(scaled).toEqual([
-      { id: "a", x: 0, y: 0, width: 12, height: 6 },
-      { id: "b", x: 30, y: 24, width: 24, height: 12 },
+      { id: "a", type: "note", x: 0, y: 0, width: 30, height: 8.2 },
+      { id: "b", type: "note", x: 37.5, y: 32.8, width: 37.5, height: 16.4 },
     ]);
   });
 
@@ -58,6 +58,9 @@ describe("group scale", () => {
       { id: "stats", type: "stats", x: 30, y: 30, width: 30, height: null },
       { id: "trash", type: "trash", x: 40, y: 40, width: 40, height: 40 },
       { id: "archive", type: "archive", x: 50, y: 50, width: 40, height: 40 },
+      { id: "list", type: "list", x: 55, y: 55, width: 30, height: 18 },
+      { id: "tierlist", type: "tierlist", x: 58, y: 58, width: 60, height: 28 },
+      { id: "markas", type: "markas", x: 59, y: 59, width: 30, height: 14 },
       { id: "note", type: "note", x: 60, y: 60, width: 20, height: 20 },
     ];
 
@@ -69,11 +72,26 @@ describe("group scale", () => {
       [30, null],
       [40, 40],
       [40, 40],
+      [30, 18],
+      [60, 28],
+      [30, 14],
       [40, 40],
     ]);
-    expect(scaled.slice(0, 5).map(({ x, y }) => [x, y])).toEqual([
-      [20, 20], [40, 40], [60, 60], [80, 80], [100, 100],
+    expect(scaled.slice(0, 8).map(({ x, y }) => [x, y])).toEqual([
+      [20, 20], [40, 40], [60, 60], [80, 80], [100, 100], [110, 110], [116, 116], [118, 118],
     ]);
+  });
+
+  it("keeps Map's existing 20 by 15 minimum during group scaling", () => {
+    const scaled = scaleGroupFrames(
+      [{ id: "map", type: "map", x: 0, y: 0, width: 40, height: 30 }],
+      { x: 0, y: 0, width: 40, height: 30 },
+      "bottom-right",
+      { x: -100, y: -100 },
+      false,
+      10,
+    );
+    expect(scaled[0]).toMatchObject({ width: 20, height: 15 });
   });
 
   it("keeps group-scaled notes at their text-fit minimum width", () => {
@@ -166,8 +184,8 @@ describe("group scale", () => {
     ];
 
     expect(scaleGroupFrames(frames, groupBounds, "top-left", { x: 80, y: 80 }, false, 10)).toEqual([
-      { id: "a", x: 40, y: 40, width: 12, height: 6 },
-      { id: "b", x: 76, y: 88, width: 24, height: 12 },
+      { id: "a", x: -50, y: 18, width: 30, height: 8.2 },
+      { id: "b", x: 40, y: 83.6, width: 60, height: 16.4 },
     ]);
   });
 
@@ -186,32 +204,32 @@ describe("group scale", () => {
 
   it("scales mixed group positions while keeping module width and clamping its height", () => {
     const frames: NoteFrame[] = [
-      { id: "module", x: 10, y: 20, width: 14, height: 4 },
+      { id: "module", type: "purpose", x: 10, y: 20, width: 14, height: 4 },
       { id: "note", x: 50, y: 40, width: 30, height: 20 },
     ];
     const modules = new Set(["module"]);
 
     expect(scaleGroupFrames(frames, groupBounds, "bottom-right", { x: 100, y: 200 }, false, 10, false, modules)).toEqual([
-      { id: "module", x: 20, y: 60, width: 14, height: 8 },
+      { id: "module", type: "purpose", x: 20, y: 60, width: 14, height: 8 },
       { id: "note", x: 100, y: 120, width: 60, height: 60 },
     ]);
     expect(scaleGroupFrames(frames, groupBounds, "bottom-right", { x: -50, y: -80 }, false, 10, false, modules)).toEqual([
-      { id: "module", x: 5, y: 6, width: 14, height: 4 },
-      { id: "note", x: 25, y: 12, width: 15, height: 6 },
+      { id: "module", type: "purpose", x: 10, y: 8.2, width: 14, height: 4.2 },
+      { id: "note", x: 50, y: 16.4, width: 30, height: 8.2 },
     ]);
   });
 
   it("lets a group of modules shrink and snaps positions without scaling their widths", () => {
     const frames: NoteFrame[] = [
-      { id: "importance", x: 3, y: 3, width: 14, height: 4 },
-      { id: "mood", x: 43, y: 43, width: 14, height: 8 },
+      { id: "importance", type: "importance", x: 3, y: 3, width: 14, height: 4 },
+      { id: "mood", type: "mood", x: 43, y: 43, width: 14, height: 8 },
     ];
     const bounds = { x: 3, y: 3, width: 54, height: 48 };
     const modules = new Set(["importance", "mood"]);
     const scaled = scaleGroupFrames(frames, bounds, "top-left", { x: 25, y: 25 }, true, 10, false, modules);
 
     expect(scaled.map((frame) => frame.width)).toEqual([14, 14]);
-    expect(scaled.map((frame) => frame.height)).toEqual([4, 4]);
+    expect(scaled.map((frame) => frame.height)).toEqual([4, 4.2]);
     expect(scaled[0].x).toBeGreaterThan(frames[0].x);
     expect(scaled[0].y).toBeGreaterThan(frames[0].y);
   });

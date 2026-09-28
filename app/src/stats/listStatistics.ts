@@ -104,6 +104,32 @@ export function formatListRowExtension(statistics: ListRowStatistics): string {
   }
 }
 
+export interface ListStatisticsTotal {
+  words?: number;
+  characters?: number;
+  lines?: number;
+  connections?: number;
+}
+
+/** Include only metrics present in numeric rows; missing objects and drag slots contribute none. */
+export function totalListStatistics(rows: readonly (ListRowStatistics | null)[]): ListStatisticsTotal {
+  const total: ListStatisticsTotal = {};
+  for (const row of rows) {
+    if (!row || row.kind === "empty") continue;
+    if ("words" in row) total.words = (total.words ?? 0) + row.words;
+    if ("characters" in row) total.characters = (total.characters ?? 0) + row.characters;
+    if ("lines" in row) total.lines = (total.lines ?? 0) + row.lines;
+    if ("connections" in row) total.connections = (total.connections ?? 0) + row.connections;
+  }
+  return total;
+}
+
+export function formatListStatisticsTotal(total: ListStatisticsTotal): string {
+  const metrics = (["words", "characters", "lines", "connections"] as const)
+    .flatMap((metric) => total[metric] === undefined ? [] : [`${metric} - ${total[metric]}`]);
+  return metrics.length ? `Σ ${metrics.join(" · ")}` : "Σ —";
+}
+
 function countText(text: string): TextCounts {
   return { words: [...text.matchAll(WORD)].length, characters: [...text].length };
 }

@@ -40,6 +40,33 @@ describe("project index", () => {
     });
   });
 
+  it("persists a hidden title header and normalizes fixed node height around it", () => {
+    const note: Note = {
+      id: "hidden-header", type: "note", name: "Hidden", text: "Body", x: 0, y: 0, width: 30, height: 20,
+      headerHidden: true,
+    };
+    const index = parseProjectIndex(serializeProjectIndex([note]));
+    const loaded = mergeLoadedNotes(index, [{
+      id: note.id, name: note.name, file: index.notes[0]!.file, text: note.text,
+      x: note.x, y: note.y, width: note.width, height: note.height,
+    }]);
+    expect(loaded[0]).toMatchObject({ headerHidden: true, height: 20 });
+
+    const hiddenArchive: Note = {
+      id: "hidden-archive", type: "archive", name: "Archive", text: "", x: 0, y: 0,
+      width: 40, height: 37.2, headerHidden: true,
+    };
+    const archiveIndex = parseProjectIndex(serializeProjectIndex([hiddenArchive]));
+    const loadedArchive = mergeLoadedNotes(archiveIndex, [{
+      id: hiddenArchive.id, name: hiddenArchive.name, file: archiveIndex.notes[0]!.file, text: "",
+      x: hiddenArchive.x, y: hiddenArchive.y, width: hiddenArchive.width, height: hiddenArchive.height,
+    }]);
+    expect(loadedArchive[0]).toMatchObject({ headerHidden: true, height: 37.2 });
+
+    const shown = serializeProjectIndex([{ ...loaded[0]!, headerHidden: false }], index);
+    expect(parseProjectIndex(shown).notes[0]?.headerHidden).toBeUndefined();
+  });
+
   it("round trips mirrored calculator data, prunes orphan keys, and assigns per-node Markdown files", () => {
     const notes: Note[] = [
       { id: "calc-a", type: "calculator", name: "Trip", text: "", x: 0, y: 0, width: 40, height: null },

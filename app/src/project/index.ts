@@ -8,6 +8,7 @@ import {
   type NoteKind,
   type PurposeKind,
   type TaskState,
+  NOTE_HEADER_HEIGHT_UNITS,
   R5_BASE_WIDTHS,
 } from "../model/note";
 import { ME_OBJECT_ID, pairKey, type Link, type LinkAnchor } from "../model/link";
@@ -48,6 +49,7 @@ export interface IndexedNote {
   customMarks?: CustomMark[];
   customMarkFrame?: boolean;
   listStats?: boolean;
+  headerHidden?: boolean;
   [key: string]: unknown;
 }
 
@@ -189,6 +191,7 @@ export function serializeProjectIndex(
       ...(note.customMarks?.length ? { customMarks: note.customMarks } : {}),
       ...(note.customMarkFrame ? { customMarkFrame: true } : {}),
       ...(note.listStats ? { listStats: true } : {}),
+      headerHidden: note.headerHidden === true ? true : undefined,
     };
   });
   validateUniqueNotes(indexedNotes);
@@ -225,7 +228,7 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       || note.width !== entry.width || note.height !== entry.height) {
       throw new Error(`Loaded note ${entry.id} does not match board.json.`);
     }
-    const fixedDimensions = fixedNodeDimensions(entry.type);
+    const fixedDimensions = fixedNodeDimensions(entry.type, entry.headerHidden === true);
     return {
       id: entry.id,
       type: entry.type,
@@ -252,6 +255,7 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       ...(entry.customMarks?.length ? { customMarks: entry.customMarks } : {}),
       ...(entry.customMarkFrame ? { customMarkFrame: true } : {}),
       ...(entry.listStats ? { listStats: true } : {}),
+      ...(entry.headerHidden ? { headerHidden: true } : {}),
       ...(typeof entry.createdAt === "number" && Number.isFinite(entry.createdAt) && entry.createdAt >= 0
         ? { createdAt: entry.createdAt }
         : {}),
@@ -259,13 +263,13 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
   });
 }
 
-function fixedNodeDimensions(type: NoteKind): { width: number; height: number | null } | null {
+function fixedNodeDimensions(type: NoteKind, headerHidden = false): { width: number; height: number | null } | null {
   switch (type) {
     case "goal": return { width: R5_BASE_WIDTHS.goal, height: null };
     case "progress": return { width: R5_BASE_WIDTHS.progress, height: null };
     case "stats": return { width: R5_BASE_WIDTHS.stats, height: null };
-    case "trash": return { width: R5_BASE_WIDTHS.trash, height: 40 };
-    case "archive": return { width: R5_BASE_WIDTHS.archive, height: 40 };
+    case "trash": return { width: R5_BASE_WIDTHS.trash, height: 40 - (headerHidden ? NOTE_HEADER_HEIGHT_UNITS : 0) };
+    case "archive": return { width: R5_BASE_WIDTHS.archive, height: 40 - (headerHidden ? NOTE_HEADER_HEIGHT_UNITS : 0) };
     case "source": return { width: R5_BASE_WIDTHS.source, height: null };
     case "markas": return { width: R5_BASE_WIDTHS.markas, height: null };
     default: return null;

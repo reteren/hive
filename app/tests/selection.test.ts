@@ -20,7 +20,7 @@ import {
   updateMoveGesture,
   updateResizeGesture,
 } from "../src/selection/gestures";
-import { hasResizeHandle, MIN_NOTE_WIDTH, resizeNote } from "../src/selection/resize";
+import { hasResizeHandle, resizeNote } from "../src/selection/resize";
 import {
   captureSelectionSnapshot,
   clearSelection,
@@ -233,16 +233,16 @@ describe("selection move and resize gestures", () => {
   });
 
   it("resizes from all eight edges while keeping the opposite sides fixed", () => {
-    const frame = { id: "a", x: 5, y: 7, width: 20, height: 21 };
+    const frame = { id: "a", x: 5, y: 7, width: 30, height: 21 };
     const cases = [
-      ["top-left", { x: -5, y: -4 }, { x: 0, y: 3, width: 25, height: 25 }],
-      ["top", { x: 0, y: -4 }, { x: 5, y: 3, width: 20, height: 25 }],
-      ["top-right", { x: 5, y: -4 }, { x: 5, y: 3, width: 25, height: 25 }],
-      ["right", { x: 5, y: 0 }, { x: 5, y: 7, width: 25, height: 21 }],
-      ["bottom-right", { x: 5, y: 4 }, { x: 5, y: 7, width: 25, height: 25 }],
-      ["bottom", { x: 0, y: 4 }, { x: 5, y: 7, width: 20, height: 25 }],
-      ["bottom-left", { x: -5, y: 4 }, { x: 0, y: 7, width: 25, height: 25 }],
-      ["left", { x: -5, y: 0 }, { x: 0, y: 7, width: 25, height: 21 }],
+      ["top-left", { x: -5, y: -4 }, { x: 0, y: 3, width: 35, height: 25 }],
+      ["top", { x: 0, y: -4 }, { x: 5, y: 3, width: 30, height: 25 }],
+      ["top-right", { x: 5, y: -4 }, { x: 5, y: 3, width: 35, height: 25 }],
+      ["right", { x: 5, y: 0 }, { x: 5, y: 7, width: 35, height: 21 }],
+      ["bottom-right", { x: 5, y: 4 }, { x: 5, y: 7, width: 35, height: 25 }],
+      ["bottom", { x: 0, y: 4 }, { x: 5, y: 7, width: 30, height: 25 }],
+      ["bottom-left", { x: -5, y: 4 }, { x: 0, y: 7, width: 35, height: 25 }],
+      ["left", { x: -5, y: 0 }, { x: 0, y: 7, width: 35, height: 21 }],
     ] as const;
 
     for (const [edge, delta, expected] of cases) {
@@ -251,38 +251,38 @@ describe("selection move and resize gestures", () => {
   });
 
   it("snaps dragged edges and clamps left/top at the minimum without moving the opposite side", () => {
-    const frame = { id: "a", x: 5, y: 7, width: 20, height: null };
+    const frame = { id: "a", x: 5, y: 7, width: 30, height: null };
     expect(resizeNote(frame, 21, "right", { x: 4, y: 0 }, true, 10)).toEqual({
       x: 5,
       y: 7,
-      width: 25,
+      width: 35,
       height: null,
     });
     expect(resizeNote(frame, 21, "bottom", { x: 0, y: 5 }, true, 10)).toEqual({
       x: 5,
       y: 7,
-      width: 20,
+      width: 30,
       height: 23,
     });
     expect(resizeNote(frame, 21, "left", { x: 4, y: 0 }, true, 10)).toEqual({
-      x: 10,
+      x: 5,
       y: 7,
-      width: 15,
+      width: 30,
       height: null,
     });
     expect(resizeNote(frame, 21, "top", { x: 0, y: 4 }, true, 10)).toEqual({
       x: 5,
       y: 10,
-      width: 20,
+      width: 30,
       height: 18,
     });
 
-    const manual = { id: "a", x: 5, y: 7, width: 20, height: 21 };
+    const manual = { id: "a", type: "note" as const, x: 5, y: 7, width: 30, height: 21 };
     expect(resizeNote(manual, 21, "top-left", { x: 100, y: 100 }, false, 10)).toEqual({
-      x: 13,
-      y: 22,
-      width: MIN_NOTE_WIDTH,
-      height: 6,
+      x: 5,
+      y: 19.8,
+      width: 30,
+      height: 8.2,
     });
   });
 

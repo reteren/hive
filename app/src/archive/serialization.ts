@@ -114,6 +114,7 @@ function parseArchivedNote(value: unknown): Note | null {
     ...(parseCustomMarks(value.customMarks) ? { customMarks: parseCustomMarks(value.customMarks)! } : {}),
     ...(value.customMarkFrame === true ? { customMarkFrame: true } : {}),
     ...(value.listStats === true ? { listStats: true } : {}),
+    ...(value.headerHidden === true ? { headerHidden: true } : {}),
     ...(typeof value.color === "string" ? { color: value.color } : {}),
     ...(typeof value.zoneId === "string" ? { zoneId: value.zoneId } : {}),
     ...(typeof value.createdAt === "number" ? { createdAt: value.createdAt } : {}),
