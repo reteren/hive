@@ -34,6 +34,10 @@ mount(InboxQuickInputDialog, { target: promptHost });
 mount(InboxTwinMarkerHost, { target: promptHost });
 
 if (isTauri()) {
+  // The global shortcut pressed while hive itself is focused opens the Inbox dialog in the app.
+  await listen("hive://quick-input-in-app", () => openQuickInputPrompt()).catch((error: unknown) => {
+    console.error("Could not register the in-app quick input listener", error);
+  });
   try {
     await listen<QuickInputRequest>(QUICK_INPUT_EVENT, ({ payload }) => {
       if (typeof payload?.requestId !== "string" || typeof payload.text !== "string") return;

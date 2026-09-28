@@ -16,6 +16,8 @@
   let textarea = $state<HTMLTextAreaElement | null>(null);
   let submission = $state<QuickInputSubmissionState>(initialSubmissionState());
   let sending = $derived(submission.requestId !== null);
+  /** Submitted text kept until hive confirms, so a failure can reopen the window with it. */
+  let pending: { requestId: string; text: string } | null = null;
 
   onMount(() => {
     if (!isTauri()) return;
@@ -31,10 +33,15 @@
 
     const currentWindow = getCurrentWindow();
     keepCleanup(listen<QuickInputResult>(QUICK_INPUT_RESULT_EVENT, async ({ payload }) => {
-      const isCurrentRequest = submission.requestId === payload.requestId;
-      submission = finishSubmission(submission, payload);
-      if (isCurrentRequest && payload.ok) await currentWindow.hide();
-      else if (isCurrentRequest) focusInput();
+      if (pending?.requestId !== payload.requestId) return;
+      const failed = pending;
+      pending = null;
+      if (payload.ok) return;
+      // The window was hidden optimistically on Enter; bring the text back with the error.
+      submission = finishSubmission({ text: failed.text, requestId: failed.requestId, error: "" }, payload);
+      await currentWindow.show();
+      await currentWindow.setFocus();
+      focusInput();
     }));
     keepCleanup(listen("hive://quick-input-focus", () => focusInput()));
     keepCleanup(currentWindow.onFocusChanged(({ payload }) => {
@@ -62,6 +69,11 @@
     submission = started.state;
     try {
       await emitTo("main", QUICK_INPUT_EVENT, started.request);
+      // Hide right away: waiting for a tray-throttled main window made the next shortcut press
+      // hit a still-open window and look like it needed two presses.
+      pending = { requestId: started.request.requestId, text: started.request.text };
+      submission = initialSubmissionState();
+      await getCurrentWindow().hide();
     } catch (error) {
       submission = finishSubmission(submission, {
         requestId: started.request.requestId,

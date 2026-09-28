@@ -1,15 +1,86 @@
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 
-pub fn show_quick_input_window(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("quick-input") {
-        if !window.is_visible().unwrap_or(false) {
-            let _ = window.center();
+/// Shortcut activation: inside hive (main window focused) the Inbox dialog opens in the app itself;
+/// anywhere else the separate always-on-top quick input window is shown and forced to the foreground.
+pub fn activate_quick_input(app: &AppHandle) {
+    if let Some(main) = app.get_webview_window("main") {
+        let visible = main.is_visible().unwrap_or(false);
+        let focused = main.is_focused().unwrap_or(false);
+        let minimized = main.is_minimized().unwrap_or(false);
+        if visible && focused && !minimized {
+            let result = main.emit("hive://quick-input-in-app", ());
+            log_activation(app, &format!("in-app dialog (emit ok: {})", result.is_ok()));
+            return;
         }
-        let _ = window.show();
-        let _ = window.set_focus();
-        let _ = window.emit("hive://quick-input-focus", ());
     }
+    show_quick_input_window(app);
+}
+
+pub fn show_quick_input_window(app: &AppHandle) {
+    let Some(window) = app.get_webview_window("quick-input") else {
+        log_activation(app, "quick input window missing");
+        return;
+    };
+    let was_visible = window.is_visible().unwrap_or(false);
+    if !was_visible {
+        let _ = window.center();
+    }
+    let shown = window.show().is_ok();
+    let focused = window.set_focus().is_ok();
+    #[cfg(windows)]
+    let forced = window.hwnd().map(|hwnd| force_foreground(hwnd.0 as _)).unwrap_or(false);
+    #[cfg(not(windows))]
+    let forced = false;
+    let _ = window.emit("hive://quick-input-focus", ());
+    log_activation(app, &format!("window (was visible: {was_visible}, show: {shown}, set_focus: {focused}, foreground: {forced})"));
+}
+
+/// Windows refuses SetForegroundWindow from a background process; attaching to the current
+/// foreground thread for the call lifts that lock so the input really receives the keyboard.
+#[cfg(windows)]
+fn force_foreground(hwnd: windows_sys::Win32::Foundation::HWND) -> bool {
+    use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        BringWindowToTop, GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow,
+    };
+    unsafe {
+        let foreground = GetForegroundWindow();
+        if foreground == hwnd {
+            return true;
+        }
+        let current = GetCurrentThreadId();
+        let foreground_thread = if foreground.is_null() { 0 } else { GetWindowThreadProcessId(foreground, std::ptr::null_mut()) };
+        let attached = foreground_thread != 0 && foreground_thread != current && AttachThreadInput(current, foreground_thread, 1) != 0;
+        BringWindowToTop(hwnd);
+        let ok = SetForegroundWindow(hwnd) != 0;
+        if attached {
+            AttachThreadInput(current, foreground_thread, 0);
+        }
+        ok
+    }
+}
+
+/// Small rolling diagnostics log (<app log dir>/quick-input.log) so a failed activation on the
+/// user's machine can be read back; trimmed to the last ~200 lines.
+fn log_activation(app: &AppHandle, message: &str) {
+    let Ok(dir) = app.path().app_log_dir() else { return };
+    if std::fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+    let path = dir.join("quick-input.log");
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0);
+    let mut lines: Vec<String> = std::fs::read_to_string(&path)
+        .map(|text| text.lines().map(str::to_string).collect())
+        .unwrap_or_default();
+    lines.push(format!("{stamp} {message}"));
+    let start = lines.len().saturating_sub(200);
+    let _ = std::fs::write(&path, lines[start..].join("
+") + "
+");
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -222,7 +293,7 @@ fn start_hook(app: AppHandle) -> Result<HookRuntime, String> {
         .spawn(move || {
             while activation_rx.recv().is_ok() {
                 let app_handle = app.clone();
-                if let Err(error) = app.run_on_main_thread(move || show_quick_input_window(&app_handle)) {
+                if let Err(error) = app.run_on_main_thread(move || activate_quick_input(&app_handle)) {
                     eprintln!("Could not show quick input after shortcut activation: {error}");
                 }
             }

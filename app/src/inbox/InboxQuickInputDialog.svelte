@@ -28,7 +28,8 @@
       event.preventDefault();
       event.stopPropagation();
       closeQuickInputPrompt();
-    } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+    } else if (event.key === "Enter" && !event.shiftKey) {
+      // Same keys as the separate quick input window: Enter adds, Shift+Enter is a new line.
       submit(event);
     }
   }
