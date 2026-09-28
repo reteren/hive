@@ -1,0 +1,36 @@
+// Q menu pin: open with Q, pin, wheel-zoom, pan camera, move pointer away, click outside, create a node — menu must stay; Escape closes.
+const page = (await fetch(`http://localhost:9334/json/list`).then((r) => r.json())).find((t) => t.type === "page");
+const ws = new WebSocket(page.webSocketDebuggerUrl); let id = 0; const pending = new Map(); const errors = [];
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.method === "Runtime.exceptionThrown") errors.push(m.params.exceptionDetails.exception?.description?.slice(0, 200)); if (pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+await new Promise((r) => (ws.onopen = r));
+const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+await send("Runtime.enable");
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const ev = async (expression) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); return r.result?.result?.value ?? r.result?.exceptionDetails?.exception?.description; };
+const mouse = (type, x, y, button = "none", buttons = 0) => send("Input.dispatchMouseEvent", { type, x, y, button, buttons, clickCount: type === "mousePressed" || type === "mouseReleased" ? 1 : 0 });
+const click = async (p) => { await mouse("mouseMoved", p.x, p.y); await mouse("mousePressed", p.x, p.y, "left", 1); await mouse("mouseReleased", p.x, p.y, "left", 0); await wait(300); };
+const at = (sel) => ev(`(()=>{const e=document.querySelector(${JSON.stringify(sel)});if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+const key = async (k, code, vk) => { await send("Input.dispatchKeyEvent", { type: "keyDown", key: k, code, windowsVirtualKeyCode: vk, text: k.length === 1 ? k : undefined }); await send("Input.dispatchKeyEvent", { type: "keyUp", key: k, code, windowsVirtualKeyCode: vk }); await wait(350); };
+const menu = async () => { const p = await at("[data-create-menu]"); return p ? `open @${Math.round(p.x)},${Math.round(p.y)}` : "closed"; };
+const count = () => ev(`(async()=>{const b=await import('/src/model/board.svelte.ts');return Object.keys(b.board.notes).length})()`);
+
+await mouse("mouseMoved", 700, 450); await key("q", "KeyQ", 81);
+console.log("after Q:", await menu());
+const pin = await ev(`(()=>{const e=document.querySelector('[data-create-menu] button[aria-label*="in create list"]');if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+if (pin) await click(pin);
+console.log("pinned:", await ev(`document.querySelector('[data-create-menu] button[aria-pressed]')?.getAttribute('aria-pressed')`), await menu());
+await send("Input.dispatchMouseEvent", { type: "mouseWheel", x: 300, y: 600, deltaX: 0, deltaY: -240 }); await wait(400);
+console.log("after wheel zoom:", await menu());
+await ev(`(async()=>{const c=await import('/src/board/camera.svelte.ts');c.camera.x+=40;c.camera.y-=25;return 1})()`); await wait(300);
+console.log("after camera pan:", await menu());
+await mouse("mouseMoved", 1300, 800); await wait(300);
+console.log("after pointer leaves:", await menu());
+await click({ x: 250, y: 700 });
+console.log("after click outside:", await menu());
+const n0 = await count(); const item = await at("[data-create-menu] [data-create-kind]");
+if (item) await click(item);
+console.log("created from menu:", (await count()) - n0, "menu:", await menu());
+await key("Escape", "Escape", 27);
+console.log("after Escape:", await menu());
+console.log("errors:", errors.length ? errors.join(" || ") : "none");
+ws.close();

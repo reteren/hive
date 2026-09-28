@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { boardPopupPlacement, fitBoardPopupAnchor, isOutsidePopup } from "../src/ui/boardAnchor";
+import {
+  boardPopupPlacement,
+  fitBoardPopupAnchor,
+  isOutsidePopup,
+  screenAnchoredPopupStyle,
+  shouldDismissOnOutsidePointer,
+} from "../src/ui/boardAnchor";
 
 describe("board popup anchor", () => {
   const viewport = { width: 800, height: 600 };
@@ -42,5 +48,21 @@ describe("board popup anchor", () => {
     expect(isOutsidePopup([child, popup], popup)).toBe(false);
     expect(isOutsidePopup([opener], popup, [opener])).toBe(false);
     expect(isOutsidePopup([child], popup, [opener])).toBe(true);
+  });
+
+  it("keeps a pinned popup open on outside pointer actions while retaining normal dismissal", () => {
+    const popup = new EventTarget();
+    const outside = new EventTarget();
+    const child = new EventTarget();
+
+    expect(shouldDismissOnOutsidePointer([outside], popup)).toBe(true);
+    expect(shouldDismissOnOutsidePointer([outside], popup, [], false)).toBe(false);
+    expect(shouldDismissOnOutsidePointer([child, popup], popup, [], false)).toBe(false);
+  });
+
+  it("keeps a pinned popup at its captured screen position without camera scaling", () => {
+    const style = screenAnchoredPopupStyle({ x: 213, y: 96 });
+
+    expect(style).toBe("left:213px;top:96px;transform:none;transform-origin:0 0");
   });
 });

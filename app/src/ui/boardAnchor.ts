@@ -35,6 +35,11 @@ export function boardPopupStyle(
   return `left:${x}px;top:${y}px;transform:scale(${scale});transform-origin:0 0`;
 }
 
+/** Keep a popup at a captured viewport point, independent of subsequent camera movement. */
+export function screenAnchoredPopupStyle(anchor: Point): string {
+  return `left:${anchor.x}px;top:${anchor.y}px;transform:none;transform-origin:0 0`;
+}
+
 /** Choose a visible initial corner once; later camera changes never reflow the popup. */
 export function fitBoardPopupAnchor(
   camera: Camera,
@@ -64,10 +69,21 @@ export function isOutsidePopup(path: readonly EventTarget[], popup: EventTarget,
   return !path.includes(popup) && ignored.every((target) => !path.includes(target));
 }
 
+/** Pure pointer-dismissal decision so pinned popups can stay open outside their bounds. */
+export function shouldDismissOnOutsidePointer(
+  path: readonly EventTarget[],
+  popup: EventTarget,
+  ignored: readonly EventTarget[] = [],
+  enabled = true,
+): boolean {
+  return enabled && isOutsidePopup(path, popup, ignored);
+}
+
 export interface DismissPopupOptions {
   close: () => void;
   ignoreSelector?: string;
   escape?: boolean;
+  shouldDismissOutside?: () => boolean;
 }
 
 /** Capture-phase dismissal leaves the same pointer action free to reach the board. */
@@ -77,7 +93,9 @@ export const dismissBoardPopup: Action<HTMLElement, DismissPopupOptions> = (elem
     const path = event.composedPath();
     const ignored = options.ignoreSelector && event.target instanceof Element
       ? event.target.closest(options.ignoreSelector) : null;
-    if (isOutsidePopup(path, element, ignored ? [ignored] : [])) options.close();
+    if (shouldDismissOnOutsidePointer(path, element, ignored ? [ignored] : [], options.shouldDismissOutside?.() ?? true)) {
+      options.close();
+    }
   };
   const onKeyDown = (event: KeyboardEvent) => {
     if (options.escape === false || event.code !== "Escape" || event.defaultPrevented) return;

@@ -1,4 +1,5 @@
 import { camera, pointer, viewport } from "../board/camera.svelte";
+import { screenToWorld, worldToScreen } from "../board/cameraMath";
 import { chooseCreationOrigin, type CreationTrigger } from "./creationPosition";
 import { fitBoardPopupAnchor } from "../ui/boardAnchor";
 
@@ -8,6 +9,7 @@ export const creationMenu = $state({
   origin: { x: 0, y: 0 },
   screenAnchor: { x: 0, y: 0 },
   menuAnchor: { x: 0, y: 0 },
+  pinnedScreenAnchor: { x: 0, y: 0 },
   zoomAtOpen: 1,
   pendingTrigger: null as CreationTrigger | null,
 });
@@ -30,6 +32,18 @@ export function closeCreationMenu(): void {
   creationMenu.open = false;
   creationMenu.pinned = false;
   creationMenu.pendingTrigger = null;
+}
+
+export function toggleCreationMenuPin(): void {
+  if (creationMenu.pinned) {
+    creationMenu.menuAnchor = screenToWorld(camera, viewport, creationMenu.pinnedScreenAnchor);
+    creationMenu.zoomAtOpen = camera.zoom;
+    creationMenu.pinned = false;
+    return;
+  }
+
+  creationMenu.pinnedScreenAnchor = worldToScreen(camera, viewport, creationMenu.menuAnchor);
+  creationMenu.pinned = true;
 }
 
 export function creationMenuTrigger(): CreationTrigger {

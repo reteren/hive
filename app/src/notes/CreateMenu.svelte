@@ -2,13 +2,15 @@
   import { camera, viewport } from "../board/camera.svelte";
   import { createNote, createNoteKind } from "./noteCommands";
   import { R5_KINDS, R6_KINDS, R7_KINDS } from "../model/note";
-  import { creationMenu, closeCreationMenu } from "./creation.svelte";
-  import { boardPopupStyle, dismissBoardPopup } from "../ui/boardAnchor";
+  import { creationMenu, closeCreationMenu, toggleCreationMenuPin } from "./creation.svelte";
+  import { boardPopupStyle, dismissBoardPopup, screenAnchoredPopupStyle } from "../ui/boardAnchor";
   import { tool } from "../tools/tool.svelte";
   import { cancelLineDraft } from "../links/interaction.svelte";
   import { clearSelectedLink } from "../links/selection.svelte";
 
-  const menuStyle = $derived(boardPopupStyle(camera, viewport, creationMenu.menuAnchor, creationMenu.zoomAtOpen));
+  const menuStyle = $derived(creationMenu.pinned
+    ? screenAnchoredPopupStyle(creationMenu.pinnedScreenAnchor)
+    : boardPopupStyle(camera, viewport, creationMenu.menuAnchor, creationMenu.zoomAtOpen));
 
   function createNoteFromMenu(): void {
     createNote();
@@ -72,7 +74,7 @@
     data-selection-ignore
     aria-label="Create list"
     style={menuStyle}
-    use:dismissBoardPopup={{ close: closeCreationMenu }}
+    use:dismissBoardPopup={{ close: closeCreationMenu, shouldDismissOutside: () => !creationMenu.pinned }}
   >
     <header class="menu-header">
       <span>Create</span>
@@ -83,7 +85,7 @@
           aria-label={creationMenu.pinned ? "Unpin create list" : "Pin create list"}
           aria-pressed={creationMenu.pinned}
           title={creationMenu.pinned ? "Unpin list" : "Keep list open after creating"}
-          onclick={() => (creationMenu.pinned = !creationMenu.pinned)}
+          onclick={toggleCreationMenuPin}
         >
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <path d="M5 2.5h6l-.8 3 2.3 2.2v1H3.5v-1l2.3-2.2zM8 8.7v4.8" />
