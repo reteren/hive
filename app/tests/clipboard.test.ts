@@ -75,6 +75,45 @@ describe("clipboard payload", () => {
     expect(parsed?.nodes[0]).toMatchObject({ sourceId: calculator.id, type: "calculator", name: "Trip" });
   });
 
+  it("round trips Time schedules and runtime through the clipboard", () => {
+    const time: Note = {
+      ...noteA,
+      id: "time-a",
+      type: "time",
+      time: {
+        schedule: { kind: "interval", minutes: 12, mode: "active", repeat: true },
+        enabled: true,
+        runtime: { intervalStartedAt: 900, countedMs: 12, lastCheckedAt: 920 },
+        taskMode: "stop",
+      },
+    };
+
+    expect(parseNotesPayload(serializeNotes([time]))?.nodes[0]?.time).toEqual(time.time);
+    const malformed = JSON.parse(serializeNotes([time]));
+    malformed.nodes[0].time.schedule.minutes = 0;
+    expect(parseNotesPayload(JSON.stringify(malformed))).toBeNull();
+    malformed.nodes[0].time.schedule = time.time!.schedule;
+    malformed.nodes[0].time.taskMode = "prompt";
+    expect(parseNotesPayload(JSON.stringify(malformed))).toBeNull();
+  });
+
+  it("preserves Message settings and defaults missing or invalid settings safely", () => {
+    const message: Note = {
+      ...noteA,
+      id: "message-a",
+      type: "message",
+      message: { sound: true, autoHideSeconds: 15 },
+    };
+    expect(parseNotesPayload(serializeNotes([message]))?.nodes[0]?.message).toEqual(message.message);
+
+    const serialized = JSON.parse(serializeNotes([message]));
+    serialized.nodes[0].message = { sound: "yes", autoHideSeconds: -1 };
+    expect(parseNotesPayload(JSON.stringify(serialized))?.nodes[0]?.message).toEqual({
+      sound: false,
+      autoHideSeconds: null,
+    });
+  });
+
   it("rejects malformed, unknown, duplicate-id, and invalid-geometry payloads", () => {
     expect(parseNotesPayload("{")).toBeNull();
     expect(parseNotesPayload(JSON.stringify({ marker: "other", version: 1, nodes: [], links: [] }))).toBeNull();

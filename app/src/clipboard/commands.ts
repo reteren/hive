@@ -29,6 +29,8 @@ import { translateShape } from "../zones/shape";
 import { beaconPaletteColor } from "../beacons/beaconPalette";
 import { removeCreatedBankRowForLink } from "../calculator/bankActions.svelte";
 import { moveToTrash } from "../trash/trashActions.svelte";
+import { linkedTimeStatesForTask } from "../time/taskLink";
+import { restartTimeNode } from "../time/runtime.svelte";
 import {
   creationObstacleForNote,
   estimatedCreationHeight,
@@ -64,6 +66,7 @@ let feedbackTimer: number | undefined;
 
 export async function copySelection(): Promise<void> {
   const notes = selectedNotes();
+  const copiedNotes = includeActiveTaskTimes(notes);
   const selectedZonesNow = selectedZones();
   if (notes.length === 0 && selectedZonesNow.length === 0) {
     showClipboardFeedback("Nothing selected to copy");
@@ -73,10 +76,11 @@ export async function copySelection(): Promise<void> {
 
   clipboardBusy = true;
   try {
-    const result = await writeSelectionToClipboard(notes, selectedZonesNow);
-    showClipboardFeedback(result === "hive"
-      ? `Copied ${selectionNoun(notes.length, selectedZonesNow.length)}`
-      : "Copied as text; Hive clipboard format is unavailable");
+    const result = await writeSelectionToClipboard(copiedNotes, selectedZonesNow);
+    showClipboardFeedback(result === "hive" && hasActiveTaskTime(copiedNotes, linksBetween(copiedNotes))
+      ? "Reminder copied with the task"
+      : result === "hive" ? `Copied ${selectionNoun(copiedNotes.length, selectedZonesNow.length)}`
+        : "Copied as text; Hive clipboard format is unavailable");
   } catch (error) {
     showClipboardFeedback(clipboardErrorMessage(error));
   } finally {
@@ -131,7 +135,7 @@ export function deleteSelection(): void {
 }
 
 export function duplicateSelection(): void {
-  const originals = selectedNotes();
+  const originals = includeActiveTaskTimes(selectedNotes());
   const originalZones = selectedZones();
   if (originals.length === 0 && originalZones.length === 0) {
     showClipboardFeedback("Nothing selected to duplicate");
@@ -244,10 +248,16 @@ function selectIds(ids: readonly string[], zoneIds: readonly string[] = []): voi
   setZoneIds(zoneIds.filter((id) => Boolean(zones.byId[id])));
 }
 
-type CopySource = Pick<Note,
+type CopySource = Omit<Pick<Note,
   "type" | "name" | "text" | "x" | "y" | "width" | "height" | "createdAt" |
   "task" | "taskMemory" | "importance" | "purposes"
-> & { color?: string | null; zoneId?: string | null; sourceId: string };
+>, "time" | "message"> & {
+  time?: Note["time"] | null;
+  message?: Note["message"] | null;
+  color?: string | null;
+  zoneId?: string | null;
+  sourceId: string;
+};
 
 function createCopies(
   sourceNotes: readonly CopySource[],
@@ -300,6 +310,8 @@ function createCopies(
       height: note.type === "purpose" || note.type === "mood" ? null : note.height,
       createdAt: note.createdAt ?? Date.now(),
       ...taskFieldsForPaste(note),
+      ...(note.time ? { time: { ...note.time, schedule: { ...note.time.schedule }, ...(note.time.runtime ? { runtime: { ...note.time.runtime } } : {}) } } : {}),
+      ...(note.message ? { message: { ...note.message } } : {}),
       importance: note.importance ?? null,
       purposes: [...new Set(note.purposes ?? [])],
       ...(note.type === "beacon" ? { color: note.color ?? beaconPaletteColor(0) } : note.color ? { color: note.color } : {}),
@@ -340,6 +352,8 @@ function addCopies(
       placedNotes.forEach((note, index) => addNote(note, startIndex + index));
       copiedZones.forEach(addZone);
       copiedLinks.forEach(addLink);
+      const reminderTimeIds = activeTaskTimeIds(placedNotes, copiedLinks);
+      reminderTimeIds.forEach((noteId) => restartTimeNode(noteId));
       selectIds(ids, zoneIds);
     },
     undo: () => {
@@ -354,6 +368,45 @@ function addCopies(
     },
   };
   execute(command);
+  if (hasActiveTaskTime(placedNotes, copiedLinks)) showClipboardFeedback("Reminder copied with the task");
+}
+
+function includeActiveTaskTimes(notes: readonly Note[]): Note[] {
+  const result = [...notes];
+  const includedIds = new Set(notes.map((note) => note.id));
+  for (const task of notes) {
+    if (!task.task) continue;
+    for (const linkedTime of linkedTimeStatesForTask(task.id, Object.values(links.byId), board.notes)) {
+      const time = board.notes[linkedTime.noteId];
+      if (!linkedTime.enabled || !time || includedIds.has(time.id)) continue;
+      result.push({ ...time, time: time.time ? {
+        ...time.time,
+        schedule: { ...time.time.schedule },
+        ...(time.time.runtime ? { runtime: { ...time.time.runtime } } : {}),
+      } : undefined });
+      includedIds.add(time.id);
+    }
+  }
+  return result;
+}
+
+function activeTaskTimeIds(notes: readonly Note[], edges: readonly Pick<Link, "from" | "to" | "kind">[]): string[] {
+  const byId = new Map(notes.map((note) => [note.id, note]));
+  const result = new Set<string>();
+  for (const task of notes) {
+    if (!task.task) continue;
+    for (const edge of edges) {
+      const time = byId.get(edge.to);
+      if (edge.kind === "strong" && edge.from === task.id && time?.type === "time" && time.time?.enabled) {
+        result.add(time.id);
+      }
+    }
+  }
+  return [...result];
+}
+
+function hasActiveTaskTime(notes: readonly Note[], edges: readonly Pick<Link, "from" | "to" | "kind">[]): boolean {
+  return activeTaskTimeIds(notes, edges).length > 0;
 }
 
 function placeNewNotesWithoutOverlap(notes: readonly Note[], placementHeights?: ReadonlyMap<string, number>): Note[] {

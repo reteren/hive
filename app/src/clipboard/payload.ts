@@ -18,6 +18,8 @@ import type { Zone } from "../model/zone";
 import { zoneBounds } from "../model/zone";
 import { normalizeBeaconColor } from "../beacons/beaconPalette";
 import { shapesOverlap, translateShape } from "../zones/shape";
+import type { MessageNodeData, TimeNodeData } from "../time/types";
+import { defaultMessageData, parseMessageData } from "../messages/data";
 
 export const HIVE_CLIPBOARD_MARKER = "hive/nodes";
 export const HIVE_CLIPBOARD_VERSION = 3;
@@ -38,6 +40,8 @@ export interface ClipboardNode {
   createdAt?: number;
   task: TaskState | null;
   taskMemory: TaskState | null;
+  time: TimeNodeData | null;
+  message: MessageNodeData | null;
   importance: ImportanceLevel | null;
   purposes: PurposeKind[];
   moods: MoodKind[];
@@ -87,7 +91,7 @@ export function serializeNotes(
     marker: HIVE_CLIPBOARD_MARKER,
     version: HIVE_CLIPBOARD_VERSION,
     nodes: notes.map(({
-      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, importance, purposes, moods, color, zoneId,
+      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, time, message, importance, purposes, moods, color, zoneId,
     }) => ({
       sourceId: id,
       type,
@@ -100,6 +104,8 @@ export function serializeNotes(
       createdAt,
       task: task ? { ...task } : null,
       taskMemory: taskMemory ? { ...taskMemory } : null,
+      time: time ? copyTimeNodeData(time) : null,
+      message: message ? { ...message } : null,
       importance: importance ?? null,
       purposes: [...new Set(purposes ?? [])],
       moods: [...new Set(moods ?? [])],
@@ -259,6 +265,15 @@ export function placeNotes<T extends NoteGeometry>(
   return notes.map((note) => ({ ...note, x: note.x + deltaX, y: note.y + deltaY }));
 }
 
+function copyTimeNodeData(time: TimeNodeData): TimeNodeData {
+  return {
+    schedule: { ...time.schedule },
+    enabled: time.enabled,
+    ...(time.runtime ? { runtime: { ...time.runtime } } : {}),
+    ...(time.taskMode === undefined ? {} : { taskMode: time.taskMode }),
+  };
+}
+
 /** Translate copied notes and zones together so their relative offsets survive paste. */
 export function placementOffset(
   notes: readonly NoteGeometry[],
@@ -316,7 +331,7 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     (value.type !== "note" && value.type !== "pro" && value.type !== "con" &&
       value.type !== "importance" && value.type !== "purpose" && value.type !== "mood" && value.type !== "beacon" &&
       value.type !== "goal" && value.type !== "progress" && value.type !== "calculator" &&
-      value.type !== "tierlist" && value.type !== "stats") ||
+      value.type !== "tierlist" && value.type !== "stats" && value.type !== "time" && value.type !== "message") ||
     typeof value.name !== "string" || typeof value.text !== "string" ||
     !finite(value.x) || !finite(value.y) || !finite(value.width) || value.width <= 0 ||
     !(value.height === null || (finite(value.height) && value.height > 0)) ||
@@ -326,6 +341,12 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
   if (value.task !== undefined && value.task !== null && !task) return null;
   const taskMemory = parseTaskState(value.taskMemory);
   if (value.taskMemory !== undefined && value.taskMemory !== null && !taskMemory) return null;
+  const time = parseTimeNodeData(value.time);
+  if (value.time !== undefined && value.time !== null && !time) return null;
+  if (value.type === "time" && !time) return null;
+  const parsedMessage = parseMessageData(value.message);
+  const message = parsedMessage ?? (value.type === "message" ? defaultMessageData() : null);
+  if (value.message !== undefined && value.message !== null && !parsedMessage && value.type !== "message") return null;
   const importance = parseImportance(value.importance);
   if (value.importance !== undefined && value.importance !== null && !importance) return null;
   const purposes = parsePurposes(value.purposes);
@@ -353,11 +374,52 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     ...(value.createdAt === undefined ? {} : { createdAt: value.createdAt }),
     task,
     taskMemory,
+    time,
+    message,
     importance,
     purposes,
     moods,
     color,
     zoneId,
+  };
+}
+
+function parseTimeNodeData(value: unknown): TimeNodeData | null {
+  if (value === undefined || value === null) return null;
+  if (!isRecord(value) || typeof value.enabled !== "boolean" || !isRecord(value.schedule)) return null;
+
+  const rawSchedule = value.schedule;
+  if (value.taskMode !== undefined && value.taskMode !== "stop" && value.taskMode !== "restart") return null;
+  let schedule: TimeNodeData["schedule"];
+  if (rawSchedule.kind === "at" && typeof rawSchedule.time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(rawSchedule.time) &&
+    (rawSchedule.date === null || (typeof rawSchedule.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(rawSchedule.date)))) {
+    schedule = { kind: "at", date: rawSchedule.date, time: rawSchedule.time };
+  } else if (rawSchedule.kind === "interval" && Number.isInteger(rawSchedule.minutes) && Number(rawSchedule.minutes) >= 1 &&
+    (rawSchedule.mode === "calendar" || rawSchedule.mode === "app" || rawSchedule.mode === "active") && typeof rawSchedule.repeat === "boolean") {
+    schedule = { kind: "interval", minutes: Number(rawSchedule.minutes), mode: rawSchedule.mode, repeat: rawSchedule.repeat };
+  } else {
+    return null;
+  }
+
+  let runtime: TimeNodeData["runtime"];
+  if (value.runtime !== undefined) {
+    if (!isRecord(value.runtime) ||
+      (value.runtime.lastFiredKey !== undefined && typeof value.runtime.lastFiredKey !== "string") ||
+      (value.runtime.intervalStartedAt !== undefined && !finite(value.runtime.intervalStartedAt)) ||
+      (value.runtime.countedMs !== undefined && !finite(value.runtime.countedMs)) ||
+      (value.runtime.lastCheckedAt !== undefined && !finite(value.runtime.lastCheckedAt))) return null;
+    runtime = {
+      ...(typeof value.runtime.lastFiredKey === "string" ? { lastFiredKey: value.runtime.lastFiredKey } : {}),
+      ...(finite(value.runtime.intervalStartedAt) ? { intervalStartedAt: value.runtime.intervalStartedAt } : {}),
+      ...(finite(value.runtime.countedMs) ? { countedMs: value.runtime.countedMs } : {}),
+      ...(finite(value.runtime.lastCheckedAt) ? { lastCheckedAt: value.runtime.lastCheckedAt } : {}),
+    };
+  }
+  return {
+    schedule,
+    enabled: value.enabled,
+    ...(runtime ? { runtime } : {}),
+    ...(value.taskMode === undefined ? {} : { taskMode: value.taskMode }),
   };
 }
 

@@ -39,6 +39,8 @@ export interface TimeNodeData {
   /** Off = no waiting at all (a stopped task, a user switch, an archived task until resumed). */
   enabled: boolean;
   runtime?: TimeRuntime;
+  /** R8.4: what completing a linked task does. Only "stop" exists for now (absent = "stop"). */
+  taskMode?: "stop" | "restart";
 }
 
 /** R8.5 Message node settings. The text is the note's own `text`. */

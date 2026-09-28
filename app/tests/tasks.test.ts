@@ -122,6 +122,30 @@ describe("task transitions", () => {
     expect(entries).toEqual([]);
   });
 
+  it("disables linked Times on completion and restores each prior enabled state with one Undo", () => {
+    const { store, tasks, entries } = createStore({ "task-a": { done: false, doneAt: null } });
+    const times = new Map([["running", true], ["already-stopped", false]]);
+    const transitionStore: TaskTransitionStore = {
+      ...store,
+      getLinkedTimeStates: () => [...times].map(([noteId, enabled]) => ({ noteId, enabled })),
+      setTimeEnabled: (noteId, enabled) => { times.set(noteId, enabled); },
+    };
+    const stack = new HistoryStack();
+    const command = createTaskCompletionCommand(transitionStore, "task-a", "Write tests", 100);
+    expect(command).not.toBeNull();
+    if (!command) return;
+
+    stack.execute(command);
+    expect(times).toEqual(new Map([["running", false], ["already-stopped", false]]));
+    expect(tasks.get("task-a")).toEqual({ done: true, doneAt: 100 });
+    stack.undo();
+    expect(times).toEqual(new Map([["running", true], ["already-stopped", false]]));
+    expect(tasks.get("task-a")).toEqual({ done: false, doneAt: null });
+    expect(entries).toEqual([]);
+    stack.redo();
+    expect(times).toEqual(new Map([["running", false], ["already-stopped", false]]));
+  });
+
   it("reopening leaves prior completion history intact through undo and redo", () => {
     const { store, tasks, entries } = createStore({ "task-a": { done: true, doneAt: 100 } });
     entries.push({ noteId: "task-a", name: "A", doneAt: 100 });

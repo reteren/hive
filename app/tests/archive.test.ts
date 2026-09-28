@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { camera } from "../src/board/camera.svelte";
 import { calculators, replaceCalculators, setCalculatorData } from "../src/calculator/calculators.svelte";
 import { clear, history, redo, undo } from "../src/history/history.svelte";
@@ -13,6 +13,9 @@ import { planArchiveRestore } from "../src/archive/logic";
 import { sanitizeArchiveEntries } from "../src/archive/serialization";
 import { parseProjectIndex, serializeProjectIndex } from "../src/project/index";
 
+const { restartTimeNode } = vi.hoisted(() => ({ restartTimeNode: vi.fn() }));
+vi.mock("../src/time/runtime.svelte", () => ({ restartTimeNode }));
+
 function note(id: string, x = 0, type: Note["type"] = "note"): Note {
   return { id, type, name: id, text: `Text of ${id}`, x, y: 4, width: 30, height: 20 };
 }
@@ -26,6 +29,7 @@ function entry(item: Note, edges: Link[] = []): ArchiveEntry {
 }
 
 beforeEach(() => {
+  restartTimeNode.mockClear();
   clear();
   replaceBoard([]);
   replaceLinks([]);
@@ -171,6 +175,44 @@ describe("archive actions", () => {
     archiveNotes(["A"]);
     undo();
     expect(links.byId["me-a"]).toBeDefined();
+  });
+
+  it("stops task-linked reminders on archive and restores their prior state on Undo", () => {
+    const task = note("task");
+    task.task = { done: false, doneAt: null };
+    const reminder = note("time");
+    reminder.type = "time";
+    reminder.time = { schedule: { kind: "interval", minutes: 5, mode: "calendar", repeat: true }, enabled: true };
+    replaceBoard([task, reminder]);
+    replaceLinks([{ ...link("task-time", "task", "time"), kind: "strong" }]);
+
+    expect(archiveNotes([task.id])).toBe(1);
+    expect(board.notes.time.time?.enabled).toBe(false);
+    expect(history.entries).toHaveLength(1);
+    undo();
+    expect(board.notes.time.time?.enabled).toBe(true);
+    redo();
+    expect(board.notes.time.time?.enabled).toBe(false);
+  });
+
+  it("resumes linked reminders on restore only when requested and restarts them", () => {
+    const task = note("task");
+    task.task = { done: false, doneAt: null };
+    const reminder = note("time");
+    reminder.type = "time";
+    reminder.time = { schedule: { kind: "at", date: null, time: "09:00" }, enabled: false };
+    replaceBoard([reminder]);
+    replaceArchive([entry(task, [{ ...link("task-time", "task", "time"), kind: "strong" }])]);
+
+    expect(restoreArchived("entry-task", "old", true)?.note.id).toBe("task");
+    expect(board.notes.time.time?.enabled).toBe(true);
+    expect(restartTimeNode).toHaveBeenCalledWith("time");
+    undo();
+    expect(board.notes.task).toBeUndefined();
+    expect(board.notes.time.time?.enabled).toBe(false);
+    redo();
+    expect(board.notes.time.time?.enabled).toBe(true);
+    expect(restartTimeNode).toHaveBeenCalledTimes(2);
   });
 });
 

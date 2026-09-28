@@ -1,6 +1,7 @@
 import type { HistoryCommand } from "../history/historyStack";
 import type { Note, TaskState } from "../model/note";
 import type { TaskLogEntry } from "./taskLog.svelte";
+import type { LinkedTimeState } from "../time/taskLink";
 
 export interface TaskTransitionStore {
   getTask(noteId: string): TaskState | null;
@@ -9,6 +10,8 @@ export interface TaskTransitionStore {
   setUnmarkedTask(noteId: string, task: TaskState | null): void;
   addLogEntry(entry: TaskLogEntry): void;
   removeLogEntry(entry: TaskLogEntry): void;
+  getLinkedTimeStates?(noteId: string): LinkedTimeState[];
+  setTimeEnabled?(noteId: string, enabled: boolean): void;
 }
 
 export function cloneTaskState(task: TaskState | null | undefined): TaskState | null {
@@ -53,16 +56,19 @@ export function createTaskCompletionCommand(
 
   const after: TaskState = { done: true, doneAt };
   const entry: TaskLogEntry = { noteId, name: target, doneAt };
+  const linkedTimes = store.getLinkedTimeStates?.(noteId) ?? [];
   return {
     label: "Complete task",
     target,
     do: () => {
       store.setTask(noteId, after);
       store.addLogEntry(entry);
+      for (const time of linkedTimes) store.setTimeEnabled?.(time.noteId, false);
     },
     undo: () => {
       store.setTask(noteId, before);
       store.removeLogEntry(entry);
+      for (const time of linkedTimes) store.setTimeEnabled?.(time.noteId, time.enabled);
     },
   };
 }

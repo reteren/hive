@@ -27,6 +27,7 @@
   import BeaconMenu from "./beacons/BeaconMenu.svelte";
   import TrashPanel from "./trash/TrashPanel.svelte";
   import MapOverlay from "./map/MapOverlay.svelte";
+  import MessageCards from "./messages/MessageCards.svelte";
 
   let undoLogCommand = $derived(getCommand("ui.toggleUndoLog"));
   let undoLogKeys = $derived(undoLogCommand?.keys.map(formatKey).join(", ") ?? "");
@@ -76,6 +77,7 @@
       {#if undoLogPanel.open}<UndoLog />{/if}
       <ObjectsPanel />
       <TrashPanel />
+      <MessageCards />
     </div>
     <SettingsPanel />
     <div class="overlay-bottom-right">

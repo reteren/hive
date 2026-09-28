@@ -59,6 +59,18 @@
     if (!creationMenu.pinned) closeCreationMenu();
   }
 
+  function createTimeFromMenu(): void {
+    createNoteKind("time");
+    switchToSelectToolAfterCreation();
+    if (!creationMenu.pinned) closeCreationMenu();
+  }
+
+  function createMessageFromMenu(): void {
+    createNoteKind("message");
+    switchToSelectToolAfterCreation();
+    if (!creationMenu.pinned) closeCreationMenu();
+  }
+
   function switchToSelectToolAfterCreation(): void {
     if (tool.active !== "zone" && tool.active !== "line-strong" && tool.active !== "line-weak") return;
     tool.active = "select";
@@ -141,6 +153,14 @@
           <span>{R5_LABELS[kind]}</span>
         </button>
       {/each}
+      <button class="create-item" type="button" data-create-kind="time" onclick={createTimeFromMenu}>
+        <span class="r5-icon time-icon" aria-hidden="true"></span>
+        <span>Time</span>
+      </button>
+      <button class="create-item" type="button" data-create-kind="message" onclick={createMessageFromMenu}>
+        <span class="r5-icon" aria-hidden="true"></span>
+        <span>Message</span>
+      </button>
     </div>
   </aside>
 {/if}
@@ -321,4 +341,19 @@
     background: #e8b030;
     box-shadow: 0 0 0 2px rgb(232 176 48 / 18%);
   }
+
+  .time-icon {
+    position: relative;
+    border-radius: 50%;
+  }
+
+  .time-icon::before,
+  .time-icon::after {
+    position: absolute;
+    background: currentColor;
+    content: "";
+  }
+
+  .time-icon::before { top: 2px; left: 4px; width: 1px; height: 3px; }
+  .time-icon::after { top: 5px; left: 4px; width: 3px; height: 1px; }
 </style>

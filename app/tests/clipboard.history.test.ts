@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { board, replaceBoard } from "../src/model/board.svelte";
 import { links, replaceLinks } from "../src/model/links.svelte";
 import type { Note } from "../src/model/note";
-import { clear as clearHistory, history, redo, undo } from "../src/history/history.svelte";
+import { clear as clearHistory, history, historyFeedback, redo, undo } from "../src/history/history.svelte";
 import { clearSelection, includeSelected, selection } from "../src/selection/selection.svelte";
 import { deleteSelection } from "../src/clipboard/commands";
 import { clearSelectedLink } from "../src/links/selection.svelte";
@@ -10,6 +10,9 @@ import { duplicateSelection } from "../src/clipboard/commands";
 import { pointer } from "../src/board/camera.svelte";
 import { measuredHeights } from "../src/notes/layout.svelte";
 import { calculatorData, replaceCalculators, setCalculatorData } from "../src/calculator/calculators.svelte";
+
+const { restartTimeNode } = vi.hoisted(() => ({ restartTimeNode: vi.fn() }));
+vi.mock("../src/time/runtime.svelte", () => ({ restartTimeNode }));
 
 const attachedLink = { id: "two-three", from: "two", to: "three", kind: "strong" as const, shape: "base" as const };
 
@@ -20,6 +23,8 @@ const notes: Note[] = [
 ];
 
 beforeEach(() => {
+  restartTimeNode.mockClear();
+  historyFeedback.current = null;
   clearHistory();
   replaceCalculators({});
   for (const id of Object.keys(measuredHeights)) delete measuredHeights[id];
@@ -32,6 +37,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   clearHistory();
   replaceCalculators({});
   clearSelection();
@@ -68,6 +74,42 @@ describe("clipboard delete history", () => {
 });
 
 describe("clipboard creation placement", () => {
+  it("duplicates an active task reminder with its task, restarts it, and reports the copy", () => {
+    vi.stubGlobal("window", { clearTimeout: vi.fn(), setTimeout: () => 1 });
+    const task: Note = {
+      id: "task-source", type: "note", name: "Task", text: "work", x: 0, y: 0, width: 30, height: null,
+      task: { done: false, doneAt: null },
+    };
+    const reminder: Note = {
+      id: "time-source", type: "time", name: "Reminder", text: "", x: 35, y: 0, width: 30, height: null,
+      time: { schedule: { kind: "interval", minutes: 10, mode: "calendar", repeat: true }, enabled: true },
+    };
+    replaceBoard([task, reminder]);
+    replaceLinks([{ id: "task-time", from: task.id, to: reminder.id, kind: "strong", shape: "base" }]);
+    clearSelection();
+    includeSelected(task.id);
+    pointer.world = { x: 100, y: 100 };
+
+    duplicateSelection();
+
+    const copiedTask = Object.values(board.notes).find((candidate) => candidate.id !== task.id && candidate.task);
+    const copiedTime = Object.values(board.notes).find((candidate) => candidate.id !== reminder.id && candidate.type === "time");
+    expect(copiedTask).toBeDefined();
+    expect(copiedTime?.time?.enabled).toBe(true);
+    expect(Object.values(links.byId)).toContainEqual(expect.objectContaining({
+      from: copiedTask?.id, to: copiedTime?.id, kind: "strong",
+    }));
+    expect(restartTimeNode).toHaveBeenCalledWith(copiedTime?.id);
+    expect(historyFeedback.current?.message).toBe("Reminder copied with the task");
+    expect(history.entries).toHaveLength(1);
+
+    undo();
+    expect(copiedTask && board.notes[copiedTask.id]).toBeUndefined();
+    expect(copiedTime && board.notes[copiedTime.id]).toBeUndefined();
+    redo();
+    expect(restartTimeNode).toHaveBeenCalledTimes(2);
+  });
+
   it("duplicates a calculator as a same-name mirror with shared content", () => {
     const original: Note = { id: "calc-source", type: "calculator", name: "Travel", text: "", x: 0, y: 0, width: 40, height: null };
     const data = {

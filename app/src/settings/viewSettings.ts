@@ -7,7 +7,7 @@ import { systemPrefersReducedMotion } from "./motion";
 import type { BackupInterval } from "../backup/backupSettings.svelte";
 import { DEFAULT_QUICK_INPUT_SHORTCUT, normalizeQuickInputShortcut } from "../quickInput/shortcutModel";
 
-export const VIEW_SETTINGS_VERSION = 8;
+export const VIEW_SETTINGS_VERSION = 9;
 
 export interface CameraSettings {
   minZoom: number;
@@ -47,6 +47,14 @@ export interface ViewSettings {
   backupIntervalMinutes: BackupInterval;
   quickInputShortcut: string;
 }
+
+/** App-wide Time totals. They belong to view settings, not to an individual project. */
+export interface TimeCounterSettings {
+  appMs: number;
+  activeMs: number;
+}
+
+export const DEFAULT_TIME_COUNTERS: TimeCounterSettings = { appMs: 0, activeMs: 0 };
 
 export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
   camera: { x: 0, y: 0, zoom: 1 },
@@ -150,6 +158,35 @@ export function serializeViewSettings(settings: ViewSettings): string {
   });
 }
 
+/** Parse the optional R8 counters from the same app-level settings document. */
+export function parseTimeCounters(serialized: string | null | undefined): TimeCounterSettings {
+  if (serialized == null) return { ...DEFAULT_TIME_COUNTERS };
+  try {
+    const parsed: unknown = JSON.parse(serialized);
+    if (!isRecord(parsed)) return { ...DEFAULT_TIME_COUNTERS };
+    const input = asRecord(parsed.timeCounters);
+    return {
+      appMs: nonNegativeFiniteOrDefault(input.appMs, DEFAULT_TIME_COUNTERS.appMs),
+      activeMs: nonNegativeFiniteOrDefault(input.activeMs, DEFAULT_TIME_COUNTERS.activeMs),
+    };
+  } catch {
+    return { ...DEFAULT_TIME_COUNTERS };
+  }
+}
+
+/** Keep the serialized counters alongside the ordinary settings snapshot. */
+export function serializeViewSettingsWithTimeCounters(
+  settings: ViewSettings,
+  timeCounters: TimeCounterSettings,
+): string {
+  const serialized = JSON.parse(serializeViewSettings(settings)) as Record<string, unknown>;
+  serialized.timeCounters = {
+    appMs: nonNegativeFiniteOrDefault(timeCounters.appMs, DEFAULT_TIME_COUNTERS.appMs),
+    activeMs: nonNegativeFiniteOrDefault(timeCounters.activeMs, DEFAULT_TIME_COUNTERS.activeMs),
+  };
+  return JSON.stringify(serialized);
+}
+
 function mergeCameraSettings(value: unknown, defaults: CameraSettings): CameraSettings {
   const input = asRecord(value);
   let minZoom = boundedNumber(input.minZoom, defaults.minZoom, MIN_ALLOWED_ZOOM_LIMIT, MAX_ALLOWED_ZOOM_LIMIT);
@@ -203,6 +240,10 @@ function isFiniteNumber(value: unknown): value is number {
 
 function finiteOrDefault(value: unknown, fallback: number): number {
   return isFiniteNumber(value) ? value : fallback;
+}
+
+function nonNegativeFiniteOrDefault(value: unknown, fallback: number): number {
+  return isFiniteNumber(value) && value >= 0 ? value : fallback;
 }
 
 function boundedNumber(value: unknown, fallback: number, min: number, max: number): number {

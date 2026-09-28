@@ -1,14 +1,16 @@
+import { defaultMessageData, parseMessageData } from "../messages/data";
 import { isFrameAnchor, parseSmoothLineAnchorSnapshot } from "../links/anchors";
 import { pairKey, type Link } from "../model/link";
 import { parseCalculatorData, parseScope, parseTiers, parseListItems, parseRandomPick, parseSource, parseCustomMarks } from "../model/nodeData";
 import { IMPORTANCE_LEVELS, isValidNoteScale, MOOD_KINDS, PURPOSE_KINDS, type Note, type NoteKind, type TaskState } from "../model/note";
 import type { ArchiveEntry } from "../model/retention.svelte";
+import type { CountMode, TimeNodeData, TimeRuntime, TimeSchedule } from "../time/types";
 import { copyArchivedLink, copyArchivedNote } from "./logic";
 
 const ARCHIVABLE_KINDS = new Set<NoteKind>([
   "note", "pro", "con", "importance", "purpose", "mood",
   "goal", "progress", "calculator", "tierlist", "stats",
-  "inbox", "list", "source", "glossary", "map", "random", "markas",
+  "inbox", "list", "source", "glossary", "map", "random", "markas", "time", "message",
 ]);
 const LINK_SHAPES = new Set<Link["shape"]>(["base", "orthogonal", "zigzag", "wave"]);
 
@@ -81,7 +83,9 @@ function parseArchivedNote(value: unknown): Note | null {
     !(value.height === null || value.height === undefined || finite(value.height) && value.height > 0)) return null;
   const task = parseTask(value.task);
   const taskMemory = parseTask(value.taskMemory);
+  const time = parseTimeData(value.time);
   if (task === false || taskMemory === false) return null;
+  if (value.time !== undefined && !time) return null;
   if (value.importance !== undefined && value.importance !== null && !IMPORTANCE_LEVELS.includes(value.importance as typeof IMPORTANCE_LEVELS[number])) return null;
   if (value.purposes !== undefined && (!Array.isArray(value.purposes) ||
     value.purposes.some((item) => !PURPOSE_KINDS.includes(item)))) return null;
@@ -107,6 +111,8 @@ function parseArchivedNote(value: unknown): Note | null {
     ...(typeof value.scale === "number" && value.scale > 1 ? { scale: value.scale } : {}),
     ...(task ? { task } : {}),
     ...(taskMemory ? { taskMemory } : {}),
+    ...(time ? { time } : {}),
+    ...(value.type === "message" ? { message: parseMessageData(value.message) ?? defaultMessageData() } : {}),
     ...(value.importance ? { importance: value.importance as Note["importance"] } : {}),
     ...(value.purposes ? { purposes: value.purposes as Note["purposes"] } : {}),
     ...(value.moods ? { moods: value.moods as Note["moods"] } : {}),
@@ -148,6 +154,54 @@ function parseTask(value: unknown): TaskState | null | false {
   if (!isRecord(value) || typeof value.done !== "boolean" ||
     !(value.doneAt === null || finite(value.doneAt) && value.doneAt >= 0)) return false;
   return { done: value.done, doneAt: value.doneAt as number | null };
+}
+
+function parseTimeData(value: unknown): TimeNodeData | null {
+  if (value === undefined) return null;
+  if (!isRecord(value) || typeof value.enabled !== "boolean" || !isRecord(value.schedule)) return null;
+  const raw = value.schedule;
+  let schedule: TimeSchedule;
+  if (raw.kind === "at") {
+    const date = raw.date === undefined ? null : raw.date;
+    if (typeof raw.time !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(raw.time) ||
+      !(date === null || typeof date === "string" && isValidDate(date))) return null;
+    schedule = { kind: "at", date, time: raw.time };
+  } else if (raw.kind === "interval") {
+    if (typeof raw.minutes !== "number" || !Number.isFinite(raw.minutes) || raw.minutes < 1 ||
+      !isCountMode(raw.mode) || typeof raw.repeat !== "boolean") return null;
+    schedule = { kind: "interval", minutes: raw.minutes, mode: raw.mode, repeat: raw.repeat };
+  } else return null;
+
+  let runtime: TimeRuntime | undefined;
+  if (value.runtime !== undefined) {
+    if (!isRecord(value.runtime)) return null;
+    const candidate = value.runtime;
+    if (candidate.lastFiredKey !== undefined && typeof candidate.lastFiredKey !== "string" ||
+      candidate.intervalStartedAt !== undefined && !finiteNonnegative(candidate.intervalStartedAt) ||
+      candidate.countedMs !== undefined && !finiteNonnegative(candidate.countedMs) ||
+      candidate.lastCheckedAt !== undefined && !finiteNonnegative(candidate.lastCheckedAt)) return null;
+    runtime = {
+      ...(typeof candidate.lastFiredKey === "string" ? { lastFiredKey: candidate.lastFiredKey } : {}),
+      ...(typeof candidate.intervalStartedAt === "number" ? { intervalStartedAt: candidate.intervalStartedAt } : {}),
+      ...(typeof candidate.countedMs === "number" ? { countedMs: candidate.countedMs } : {}),
+      ...(typeof candidate.lastCheckedAt === "number" ? { lastCheckedAt: candidate.lastCheckedAt } : {}),
+    };
+  }
+  return { schedule, enabled: value.enabled, ...(value.taskMode === "stop" || value.taskMode === "restart" ? { taskMode: value.taskMode } : {}), ...(runtime ? { runtime } : {}) };
+}
+
+function isValidDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function isCountMode(value: unknown): value is CountMode {
+  return value === "calendar" || value === "app" || value === "active";
+}
+
+function finiteNonnegative(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,5 +1,6 @@
 import { execute } from "../history/history.svelte";
 import { board, updateNote } from "../model/board.svelte";
+import { links } from "../model/links.svelte";
 import { R5_KINDS, type Note, type NoteKind, type TaskState } from "../model/note";
 import { registerCommand } from "../commands/registry.svelte";
 import { selection } from "../selection/selection.svelte";
@@ -7,6 +8,7 @@ import { registerNoteMenuItem } from "../notes/noteMenu";
 import { cloneTaskState, createReopenTaskCommand, createTaskCompletionCommand, createTaskFlagCommand } from "./taskTransitions";
 import { taskLog, type TaskLogEntry } from "./taskLog.svelte";
 import { tasksPanel, toggleTasksPanel } from "./tasksPanelState.svelte";
+import { linkedTimeStatesForTask } from "../time/taskLink";
 
 const nonTaskKinds = new Set<NoteKind>(["beacon", ...R5_KINDS]);
 
@@ -42,6 +44,13 @@ function transitionStore() {
           return;
         }
       }
+    },
+    getLinkedTimeStates(noteId: string) {
+      return linkedTimeStatesForTask(noteId, Object.values(links.byId), board.notes);
+    },
+    setTimeEnabled(noteId: string, enabled: boolean): void {
+      const time = board.notes[noteId]?.time;
+      if (time) updateNote(noteId, { time: { ...time, enabled } });
     },
   };
 }

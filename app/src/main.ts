@@ -25,6 +25,9 @@ import "./quickInput/init";
 import "./source/init";
 import "./spell/init";
 import "./inbox/init";
+import "./time/uiInit";
+import "./messages/init";
+import "./time/init";
 
 await initializeViewSettingsPersistence();
 await initializeProjectPersistence();

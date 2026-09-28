@@ -39,6 +39,8 @@ export interface NodeResizeRule {
 const FIXED_RULE: NodeResizeRule = { width: "locked", height: "locked", handles: "none", groupDimensions: "preserve" };
 const RULES: Partial<Record<NoteKind, NodeResizeRule>> = {
   beacon: FIXED_RULE,
+  time: FIXED_RULE,
+  message: FIXED_RULE,
   stats: FIXED_RULE,
   progress: FIXED_RULE,
   goal: FIXED_RULE,

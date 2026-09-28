@@ -28,6 +28,8 @@ export function copyArchivedNote(note: Note): Note {
     ...note,
     ...(note.task ? { task: { ...note.task } } : {}),
     ...(note.taskMemory ? { taskMemory: { ...note.taskMemory } } : {}),
+    ...(note.message ? { message: { ...note.message } } : {}),
+    ...(note.time ? { time: { ...note.time, schedule: { ...note.time.schedule }, ...(note.time.runtime ? { runtime: { ...note.time.runtime } } : {}) } } : {}),
     ...(note.purposes ? { purposes: [...note.purposes] } : {}),
     ...(note.moods ? { moods: [...note.moods] } : {}),
     ...(note.smoothLineAnchors ? { smoothLineAnchors: copySmoothLineAnchorSnapshot(note.smoothLineAnchors) } : {}),

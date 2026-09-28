@@ -2,7 +2,7 @@ import { camera } from "../board/camera.svelte";
 import { grid } from "../board/grid.svelte";
 import { calculators, calculatorData, deleteCalculatorData, setCalculatorData } from "../calculator/calculators.svelte";
 import { execute, type HistoryCommand } from "../history/history.svelte";
-import { addNote, board, removeNote } from "../model/board.svelte";
+import { addNote, board, removeNote, updateNote } from "../model/board.svelte";
 import { addLink, links, linksOf, removeLink } from "../model/links.svelte";
 import { ME_OBJECT_ID } from "../model/link";
 import { calculatorKey, parseCalculatorData, type CalculatorData } from "../model/nodeData";
@@ -13,6 +13,8 @@ import { measuredHeights } from "../notes/layout.svelte";
 import { uniqueName } from "../notes/naming";
 import { captureSelectionSnapshot, restoreSelectionSnapshot, selectOnly, selection } from "../selection/selection.svelte";
 import { canArchiveNote, copyArchivedLink, copyArchivedNote, planArchiveRestore, type ArchiveRestorePlan, type RestorePlacement } from "./logic";
+import { linkedTimeStatesForTask } from "../time/taskLink";
+import { restartTimeNode } from "../time/runtime.svelte";
 
 /** Permanent removal must stay permanent when an older Archive/Restore step is traversed. */
 const permanentlyDeleted = new Set<string>();
@@ -26,6 +28,10 @@ export function archiveNotes(noteIds: readonly string[]): number {
   const uniqueIds = [...new Set(noteIds)].filter((id) => canArchiveNote(board.notes[id]));
   if (uniqueIds.length === 0) return 0;
   const originals = uniqueIds.map((id) => ({ note: copyArchivedNote(board.notes[id]), index: board.order.indexOf(id) }));
+  const archivedTaskIds = uniqueIds.filter((id) => Boolean(board.notes[id]?.task));
+  const linkedTimes = [...new Map(archivedTaskIds.flatMap((id) =>
+    linkedTimeStatesForTask(id, Object.values(links.byId), board.notes),
+  ).map((state) => [state.noteId, state])).values()];
   const removedLinks = [...new Map(uniqueIds.flatMap((id) => linksOf(id)).map((link) => [link.id, copyArchivedLink(link)])).values()];
   const now = Date.now();
   const entries: ArchiveEntry[] = originals.map(({ note }) => ({
@@ -33,6 +39,12 @@ export function archiveNotes(noteIds: readonly string[]): number {
     links: removedLinks.filter((link) => link.from === note.id || link.to === note.id).map(copyArchivedLink),
     ...(note.type === "calculator" ? { calculatorData: copyCalculatorData(calculatorData(note.name)) } : {}),
   }));
+  const archivedTimeIds = new Set(uniqueIds);
+  for (const time of linkedTimes) {
+    if (!archivedTimeIds.has(time.noteId)) continue;
+    const entry = entries.find((item) => item.note.id === time.noteId);
+    if (entry?.note.time) entry.note.time = { ...entry.note.time, enabled: false };
+  }
   const beforeSelection = captureSelectionSnapshot();
   const selectedIds = new Set(uniqueIds);
   const entryByNoteId = new Map(entries.map((entry) => [entry.note.id, entry]));
@@ -41,6 +53,7 @@ export function archiveNotes(noteIds: readonly string[]): number {
     target: entries.length === 1 ? entries[0].note.name : `${entries.length} nodes`,
     do: () => {
       const activeIds = new Set(entries.filter((entry) => !permanentlyDeleted.has(entry.id)).map((entry) => entry.note.id));
+      linkedTimes.forEach((time) => setTimeEnabled(time.noteId, false));
       removedLinks.forEach((link) => {
         if (activeIds.has(link.from) || activeIds.has(link.to)) removeLink(link.id);
       });
@@ -62,6 +75,7 @@ export function archiveNotes(noteIds: readonly string[]): number {
       originals.slice().sort((a, b) => a.index - b.index).forEach(({ note, index }) => {
         if (restorable.has(note.id)) addNote(copyArchivedNote(note), index);
       });
+      linkedTimes.forEach((time) => setTimeEnabled(time.noteId, time.enabled));
       for (const entry of entries) {
         if (restorable.has(entry.note.id)) restoreCalculatorIfAbsent(entry.note, entry.calculatorData);
       }
@@ -92,12 +106,25 @@ export function archiveSelected(): number {
   return archiveNotes(selection.ids);
 }
 
-export function restoreArchived(entryId: string, placement: RestorePlacement): ArchiveRestorePlan | null {
+export function restoreArchived(
+  entryId: string,
+  placement: RestorePlacement,
+  resumeReminders = false,
+): ArchiveRestorePlan | null {
   const entry = archive.entries.find((item) => item.id === entryId);
   if (!entry || board.notes[entry.note.id]) return null;
   const index = archive.entries.indexOf(entry);
   const plan = planArchiveRestore(entry, placement, camera, Object.values(board.notes), Object.values(links.byId),
     Object.keys(calculators.byKey));
+  const timeNotes = { ...board.notes, [plan.note.id]: plan.note };
+  const linkedTimes = plan.note.task
+    ? linkedTimeStatesForTask(plan.note.id, plan.links, timeNotes)
+    : [];
+  const beforeLinkedTimes = linkedTimes.map(({ noteId }) => ({
+    noteId,
+    enabled: board.notes[noteId]?.time?.enabled ?? false,
+  }));
+  const timesToResume = resumeReminders ? linkedTimes.map(({ noteId }) => noteId) : [];
   const beforeSelection = captureSelectionSnapshot();
   const command: HistoryCommand = {
     label: "Restore from archive",
@@ -108,6 +135,10 @@ export function restoreArchived(entryId: string, placement: RestorePlacement): A
       addNote(copyArchivedNote(plan.note));
       restoreCalculatorIfAbsent(plan.note, entry.calculatorData);
       plan.links.forEach((link) => addLink(copyArchivedLink(link)));
+      timesToResume.forEach((noteId) => {
+        setTimeEnabled(noteId, true);
+        restartTimeNode(noteId);
+      });
       selectOnly(plan.note.id);
     },
     undo: () => {
@@ -115,6 +146,7 @@ export function restoreArchived(entryId: string, placement: RestorePlacement): A
       plan.links.forEach((link) => removeLink(link.id));
       removeNote(plan.note.id);
       pruneCalculatorIfUnused(plan.note);
+      beforeLinkedTimes.forEach((time) => setTimeEnabled(time.noteId, time.enabled));
       archive.entries.splice(index, 0, entry);
       restoreSelectionSnapshot(beforeSelection);
     },
@@ -184,4 +216,9 @@ function pruneCalculatorIfUnused(note: Note): void {
   if (!Object.values(board.notes).some((item) => item.type === "calculator" && calculatorKey(item.name) === key)) {
     deleteCalculatorData(note.name);
   }
+}
+
+function setTimeEnabled(noteId: string, enabled: boolean): void {
+  const time = board.notes[noteId]?.time;
+  if (time) updateNote(noteId, { time: { ...time, enabled } });
 }

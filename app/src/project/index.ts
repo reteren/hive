@@ -1,3 +1,5 @@
+import { defaultMessageData, parseMessageData } from "../messages/data";
+import type { MessageNodeData } from "../time/types";
 import {
   IMPORTANCE_LEVELS,
   MOOD_KINDS,
@@ -25,6 +27,7 @@ import type { ArchiveEntry, TrashEntry } from "../model/retention.svelte";
 import { copyArchiveEntry, sanitizeArchiveEntries } from "../archive/serialization";
 import { copyTrashEntry } from "../trash/trash";
 import { sanitizeTrashEntries } from "../trash/serialization";
+import type { TimeNodeData, TimeSchedule, TimeRuntime, CountMode } from "../time/types";
 
 export interface IndexedNote {
   id: string;
@@ -38,6 +41,8 @@ export interface IndexedNote {
   type: NoteKind;
   task: TaskState | null;
   taskMemory: TaskState | null;
+  time?: TimeNodeData;
+  message?: MessageNodeData;
   importance: ImportanceLevel | null;
   purposes: PurposeKind[];
   moods: MoodKind[];
@@ -183,6 +188,8 @@ export function serializeProjectIndex(
       type: note.type,
       task: copyTaskState(note.task),
       taskMemory: copyTaskState(note.taskMemory),
+      time: note.type === "time" ? copyTimeData(note.time) : undefined,
+      message: note.type === "message" ? { ...(note.message ?? defaultMessageData()) } : undefined,
       importance: note.importance ?? null,
       purposes: [...new Set(note.purposes ?? [])],
       moods: [...new Set(note.moods ?? [])],
@@ -250,6 +257,8 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       ...(entry.scale === undefined ? {} : { scale: entry.scale }),
       task: copyTaskState(entry.task),
       taskMemory: copyTaskState(entry.taskMemory),
+      ...(entry.time ? { time: copyTimeData(entry.time)! } : {}),
+      ...(entry.type === "message" ? { message: { ...(entry.message ?? defaultMessageData()) } } : {}),
       importance: entry.importance,
       purposes: [...entry.purposes],
       ...(entry.moods.length > 0 ? { moods: [...entry.moods] } : {}),
@@ -278,6 +287,8 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
 
 function fixedNodeDimensions(type: NoteKind, headerHidden = false): { width: number; height: number | null } | null {
   switch (type) {
+    case "time": return { width: R5_BASE_WIDTHS.time, height: null };
+    case "message": return { width: R5_BASE_WIDTHS.message, height: null };
     case "goal": return { width: R5_BASE_WIDTHS.goal, height: null };
     case "progress": return { width: R5_BASE_WIDTHS.progress, height: null };
     case "stats": return { width: R5_BASE_WIDTHS.stats, height: null };
@@ -437,6 +448,10 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
   } else if (requireV3Fields && type === "beacon" && value.color === undefined) {
     warnings.push(`Missing beacon colour for note ${id}; default colour was used.`);
   }
+
+  const message = type === "message" ? parseMessageData(value.message) ?? defaultMessageData() : undefined;
+  const time = parseTimeData(value.time);
+  if (value.time !== undefined && !time) warnings.push(`Invalid reminder schedule for note ${id}; reminder data was cleared.`);
   const smoothLines = value.smoothLines === true;
   const smoothLineAnchors = smoothLines && value.smoothLineAnchors !== undefined
     ? parseSmoothLineAnchorSnapshot(value.smoothLineAnchors)
@@ -464,6 +479,8 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
       type: type ?? "note",
       task,
       taskMemory,
+      time: time ?? undefined,
+      message,
       importance,
       purposes: purposes.values,
       moods: moods.values,
@@ -502,7 +519,7 @@ function parseNoteKind(value: unknown): NoteKind | null {
     value === "importance" || value === "purpose" || value === "mood" || value === "beacon" ||
     value === "goal" || value === "progress" || value === "calculator" || value === "tierlist" || value === "stats" ||
     value === "archive" || value === "trash" ||
-    value === "inbox" || value === "list" || value === "source" || value === "glossary" || value === "map" || value === "random" || value === "markas"
+    value === "inbox" || value === "list" || value === "source" || value === "glossary" || value === "map" || value === "random" || value === "markas" || value === "time" || value === "message"
     ? value
     : null;
 }
@@ -695,6 +712,59 @@ function parseTaskState(value: unknown): TaskState | null {
 function copyTaskState(value: TaskState | null | undefined): TaskState | null {
   if (value === undefined || value === null) return null;
   return { done: value.done, doneAt: value.doneAt };
+}
+
+function copyTimeData(value: TimeNodeData | undefined): TimeNodeData | undefined {
+  if (!value) return undefined;
+  return {
+    schedule: { ...value.schedule },
+    enabled: value.enabled,
+    ...(value.runtime ? { runtime: { ...value.runtime } } : {}),
+  };
+}
+
+function parseTimeData(value: unknown): TimeNodeData | undefined | null {
+  if (value === undefined) return undefined;
+  if (!isRecord(value) || typeof value.enabled !== "boolean" || !isRecord(value.schedule)) return null;
+  const raw = value.schedule;
+  let schedule: TimeSchedule;
+  if (raw.kind === "at") {
+    const date = raw.date === undefined ? null : raw.date;
+    if (typeof raw.time !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(raw.time) ||
+      !(date === null || typeof date === "string" && isValidDate(date))) return null;
+    schedule = { kind: "at", date, time: raw.time };
+  } else if (raw.kind === "interval") {
+    if (typeof raw.minutes !== "number" || !Number.isFinite(raw.minutes) || raw.minutes < 1 ||
+      !isCountMode(raw.mode) || typeof raw.repeat !== "boolean") return null;
+    schedule = { kind: "interval", minutes: raw.minutes, mode: raw.mode, repeat: raw.repeat };
+  } else return null;
+
+  let runtime: TimeRuntime | undefined;
+  if (value.runtime !== undefined) {
+    if (!isRecord(value.runtime)) return null;
+    const candidate = value.runtime;
+    if (candidate.lastFiredKey !== undefined && typeof candidate.lastFiredKey !== "string" ||
+      candidate.intervalStartedAt !== undefined && !finiteNonnegative(candidate.intervalStartedAt) ||
+      candidate.countedMs !== undefined && !finiteNonnegative(candidate.countedMs) ||
+      candidate.lastCheckedAt !== undefined && !finiteNonnegative(candidate.lastCheckedAt)) return null;
+    runtime = {
+      ...(typeof candidate.lastFiredKey === "string" ? { lastFiredKey: candidate.lastFiredKey } : {}),
+      ...(typeof candidate.intervalStartedAt === "number" ? { intervalStartedAt: candidate.intervalStartedAt } : {}),
+      ...(typeof candidate.countedMs === "number" ? { countedMs: candidate.countedMs } : {}),
+      ...(typeof candidate.lastCheckedAt === "number" ? { lastCheckedAt: candidate.lastCheckedAt } : {}),
+    };
+  }
+  return { schedule, enabled: value.enabled, ...(value.taskMode === "stop" || value.taskMode === "restart" ? { taskMode: value.taskMode } : {}), ...(runtime ? { runtime } : {}) };
+}
+
+function isValidDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function isCountMode(value: unknown): value is CountMode {
+  return value === "calendar" || value === "app" || value === "active";
 }
 
 function parseImportance(value: unknown): ImportanceLevel | null {

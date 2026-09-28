@@ -9,13 +9,21 @@ import { applyReduceMotionPreference } from "./motion";
 import { preferences, setFitWidthToText, setReduceAnimations, setTransferHintsShown } from "./preferences.svelte";
 import { backupSettings, setBackupInterval } from "../backup/backupSettings.svelte";
 import { quickInputShortcut, setQuickInputShortcutValue } from "./quickInputShortcut.svelte";
-import { parseViewSettings, serializeViewSettings, type ViewSettings } from "./viewSettings";
+import { setTimeCounters, timeCounters } from "../time/runtime.svelte";
+import {
+  parseTimeCounters,
+  parseViewSettings,
+  serializeViewSettingsWithTimeCounters,
+  type ViewSettings,
+} from "./viewSettings";
 
 const SAVE_DEBOUNCE_MS = 400;
+const TIME_COUNTER_SAVE_INTERVAL_MS = 15_000;
 
 let initialization: Promise<void> | null = null;
 let initialized = false;
 let saveTimer: number | null = null;
+let saveTimerKind: "settings" | "time-counters" | null = null;
 let lastPersistedSnapshot = "";
 let writeQueue: Promise<void> = Promise.resolve();
 
@@ -31,20 +39,22 @@ async function initialize(): Promise<void> {
 
   const defaults = currentSettings();
   let settings = defaults;
+  let serialized: string | null = null;
   try {
-    const serialized = await invoke<string | null>("load_view_settings");
+    serialized = await invoke<string | null>("load_view_settings");
     settings = parseViewSettings(serialized, defaults);
   } catch (error) {
     console.warn("Could not load view settings; using defaults.", error);
   }
 
   applySettings(settings);
-  lastPersistedSnapshot = serializeViewSettings(currentSettings());
+  setTimeCounters(parseTimeCounters(serialized));
+  lastPersistedSnapshot = currentSettingsSnapshot();
   initialized = true;
 
   $effect.root(() => {
     $effect(() => {
-      const snapshot = serializeViewSettings(currentSettings());
+      const snapshot = currentSettingsSnapshot();
       if (!initialized || snapshot === lastPersistedSnapshot) return;
       scheduleSave(snapshot);
     });
@@ -54,11 +64,15 @@ async function initialize(): Promise<void> {
 }
 
 function scheduleSave(snapshot: string): void {
+  const countersOnly = differsOnlyByTimeCounters(snapshot, lastPersistedSnapshot);
+  if (saveTimer !== null && (saveTimerKind === "settings" || countersOnly)) return;
   if (saveTimer !== null) window.clearTimeout(saveTimer);
+  saveTimerKind = countersOnly ? "time-counters" : "settings";
   saveTimer = window.setTimeout(() => {
     saveTimer = null;
-    void persistSnapshot(snapshot);
-  }, SAVE_DEBOUNCE_MS);
+    saveTimerKind = null;
+    void persistSnapshot(currentSettingsSnapshot());
+  }, countersOnly ? TIME_COUNTER_SAVE_INTERVAL_MS : SAVE_DEBOUNCE_MS);
 }
 
 async function flushViewSettings(): Promise<void> {
@@ -66,8 +80,26 @@ async function flushViewSettings(): Promise<void> {
   if (saveTimer !== null) {
     window.clearTimeout(saveTimer);
     saveTimer = null;
+    saveTimerKind = null;
   }
-  await persistSnapshot(serializeViewSettings(currentSettings()));
+  await persistSnapshot(currentSettingsSnapshot());
+}
+
+function currentSettingsSnapshot(): string {
+  return serializeViewSettingsWithTimeCounters(currentSettings(), timeCounters);
+}
+
+function differsOnlyByTimeCounters(current: string, persisted: string): boolean {
+  if (!persisted) return false;
+  try {
+    const currentSettings = JSON.parse(current) as Record<string, unknown>;
+    const persistedSettings = JSON.parse(persisted) as Record<string, unknown>;
+    delete currentSettings.timeCounters;
+    delete persistedSettings.timeCounters;
+    return JSON.stringify(currentSettings) === JSON.stringify(persistedSettings);
+  } catch {
+    return false;
+  }
 }
 
 function persistSnapshot(snapshot: string): Promise<void> {

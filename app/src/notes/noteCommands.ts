@@ -1,3 +1,4 @@
+import { defaultMessageData } from "../messages/data";
 import { registerCommand } from "../commands/registry.svelte";
 import { nodeBodyFor } from "./nodeBodies";
 import { execute } from "../history/history.svelte";
@@ -33,6 +34,8 @@ import { formatNoteMarkdownLink, formatPointAddress } from "../links-in-text/for
 import { closeLinkContextMenu, linkContext, showLinkStatus } from "../links-in-text/contextMenu.svelte";
 import { MODULE_NOTE_HEIGHT, MODULE_NOTE_WIDTH } from "../modules/moduleLogic";
 import { beaconPaletteColor } from "../beacons/beaconPalette";
+import { restartTimeNode } from "../time/runtime.svelte";
+import { defaultAtTimeSchedule } from "../time/uiSchedule";
 
 export const DEFAULT_MINI_NOTE_WIDTH = 18;
 
@@ -86,6 +89,7 @@ export function createNoteKind(kind: NoteKind): string {
     target: note.name,
     do: () => {
       addNote(note, index);
+      if (kind === "time") restartTimeNode(id);
       clearSelection();
       clearSelectedLink();
       selectOnly(id);
@@ -171,6 +175,8 @@ function makeNote(kind: NoteKind, id: string, position: Point, createdAt: number
     ...(kind === "purpose" ? { purposes: [] } : {}),
     ...(kind === "mood" ? { moods: [] } : {}),
     ...(kind === "beacon" ? { color: beaconPaletteColor(Object.values(board.notes).filter((existing) => existing.type === "beacon").length) } : {}),
+    ...(kind === "time" ? { time: { schedule: defaultAtTimeSchedule(createdAt), enabled: true } } : {}),
+    ...(kind === "message" ? { message: defaultMessageData() } : {}),
   };
 }
 
@@ -195,6 +201,8 @@ function kindLabel(kind: NoteKind): string {
   if (kind === "map") return "Map";
   if (kind === "random") return "Random Choice";
   if (kind === "markas") return "Mark as";
+  if (kind === "time") return "Time";
+  if (kind === "message") return "Message";
   return "Note";
 }
 

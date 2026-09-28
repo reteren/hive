@@ -10,6 +10,7 @@
 
   let { note }: { note: Note } = $props();
   let feedback = $state("");
+  let pendingReminderRestore = $state<{ entryId: string; placement: "old" | "centre" } | null>(null);
   let items = $derived.by(() => {
     const activeNotes = Object.values(board.notes);
     const activeLinks = Object.values(links.byId);
@@ -42,7 +43,28 @@
   }
 
   function restore(entry: ArchiveEntry, placement: "old" | "centre"): void {
-    const result = restoreArchived(entry.id, placement);
+    const preview = items.find((item) => item.entry.id === entry.id);
+    const plan = placement === "old" ? preview?.oldPlan : preview?.centrePlan;
+    const hasLiveReminder = Boolean(entry.note.task && plan?.links.some((link) =>
+      link.kind === "strong" && link.from === entry.note.id && board.notes[link.to]?.type === "time",
+    ));
+    if (hasLiveReminder) {
+      pendingReminderRestore = { entryId: entry.id, placement };
+      return;
+    }
+    finishRestore(entry, placement, false);
+  }
+
+  function answerReminderPrompt(resume: boolean): void {
+    const pending = pendingReminderRestore;
+    if (!pending) return;
+    pendingReminderRestore = null;
+    const entry = archive.entries.find((item) => item.id === pending.entryId);
+    if (entry) finishRestore(entry, pending.placement, resume);
+  }
+
+  function finishRestore(entry: ArchiveEntry, placement: "old" | "centre", resumeReminder: boolean): void {
+    const result = restoreArchived(entry.id, placement, resumeReminder);
     feedback = result
       ? result.nameChanged ? `Restored as ${result.note.name}.` : `Restored ${result.note.name}.`
       : "This item cannot be restored while its original ID is in use.";
@@ -96,6 +118,13 @@
             <button type="button" data-archive-duplicate onclick={() => duplicate(entry)}>Duplicate near Archive</button>
             <button type="button" class="danger" data-archive-delete onclick={() => deletePermanently(entry)}>Delete permanently</button>
           </div>
+          {#if pendingReminderRestore?.entryId === entry.id}
+            <div class="archive-resume-prompt" data-archive-resume-prompt role="group" aria-label="Resume reminder?">
+              <span>Resume reminder?</span>
+              <button type="button" data-archive-resume-yes onclick={() => answerReminderPrompt(true)}>Yes</button>
+              <button type="button" data-archive-resume-no onclick={() => answerReminderPrompt(false)}>No</button>
+            </div>
+          {/if}
         </section>
       {/each}
     </div>
@@ -121,6 +150,10 @@
   .archive-links summary { cursor: pointer; }
   .archive-links ul { margin: 4px 0 0; padding-left: 16px; }
   .archive-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+  .archive-resume-prompt { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; color: #e6c979; }
+  .archive-resume-prompt span { margin-right: auto; }
+  .archive-resume-prompt button { padding: 4px 7px; border: 1px solid #74633b; border-radius: 3px; color: var(--text); background: #332f23; font: inherit; font-size: 10px; cursor: pointer; }
+  .archive-resume-prompt button:hover { border-color: var(--accent); }
   .archive-actions button { padding: 4px 6px; border: 1px solid #565044; border-radius: 3px; color: var(--text); background: #2c2a25; font: inherit; font-size: 10px; cursor: pointer; }
   .archive-actions button:hover:not(:disabled) { border-color: var(--accent); }
   .archive-actions button:disabled { opacity: 0.45; cursor: default; }
