@@ -7,6 +7,45 @@ export interface ShortcutKeyPress {
   metaKey: boolean;
 }
 
+export interface ShortcutCaptureCallbacks {
+  isCapturing(): boolean;
+  onShortcut(shortcut: string): void;
+  onCancel(): void;
+  onUnsupportedKey(): void;
+}
+
+/**
+ * Listen at the window capture phase so shortcut capture survives pointer focus
+ * being cleared from the Settings button by the global focus guard.
+ */
+export function installQuickInputShortcutCapture(
+  target: Pick<EventTarget, "addEventListener" | "removeEventListener">,
+  callbacks: ShortcutCaptureCallbacks,
+): () => void {
+  const handleKeydown = (event: Event): void => {
+    if (!callbacks.isCapturing()) return;
+    const keyEvent = event as KeyboardEvent;
+    if (["Control", "Alt", "Shift", "Meta"].includes(keyEvent.key)) return;
+
+    keyEvent.preventDefault();
+    keyEvent.stopPropagation();
+    if (keyEvent.key === "Escape") {
+      callbacks.onCancel();
+      return;
+    }
+
+    const shortcut = shortcutFromKeyPress(keyEvent);
+    if (!shortcut) {
+      callbacks.onUnsupportedKey();
+      return;
+    }
+    callbacks.onShortcut(shortcut);
+  };
+
+  target.addEventListener("keydown", handleKeydown, true);
+  return () => target.removeEventListener("keydown", handleKeydown, true);
+}
+
 /** Convert a captured desktop key chord to the accelerator syntax used by Tauri. */
 export function shortcutFromKeyPress(event: ShortcutKeyPress): string | null {
   const key = shortcutKeyName(event.key, event.code);

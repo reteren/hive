@@ -1,17 +1,22 @@
-import { isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import { quickInputShortcut, setQuickInputShortcutError } from "../settings/quickInputShortcut.svelte";
 import { normalizeQuickInputShortcut } from "./shortcutModel";
 
 type ShortcutEvent = { state: "Pressed" | "Released" };
+type ShortcutBackend = "hook" | "plugin";
 
 let activeShortcut: string | null = null;
+let activeBackend: ShortcutBackend | null = null;
 let suspendedShortcut: string | null = null;
 let onShortcut: () => void = () => undefined;
 
 export async function initializeQuickInputShortcut(onActivate: () => void): Promise<void> {
   onShortcut = onActivate;
   if (!isTauri()) return;
+
+  await listen("hive://quick-input-shortcut", () => onShortcut());
   await registerConfiguredShortcut(quickInputShortcut.value);
 }
 
@@ -21,7 +26,7 @@ export async function updateQuickInputShortcut(value: string): Promise<boolean> 
     setQuickInputShortcutError("Use a supported key with Ctrl, Alt, or the Windows key.");
     return false;
   }
-  if (normalized === activeShortcut) {
+  if (normalized === activeShortcut && activeBackend) {
     quickInputShortcut.value = normalized;
     setQuickInputShortcutError("");
     return true;
@@ -32,59 +37,42 @@ export async function updateQuickInputShortcut(value: string): Promise<boolean> 
     return false;
   }
 
-  const previousShortcut = activeShortcut ?? suspendedShortcut;
-  let newShortcutRegistered = false;
-  try {
-    await register(normalized, handleShortcut);
-    newShortcutRegistered = true;
-    if (activeShortcut && activeShortcut !== normalized) await unregister(activeShortcut);
-    activeShortcut = normalized;
-    suspendedShortcut = null;
+  if (await activateShortcut(normalized)) {
     quickInputShortcut.value = normalized;
     setQuickInputShortcutError("");
     return true;
-  } catch (error) {
-    if (newShortcutRegistered) {
-      try {
-        await unregister(normalized);
-      } catch {
-        // Preserve the original registration failure for the Settings message.
-      }
-    }
-    if (suspendedShortcut) {
-      try {
-        await register(suspendedShortcut, handleShortcut);
-        activeShortcut = suspendedShortcut;
-        suspendedShortcut = null;
-      } catch {
-        // The Settings error below explains the failed replacement.
-      }
-    } else if (!activeShortcut && previousShortcut) {
-      activeShortcut = previousShortcut;
-    }
-    setQuickInputShortcutError(formatRegistrationError(error));
-    return false;
   }
+
+  const registrationError = quickInputShortcut.error;
+  if (suspendedShortcut) {
+    await restoreQuickInputShortcutAfterCapture();
+    setQuickInputShortcutError(registrationError);
+  }
+  return false;
 }
 
 export async function suspendQuickInputShortcutForCapture(): Promise<void> {
-  if (!isTauri() || !activeShortcut) return;
+  if (!isTauri() || !activeShortcut || !activeBackend) return;
   const shortcut = activeShortcut;
-  await unregister(shortcut);
+
+  if (activeBackend === "hook") {
+    const paused = await configureWindowsHook(null);
+    if (!paused) throw new Error("Could not pause the quick input shortcut for capture.");
+  } else {
+    await unregister(shortcut);
+  }
+
   suspendedShortcut = shortcut;
   activeShortcut = null;
+  activeBackend = null;
 }
 
 export async function restoreQuickInputShortcutAfterCapture(): Promise<void> {
   if (!isTauri() || !suspendedShortcut) return;
   const previousShortcut = suspendedShortcut;
-  try {
-    await register(previousShortcut, handleShortcut);
-    activeShortcut = previousShortcut;
-    suspendedShortcut = null;
+  if (await activateShortcut(previousShortcut)) {
+    quickInputShortcut.value = previousShortcut;
     setQuickInputShortcutError("");
-  } catch (error) {
-    setQuickInputShortcutError(formatRegistrationError(error));
   }
 }
 
@@ -95,13 +83,61 @@ async function registerConfiguredShortcut(value: string): Promise<void> {
     return;
   }
 
-  try {
-    await register(normalized, handleShortcut);
-    activeShortcut = normalized;
+  if (await activateShortcut(normalized)) {
     quickInputShortcut.value = normalized;
     setQuickInputShortcutError("");
+  }
+}
+
+/** Windows uses the low-level hook first so an existing app binding cannot block hive. */
+async function activateShortcut(shortcut: string): Promise<boolean> {
+  const previousShortcut = activeShortcut;
+  const previousBackend = activeBackend;
+
+  if (await configureWindowsHook(shortcut)) {
+    if (previousBackend === "plugin" && previousShortcut && previousShortcut !== shortcut) {
+      await unregisterIgnoringFailure(previousShortcut);
+    }
+    activeShortcut = shortcut;
+    activeBackend = "hook";
+    suspendedShortcut = null;
+    setQuickInputShortcutError("");
+    return true;
+  }
+
+  try {
+    await register(shortcut, handleShortcut);
   } catch (error) {
     setQuickInputShortcutError(formatRegistrationError(error));
+    return false;
+  }
+
+  if (previousBackend === "plugin" && previousShortcut && previousShortcut !== shortcut) {
+    await unregisterIgnoringFailure(previousShortcut);
+  } else if (previousBackend === "hook" && previousShortcut && previousShortcut !== shortcut) {
+    await configureWindowsHook(null);
+  }
+  activeShortcut = shortcut;
+  activeBackend = "plugin";
+  suspendedShortcut = null;
+  setQuickInputShortcutError("");
+  return true;
+}
+
+async function configureWindowsHook(shortcut: string | null): Promise<boolean> {
+  try {
+    return await invoke<boolean>("configure_quick_input_shortcut", { shortcut });
+  } catch {
+    // Non-Windows builds do not expose the hook command; use Tauri's plugin there.
+    return false;
+  }
+}
+
+async function unregisterIgnoringFailure(shortcut: string): Promise<void> {
+  try {
+    await unregister(shortcut);
+  } catch {
+    // The replacement is already active; a stale plugin registration must not undo it.
   }
 }
 

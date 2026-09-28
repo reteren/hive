@@ -1,11 +1,25 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { quickInputShortcut, setQuickInputShortcutError } from "./quickInputShortcut.svelte";
   import {
     restoreQuickInputShortcutAfterCapture,
     suspendQuickInputShortcutForCapture,
     updateQuickInputShortcut,
   } from "../quickInput/shortcutRegistration";
-  import { shortcutFromKeyPress } from "../quickInput/keyCapture";
+  import { installQuickInputShortcutCapture } from "../quickInput/keyCapture";
+
+  onMount(() => installQuickInputShortcutCapture(window, {
+    isCapturing: () => quickInputShortcut.capturing,
+    onShortcut: (shortcut) => {
+      quickInputShortcut.capturing = false;
+      void updateQuickInputShortcut(shortcut);
+    },
+    onCancel: () => {
+      quickInputShortcut.capturing = false;
+      void restoreQuickInputShortcutAfterCapture();
+    },
+    onUnsupportedKey: () => setQuickInputShortcutError("Use a supported key with Ctrl, Alt, or the Windows key."),
+  }));
 
   async function toggleCapture(): Promise<void> {
     if (quickInputShortcut.capturing) {
@@ -24,27 +38,6 @@
     }
   }
 
-  async function captureKey(event: KeyboardEvent): Promise<void> {
-    if (!quickInputShortcut.capturing) return;
-    if (["Control", "Alt", "Shift", "Meta"].includes(event.key)) return;
-
-    event.preventDefault();
-    event.stopPropagation();
-    if (event.key === "Escape") {
-      quickInputShortcut.capturing = false;
-      await restoreQuickInputShortcutAfterCapture();
-      return;
-    }
-
-    const shortcut = shortcutFromKeyPress(event);
-    if (!shortcut) {
-      setQuickInputShortcutError("Use a supported key with Ctrl, Alt, or the Windows key.");
-      return;
-    }
-
-    quickInputShortcut.capturing = false;
-    await updateQuickInputShortcut(shortcut);
-  }
 </script>
 
 <div class="quick-shortcut" data-quick-input-shortcut-setting>
@@ -57,7 +50,6 @@
     type="button"
     aria-label={quickInputShortcut.capturing ? "Press a new quick input shortcut" : `Current shortcut: ${quickInputShortcut.value}. Change shortcut`}
     title={quickInputShortcut.capturing ? "Press a supported shortcut or Esc to cancel" : "Change global quick input shortcut"}
-    onkeydown={captureKey}
     onclick={() => void toggleCapture()}
   >
     {quickInputShortcut.capturing ? "Press keys…" : quickInputShortcut.value}

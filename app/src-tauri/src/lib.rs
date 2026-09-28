@@ -1,6 +1,7 @@
 mod backup;
 mod export;
 mod project;
+mod quick_input_shortcut;
 mod settings;
 mod source;
 mod spellcheck;
@@ -23,6 +24,14 @@ struct AppLifecycle {
 #[tauri::command]
 fn set_quit_requested(state: tauri::State<'_, AppLifecycle>, requested: bool) {
     state.quit_requested.store(requested, Ordering::SeqCst);
+}
+
+#[tauri::command]
+fn configure_quick_input_shortcut(
+    state: tauri::State<'_, quick_input_shortcut::QuickInputShortcutService>,
+    shortcut: Option<String>,
+) -> Result<bool, String> {
+    state.configure(shortcut)
 }
 
 fn open_main_window(app: &tauri::AppHandle) {
@@ -80,6 +89,7 @@ pub fn run() {
         .manage(AppLifecycle::default())
         .manage(project::ProjectState::default())
         .setup(|app| {
+            app.manage(quick_input_shortcut::QuickInputShortcutService::new(app.handle().clone()));
             app.manage(watcher::ProjectWatcher::new(app.handle().clone()));
             build_tray(app)?;
             let config_dir = app.path().app_config_dir()?;
@@ -151,6 +161,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             set_quit_requested,
+            configure_quick_input_shortcut,
             settings::load_view_settings,
             settings::save_view_settings,
             project::initialize_project,
