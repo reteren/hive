@@ -139,7 +139,7 @@ describe("project index", () => {
     expect(migrated.warnings).toEqual([]);
   });
 
-  it("normalizes fixed-size R5 and R6 node dimensions when loading notes", () => {
+  it("normalizes fixed-size and auto-height R5 and R6 node dimensions when loading notes", () => {
     const notes: Note[] = [
       { id: "goal", type: "goal", name: "Goal", text: "", x: 0, y: 0, width: 88, height: 62 },
       { id: "progress", type: "progress", name: "Progress", text: "", x: 50, y: 0, width: 88, height: 62 },
@@ -166,7 +166,7 @@ describe("project index", () => {
       [30, null],
       [40, 40],
       [40, 40],
-      [34, 24],
+      [34, null],
     ]);
   });
 

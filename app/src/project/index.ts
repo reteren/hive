@@ -266,7 +266,8 @@ function fixedNodeDimensions(type: NoteKind): { width: number; height: number | 
     case "stats": return { width: R5_BASE_WIDTHS.stats, height: null };
     case "trash": return { width: R5_BASE_WIDTHS.trash, height: 40 };
     case "archive": return { width: R5_BASE_WIDTHS.archive, height: 40 };
-    case "source": return { width: R5_BASE_WIDTHS.source, height: 24 };
+    case "source": return { width: R5_BASE_WIDTHS.source, height: null };
+    case "markas": return { width: R5_BASE_WIDTHS.markas, height: null };
     default: return null;
   }
 }

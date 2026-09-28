@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
   import { openUrl } from "@tauri-apps/plugin-opener";
+  import { updateNote } from "../model/board.svelte";
   import type { Note } from "../model/note";
   import { setSourceField, setSourceResourceValue } from "./actions.svelte";
   import {
@@ -23,6 +25,7 @@
   let fileAvailability = $state<"available" | "missing" | "unknown">("unknown");
   let choosingFile = $state(false);
   let opening = $state(false);
+  let descriptionField: HTMLTextAreaElement | undefined;
   let resourceGroup = 0;
   let descriptionGroup = 0;
   const selectionBeforeInput: Record<"resource" | "description", { start: number; end: number } | null> = {
@@ -35,6 +38,18 @@
   const openDisabled = $derived(
     opening || parsedValue.kind === "empty" || (parsedValue.kind === "url" && !urlValidation?.valid) || isMissingSelectedPath,
   );
+
+  onMount(() => {
+    if (note.height !== null) updateNote(note.id, { height: null });
+    resizeDescriptionField();
+  });
+
+  $effect(() => {
+    const description = source.description;
+    void tick().then(() => {
+      if (descriptionField?.value === description) resizeDescriptionField(descriptionField);
+    });
+  });
 
   $effect(() => {
     const path = note.source?.filePath;
@@ -96,11 +111,21 @@
 
   function editDescription(event: Event): void {
     const target = event.currentTarget as HTMLTextAreaElement;
+    resizeDescriptionField(target);
     const value = target.value;
     const before = selectionBeforeInput.description;
     const after = selectionOf(target);
     selectionBeforeInput.description = after;
     setSourceField(note.id, "description", value, meta("description", inputEditKind(event), descriptionGroup, before, after));
+  }
+
+  function resizeDescriptionField(target = descriptionField): void {
+    if (!target) return;
+    target.style.height = "auto";
+    const style = getComputedStyle(target);
+    const borderHeight = (Number.parseFloat(style.borderTopWidth) || 0) + (Number.parseFloat(style.borderBottomWidth) || 0);
+    const minimumHeight = Number.parseFloat(style.minHeight) || 0;
+    target.style.height = `${Math.max(minimumHeight, target.scrollHeight + borderHeight)}px`;
   }
 
   function inputEditKind(event: Event): SourceTextEditKind {
@@ -223,6 +248,7 @@
     <span>Description</span>
     <textarea
       value={source.description}
+      bind:this={descriptionField}
       placeholder="Notes about this source"
       aria-label="Source description"
       data-source-description
@@ -236,11 +262,11 @@
 </div>
 
 <style>
-  .source-body { display: flex; min-width: 0; min-height: 0; height: 100%; flex: 1 1 auto; flex-direction: column; gap: 6px; overflow: auto; font-size: 10px; }
+  .source-body { display: flex; min-width: 0; flex: 0 0 auto; flex-direction: column; gap: 6px; overflow: visible; font-size: 10px; }
   .source-field { display: grid; min-width: 0; gap: 3px; color: var(--text-dim); }
   .source-field input, .source-field textarea { box-sizing: border-box; width: 100%; min-width: 0; padding: 4px 5px; border: 1px solid #494949; border-radius: 3px; outline: none; color: var(--text); background: #202020; font: inherit; user-select: text; }
   .source-field input:focus, .source-field textarea:focus { border-color: #777; }
-  .source-field textarea { min-height: 40px; resize: vertical; line-height: 1.4; }
+  .source-field textarea { display: block; min-height: 40px; resize: none; overflow: hidden; line-height: 1.4; }
   .source-action { border: 1px solid #4b4b4b; border-radius: 3px; color: var(--text); background: #2a2a2a; font: inherit; cursor: pointer; }
   .source-action { align-self: flex-start; padding: 4px 6px; }
   .source-actions { display: flex; gap: 5px; }
@@ -249,5 +275,5 @@
   .source-file { min-width: 0; margin: 0; overflow: hidden; color: var(--text-dim); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
   .source-message { margin: 0; line-height: 1.35; }
   .source-message.error { color: #df9089; }
-  :global(.note-card[data-kind="source"] .note-content) { display: flex; min-height: 0; padding: 4px 5px; overflow: hidden; }
+  :global(.note-card[data-kind="source"] .note-content) { display: flex; min-height: 0; padding: 4px 5px; overflow: visible; }
 </style>
