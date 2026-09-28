@@ -23,6 +23,7 @@
   import ListStatsExtension from "../stats/ListStatsExtension.svelte";
   import { beginContentDrag, clearContentDrag, contentDragPreview, previewContentDrop, registerContentDropTarget, type ContentSource } from "./itemDrag";
   import { createContentMoveCommand } from "./transfers.svelte";
+  import { listPickerInput } from "./pickerInput";
 
   let { note }: { note: Note } = $props();
   let root: HTMLDivElement | undefined = $state();
@@ -97,10 +98,8 @@
   function addText(): void { if (addListText(note.id, query)) closePicker(); }
   function openPicker(): void { adding = true; void tick().then(() => searchInput?.focus()); }
   function handleSearchKeydown(event: KeyboardEvent): void {
+    event.stopPropagation();
     if (event.key === "Enter" && query.trim()) { event.preventDefault(); event.stopPropagation(); addText(); }
-  }
-  function handlePickerBlur(event: FocusEvent): void {
-    if (!(event.relatedTarget instanceof Node) || !(event.currentTarget as HTMLElement).contains(event.relatedTarget)) closePicker();
   }
   function openTarget(id: string): void {
     if (teleportToObject(id, { label: "Open List item" })) return;
@@ -192,7 +191,7 @@
     {#if dropIndex === items.length}<div class="list-end-slot" aria-hidden="true"></div>{/if}
   </div>
   {#if adding}
-    <div class="list-picker" data-list-picker use:dismissBoardPopup={{ close: closePicker }} onfocusout={handlePickerBlur}>
+    <div class="list-picker" data-list-picker use:dismissBoardPopup={{ close: closePicker }} use:listPickerInput={closePicker}>
       <input data-list-search aria-label="Search board objects or type text" placeholder="Search board objects or type text" bind:this={searchInput} bind:value={query} onkeydown={handleSearchKeydown} />
       <div class="list-picker-results">
         {#each choices as choice (choice.id)}<button type="button" data-list-target-option={choice.id} onclick={() => addTarget(choice.id)}>{choice.name}</button>

@@ -32,6 +32,7 @@ export interface TierRowDropGeometry {
   rowId: string;
   rect: TierRect;
   cards: Array<{ cardId: string; rect: TierRect }>;
+  slot?: { index: number; rect: TierRect };
 }
 
 export interface TierCardDropTarget {
@@ -63,6 +64,10 @@ export function tierCardDropTargetAt(
     Math.abs((second.rect.top + second.rect.bottom) / 2 - point.y),
   )[0];
   if (!row) return null;
+  const slot = row.slot;
+  if (slot && point.x >= slot.rect.left && point.x <= slot.rect.right && point.y >= slot.rect.top && point.y <= slot.rect.bottom) {
+    return { rowId: row.rowId, index: slot.index };
+  }
   if (row.cards.length === 0) return { rowId: row.rowId, index: 0 };
 
   let index = 0;

@@ -13,6 +13,8 @@ export interface ContentDragPreview {
   target: ContentTarget | null;
   /** Height of the dragged row/card at zoom 1, for the receiving List's open slot. */
   height: number;
+  /** Width at zoom 1; Tierlist receivers use a card-sized gap. */
+  width?: number;
 }
 
 export const contentDragPreview = writable<ContentDragPreview | null>(null);
@@ -34,8 +36,8 @@ export function resolveContentDropTarget(point: Point, source: ContentSource): C
   return null;
 }
 
-export function beginContentDrag(source: ContentSource, height: number, target: ContentTarget | null = null): void {
-  contentDragPreview.set({ source, target, height: Math.max(26, height) });
+export function beginContentDrag(source: ContentSource, height: number, target: ContentTarget | null = null, width?: number): void {
+  contentDragPreview.set({ source, target, height: Math.max(26, height), ...(width === undefined ? {} : { width }) });
 }
 
 export function previewContentDrop(point: Point): ContentTarget | null {

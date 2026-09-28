@@ -1,5 +1,9 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
+  import { flip } from "svelte/animate";
+  import { get } from "svelte/store";
+  import { preferences } from "../settings/preferences.svelte";
+  import { tierDragRows, tierDropOriginalIndex } from "./dragLayout";
   import { beginContentDrag, clearContentDrag, contentDragPreview, previewContentDrop, registerContentDropTarget, resolveContentDropTarget } from "../list/itemDrag";
   import { createContentMoveCommand } from "../list/transfers.svelte";
   import type { Note } from "../model/note";
@@ -49,6 +53,7 @@
         moved: boolean;
         sourceRowId: string;
         card: TierCard;
+        visual: { clone: HTMLElement; width: number; height: number; zoomX: number; zoomY: number; offset: Point };
       }
     | {
         kind: "row";
@@ -80,6 +85,7 @@
   let { note }: { note: Note } = $props();
   let root: HTMLDivElement;
   let rows = $derived(rowsForTierlist(note.id));
+  let displayRows = $derived(tierDragRows(rows, note.id, $contentDragPreview));
   let hintsDismissed = $derived(areTierHintsDismissed(rows));
   let contextRowId = $state<string | null>(null);
   let deletingRowId = $state<string | null>(null);
@@ -115,7 +121,7 @@
   }));
 
   onMount(() => registerContentDropTarget((point, source) => {
-    if (source.kind !== "list" || tierlistRootAt(point) !== root) return null;
+    if (tierlistRootAt(point) !== root) return null;
     const target = tierCardDropTargetAt(point, measureTierRows());
     return target ? { kind: "tierlist", noteId: note.id, rowId: target.rowId, index: target.index } : null;
   }));
@@ -284,14 +290,20 @@
 
   function beginCardPointerDrag(row: TierRow, card: TierCard, event: PointerEvent): void {
     if (event.button !== 0 || editingCardId === card.id) return;
+    event.preventDefault();
+    const element = (event.currentTarget as HTMLElement).closest<HTMLElement>("[data-tier-card-id]")!;
+    const rect = element.getBoundingClientRect();
     beginPointerCapture({
       kind: "card",
       pointerId: event.pointerId,
-      captureTarget: event.currentTarget as HTMLElement,
+      captureTarget: root,
       start: { x: event.clientX, y: event.clientY },
       moved: false,
       sourceRowId: row.id,
       card: { ...card },
+      visual: { clone: element.cloneNode(true) as HTMLElement, width: element.offsetWidth, height: element.offsetHeight,
+        zoomX: rect.width / Math.max(element.offsetWidth, 1), zoomY: rect.height / Math.max(element.offsetHeight, 1),
+        offset: { x: event.clientX - rect.left, y: event.clientY - rect.top } },
     }, event);
   }
 
@@ -328,7 +340,8 @@
     const point = { x: event.clientX, y: event.clientY };
     if (!drag.moved && !pointerDragThresholdPassed(drag.start, point)) return;
     if (!drag.moved && drag.kind === "card") {
-      beginContentDrag({ kind: "tierlist", noteId: note.id, rowId: drag.sourceRowId, cardId: drag.card.id }, drag.captureTarget.offsetHeight);
+      beginContentDrag({ kind: "tierlist", noteId: note.id, rowId: drag.sourceRowId, cardId: drag.card.id }, drag.visual.height,
+        { kind: "tierlist", noteId: note.id, rowId: drag.sourceRowId, index: rows.find((row) => row.id === drag.sourceRowId)?.cards.findIndex((card) => card.id === drag.card.id) ?? 0 }, drag.visual.width);
     }
     drag.moved = true;
     event.preventDefault();
@@ -365,7 +378,7 @@
     if (!drag || drag.pointerId !== event.pointerId) return;
     event.stopPropagation();
     const point = { x: event.clientX, y: event.clientY };
-    const listTarget = drag.kind === "card"
+    const contentTarget = drag.kind === "card"
       ? resolveContentDropTarget(point, { kind: "tierlist", noteId: note.id, rowId: drag.sourceRowId, cardId: drag.card.id }) : null;
     activePointerDrag = null;
     dragDisplay = null;
@@ -375,21 +388,18 @@
     releasePointer(drag);
     if (!drag.moved && !pointerDragThresholdPassed(drag.start, point)) return;
 
-    if (drag.kind === "card" && listTarget?.kind === "list") {
-      const command = createContentMoveCommand({ kind: "tierlist", noteId: note.id, rowId: drag.sourceRowId, cardId: drag.card.id }, listTarget);
+    if (drag.kind === "card" && contentTarget?.kind === "list") {
+      const command = createContentMoveCommand({ kind: "tierlist", noteId: note.id, rowId: drag.sourceRowId, cardId: drag.card.id }, contentTarget);
       if (command) execute(command);
       return;
     }
     if (drag.kind === "card") {
-      const targetRoot = tierlistRootAt(point);
-      const targetNoteId = targetRoot?.dataset.tierlistId;
-      const geometry = measureTierRows(targetRoot);
-      const target = targetRoot ? tierCardDropTargetAt(point, geometry) : null;
-      if (target) {
-        if (!targetNoteId || targetNoteId === note.id) {
-          moveTierlistCard(note.id, drag.sourceRowId, drag.card.id, target.rowId, target.index);
+      if (contentTarget?.kind === "tierlist") {
+        if (contentTarget.noteId === note.id) {
+          const source = { kind: "tierlist" as const, noteId: note.id, rowId: drag.sourceRowId, cardId: drag.card.id };
+          moveTierlistCard(note.id, drag.sourceRowId, drag.card.id, contentTarget.rowId, tierDropOriginalIndex(rows, source, contentTarget));
         } else {
-          duplicateTierlistCard(note.id, drag.sourceRowId, drag.card.id, targetNoteId, target.rowId, target.index);
+          duplicateTierlistCard(note.id, drag.sourceRowId, drag.card.id, contentTarget.noteId, contentTarget.rowId, contentTarget.index);
         }
         return;
       }
@@ -430,6 +440,25 @@
   }
 
   function updateDragGhost(drag: PointerDrag, point: Point): void {
+    if (drag.kind === "card") {
+      if (!dragGhost) {
+        dragGhost = document.createElement("div");
+        dragGhost.className = "tier-drag-ghost";
+        dragGhost.dataset.tierDragGhost = "";
+        dragGhost.setAttribute("aria-hidden", "true");
+        dragGhost.inert = true;
+        const clone = drag.visual.clone;
+        clone.removeAttribute("data-tier-card-id");
+        clone.querySelector(".tier-card-delete")?.remove();
+        dragGhost.append(clone);
+        Object.assign(dragGhost.style, { width: `${drag.visual.width}px`, height: `${drag.visual.height}px`, opacity: "0.5",
+          transform: `scale(${drag.visual.zoomX}, ${drag.visual.zoomY})` });
+        document.body.append(dragGhost);
+      }
+      dragGhost.style.left = `${point.x - drag.visual.offset.x}px`;
+      dragGhost.style.top = `${point.y - drag.visual.offset.y}px`;
+      return;
+    }
     if (!dragGhost) {
       dragGhost = document.createElement("div");
       dragGhost.className = "tier-drag-ghost";
@@ -447,20 +476,11 @@
     dragGhost.style.width = `${sourceRect.width / zoomX}px`;
     dragGhost.style.height = `${sourceRect.height / zoomY}px`;
     dragGhost.style.transform = `scale(${zoomX}, ${zoomY})`;
-
-    const preview = drag.kind === "card" ? cardPreview(drag.card) : null;
-    const ghostContent = document.createElement("span");
-    if (drag.kind === "row") {
-      ghostContent.className = "tier-drag-ghost-label";
-      ghostContent.style.setProperty("--tier-color", drag.color);
-      ghostContent.textContent = drag.name;
-    } else {
-      ghostContent.className = "tier-drag-ghost-card";
-      ghostContent.textContent = preview?.kind === "text"
-        ? preview.text || "Text card"
-        : preview?.name ?? "Text card";
-    }
-    dragGhost.append(ghostContent);
+    const content = document.createElement("span");
+    content.className = "tier-drag-ghost-label";
+    content.style.setProperty("--tier-color", drag.color);
+    content.textContent = drag.name;
+    dragGhost.append(content);
   }
 
   function removeDragGhost(): void {
@@ -480,15 +500,34 @@
 
   function measureTierRows(container: HTMLElement | null = root ?? null): TierRowDropGeometry[] {
     if (!container) return [];
+    const noteId = container.dataset.tierlistId;
+    const preview = get(contentDragPreview);
     return Array.from(container.querySelectorAll<HTMLElement>("[data-tier-row-id]")).flatMap((rowElement) => {
       const rowId = rowElement.dataset.tierRowId;
-      if (!rowId) return [];
-      const rect = toTierRect(rowElement.getBoundingClientRect());
-      const cards = Array.from(rowElement.querySelectorAll<HTMLElement>("[data-tier-card-id]")).flatMap((cardElement) => {
-        const cardId = cardElement.dataset.tierCardId;
-        return cardId ? [{ cardId, rect: toTierRect(cardElement.getBoundingClientRect()) }] : [];
+      const area = rowElement.querySelector<HTMLElement>("[data-tier-row-cards]");
+      if (!rowId || !area) return [];
+      const areaRect = area.getBoundingClientRect();
+      const zoomX = areaRect.width / Math.max(area.offsetWidth, 1);
+      const zoomY = areaRect.height / Math.max(area.offsetHeight, 1);
+      // offset geometry ignores FLIP transforms, so animation cannot move the drop target.
+      const frame = (element: HTMLElement): TierRect => ({ left: areaRect.left + element.offsetLeft * zoomX,
+        top: areaRect.top + element.offsetTop * zoomY, right: areaRect.left + (element.offsetLeft + element.offsetWidth) * zoomX,
+        bottom: areaRect.top + (element.offsetTop + element.offsetHeight) * zoomY });
+      const source = preview?.source;
+      let originalSlot: TierRowDropGeometry["slot"];
+      const cards = Array.from(area.querySelectorAll<HTMLElement>("[data-tier-card-id]")).flatMap((element, index) => {
+        const cardId = element.dataset.tierCardId;
+        if (source?.kind === "tierlist" && source.noteId === noteId && source.rowId === rowId && source.cardId === cardId) {
+          originalSlot = { index, rect: frame(element) };
+          return [];
+        }
+        return cardId ? [{ cardId, rect: frame(element) }] : [];
       });
-      return [{ rowId, rect, cards }];
+      const gap = area.querySelector<HTMLElement>("[data-tier-card-slot]");
+      const target = preview?.target;
+      const slot = gap && target?.kind === "tierlist" && target.noteId === noteId && target.rowId === rowId
+        ? { index: target.index, rect: frame(gap) } : originalSlot;
+      return [{ rowId, rect: toTierRect(rowElement.getBoundingClientRect()), cards, ...(slot ? { slot } : {}) }];
     });
   }
 
@@ -593,9 +632,6 @@
     cardDropTargetArea = null;
   }
 
-  function cardIsDragSource(row: TierRow, card: TierCard): boolean {
-    return dragDisplay?.kind === "card" && dragDisplay.sourceRowId === row.id && dragDisplay.card.id === card.id;
-  }
 
   function cardPreview(card: TierCard) {
     return tierCardPreview(card, board.notes, zones.byId);
@@ -613,8 +649,10 @@
   role="group"
   aria-label={`Tierlist ${note.name}`}
   bind:this={root}
+  onpointermove={handlePointerDragMove} onpointerup={handlePointerDragUp}
+  onpointercancel={handlePointerDragCancel} onlostpointercapture={handleLostPointerCapture}
 >
-  {#each rows as row (row.id)}
+  {#each displayRows as row (row.id)}
     <section
       class="tier-row"
       data-tier-row-id={row.id}
@@ -687,12 +725,16 @@
         ondblclick={(event) => addTextCard(row.id, event)}
         aria-label={`${row.name} tier cards`}
       >
-        {#each row.cards as card (card.id)}
+        {#each row.displayCards as entry (entry.id)}
+          <div class="tier-card-wrap" animate:flip={{ duration: preferences.reduceAnimations ? 0 : 140 }}
+            data-tier-card-id={entry.card?.id} data-tier-card-slot={entry.card ? undefined : ""}
+            style:width={entry.card ? undefined : `${$contentDragPreview?.width ?? 92}px`}
+            style:min-height={entry.card ? undefined : `${Math.max(56, $contentDragPreview?.height ?? 56)}px`}>
+          {#if entry.card}
+          {@const card = entry.card}
           {@const preview = cardPreview(card)}
           <div
-            class="tier-card-wrap"
-            class:pointer-drag-source={cardIsDragSource(row, card)}
-            data-tier-card-id={card.id}
+            class="tier-card-content"
             data-tier-card-kind={card.kind}
             role="group"
             aria-label={`Tier card in ${row.name}`}
@@ -718,10 +760,6 @@
                 onfocus={() => { selectedCard = { rowId: row.id, cardId: card.id }; }}
                 onclick={() => { selectedCard = { rowId: row.id, cardId: card.id }; }}
                 onpointerdown={(event) => beginCardPointerDrag(row, card, event)}
-                onpointermove={handlePointerDragMove}
-                onpointerup={handlePointerDragUp}
-                onpointercancel={handlePointerDragCancel}
-                onlostpointercapture={handleLostPointerCapture}
                 ondblclick={(event) => beginEditCard(row, card, event)}
                 onkeydown={(event) => handleCardKeydown(row.id, card.id, event)}
               >
@@ -752,8 +790,10 @@
               </svg>
             </button>
           </div>
+          {:else}<span class="tier-card-slot" aria-hidden="true"></span>{/if}
+          </div>
         {/each}
-        {#if row.cards.length === 0 && !hintsDismissed}
+        {#if row.displayCards.length === 0 && !hintsDismissed}
           <span class="tier-empty-hint" data-tier-hint>Double-click to add a text card or drop a node here</span>
         {/if}
       </div>
@@ -870,6 +910,7 @@
   .tier-menu-delete { padding: 5px 6px; border: 1px solid #51545a; border-radius: 3px; color: #f0dada; background: #39282b; text-align: left; cursor: pointer; }
 
   .tier-row-cards {
+    position: relative;
     display: flex;
     min-width: 0;
     min-height: 70px;
@@ -919,6 +960,8 @@
     flex: 0 0 auto;
   }
 
+  .tier-card-content { position: relative; width: 100%; }
+  .tier-card-slot { display: block; box-sizing: border-box; width: 100%; height: 100%; min-height: inherit; border: 1px dashed var(--accent); border-radius: 4px; background: #f5cd4d12; }
   .tier-card-wrap:has(.tier-card-editor) { border: 1px solid var(--accent); border-radius: 4px; background: #292c31; }
 
   .tier-card {
@@ -943,7 +986,6 @@
   .tier-card:hover { border-color: #747981; }
   .tier-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px #f5cd4d50; }
   .tier-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .tier-card-wrap.pointer-drag-source .tier-card { opacity: 0.28; }
   .tier-card.missing { border-style: dashed; color: #aaa; background: #242529; }
   .tier-card strong { overflow: hidden; color: #f0e4c9; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
   .tier-card.missing strong { display: -webkit-box; font-size: 9px; text-overflow: clip; white-space: normal; line-clamp: 2; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
