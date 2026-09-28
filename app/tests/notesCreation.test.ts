@@ -164,9 +164,9 @@ describe("note creation placement", () => {
       10,
       { rng: () => 0.75 },
     );
-    expect(placed).toEqual({ x: 132.75, y: 132.75 });
-    expect(RANDOM_CREATION_GAP_MIN).toBe(10);
-    expect(RANDOM_CREATION_GAP_MAX).toBe(35);
+    expect(placed).toEqual({ x: 116.5, y: 116.5 });
+    expect(RANDOM_CREATION_GAP_MIN).toBe(5);
+    expect(RANDOM_CREATION_GAP_MAX).toBe(15);
   });
 
   it("steps past each blocker with fresh random edge gaps and never overlaps", () => {
@@ -184,7 +184,7 @@ describe("note creation placement", () => {
       10,
       { rng: () => values[index++] ?? 0 },
     );
-    expect(placed).toEqual({ x: 52, y: 52 });
+    expect(placed).toEqual({ x: 47, y: 47 });
     for (const obstacle of [
       { x: 8, y: 8, width: 4, height: 4 },
       { x: 20, y: 20, width: 20, height: 20 },
@@ -194,7 +194,7 @@ describe("note creation placement", () => {
     }
   });
 
-  it("places Inbox entries at random 10–35 unit gaps from their anchor", () => {
+  it("places Inbox entries at random 5–15 unit gaps from their anchor", () => {
     const anchor = { x: 0, y: 0, width: 20, height: 20 };
     const placed = randomFreeNoteCenter(
       { x: 10, y: 10 },
@@ -205,7 +205,7 @@ describe("note creation placement", () => {
       10,
       { anchor, rng: () => 0.75 },
     );
-    expect(placed).toEqual({ x: 50.75, y: 50.75 });
+    expect(placed).toEqual({ x: 34.5, y: 34.5 });
     expect(placed.x - 2 - (anchor.x + anchor.width)).toBeGreaterThanOrEqual(RANDOM_CREATION_GAP_MIN);
     expect(placed.x - 2 - (anchor.x + anchor.width)).toBeLessThanOrEqual(RANDOM_CREATION_GAP_MAX);
     expect(placed.y - 2 - (anchor.y + anchor.height)).toBeGreaterThanOrEqual(RANDOM_CREATION_GAP_MIN);

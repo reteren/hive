@@ -26,8 +26,8 @@ export interface CreationObstacle {
   height: number;
 }
 
-export const RANDOM_CREATION_GAP_MIN = 10;
-export const RANDOM_CREATION_GAP_MAX = 35;
+export const RANDOM_CREATION_GAP_MIN = 5;
+export const RANDOM_CREATION_GAP_MAX = 15;
 
 export interface RandomPlacementOptions {
   /** Optional deterministic source for tests. Values are clamped to 0..1. */
@@ -177,7 +177,7 @@ export function nearestFreeNoteCenter(
 
 /**
  * Keep a free requested centre, but when it overlaps an object place it in a random
- * quadrant 10–35 units beyond that object's edges. Further collisions walk out from
+ * quadrant 5–15 units beyond that object's edges. Further collisions walk out from
  * the blocking object using another random edge gap. The optional anchor always uses
  * this behaviour, even when the requested centre itself is clear.
  */
