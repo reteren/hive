@@ -5,6 +5,7 @@ import { creationObstacleForNote } from "../src/notes/creationPosition";
 import {
   createResizeGesture,
   framesEqual,
+  normalizeScaleResizeAtCommit,
   resizeGestureChange,
   updateResizeGesture,
 } from "../src/selection/gestures";
@@ -51,6 +52,45 @@ describe("universal node scale", () => {
 
     const grow = createResizeGesture({ ...frame, scale: 3 }, 40, "right", { x: 70, y: 30 });
     expect(updateResizeGesture(grow, { x: 200, y: 30 }, false, 1, true).after.scale).toBe(4);
+  });
+
+  it("returns to exact base dimensions when Shift-drag shrinks past scale 1", () => {
+    const base = {
+      id: "note", type: "note" as const, x: 10, y: 20, width: 25, height: null,
+      scale: 1, baseWidth: 25, baseHeight: null, baseStatisticsExtensionWidth: 0,
+    };
+    const grow = createResizeGesture(base, 20, "bottom-right", { x: 35, y: 40 });
+    const enlarged = updateResizeGesture(grow, { x: 60, y: 60 }, false, 1, true).after;
+    expect(enlarged.scale).toBe(2);
+
+    const shrink = createResizeGesture(enlarged, 40, "bottom-right", { x: 60, y: 60 });
+    const crossedOrigin = updateResizeGesture(shrink, { x: -400, y: -200 }, false, 1, true);
+    const normalized = normalizeScaleResizeAtCommit(crossedOrigin);
+    expect(normalized.scale).toBeUndefined();
+    expect(normalized.width).toBe(25);
+    expect(normalized.baseWidth).toBe(25);
+
+    const tierBase = { ...base, id: "tier", type: "tierlist" as const, width: 60, baseWidth: 60 };
+    const tierGrow = createResizeGesture(tierBase, 20, "bottom-right", { x: 70, y: 40 });
+    const tierEnlarged = updateResizeGesture(tierGrow, { x: 120, y: 60 }, false, 1, true).after;
+    const tierShrink = createResizeGesture(tierEnlarged, 40, "bottom-right", { x: 120, y: 60 });
+    const tierReturn = normalizeScaleResizeAtCommit(updateResizeGesture(tierShrink, { x: -400, y: -200 }, false, 1, true));
+    expect(tierReturn.scale).toBeUndefined();
+    expect(tierReturn.width).toBe(60);
+    expect(tierReturn.baseWidth).toBe(60);
+  });
+
+  it("rounds the committed scale to three decimals without rounding its base width", () => {
+    const base = {
+      id: "fractional", type: "note" as const, x: 10, y: 20, width: 25, height: null,
+      scale: 1, baseWidth: 25, baseHeight: null, baseStatisticsExtensionWidth: 0,
+    };
+    const gesture = createResizeGesture(base, 20, "bottom-right", { x: 35, y: 40 });
+    const scaled = updateResizeGesture(gesture, { x: 43.025, y: 46.42 }, false, 1, true);
+    const committed = normalizeScaleResizeAtCommit(scaled);
+    expect(committed.scale).toBe(1.321);
+    expect(committed.baseWidth).toBe(25);
+    expect(committed.width).toBe(25 * 1.321);
   });
 
   it("saves and loads scale in board, archive, and trash data, omitting default scale", () => {

@@ -47,6 +47,7 @@ import { measureDictionaryHeightLimits } from "../spell/dictionarySizing";
     createResizeGesture,
     crossedGestureThreshold,
     moveGestureChange,
+    normalizeScaleResizeAtCommit,
     resizeGestureChange,
     shouldCancelForLineTool,
     updateMoveGesture,
@@ -918,6 +919,9 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
       minHeight: minimumHeightForKind(note.type) * scale,
       maxHeight,
       scale,
+      baseWidth: note.width,
+      baseHeight: note.height,
+      baseStatisticsExtensionWidth: listStatisticsWidth(note),
     };
   }
 
@@ -1346,7 +1350,9 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
       if (cancelled) {
         applyFrames([cancelResizeGesture(gesture.gesture)]);
       } else if (gesture.started) {
-        const change = resizeGestureChange(gesture.gesture);
+        const after = normalizeScaleResizeAtCommit(gesture.gesture);
+        if (gesture.gesture.after.scaleGesture) applyFrames([after]);
+        const change = resizeGestureChange({ ...gesture.gesture, after });
         if (change) {
           const note = boardState.notes[change.before[0].id];
           const scaleChanged = normalizeNoteScale(change.before[0].scale) !== normalizeNoteScale(change.after[0].scale);
@@ -1556,20 +1562,34 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     for (const frame of frames) {
       const note = boardState.notes[frame.id];
       if (!note) continue;
-      const scale = normalizeNoteScale(frame.scale ?? note.scale);
+      const frameScale = Object.prototype.hasOwnProperty.call(frame, "scale") ? frame.scale : note.scale;
+      const scale = normalizeNoteScale(frameScale);
+      const baseStatisticsWidth = frame.baseStatisticsExtensionWidth ?? listStatisticsWidth(note);
+      const preservedBaseWidth = frame.baseWidth ?? note.width;
+      const expectedVisualWidth = (preservedBaseWidth + baseStatisticsWidth) * scale;
+      const baseWidth = nearlyEqual(frame.width, expectedVisualWidth)
+        ? preservedBaseWidth
+        : (frame.width - (frame.statisticsExtensionWidth ?? baseStatisticsWidth * scale)) / scale;
+      const baseHeight = frame.height === null
+        ? frame.baseHeight === undefined ? null : frame.baseHeight
+        : frame.baseHeight !== undefined && frame.baseHeight !== null && nearlyEqual(frame.height, frame.baseHeight * scale)
+          ? frame.baseHeight
+          : frame.height / scale;
       const baseFrame = {
         ...frame,
-        width: frame.width / scale,
-        height: frame.height === null ? null : frame.height / scale,
-        ...(frame.statisticsExtensionWidth === undefined
-          ? {}
-          : { statisticsExtensionWidth: frame.statisticsExtensionWidth / scale }),
+        width: baseWidth + baseStatisticsWidth,
+        height: baseHeight,
+        statisticsExtensionWidth: baseStatisticsWidth,
       };
       updateNote(frame.id, {
         ...geometryFromListStatisticsFrame(note, baseFrame),
         scale: scale > 1 ? scale : undefined,
       });
     }
+  }
+
+  function nearlyEqual(first: number, second: number): boolean {
+    return Math.abs(first - second) <= Math.max(1, Math.abs(first), Math.abs(second)) * 1e-9;
   }
 
   function applyZoneGeometry(zone: Zone): void {

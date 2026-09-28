@@ -35,6 +35,12 @@ export interface NoteFrame {
   type?: NoteKind;
   /** The note's visual scale; frame dimensions are measured after this transform. */
   scale?: number;
+  /** Unscaled model dimensions captured before the gesture, used to avoid scale round-trip drift. */
+  baseWidth?: number;
+  baseHeight?: number | null;
+  baseStatisticsExtensionWidth?: number;
+  /** Marks a visual resize that changes only the per-node scale. */
+  scaleGesture?: boolean;
   minWidth?: number;
   minHeight?: number;
   maxWidth?: number;
@@ -126,6 +132,47 @@ export function updateResizeGesture(
   return { ...gesture, after: { ...gesture.before, ...afterGeometry } };
 }
 
+/** Quantize per-node scale once on pointer-up while retaining exact model dimensions. */
+export function normalizeScaleResizeAtCommit(gesture: ResizeGesture): NoteFrame {
+  const frame = gesture.after;
+  if (!frame.scaleGesture) return copyFrame(frame);
+
+  const initialScale = normalizeNoteScale(gesture.before.scale);
+  const roundedScale = Math.round(normalizeNoteScale(frame.scale) * 1000) / 1000;
+  const scale = roundedScale < 1.001 ? 1 : Math.min(MAX_NOTE_SCALE, roundedScale);
+  const extension = gesture.before.baseStatisticsExtensionWidth ??
+    (gesture.before.statisticsExtensionWidth ?? 0) / initialScale;
+  const baseWidth = gesture.before.baseWidth ??
+    (gesture.before.width - (gesture.before.statisticsExtensionWidth ?? 0)) / initialScale;
+  const baseHeight = gesture.before.baseHeight !== undefined
+    ? gesture.before.baseHeight
+    : gesture.before.height === null ? null : gesture.before.height / initialScale;
+  const width = (baseWidth + extension) * scale;
+  const visualHeight = baseHeight === null
+    ? gesture.visualHeight / initialScale * scale
+    : baseHeight * scale;
+  const height = baseHeight === null ? null : baseHeight * scale;
+  const axes = resizeEdgeAxes(gesture.edge);
+
+  return {
+    ...frame,
+    x: axes.horizontal === "left"
+      ? gesture.before.x + gesture.before.width - width
+      : axes.horizontal === null ? gesture.before.x - (width - gesture.before.width) / 2 : gesture.before.x,
+    y: axes.vertical === "top"
+      ? gesture.before.y + gesture.visualHeight - visualHeight
+      : axes.vertical === null ? gesture.before.y - (visualHeight - gesture.visualHeight) / 2 : gesture.before.y,
+    width,
+    height,
+    scale: scale > 1 ? scale : undefined,
+    baseWidth,
+    baseHeight,
+    baseStatisticsExtensionWidth: extension,
+    statisticsExtensionWidth: extension * scale,
+    scaleGesture: true,
+  };
+}
+
 /** Shift-resize changes the per-note transform, including for nodes with locked dimensions. */
 function scaleResizeFrame(gesture: ResizeGesture, cursorWorld: Point, snap: boolean, step: number): NoteFrame {
   const frame = gesture.before;
@@ -172,7 +219,8 @@ function scaleResizeFrame(gesture: ResizeGesture, cursorWorld: Point, snap: bool
       : axes.vertical === null ? frame.y - (nextHeight - height) / 2 : frame.y,
     width: nextWidth,
     height: frame.height === null ? null : nextHeight,
-    scale: nextScale > 1 ? nextScale : undefined,
+    scale: nextScale,
+    scaleGesture: true,
   };
 }
 
