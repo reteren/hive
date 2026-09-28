@@ -4,6 +4,7 @@
   import type { Note } from "../model/note";
   import { nextDueAt, validateSchedule } from "./scheduler";
   import { restartTimeNode, timeCounters } from "./runtime.svelte";
+  import TaskLinkStatus from "./TaskLinkStatus.svelte";
   import type { CountMode, TimeNodeData, TimeSchedule } from "./types";
   import { copyTimeSchedule, defaultAtTimeSchedule, formatCountdown, intervalHoursHint } from "./uiSchedule";
 
@@ -192,6 +193,7 @@
     <button type="button" class="time-save" onclick={saveSchedule}>Save schedule</button>
   </div>
   <p class="time-status" role="status" aria-live="polite" data-time-status>{status}</p>
+  <TaskLinkStatus noteId={note.id} />
 </section>
 
 <style>

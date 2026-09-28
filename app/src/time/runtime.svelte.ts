@@ -5,7 +5,7 @@ import { links } from "../model/links.svelte";
 import type { Note } from "../model/note";
 import { pushMessage } from "../messages/messageQueue.svelte";
 import { evaluateTime, startRuntime, type TimeContext } from "./scheduler";
-import type { TimeRuntime } from "./types";
+import type { TimeNodeData, TimeRuntime } from "./types";
 import { advanceTimeCounters, linkedMessagesForTime } from "./runtimeLogic";
 
 const TICK_MS = 1_000;
@@ -14,8 +14,12 @@ const RUNTIME_PERSIST_MS = 30_000;
 /** App-wide counters are persisted in the view-settings file, never in project history. */
 export const timeCounters = $state({ appMs: 0, activeMs: 0 });
 
+/**
+ * The cache is valid only for the exact `time` object it was derived from: notes are updated in
+ * place, so comparing the note would keep a stale runtime after an Undo or any external edit.
+ */
 interface CachedRuntime {
-  note: Note;
+  time: TimeNodeData;
   runtime: TimeRuntime;
 }
 
@@ -90,8 +94,8 @@ export function restartTimeNode(noteId: string): void {
   const now = Date.now();
   const runtime = startRuntime(note.time.schedule, timeContext(now));
   const time = { ...note.time, runtime };
-  runtimeByNoteId.set(noteId, { note, runtime });
   updateNote(noteId, { time });
+  rememberRuntime(noteId, runtime);
 }
 
 function tick(): void {
@@ -107,9 +111,9 @@ function tick(): void {
     liveTimeIds.add(noteId);
 
     const cached = runtimeByNoteId.get(noteId);
-    const priorRuntime = cached?.note === note ? cached.runtime : note.time.runtime ?? {};
+    const priorRuntime = cached?.time === note.time ? cached.runtime : note.time.runtime ?? {};
     const result = evaluateTime({ ...note.time, runtime: priorRuntime }, context);
-    runtimeByNoteId.set(noteId, { note, runtime: result.runtime });
+    runtimeByNoteId.set(noteId, { time: note.time, runtime: result.runtime });
 
     if (result.fire) {
       persistRuntime(note, result.runtime);
@@ -151,15 +155,20 @@ function timeContext(now: number): TimeContext {
 function persistRuntime(note: Note, runtime: TimeRuntime): void {
   if (note.type !== "time" || !note.time) return;
   const nextRuntime = { ...runtime };
-  runtimeByNoteId.set(note.id, { note, runtime: nextRuntime });
   updateNote(note.id, { time: { ...note.time, runtime: nextRuntime } });
+  rememberRuntime(note.id, nextRuntime);
+}
+
+function rememberRuntime(noteId: string, runtime: TimeRuntime): void {
+  const time = board.notes[noteId]?.time;
+  if (time) runtimeByNoteId.set(noteId, { time, runtime });
 }
 
 function persistCheckedRuntimes(ids: ReadonlySet<string>): void {
   for (const noteId of ids) {
     const note = board.notes[noteId];
     const cached = runtimeByNoteId.get(noteId);
-    if (note?.type === "time" && note.time && cached?.note === note) {
+    if (note?.type === "time" && note.time && cached?.time === note.time) {
       persistRuntime(note, cached.runtime);
     }
   }

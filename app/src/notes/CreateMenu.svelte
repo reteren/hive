@@ -3,10 +3,20 @@
   import { createNote, createNoteKind } from "./noteCommands";
   import { R5_KINDS, R6_KINDS, R7_KINDS } from "../model/note";
   import { creationMenu, closeCreationMenu, toggleCreationMenuPin } from "./creation.svelte";
-  import { boardPopupStyle, dismissBoardPopup, screenAnchoredPopupStyle } from "../ui/boardAnchor";
+  import { boardPopupStyle, dismissBoardPopup, fitBoardPopupAnchor, screenAnchoredPopupStyle } from "../ui/boardAnchor";
   import { tool } from "../tools/tool.svelte";
   import { cancelLineDraft } from "../links/interaction.svelte";
   import { clearSelectedLink } from "../links/selection.svelte";
+
+  let menuElement = $state<HTMLElement | null>(null);
+
+  // The menu grew past the height assumed at open time (R7/R8 kinds): measure it once it is on
+  // screen and refit, so its bottom items are never outside the window.
+  $effect(() => {
+    if (!creationMenu.open || creationMenu.pinned || !menuElement) return;
+    const height = menuElement.offsetHeight;
+    creationMenu.menuAnchor = fitBoardPopupAnchor(camera, viewport, creationMenu.origin, { width: 164, height });
+  });
 
   const menuStyle = $derived(creationMenu.pinned
     ? screenAnchoredPopupStyle(creationMenu.pinnedScreenAnchor)
@@ -81,6 +91,8 @@
 
 {#if creationMenu.open}
   <aside
+    bind:this={menuElement}
+    style:max-height={`${Math.max(160, viewport.height - 16)}px`}
     class="create-menu"
     data-create-menu
     data-selection-ignore
@@ -170,7 +182,8 @@
     position: absolute;
     z-index: 30;
     width: 164px;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
     color: var(--text);
     background: #282828;
     border: 1px solid #4b4b4b;
