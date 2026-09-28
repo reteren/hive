@@ -1,4 +1,5 @@
 import type { Point } from "../board/cameraMath";
+import { normalizeNoteScale } from "../model/note";
 import { snapToGrid } from "../board/gridMath";
 import type { Bounds } from "../notes/layout.svelte";
 import { MIN_NOTE_HEIGHT, maximumNoteWidthForKind, minimumTextWidthForNote } from "../notes/layout.svelte";
@@ -117,8 +118,11 @@ export function scaleGroupFrames(
       ? frame.width
       : Math.max(minimumWidthForFrame(frame), Math.min(frame.maxWidth ?? maximumWidthForKind(frame.type), frame.width * scaleX)),
     height: preservesGroupDimensions(frame, beaconIds) ? frame.height : moduleIds.has(frame.id)
-      ? clampModuleHeight((frame.height ?? MIN_NOTE_HEIGHT) * scaleY, frame.type)
-      : frame.height === null ? null : Math.max(minimumHeightForKind(frame.type), Math.min(frame.maxHeight ?? Infinity, frame.height * scaleY)),
+      ? clampModuleHeight(((frame.height ?? MIN_NOTE_HEIGHT) * scaleY) / normalizeNoteScale(frame.scale), frame.type) * normalizeNoteScale(frame.scale)
+      : frame.height === null ? null : Math.max(
+        minimumHeightForKind(frame.type) * normalizeNoteScale(frame.scale),
+        Math.min(frame.maxHeight ?? Infinity, frame.height * scaleY),
+      ),
   }));
 }
 
@@ -175,9 +179,10 @@ function minimumWidthScale(frames: readonly NoteFrame[], moduleIds: ReadonlySet<
 }
 
 function minimumWidthForFrame(frame: NoteFrame): number {
-  const minimum = minimumWidthForKind(frame.type);
+  const scale = normalizeNoteScale(frame.scale);
+  const minimum = minimumWidthForKind(frame.type) * scale;
   const textMinimum = preferences.fitWidthToText
-    ? minimumTextWidthForNote(frame.id, frame.maxWidth ?? maximumNoteWidthForKind(frame.type))
+    ? minimumTextWidthForNote(frame.id, (frame.maxWidth ?? maximumNoteWidthForKind(frame.type)) / scale) * scale
     : minimum;
   return Math.max(minimum, frame.minWidth ?? minimum, textMinimum);
 }
@@ -185,7 +190,7 @@ function minimumWidthForFrame(frame: NoteFrame): number {
 function minimumHeightScale(frames: readonly NoteFrame[], moduleIds: ReadonlySet<string>, beaconIds: ReadonlySet<string>): number {
   const manualHeights = frames.flatMap((frame) => frame.height === null || moduleIds.has(frame.id) || preservesGroupDimensions(frame, beaconIds)
     ? []
-    : [minimumHeightForKind(frame.type) / frame.height]);
+    : [minimumHeightForKind(frame.type) * normalizeNoteScale(frame.scale) / frame.height]);
   return Math.max(0, ...manualHeights);
 }
 
@@ -205,7 +210,8 @@ function framesEqual(first: readonly NoteFrame[], second: readonly NoteFrame[]):
       frame.x === other.x &&
       frame.y === other.y &&
       frame.width === other.width &&
-      frame.height === other.height
+      frame.height === other.height &&
+      normalizeNoteScale(frame.scale) === normalizeNoteScale(other.scale)
     );
   });
 }

@@ -1,4 +1,4 @@
-import { DEFAULT_NOTE_WIDTH, R5_BASE_WIDTHS, type Note, type NoteKind } from "../model/note";
+import { DEFAULT_NOTE_WIDTH, R5_BASE_WIDTHS, normalizeNoteScale, type Note, type NoteKind } from "../model/note";
 import { PX_PER_UNIT } from "../board/cameraMath";
 import { widthWithListStatistics } from "../stats/listStatsLayout";
 
@@ -127,10 +127,11 @@ export interface Bounds {
 
 /** Board-space rectangle of a note, using its manual height or the measured one. */
 export function noteBounds(note: Note): Bounds {
+  const scale = normalizeNoteScale(note.scale);
   return {
     x: note.x,
     y: note.y,
-    width: widthWithListStatistics(note),
-    height: note.height ?? measuredHeights[note.id] ?? MIN_NOTE_HEIGHT,
+    width: widthWithListStatistics(note) * scale,
+    height: (note.height ?? measuredHeights[note.id] ?? MIN_NOTE_HEIGHT) * scale,
   };
 }

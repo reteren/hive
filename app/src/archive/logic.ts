@@ -1,7 +1,7 @@
 import type { Point } from "../board/cameraMath";
 import { ME_OBJECT_ID, pairKey, type Link } from "../model/link";
 import { calculatorKey } from "../model/nodeData";
-import type { Note } from "../model/note";
+import { normalizeNoteScale, type Note } from "../model/note";
 import type { ArchiveEntry } from "../model/retention.svelte";
 import { estimatedCreationHeight } from "../notes/creationPosition";
 import { uniqueName } from "../notes/naming";
@@ -56,9 +56,11 @@ export function planArchiveRestore(
   const name = uniqueName(note.name, activeNotes
     .filter((item) => note.type !== "calculator" || item.type !== "calculator")
     .map((item) => item.name));
-  const height = estimatedCreationHeight(note);
+  const scale = normalizeNoteScale(note.scale);
+  const width = note.width * scale;
+  const height = estimatedCreationHeight(note) * scale;
   if (placement === "centre") {
-    note.x = centre.x - note.width / 2;
+    note.x = centre.x - width / 2;
     note.y = centre.y - height / 2;
   }
   note.name = name;
@@ -85,13 +87,16 @@ export function planArchiveRestore(
     links,
     missingLinks,
     nameChanged: name !== entry.note.name,
-    placeOccupied: activeNotes.some((other) => overlaps(note, height, other, estimatedCreationHeight(other))),
+    placeOccupied: activeNotes.some((other) => overlaps(
+      note, width, height, other, other.width * normalizeNoteScale(other.scale),
+      estimatedCreationHeight(other) * normalizeNoteScale(other.scale),
+    )),
     calculatorUsesLiveData: note.type === "calculator" &&
       activeCalculatorKeys.includes(calculatorKey(note.name)),
   };
 }
 
-function overlaps(first: Note, firstHeight: number, second: Note, secondHeight: number): boolean {
-  return first.x < second.x + second.width && second.x < first.x + first.width &&
+function overlaps(first: Note, firstWidth: number, firstHeight: number, second: Note, secondWidth: number, secondHeight: number): boolean {
+  return first.x < second.x + secondWidth && second.x < first.x + firstWidth &&
     first.y < second.y + secondHeight && second.y < first.y + firstHeight;
 }

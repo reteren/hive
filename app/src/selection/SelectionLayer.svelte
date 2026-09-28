@@ -8,7 +8,7 @@
   import { grid } from "../board/grid.svelte";
   import { execute, record, type HistoryCommand } from "../history/history.svelte";
   import { editing } from "../notes/editing.svelte";
-  import type { NoteKind } from "../model/note";
+  import { normalizeNoteScale, type NoteKind } from "../model/note";
   import { geometryFromListStatisticsFrame, listStatisticsFrameLimits, listStatisticsWidth } from "../stats/listStatsLayout";
   import { raiseMovingCards } from "../stats/movingCards";
 import { MIN_NOTE_WIDTH, maximumResizableHeight, maximumResizableHeightForNote, minimumTextWidthForNote, noteBounds, renderedNoteMetrics, type Bounds } from "../notes/layout.svelte";
@@ -81,7 +81,7 @@ import { measureDictionaryHeightLimits } from "../spell/dictionarySizing";
     notePressIntent,
     shouldToggleSelectedHeaderAfterGesture,
   } from "./noteMoveIntent";
-  import { hasResizeHandle, isFixedSizeNodeKind, isStandaloneModuleKind, maximumWidthForKind, RESIZE_EDGES, resizeEdgeAxes, type ResizeEdge } from "./resize";
+  import { hasResizeHandle, isFixedSizeNodeKind, isStandaloneModuleKind, maximumWidthForKind, minimumHeightForKind, RESIZE_EDGES, resizeEdgeAxes, type ResizeEdge } from "./resize";
   import { resizeDoubleClickAction } from "./resizeDoubleClick";
   import { startNoteEditing } from "../editor/editorSession";
 import { isLineTool, tool } from "../tools/tool.svelte";
@@ -490,7 +490,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
       if (resizeHandle) {
         const id = resizeHandle.dataset.noteId;
         const edge = resizeHandle.dataset.resizeHandle as ResizeEdge | undefined;
-        if (id && edge && id === selection.primaryId && hasResizeHandle(boardState.notes[id]?.type, edge, canResizeBottom(id))) {
+        if (id && edge && id === selection.primaryId && (event.shiftKey || hasResizeHandle(boardState.notes[id]?.type, edge, canResizeBottom(id)))) {
           startResize(event, id, edge, local, world);
         }
         return;
@@ -899,19 +899,25 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
 
   function frameForNote(id: string): NoteFrame {
     const note = boardState.notes[id];
+    const scale = normalizeNoteScale(note.scale);
     const bounds = noteBounds(note);
     const maxHeight = note.type === "inbox"
-      ? inboxAutoHeight(note)
+      ? inboxAutoHeight(note) * scale
       : note.type === "glossary"
-        ? measureDictionaryHeightLimits(id, userDictionary.words.length, bounds.height).autoHeight
-        : note.type === "map" ? Number.POSITIVE_INFINITY : maximumResizableHeightForNote(id);
+        ? measureDictionaryHeightLimits(id, userDictionary.words.length, bounds.height / scale).autoHeight * scale
+        : note.type === "map" ? Number.POSITIVE_INFINITY : maximumResizableHeightForNote(id) * scale;
+    const listLimits = listStatisticsFrameLimits(note,
+      preferences.fitWidthToText ? minimumTextWidthForNote(id, maximumWidthForKind(note.type)) : MIN_NOTE_WIDTH,
+      maximumWidthForKind(note.type));
     return {
-      ...boundsAsFrame(id, bounds, note.height),
+      ...boundsAsFrame(id, bounds, note.height === null ? null : note.height * scale),
       type: note.type,
-      ...listStatisticsFrameLimits(note,
-        preferences.fitWidthToText ? minimumTextWidthForNote(id, maximumWidthForKind(note.type)) : MIN_NOTE_WIDTH,
-        maximumWidthForKind(note.type)),
+      ...(listLimits.minWidth === undefined ? {} : { minWidth: listLimits.minWidth * scale }),
+      maxWidth: listLimits.maxWidth * scale,
+      ...(listLimits.statisticsExtensionWidth === undefined ? {} : { statisticsExtensionWidth: listLimits.statisticsExtensionWidth * scale }),
+      minHeight: minimumHeightForKind(note.type) * scale,
       maxHeight,
+      scale,
     };
   }
 
@@ -924,7 +930,8 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
       return current > minimum + 0.01 && inboxAutoHeight(note) > minimum + 0.01;
     }
     if (note.type === "glossary") {
-      const limits = measureDictionaryHeightLimits(id, userDictionary.words.length, noteBounds(note).height);
+      const scale = normalizeNoteScale(note.scale);
+      const limits = measureDictionaryHeightLimits(id, userDictionary.words.length, noteBounds(note).height / scale);
       return limits.canShrink && (note.height ?? limits.autoHeight) > limits.minimumHeight + 0.01;
     }
     return false;
@@ -1261,6 +1268,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
         adjustedWorld,
         grid.snap || event.ctrlKey,
         grid.step,
+        event.shiftKey,
       );
       applyFrames([gesture.gesture.after]);
       return;
@@ -1341,7 +1349,8 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
         const change = resizeGestureChange(gesture.gesture);
         if (change) {
           const note = boardState.notes[change.before[0].id];
-          recordGeometryChange("Resize", note?.name ?? "", change);
+          const scaleChanged = normalizeNoteScale(change.before[0].scale) !== normalizeNoteScale(change.after[0].scale);
+          recordGeometryChange(scaleChanged ? "Scale" : "Resize", note?.name ?? "", change);
         }
       }
     } else if (gesture.kind === "zone-move") {
@@ -1546,7 +1555,20 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
   function applyFrames(frames: readonly NoteFrame[]): void {
     for (const frame of frames) {
       const note = boardState.notes[frame.id];
-      if (note) updateNote(frame.id, geometryFromListStatisticsFrame(note, frame));
+      if (!note) continue;
+      const scale = normalizeNoteScale(frame.scale ?? note.scale);
+      const baseFrame = {
+        ...frame,
+        width: frame.width / scale,
+        height: frame.height === null ? null : frame.height / scale,
+        ...(frame.statisticsExtensionWidth === undefined
+          ? {}
+          : { statisticsExtensionWidth: frame.statisticsExtensionWidth / scale }),
+      };
+      updateNote(frame.id, {
+        ...geometryFromListStatisticsFrame(note, baseFrame),
+        scale: scale > 1 ? scale : undefined,
+      });
     }
   }
 
@@ -1621,9 +1643,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     if (moduleId) {
       // Insert from the module's pre-drag position so Undo brings it back where it was dragged from.
       const dropped = boardState.notes[moduleId];
-      const droppedFrame = dropped
-        ? { id: moduleId, x: dropped.x, y: dropped.y, width: dropped.width, height: dropped.height }
-        : null;
+      const droppedFrame = dropped ? frameForNote(moduleId) : null;
       applyFrames(gesture.before);
       inserted = tryInsertModuleOnDrop(moduleId, worldPoint);
       if (!inserted && droppedFrame) applyFrames([droppedFrame]);
@@ -1685,12 +1705,14 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     return axes.horizontal !== null && axes.vertical !== null;
   }
 
-  function resizeHandleTitle(edge: ResizeEdge, standaloneModule = false): string {
+  function resizeHandleTitle(edge: ResizeEdge, standaloneModule = false, scaleOnly = false): string {
+    if (scaleOnly) return `Scale from ${handleLabel(edge)}; hold Shift while dragging`;
     if (standaloneModule) {
-      return `Resize height from ${edge.startsWith("top") ? "top" : "bottom"}`;
+      return `Resize height from ${edge.startsWith("top") ? "top" : "bottom"}; hold Shift to scale uniformly`;
     }
     const base = `Resize from ${handleLabel(edge)}`;
-    return edge === "top" || edge === "bottom" ? `${base}; double-click for auto height` : base;
+    const detail = edge === "top" || edge === "bottom" ? "; double-click for auto height" : "";
+    return `${base}${detail}; hold Shift to scale uniformly`;
   }
 
   function groupHandleTitle(edge: ResizeEdge): string {
@@ -1756,21 +1778,23 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     >
       {#if selection.ids.length === 1 && selection.zoneIds.length === 0 && outline.primary}
         {@const canShrink = canResizeBottom(outline.id)}
-        {#each RESIZE_EDGES.filter((edge) => hasResizeHandle(outline.kind, edge, canShrink)) as edge (edge)}
+        {#each RESIZE_EDGES as edge (edge)}
+          {@const normalResize = hasResizeHandle(outline.kind, edge, canShrink)}
           <button
             class={`resize-handle resize-handle-${edge}`}
             class:resize-handle-corner={isCornerHandle(edge)}
             class:resize-handle-side={!isCornerHandle(edge)}
             class:module-vertical-handle={isStandaloneModuleKind(outline.kind) && isCornerHandle(edge)}
+            class:scale-only-handle={!normalResize}
             type="button"
             data-resize-handle={edge}
             data-note-id={outline.id}
             aria-disabled={lineToolActive ? "true" : undefined}
             tabindex={lineToolActive ? -1 : undefined}
-            aria-label={isStandaloneModuleKind(outline.kind)
+            aria-label={`${isStandaloneModuleKind(outline.kind)
               ? `Resize ${outline.name} height from ${edge.startsWith("top") ? "top" : "bottom"}`
-              : `Resize ${outline.name} from ${handleLabel(edge)}`}
-            title={resizeHandleTitle(edge, isStandaloneModuleKind(outline.kind))}
+              : normalResize ? `Resize ${outline.name} from ${handleLabel(edge)}` : `Scale ${outline.name} from ${handleLabel(edge)}`}; hold Shift to scale uniformly`}
+            title={resizeHandleTitle(edge, isStandaloneModuleKind(outline.kind), !normalResize)}
           ></button>
         {/each}
       {/if}

@@ -1,7 +1,7 @@
 import { isFrameAnchor } from "../links/anchors";
 import { pairKey, type Link } from "../model/link";
 import { parseCalculatorData, parseScope, parseTiers, parseListItems, parseRandomPick, parseSource, parseCustomMarks } from "../model/nodeData";
-import { IMPORTANCE_LEVELS, MOOD_KINDS, PURPOSE_KINDS, type Note, type NoteKind, type TaskState } from "../model/note";
+import { IMPORTANCE_LEVELS, isValidNoteScale, MOOD_KINDS, PURPOSE_KINDS, type Note, type NoteKind, type TaskState } from "../model/note";
 import type { ArchiveEntry } from "../model/retention.svelte";
 import { copyArchivedLink, copyArchivedNote } from "./logic";
 
@@ -77,6 +77,7 @@ function parseArchivedNote(value: unknown): Note | null {
   if (!isRecord(value) || !validId(value.id) || typeof value.name !== "string" || !value.name.trim() ||
     typeof value.text !== "string" || !ARCHIVABLE_KINDS.has(value.type as NoteKind) ||
     !finite(value.x) || !finite(value.y) || !finite(value.width) || value.width <= 0 ||
+    value.scale !== undefined && !isValidNoteScale(value.scale) ||
     !(value.height === null || value.height === undefined || finite(value.height) && value.height > 0)) return null;
   const task = parseTask(value.task);
   const taskMemory = parseTask(value.taskMemory);
@@ -100,6 +101,7 @@ function parseArchivedNote(value: unknown): Note | null {
     y: value.y,
     width: value.width,
     height: value.height ?? null,
+    ...(typeof value.scale === "number" && value.scale > 1 ? { scale: value.scale } : {}),
     ...(task ? { task } : {}),
     ...(taskMemory ? { taskMemory } : {}),
     ...(value.importance ? { importance: value.importance as Note["importance"] } : {}),

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from "svelte";
   import type { Action } from "svelte/action";
-  import { NOTE_HEADER_HEIGHT_UNITS, type Note } from "../model/note";
+  import { NOTE_HEADER_HEIGHT_UNITS, normalizeNoteScale, type Note } from "../model/note";
   import { updateNote } from "../model/board.svelte";
   import { execute } from "../history/history.svelte";
   import { board } from "../model/board.svelte";
@@ -33,6 +33,7 @@
   let memberZone = $derived(zones.byId[zoneOf(note.id) ?? ""]);
   let customMarkFrameColors = $derived(effectiveCustomMarkFrameColors(note.id));
   let customMarkGradient = $derived(customMarkGradientFor(customMarkFrameColors));
+  let scale = $derived(normalizeNoteScale(note.scale));
 
   function beginRename(): void {
     draftName = note.name;
@@ -123,6 +124,7 @@
   class="note-card"
   class:list-with-statistics={note.type === "list" && note.listStats === true}
   data-note-id={note.id}
+  data-note-scale={scale === 1 ? undefined : scale}
   data-header-hidden={note.headerHidden ? "true" : undefined}
   data-dimmed={isDimmed(note.id)}
   data-editing={editing.noteId === note.id ? "true" : "false"}
@@ -134,6 +136,7 @@
   data-member-zone-id={memberZone?.id}
   style:--custom-mark-gradient={customMarkGradient}
   style:--note-header-height={`${NOTE_HEADER_HEIGHT_UNITS * PX_PER_UNIT}px`}
+  style:transform={scale === 1 ? undefined : `scale(${scale})`}
   style:left={`${note.x * PX_PER_UNIT}px`}
   style:top={`${note.y * PX_PER_UNIT}px`}
   style:width={`${widthWithListStatistics(note) * PX_PER_UNIT}px`}
@@ -202,6 +205,7 @@
 <style>
   .note-card {
     position: absolute;
+    transform-origin: top left;
     isolation: isolate;
     display: flex;
     flex-direction: column;

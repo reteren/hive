@@ -93,6 +93,8 @@ export interface Note {
   width: number;
   /** Manual height in u, or null while the note grows with its text. */
   height: number | null;
+  /** Uniform visual scale, omitted for the default 1× size. */
+  scale?: number;
   /** When true, the note's title header is hidden. */
   headerHidden?: boolean;
   /** Creation time (ms since epoch); older projects may lack it. Used by search ordering (R2.4). */
@@ -129,6 +131,16 @@ export interface Note {
   customMarkFrame?: boolean;
   /** List: a Statistics extension inserted into this list (shows per-row stats on the right). */
   listStats?: boolean;
+}
+
+export const MAX_NOTE_SCALE = 4;
+
+export function isValidNoteScale(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 1 && value <= MAX_NOTE_SCALE;
+}
+
+export function normalizeNoteScale(value: unknown): number {
+  return isValidNoteScale(value) ? value : 1;
 }
 
 /** Beacon diameter in u (fixed size, ROADMAP R4.0). */

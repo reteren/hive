@@ -3,7 +3,7 @@
   import { board } from "../model/board.svelte";
   import { camera, viewport } from "../board/camera.svelte";
   import { PX_PER_UNIT } from "../board/cameraMath";
-  import { BEACON_SIZE } from "../model/note";
+  import { BEACON_SIZE, normalizeNoteScale } from "../model/note";
   import { BEACON_PALETTE, normalizeBeaconColor } from "./beaconPalette";
   import { beaconEditor, closeBeaconEditor, openBeaconEditor, recolorBeacon, renameBeacon } from "./beaconActions.svelte";
   import { isDimmed } from "./focus.svelte";
@@ -61,16 +61,20 @@
       {@const note = board.notes[id]}
       {#if note?.type === "beacon"}
         {@const memberZone = zones.byId[zoneOf(id) ?? ""]}
+        {@const scale = normalizeNoteScale(note.scale)}
         <div
           class="beacon-object"
           data-note-id={id}
           data-kind="beacon"
+          data-note-scale={scale === 1 ? undefined : scale}
           data-dimmed={isDimmed(id)}
           data-member-zone-id={memberZone?.id}
           style:left={`${note.x * PX_PER_UNIT}px`}
           style:top={`${note.y * PX_PER_UNIT}px`}
           style:width={`${BEACON_SIZE * PX_PER_UNIT}px`}
           style:height={`${BEACON_SIZE * PX_PER_UNIT}px`}
+          style:transform={scale === 1 ? undefined : `scale(${scale})`}
+          style:transform-origin="top left"
         >
           <button
             class="beacon-circle"

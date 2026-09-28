@@ -1,0 +1,42 @@
+// Shift universal scale: note and tierlist scale with Shift held on a handle; content scales; Undo; no shrink below 1.
+import { writeFileSync } from "node:fs";
+const page = (await fetch(`http://localhost:9334/json/list`).then((r) => r.json())).find((t) => t.type === "page");
+const ws = new WebSocket(page.webSocketDebuggerUrl); let id = 0; const pending = new Map(); const errors = [];
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.method === "Runtime.exceptionThrown") errors.push(m.params.exceptionDetails.exception?.description?.slice(0, 200)); if (pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+await new Promise((r) => (ws.onopen = r));
+const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+await send("Runtime.enable");
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const ev = async (expression) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); return r.result?.result?.value ?? r.result?.exceptionDetails?.exception?.description; };
+const SHIFT = 8;
+const mouse = (type, x, y, button = "none", buttons = 0, modifiers = 0) => send("Input.dispatchMouseEvent", { type, x, y, button, buttons, modifiers, clickCount: type === "mousePressed" || type === "mouseReleased" ? 1 : 0 });
+const click = async (p) => { await mouse("mouseMoved", p.x, p.y); await mouse("mousePressed", p.x, p.y, "left", 1); await mouse("mouseReleased", p.x, p.y, "left", 0); await wait(300); };
+const at = (sel) => ev(`(()=>{const e=document.querySelector(${JSON.stringify(sel)});if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,w:r.width,h:r.height}})()`);
+const shiftKey = (type) => send("Input.dispatchKeyEvent", { type, key: "Shift", code: "ShiftLeft", windowsVirtualKeyCode: 16, modifiers: type === "rawKeyDown" ? SHIFT : 0 });
+const info = (nid) => ev(`(async()=>{const b=await import('/src/model/board.svelte.ts');const n=b.board.notes.${nid};const el=document.querySelector('[data-note-id="${nid}"]');const t=el.querySelector('.note-text, [data-note-body], .tier-card, [data-tier-card-id]');return 'scale='+(n.scale??1)+' width='+n.width+' card px='+Math.round(el.getBoundingClientRect().width)+'x'+Math.round(el.getBoundingClientRect().height)+' font='+(t?getComputedStyle(t).fontSize:'-')+' attr='+el.getAttribute('data-note-scale')})()`);
+const shiftDrag = async (nid, handle, dx, dy) => {
+  await click(await at(`[data-note-id="${nid}"] [data-note-header]`));
+  await shiftKey("rawKeyDown"); await wait(200);
+  const h = await at(`[data-resize-handle="${handle}"]`);
+  console.log(`  ${nid}: handle ${handle} with Shift:`, !!h, "handles:", await ev(`[...document.querySelectorAll('[data-resize-handle]')].map(e=>e.getAttribute('data-resize-handle')).join(',')||'none'`));
+  if (h) { await mouse("mouseMoved", h.x, h.y, "none", 0, SHIFT); await mouse("mousePressed", h.x, h.y, "left", 1, SHIFT); for (let i = 1; i <= 10; i += 1) { await mouse("mouseMoved", h.x + dx * i / 10, h.y + dy * i / 10, "left", 1, SHIFT); await wait(25); } await mouse("mouseReleased", h.x + dx, h.y + dy, "left", 0, SHIFT); await wait(300); }
+  await shiftKey("keyUp"); await wait(200);
+};
+await ev(`(async()=>{const b=await import('/src/model/board.svelte.ts');const c=await import('/src/board/camera.svelte.ts');const n=Date.now();
+ b.addNote({id:'nt',type:'note',name:'Note',text:'scale me',x:-60,y:-30,width:25,height:null,createdAt:n});
+ b.addNote({id:'tl',type:'tierlist',name:'Tier',text:'',x:-20,y:-30,width:60,height:null,createdAt:n+1,tiers:[{id:'rS',name:'S',color:'#e58b83',cards:[{id:'c1',kind:'text',text:'one'}]}]});
+ c.camera.x=-5;c.camera.y=0;c.camera.zoom=0.8;return 1})()`);
+await wait(600);
+console.log("note before:", await info("nt"));
+await shiftDrag("nt", "bottom-right", 120, 60);
+console.log("note after Shift drag:", await info("nt"));
+console.log("tier before:", await info("tl"));
+await shiftDrag("tl", "bottom-right", 150, 60);
+console.log("tier after Shift drag:", await info("tl"));
+writeFileSync(process.argv[2], Buffer.from((await send("Page.captureScreenshot", { format: "png" })).result.data, "base64"));
+await shiftDrag("nt", "bottom-right", -400, -200);
+console.log("note after trying to shrink below 1:", await info("nt"));
+await send("Input.dispatchKeyEvent", { type: "keyDown", key: "z", code: "KeyZ", windowsVirtualKeyCode: 90, modifiers: 2 }); await send("Input.dispatchKeyEvent", { type: "keyUp", key: "z", code: "KeyZ", windowsVirtualKeyCode: 90, modifiers: 2 }); await wait(300);
+console.log("tier after Ctrl+Z (last op was note shrink, may be no-op):", await info("tl"), "| note:", await info("nt"));
+console.log("errors:", errors.length ? errors.join(" || ") : "none");
+ws.close();

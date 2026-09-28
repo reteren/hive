@@ -4,7 +4,7 @@ import { MIN_NOTE_HEIGHT, MIN_NOTE_WIDTH, maximumNoteWidthForKind, minimumTextWi
 import { estimatedCreationHeight } from "../notes/creationPosition";
 import { MODULE_NOTE_HEIGHT, MODULE_NOTE_WIDTH } from "../modules/moduleLogic";
 import { preferences } from "../settings/preferences.svelte";
-import { BEACON_SIZE, DEFAULT_NOTE_WIDTH, R5_BASE_WIDTHS, type NoteKind } from "../model/note";
+import { BEACON_SIZE, DEFAULT_NOTE_WIDTH, normalizeNoteScale, R5_BASE_WIDTHS, type NoteKind } from "../model/note";
 import { board } from "../model/board.svelte";
 import { inboxMinHeight } from "../inbox/inboxLayout";
 import { userDictionary } from "../spell/dictionary.svelte";
@@ -181,21 +181,22 @@ export function resizeNote(
 
   const rule = resizeRuleForKind(initial.type);
   const axes = resizeEdgeAxes(edge);
-  const maxWidth = limits.maxWidth ?? initial.maxWidth ?? maximumWidthForKind(initial.type);
+  const scale = normalizeNoteScale(initial.scale);
+  const maxWidth = limits.maxWidth ?? initial.maxWidth ?? maximumWidthForKind(initial.type) * scale;
   const maxHeight = initial.type === "map"
     ? Number.POSITIVE_INFINITY
-    : limits.maxHeight ?? initial.maxHeight ?? (initial.type ? MIN_NOTE_HEIGHT * 1.5 : Number.POSITIVE_INFINITY);
+    : limits.maxHeight ?? initial.maxHeight ?? (initial.type ? MIN_NOTE_HEIGHT * 1.5 * scale : Number.POSITIVE_INFINITY);
   let x = initial.x;
   let y = initial.y;
   let width = initial.width;
   let height = initial.height;
   const minimumWidth = initial.type === "map"
-    ? initial.minWidth ?? MAP_MIN_WIDTH
+    ? initial.minWidth ?? MAP_MIN_WIDTH * scale
     : Math.max(
-      minimumWidthForKind(initial.type),
+      minimumWidthForKind(initial.type) * scale,
       initial.minWidth ?? (preferences.fitWidthToText
-        ? minimumTextWidthForNote(initial.id, maxWidth)
-        : MIN_NOTE_WIDTH),
+        ? minimumTextWidthForNote(initial.id, maxWidth / scale) * scale
+        : MIN_NOTE_WIDTH * scale),
     );
 
   if (!isResizeWidthLocked(initial.type) && !standaloneModule && axes.horizontal === "right") {
@@ -219,20 +220,20 @@ export function resizeNote(
       if (initial.height === null && requestedHeight >= autoHeight) {
         height = null;
       } else {
-        const minHeight = minimumShrinkHeight(initial, autoHeight);
+        const minHeight = minimumShrinkHeight(initial, autoHeight / scale) * scale;
         const maximumHeight = initial.height === null ? autoHeight : Math.min(initial.height, autoHeight);
         height = clampShrinkOnlyHeight(requestedHeight, minHeight, maximumHeight);
       }
     } else height = standaloneModule
-      ? clampModuleHeight(bottom - initial.y, initial.type)
-      : Math.max(minimumHeightForKind(initial.type), Math.min(maxHeight, bottom - initial.y));
+      ? clampModuleHeight((bottom - initial.y) / scale, initial.type) * scale
+      : Math.max((initial.minHeight ?? minimumHeightForKind(initial.type) * scale), Math.min(maxHeight, bottom - initial.y));
   } else if (axes.vertical === "top") {
     let top = initial.y + delta.y;
     if (snap) top = snapToGrid({ x: 0, y: top }, step).y;
     const fixedBottom = initial.y + visualHeight;
     height = standaloneModule
-      ? clampModuleHeight(fixedBottom - top, initial.type)
-      : Math.max(minimumHeightForKind(initial.type), Math.min(maxHeight, fixedBottom - top));
+      ? clampModuleHeight((fixedBottom - top) / scale, initial.type) * scale
+      : Math.max((initial.minHeight ?? minimumHeightForKind(initial.type) * scale), Math.min(maxHeight, fixedBottom - top));
     y = fixedBottom - height;
   }
 

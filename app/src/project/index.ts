@@ -10,6 +10,8 @@ import {
   type TaskState,
   NOTE_HEADER_HEIGHT_UNITS,
   R5_BASE_WIDTHS,
+  isValidNoteScale,
+  normalizeNoteScale,
 } from "../model/note";
 import { ME_OBJECT_ID, pairKey, type Link, type LinkAnchor } from "../model/link";
 import { isFrameAnchor } from "../links/anchors";
@@ -32,6 +34,7 @@ export interface IndexedNote {
   y: number;
   width: number;
   height: number | null;
+  scale?: number;
   type: NoteKind;
   task: TaskState | null;
   taskMemory: TaskState | null;
@@ -173,6 +176,7 @@ export function serializeProjectIndex(
       y: note.y,
       width: note.width,
       height: note.height,
+      scale: normalizeNoteScale(note.scale) > 1 ? normalizeNoteScale(note.scale) : undefined,
       ...(note.createdAt === undefined ? {} : { createdAt: note.createdAt }),
       type: note.type,
       task: copyTaskState(note.task),
@@ -239,6 +243,7 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       width: fixedDimensions?.width ?? entry.width,
       // Standalone Mood/Purpose nodes always size to their chips (auto height).
       height: fixedDimensions ? fixedDimensions.height : entry.type === "mood" || entry.type === "purpose" ? null : entry.height,
+      ...(entry.scale === undefined ? {} : { scale: entry.scale }),
       task: copyTaskState(entry.task),
       taskMemory: copyTaskState(entry.taskMemory),
       importance: entry.importance,
@@ -386,6 +391,8 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
   }
 
   const warnings: string[] = [];
+  const scale = value.scale === undefined ? undefined : isValidNoteScale(value.scale) ? value.scale : null;
+  if (scale === null) warnings.push(`Invalid scale for note ${id}; defaulted to 1.`);
   if (value.type !== undefined && type === null) warnings.push(`Invalid type for note ${id}; defaulted to note.`);
   else if (requireV2Fields && value.type === undefined) warnings.push(`Missing type for note ${id}; defaulted to note.`);
 
@@ -438,6 +445,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
       y,
       width,
       height,
+      scale: scale !== null && scale !== undefined && scale > 1 ? scale : undefined,
       type: type ?? "note",
       task,
       taskMemory,

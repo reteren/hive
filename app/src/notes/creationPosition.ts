@@ -1,6 +1,6 @@
 import { snapToGrid } from "../board/gridMath";
 import { worldToScreen, type Camera, type Point, type Size } from "../board/cameraMath";
-import { BEACON_SIZE } from "../model/note";
+import { BEACON_SIZE, normalizeNoteScale } from "../model/note";
 import type { NoteKind } from "../model/note";
 import { inboxHeightForEntryCount } from "../inbox/inboxLayout";
 
@@ -46,6 +46,7 @@ export interface CreationNoteSize {
 export interface PositionedCreationNote extends CreationNoteSize {
   x: number;
   y: number;
+  scale?: number;
 }
 
 /** Keyboard creation follows the board cursor; toolbar creation uses the view centre. */
@@ -102,11 +103,12 @@ export function estimatedCreationHeight(note: CreationNoteSize, measuredHeight?:
 }
 
 export function creationObstacleForNote(note: PositionedCreationNote, measuredHeight?: number): CreationObstacle {
+  const scale = normalizeNoteScale(note.scale);
   return {
     x: note.x,
     y: note.y,
-    width: note.width,
-    height: estimatedCreationHeight(note, measuredHeight),
+    width: note.width * scale,
+    height: estimatedCreationHeight(note, measuredHeight) * scale,
   };
 }
 

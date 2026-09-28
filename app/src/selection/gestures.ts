@@ -1,8 +1,8 @@
 import type { Point } from "../board/cameraMath";
 import { snapToGrid } from "../board/gridMath";
 import type { Bounds } from "../notes/layout.svelte";
-import { resizeNote, type ResizeEdge } from "./resize";
-import type { NoteKind } from "../model/note";
+import { resizeNote, resizeEdgeAxes, type ResizeEdge } from "./resize";
+import { MAX_NOTE_SCALE, normalizeNoteScale, type NoteKind } from "../model/note";
 
 export const GESTURE_THRESHOLD_PX = 4;
 
@@ -33,9 +33,13 @@ export interface NoteFrame {
   height: number | null;
   /** Metadata used by bounded resize gestures; omitted by movement-only callers. */
   type?: NoteKind;
+  /** The note's visual scale; frame dimensions are measured after this transform. */
+  scale?: number;
   minWidth?: number;
+  minHeight?: number;
   maxWidth?: number;
   maxHeight?: number;
+  statisticsExtensionWidth?: number;
 }
 
 export interface MoveGesture {
@@ -104,7 +108,11 @@ export function updateResizeGesture(
   cursorWorld: Point,
   snap: boolean,
   step: number,
+  uniformScale = false,
 ): ResizeGesture {
+  if (uniformScale) {
+    return { ...gesture, after: scaleResizeFrame(gesture, cursorWorld, snap, step) };
+  }
   const afterGeometry = resizeNote(
     gesture.before,
     gesture.visualHeight,
@@ -116,6 +124,64 @@ export function updateResizeGesture(
     { maxWidth: gesture.before.maxWidth, maxHeight: gesture.before.maxHeight },
   );
   return { ...gesture, after: { ...gesture.before, ...afterGeometry } };
+}
+
+/** Shift-resize changes the per-note transform, including for nodes with locked dimensions. */
+function scaleResizeFrame(gesture: ResizeGesture, cursorWorld: Point, snap: boolean, step: number): NoteFrame {
+  const frame = gesture.before;
+  const axes = resizeEdgeAxes(gesture.edge);
+  const width = Math.max(0.001, frame.width);
+  const height = Math.max(0.001, gesture.visualHeight);
+  const dx = cursorWorld.x - gesture.startWorld.x;
+  const dy = cursorWorld.y - gesture.startWorld.y;
+  let scaleX = 1;
+  let scaleY = 1;
+
+  if (axes.horizontal === "right") {
+    const right = frame.x + width + dx;
+    scaleX = (maybeSnapX(right, snap, step) - frame.x) / width;
+  } else if (axes.horizontal === "left") {
+    const left = maybeSnapX(frame.x + dx, snap, step);
+    scaleX = (frame.x + width - left) / width;
+  }
+  if (axes.vertical === "bottom") {
+    const bottom = frame.y + height + dy;
+    scaleY = (maybeSnapY(bottom, snap, step) - frame.y) / height;
+  } else if (axes.vertical === "top") {
+    const top = maybeSnapY(frame.y + dy, snap, step);
+    scaleY = (frame.y + height - top) / height;
+  }
+
+  const corner = axes.horizontal !== null && axes.vertical !== null;
+  const factor = corner
+    ? Math.abs(scaleX - 1) >= Math.abs(scaleY - 1) ? scaleX : scaleY
+    : axes.horizontal !== null ? scaleX : scaleY;
+  const currentScale = normalizeNoteScale(frame.scale);
+  const nextScale = Math.min(MAX_NOTE_SCALE, Math.max(1, currentScale * factor));
+  const ratio = nextScale / currentScale;
+  const nextWidth = width * ratio;
+  const nextHeight = height * ratio;
+
+  return {
+    ...frame,
+    x: axes.horizontal === "left"
+      ? frame.x + width - nextWidth
+      : axes.horizontal === null ? frame.x - (nextWidth - width) / 2 : frame.x,
+    y: axes.vertical === "top"
+      ? frame.y + height - nextHeight
+      : axes.vertical === null ? frame.y - (nextHeight - height) / 2 : frame.y,
+    width: nextWidth,
+    height: frame.height === null ? null : nextHeight,
+    scale: nextScale > 1 ? nextScale : undefined,
+  };
+}
+
+function maybeSnapX(value: number, snap: boolean, step: number): number {
+  return snap ? snapToGrid({ x: value, y: 0 }, step).x : value;
+}
+
+function maybeSnapY(value: number, snap: boolean, step: number): number {
+  return snap ? snapToGrid({ x: 0, y: value }, step).y : value;
 }
 
 export function cancelMoveGesture(gesture: MoveGesture): NoteFrame[] {
@@ -154,7 +220,8 @@ function sameFrame(first: NoteFrame, second: NoteFrame): boolean {
     first.x === second.x &&
     first.y === second.y &&
     first.width === second.width &&
-    first.height === second.height
+    first.height === second.height &&
+    normalizeNoteScale(first.scale) === normalizeNoteScale(second.scale)
   );
 }
 

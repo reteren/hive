@@ -1,7 +1,7 @@
 import { isFrameAnchor } from "../links/anchors";
 import { ME_OBJECT_ID, pairKey, type Link } from "../model/link";
 import { calculatorKey, parseCalculatorData, parseScope, parseTiers, type CalculatorData, parseListItems, parseRandomPick, parseSource, parseCustomMarks } from "../model/nodeData";
-import { IMPORTANCE_LEVELS, MOOD_KINDS, PURPOSE_KINDS, type Note, type NoteKind, type TaskState } from "../model/note";
+import { IMPORTANCE_LEVELS, isValidNoteScale, MOOD_KINDS, PURPOSE_KINDS, type Note, type NoteKind, type TaskState } from "../model/note";
 import type { TrashEntry } from "../model/retention.svelte";
 import type { Zone } from "../model/zone";
 import { copyTrashEntry } from "./trash";
@@ -106,6 +106,7 @@ function parseTrashNote(value: unknown): Note | null {
     typeof value.name !== "string" || !value.name.trim() || value.name.length > 500 ||
     typeof value.text !== "string" || !NOTE_KINDS.has(value.type as NoteKind) ||
     !finite(value.x) || !finite(value.y) || !finite(value.width) || value.width <= 0 ||
+    value.scale !== undefined && !isValidNoteScale(value.scale) ||
     !(value.height === null || value.height === undefined || finite(value.height) && value.height > 0)) return null;
   const task = parseTask(value.task);
   const taskMemory = parseTask(value.taskMemory);
@@ -128,6 +129,7 @@ function parseTrashNote(value: unknown): Note | null {
     y: value.y,
     width: value.width,
     height: value.height ?? null,
+    ...(typeof value.scale === "number" && value.scale > 1 ? { scale: value.scale } : {}),
     ...(task ? { task } : {}),
     ...(taskMemory ? { taskMemory } : {}),
     ...(value.importance ? { importance: value.importance as Note["importance"] } : {}),
