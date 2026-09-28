@@ -1,128 +1,90 @@
 <script lang="ts">
-  import { onDestroy } from "svelte";
-  import type { Point } from "../board/cameraMath";
-  import { R5_BASE_WIDTHS, type Note } from "../model/note";
-  import type { ListItem } from "../model/nodeData";
-  import { links } from "../model/links.svelte";
-  import { board } from "../model/board.svelte";
-  import { extractStatisticsFromList } from "./listStatsActions.svelte";
-  import { statisticsForListRow, formatListRowExtension } from "./listStatistics";
-  import { worldPointFromClient } from "../modules/moduleActions.svelte";
+  import type { Action } from "svelte/action";
+  import type { Note } from "../model/note";
+  import { R5_BASE_WIDTHS } from "../model/note";
+  import { PX_PER_UNIT } from "../board/cameraMath";
   import { noteBounds } from "../notes/layout.svelte";
+  import { extractStatisticsFromList } from "./listStatsActions.svelte";
+  import { listExtensionGeometry, LIST_STATS_EXTENSION_WIDTH, type ExtensionGeometry } from "./listStatsLayout";
+  import { pullOutListStatistics } from "./listStatsPullOut";
 
-  let { list, item }: { list: Note; item: ListItem } = $props();
-  let statistics = $derived(statisticsForListRow(list.id, item, board.notes, links.byId));
-  let label = $derived(formatListRowExtension(statistics));
-
-  let gesture: { pointerId: number; startX: number; startY: number; dragging: boolean } | null = null;
-  let previousUserSelect: { root: string; body: string } | null = null;
-
-  function beginDrag(event: PointerEvent): void {
-    event.stopPropagation();
-    if (event.button !== 0 || gesture) return;
-    event.preventDefault();
-    gesture = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, dragging: false };
-    window.addEventListener("pointermove", moveDrag, true);
-    window.addEventListener("pointerup", finishDrag, true);
-    window.addEventListener("pointercancel", cancelDrag, true);
-  }
-
-  function moveDrag(event: PointerEvent): void {
-    if (!gesture || gesture.pointerId !== event.pointerId) return;
-    if (!gesture.dragging && Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) >= 6) {
-      gesture.dragging = true;
-      previousUserSelect = {
-        root: document.documentElement.style.userSelect,
-        body: document.body.style.userSelect,
-      };
-      document.documentElement.style.userSelect = "none";
-      document.body.style.userSelect = "none";
-    }
-    if (gesture.dragging) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-  }
-
-  function finishDrag(event: PointerEvent): void {
-    if (!gesture || gesture.pointerId !== event.pointerId) return;
-    const wasDragging = gesture.dragging;
-    cleanupDrag();
-    if (!wasDragging) return;
-
-    event.preventDefault();
-    event.stopPropagation();
-    const point = worldPointFromClient(event.clientX, event.clientY);
-    if (!point || pointIsInsideList(point)) return;
-    extractStatisticsFromList(list.id, point);
-  }
-
-  function cancelDrag(event: PointerEvent): void {
-    if (gesture?.pointerId === event.pointerId) cleanupDrag();
-  }
-
-  function handleKeydown(event: KeyboardEvent): void {
-    if (event.code !== "Enter" && event.code !== "Space") return;
-    event.preventDefault();
-    event.stopPropagation();
-    const bounds = noteBounds(list);
-    const point: Point = {
-      x: bounds.x + bounds.width + 8 + R5_BASE_WIDTHS.stats / 2,
-      y: bounds.y + bounds.height / 2,
+  let { list, bodyElement, rowsElement }: { list: Note; bodyElement: HTMLElement; rowsElement: HTMLElement } = $props();
+  let geometry = $state<ExtensionGeometry>({ left: 0, top: 0, height: 28, cellLeft: 0 });
+  const measure: Action<HTMLElement> = () => {
+    const article = bodyElement.closest<HTMLElement>(".note-card");
+    if (!article) return;
+    const update = () => {
+      const header = article.querySelector<HTMLElement>(".note-header");
+      const frame = article.querySelector<HTMLElement>(".note-frame");
+      if (!header || !frame) return;
+      const articleRect = article.getBoundingClientRect();
+      const bodyRect = bodyElement.getBoundingClientRect();
+      const rowsRect = rowsElement.getBoundingClientRect();
+      const headerRect = header.getBoundingClientRect();
+      const frameRect = frame.getBoundingClientRect();
+      const scale = articleRect.width / Math.max(article.offsetWidth, 1);
+      const next = listExtensionGeometry((frameRect.right - articleRect.left) / scale,
+        (bodyRect.left - articleRect.left) / scale, (bodyRect.top - articleRect.top) / scale,
+        (rowsRect.left - articleRect.left) / scale, (rowsRect.bottom - articleRect.top) / scale,
+        (headerRect.top - articleRect.top) / scale);
+      if (JSON.stringify(geometry) !== JSON.stringify(next)) geometry = next;
+      bodyElement.style.setProperty("--list-statistics-cell-left", `${next.cellLeft}px`);
     };
-    extractStatisticsFromList(list.id, point);
-  }
-
-  function pointIsInsideList(point: Point): boolean {
+    const observer = new ResizeObserver(update);
+    observer.observe(article); observer.observe(rowsElement);
+    const mutations = new MutationObserver(update);
+    mutations.observe(rowsElement, { childList: true, subtree: true, characterData: true });
+    update();
+    return { destroy() { observer.disconnect(); mutations.disconnect(); bodyElement.style.removeProperty("--list-statistics-cell-left"); } };
+  };
+  function extractByKeyboard(event: KeyboardEvent): void {
+    if (event.code !== "Enter" && event.code !== "Space") return;
+    event.preventDefault(); event.stopPropagation();
     const bounds = noteBounds(list);
-    return point.x >= bounds.x && point.x <= bounds.x + bounds.width &&
-      point.y >= bounds.y && point.y <= bounds.y + bounds.height;
+    extractStatisticsFromList(list.id, { x: bounds.x + bounds.width + 5 + R5_BASE_WIDTHS.stats / 2, y: bounds.y + bounds.height / 2 });
   }
-
-  function cleanupDrag(): void {
-    gesture = null;
-    window.removeEventListener("pointermove", moveDrag, true);
-    window.removeEventListener("pointerup", finishDrag, true);
-    window.removeEventListener("pointercancel", cancelDrag, true);
-    if (previousUserSelect) {
-      document.documentElement.style.userSelect = previousUserSelect.root;
-      document.body.style.userSelect = previousUserSelect.body;
-      previousUserSelect = null;
-    }
-  }
-
-  onDestroy(cleanupDrag);
 </script>
 
-<span
-  class="list-stats-extension"
-  role="button"
-  tabindex="0"
-  aria-label={`Statistics: ${label}. Drag out of ${list.name} to restore a Statistics node`}
-  title="Drag out to restore a linked Statistics node"
-  data-list-stats-extension={list.id}
-  data-list-stats-row={item.id}
-  onpointerdown={beginDrag}
-  onkeydown={handleKeydown}
->{label}</span>
+<section class="list-statistics-extension" data-list-stats-extension={list.id} data-selection-ignore
+  role="group" aria-label={`Statistics attached to ${list.name}`}
+  style:left={`${geometry.left}px`} style:top={`${geometry.top}px`} style:height={`${geometry.height}px`}
+  style:width={`${LIST_STATS_EXTENSION_WIDTH * PX_PER_UNIT}px`}
+  use:measure use:pullOutListStatistics={list.id}>
+  <button class="list-statistics-header" type="button" data-list-stats-header
+    aria-label="Drag Statistics out of this List" title="Drag out to restore a linked Statistics node"
+    onkeydown={extractByKeyboard}>Statistics</button>
+</section>
 
 <style>
-  .list-stats-extension {
-    display: block;
-    max-width: 100%;
-    overflow: hidden;
-    color: var(--text-dim);
+  .list-statistics-extension {
+    position: absolute;
+    z-index: 1;
+    box-sizing: border-box;
+    min-height: 28px;
+    border-left: 1px solid #53565e;
+    border-bottom: 1px solid #41444a;
+    border-radius: 0 4px 4px 0;
+    background: var(--note-body);
     cursor: grab;
-    font-size: 9px;
-    line-height: 1.25;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    touch-action: none;
     user-select: none;
   }
-
-  .list-stats-extension:focus-visible {
-    border-radius: 2px;
-    outline: 1px solid var(--focus-ring, #80a9ff);
-    outline-offset: 2px;
+  .list-statistics-extension:active { cursor: grabbing; }
+  .list-statistics-header {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 28px;
+    padding: 0 9px;
+    border: 0;
+    border-bottom: 1px solid #454545;
+    color: var(--text);
+    background: var(--note-frame);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    text-align: left;
+    cursor: inherit;
   }
+  .list-statistics-header:focus-visible { outline: 1px solid var(--accent); outline-offset: -2px; }
 </style>

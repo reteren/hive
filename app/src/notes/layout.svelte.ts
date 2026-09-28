@@ -1,5 +1,6 @@
 import { DEFAULT_NOTE_WIDTH, R5_BASE_WIDTHS, type Note, type NoteKind } from "../model/note";
 import { PX_PER_UNIT } from "../board/cameraMath";
+import { widthWithListStatistics } from "../stats/listStatsLayout";
 
 /** Rendered height (u) of notes whose height follows their text; kept current by NotesLayer. */
 export const measuredHeights: Record<string, number> = $state({});
@@ -129,7 +130,7 @@ export function noteBounds(note: Note): Bounds {
   return {
     x: note.x,
     y: note.y,
-    width: note.width,
+    width: widthWithListStatistics(note),
     height: note.height ?? measuredHeights[note.id] ?? MIN_NOTE_HEIGHT,
   };
 }

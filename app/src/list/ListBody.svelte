@@ -21,6 +21,9 @@
   import { listItemKind } from "./icons";
   import ListKindIcon from "./ListKindIcon.svelte";
   import ListStatsExtension from "../stats/ListStatsExtension.svelte";
+  import ListStatisticsCell from "../stats/ListStatisticsCell.svelte";
+  import { alignedListStatistics } from "../stats/listStatsLayout";
+  import { links } from "../model/links.svelte";
   import { beginContentDrag, clearContentDrag, contentDragPreview, previewContentDrop, registerContentDropTarget, type ContentSource } from "./itemDrag";
   import { createContentMoveCommand } from "./transfers.svelte";
   import { listPickerInput } from "./pickerInput";
@@ -45,6 +48,7 @@
   });
   let dropIndex = $derived($activeDropTarget?.targetId === note.id
     ? (($activeDropTarget.payload as { index?: number } | undefined)?.index ?? null) : null);
+  let statisticsRows = $derived(note.listStats ? alignedListStatistics(note.id, visibleRows, board.notes, links.byId) : []);
   let choices = $derived.by(() => {
     const candidates = [...board.order.flatMap((id) => {
       const item = board.notes[id];
@@ -73,6 +77,8 @@
   });
   function findDropTarget(ids: readonly string[], point: Point): DropTargetMatch | null {
     if (ids.length !== 1 || !root || ids[0] === note.id || !board.notes[ids[0]]) return null;
+    // Statistics uses the module insertion path; an ordinary List link would intercept it.
+    if (board.notes[ids[0]].type === "stats") return null;
     const boardRect = root.closest<HTMLElement>(".board")?.getBoundingClientRect();
     if (!boardRect) return null;
     const screen = worldToScreen(camera, viewport, point);
@@ -167,8 +173,8 @@
   onpointermove={moveReorder} onpointerup={endReorder} onpointercancel={cancelPointer} onlostpointercapture={cancelPointer}>
   {#if items.length === 0 && !ownTarget}<p class="list-empty">Add links or text to this List.</p>{/if}
   <div class="list-rows" bind:this={rowContainer}>
-    {#each visibleRows as row (row.id)}
-      <div animate:flip={{ duration: preferences.reduceAnimations ? 0 : 140 }}>
+    {#each visibleRows as row, index (row.id)}
+      <div class="list-entry" animate:flip={{ duration: preferences.reduceAnimations ? 0 : 140 }}>
         {#if row.item}
           {@const item = row.item}
           {@const display = listItemDisplay(item, board.notes, zones.byId)}
@@ -180,16 +186,18 @@
                 <button class="list-link" type="button" data-list-target={item.targetId} onclick={() => openTarget(item.targetId!)}>{display.label}</button>
               {:else}<span class="list-label">{display.label}</span>{/if}
             </div>
-            {#if note.listStats}<div class="list-statistics"><ListStatsExtension list={note} {item} /></div>{/if}
             {#if display.missing}<span class="list-missing">missing</span>{/if}
             <ListKindIcon kind={listItemKind(item, board.notes, zones.byId)} />
             <button class="list-remove" type="button" data-list-remove={item.id} aria-label={`Remove ${display.label}`} onclick={() => removeListRow(note.id, item.id)}>&times;</button>
           </div>
+          {@const statistics = statisticsRows[index]}
+          {#if statistics}<ListStatisticsCell itemId={item.id} {statistics} />{/if}
         {:else}<div class="list-drag-slot" data-list-drag-slot={ownTarget?.index} style:height={`${preview?.height ?? 26}px`} aria-hidden="true"></div>{/if}
       </div>
     {/each}
     {#if dropIndex === items.length}<div class="list-end-slot" aria-hidden="true"></div>{/if}
   </div>
+  {#if note.listStats && root && rowContainer}<ListStatsExtension list={note} bodyElement={root} rowsElement={rowContainer} />{/if}
   {#if adding}
     <div class="list-picker" data-list-picker use:dismissBoardPopup={{ close: closePicker }} use:listPickerInput={closePicker}>
       <input data-list-search aria-label="Search board objects or type text" placeholder="Search board objects or type text" bind:this={searchInput} bind:value={query} onkeydown={handleSearchKeydown} />
@@ -206,13 +214,13 @@
 </div>
 
 <style>
-  .list-body { display: grid; min-width: 0; gap: 6px; padding: 2px; font-size: 11px; }
+  .list-body { position: relative; display: grid; min-width: 0; gap: 6px; padding: 2px; font-size: 11px; }
   .list-body.drop-target { outline: 2px solid var(--accent); outline-offset: -2px; background: #f5cd4d12; }
   .list-empty { margin: 0; padding: 6px; color: var(--text-dim); }
   .list-rows { display: grid; gap: 2px; }
   .list-row { display: flex; min-width: 0; min-height: 26px; align-items: center; gap: 4px; border: 1px solid #41444a; border-radius: 3px; background: #24262b; }
   .list-content { min-width: 0; flex: 1; display: grid; gap: 2px; }
-  .list-statistics { min-width: 0; max-width: 60%; }
+  .list-entry { position: relative; z-index: 2; }
   .list-drag-slot { box-sizing: border-box; border: 1px dashed var(--accent); border-radius: 3px; background: #f5cd4d12; }
   .list-row.insert-before { border-top: 2px solid var(--accent); }
   .list-row.missing { color: #898b90; background: #202125; }

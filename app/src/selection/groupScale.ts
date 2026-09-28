@@ -115,7 +115,7 @@ export function scaleGroupFrames(
       : bounds.y + (frame.y - bounds.y) * scaleY,
     width: moduleIds.has(frame.id) || preservesGroupDimensions(frame, beaconIds)
       ? frame.width
-      : Math.max(minimumWidthForKind(frame.type), Math.min(frame.maxWidth ?? maximumWidthForKind(frame.type), frame.width * scaleX)),
+      : Math.max(frame.minWidth ?? minimumWidthForKind(frame.type), Math.min(frame.maxWidth ?? maximumWidthForKind(frame.type), frame.width * scaleX)),
     height: preservesGroupDimensions(frame, beaconIds) ? frame.height : moduleIds.has(frame.id)
       ? clampModuleHeight((frame.height ?? MIN_NOTE_HEIGHT) * scaleY)
       : frame.height === null ? null : Math.max(minimumHeightForKind(frame.type), Math.min(frame.maxHeight ?? Infinity, frame.height * scaleY)),
@@ -171,11 +171,11 @@ function edgeScales(
 function minimumWidthScale(frames: readonly NoteFrame[], moduleIds: ReadonlySet<string>, beaconIds: ReadonlySet<string>): number {
   return Math.max(0, ...frames.flatMap((frame) => moduleIds.has(frame.id) || preservesGroupDimensions(frame, beaconIds)
     ? []
-    : [(frame.type === "map"
+    : [(frame.minWidth ?? (frame.type === "map"
       ? minimumWidthForKind(frame.type)
       : preferences.fitWidthToText
         ? Math.max(minimumWidthForKind(frame.type), minimumTextWidthForNote(frame.id, frame.maxWidth ?? maximumNoteWidthForKind(frame.type)))
-        : minimumWidthForKind(frame.type)) / frame.width]));
+        : minimumWidthForKind(frame.type))) / frame.width]));
 }
 
 function minimumHeightScale(frames: readonly NoteFrame[], moduleIds: ReadonlySet<string>, beaconIds: ReadonlySet<string>): number {

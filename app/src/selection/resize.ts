@@ -172,11 +172,11 @@ export function resizeNote(
   let y = initial.y;
   let width = initial.width;
   let height = initial.height;
-  const minimumWidth = initial.type === "map"
+  const minimumWidth = initial.minWidth ?? (initial.type === "map"
     ? MAP_MIN_WIDTH
     : preferences.fitWidthToText
     ? minimumTextWidthForNote(initial.id, maxWidth)
-    : MIN_NOTE_WIDTH;
+    : MIN_NOTE_WIDTH);
 
   if (!isResizeWidthLocked(initial.type) && !standaloneModule && axes.horizontal === "right") {
     let right = initial.x + initial.width + delta.x;

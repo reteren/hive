@@ -9,7 +9,8 @@
   import { execute, record, type HistoryCommand } from "../history/history.svelte";
   import { editing } from "../notes/editing.svelte";
   import type { NoteKind } from "../model/note";
-import { maximumResizableHeight, maximumResizableHeightForNote, minimumTextWidthForNote, noteBounds, renderedNoteMetrics, type Bounds } from "../notes/layout.svelte";
+  import { geometryFromListStatisticsFrame, listStatisticsFrameLimits, listStatisticsWidth } from "../stats/listStatsLayout";
+import { MIN_NOTE_WIDTH, maximumResizableHeight, maximumResizableHeightForNote, minimumTextWidthForNote, noteBounds, renderedNoteMetrics, type Bounds } from "../notes/layout.svelte";
 import { preferences } from "../settings/preferences.svelte";
 import { inboxAutoHeight, inboxMinHeight } from "../inbox/inboxLayout";
 import { userDictionary } from "../spell/dictionary.svelte";
@@ -726,7 +727,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
           event.preventDefault();
           event.stopPropagation();
           const before = frameForNote(id);
-          const width = minimumTextWidthForNote(id, maximumWidthForKind(note.type));
+          const width = minimumTextWidthForNote(id, maximumWidthForKind(note.type)) + listStatisticsWidth(note);
           const fromLeft = handle.dataset.resizeHandle === "left";
           const after = {
             ...before,
@@ -905,7 +906,9 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     return {
       ...boundsAsFrame(id, bounds, note.height),
       type: note.type,
-      maxWidth: maximumWidthForKind(note.type),
+      ...listStatisticsFrameLimits(note,
+        preferences.fitWidthToText ? minimumTextWidthForNote(id, maximumWidthForKind(note.type)) : MIN_NOTE_WIDTH,
+        maximumWidthForKind(note.type)),
       maxHeight,
     };
   }
@@ -1528,7 +1531,8 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
 
   function applyFrames(frames: readonly NoteFrame[]): void {
     for (const frame of frames) {
-      updateNote(frame.id, { x: frame.x, y: frame.y, width: frame.width, height: frame.height });
+      const note = boardState.notes[frame.id];
+      if (note) updateNote(frame.id, geometryFromListStatisticsFrame(note, frame));
     }
   }
 
@@ -1609,7 +1613,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
   function updateModulePreview(frames: readonly NoteFrame[], worldPoint: Point): void {
     if (frames.length !== 1) return;
     const note = boardState.notes[frames[0].id];
-    if (note?.type === "importance" || note?.type === "purpose" || note?.type === "mood" || note?.type === "markas") {
+    if (note?.type === "importance" || note?.type === "purpose" || note?.type === "mood" || note?.type === "markas" || note?.type === "stats") {
       updateModuleDropPreview(note.id, worldPoint);
     }
   }

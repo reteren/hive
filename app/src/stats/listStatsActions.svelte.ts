@@ -9,6 +9,7 @@ import { editing } from "../notes/editing.svelte";
 import { creationObstacleForNote, estimatedCreationHeight, nearestFreeNoteCenter, notePositionAt } from "../notes/creationPosition";
 import { measuredHeights } from "../notes/layout.svelte";
 import { uniqueName } from "../notes/naming";
+import { widthWithListStatistics } from "./listStatsLayout";
 
 /** Replace a Statistics node with the List's per-row extension as one Undo step. */
 export function insertStatisticsIntoList(statsId: string, listId: string): boolean {
@@ -75,7 +76,7 @@ function createStatisticsNote(worldPoint: Point): Note {
     worldPoint,
     width,
     height,
-    Object.values(board.notes).map((note) => creationObstacleForNote(note, measuredHeights[note.id])),
+    Object.values(board.notes).map((note) => creationObstacleForNote({ ...note, width: widthWithListStatistics(note) }, measuredHeights[note.id])),
     grid.snap,
     grid.step,
   );

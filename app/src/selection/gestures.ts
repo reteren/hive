@@ -33,6 +33,7 @@ export interface NoteFrame {
   height: number | null;
   /** Metadata used by bounded resize gestures; omitted by movement-only callers. */
   type?: NoteKind;
+  minWidth?: number;
   maxWidth?: number;
   maxHeight?: number;
 }

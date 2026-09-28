@@ -23,6 +23,7 @@
   import { zones } from "../model/zones.svelte";
   import { zoneOf } from "../zones/membership.svelte";
   import { isDimmed } from "../beacons/focus.svelte";
+  import { listStatisticsWidth, widthWithListStatistics } from "../stats/listStatsLayout";
 
   let { note, measureHeight }: { note: Note; measureHeight: Action<HTMLElement, string> } = $props();
   let renaming = $state(false);
@@ -120,6 +121,7 @@
 
 <article
   class="note-card"
+  class:list-with-statistics={note.type === "list" && note.listStats === true}
   data-note-id={note.id}
   data-dimmed={isDimmed(note.id)}
   data-editing={editing.noteId === note.id ? "true" : "false"}
@@ -132,7 +134,8 @@
   style:--custom-mark-gradient={customMarkGradient}
   style:left={`${note.x * PX_PER_UNIT}px`}
   style:top={`${note.y * PX_PER_UNIT}px`}
-  style:width={`${note.width * PX_PER_UNIT}px`}
+  style:width={`${widthWithListStatistics(note) * PX_PER_UNIT}px`}
+  style:--list-statistics-width={`${listStatisticsWidth(note) * PX_PER_UNIT}px`}
   style:height={note.height === null ? "auto" : `${note.height * PX_PER_UNIT}px`}
   style:min-height={note.height === null ? `${MIN_NOTE_HEIGHT * PX_PER_UNIT}px` : "0px"}
   use:measureHeight={`${note.id}\u0000${note.type}\u0000${note.text}`}
@@ -272,6 +275,12 @@
     border-radius: 2px;
     font: inherit;
     user-select: text;
+  }
+
+  .note-card.list-with-statistics > .note-header,
+  .note-card.list-with-statistics > .note-frame {
+    box-sizing: border-box;
+    width: calc(100% - var(--list-statistics-width));
   }
 
   .rename-error {
