@@ -152,49 +152,7 @@ describe("note creation placement", () => {
     expect(nearestFreeNoteCenter({ x: 0, y: 0 }, 4, 4, [], false, 10)).toEqual({ x: 7.6, y: -1.6 });
   });
 
-  it("keeps an unblocked random-placement origin and uses an injectable RNG for collisions", () => {
-    const origin = { x: 100, y: 100 };
-    expect(randomFreeNoteCenter(origin, 4, 4, [], false, 10, { rng: () => 0 })).toEqual(origin);
-    const placed = randomFreeNoteCenter(
-      origin,
-      4,
-      4,
-      [{ x: 98, y: 98, width: 4, height: 4 }],
-      false,
-      10,
-      { rng: () => 0.75 },
-    );
-    expect(placed).toEqual({ x: 116.5, y: 116.5 });
-    expect(RANDOM_CREATION_GAP_MIN).toBe(5);
-    expect(RANDOM_CREATION_GAP_MAX).toBe(15);
-  });
-
-  it("steps past each blocker with fresh random edge gaps and never overlaps", () => {
-    const values = [0.75, 0.75, 0, 0, 0, 0];
-    let index = 0;
-    const placed = randomFreeNoteCenter(
-      { x: 10, y: 10 },
-      4,
-      4,
-      [
-        { x: 8, y: 8, width: 4, height: 4 },
-        { x: 20, y: 20, width: 20, height: 20 },
-      ],
-      false,
-      10,
-      { rng: () => values[index++] ?? 0 },
-    );
-    expect(placed).toEqual({ x: 47, y: 47 });
-    for (const obstacle of [
-      { x: 8, y: 8, width: 4, height: 4 },
-      { x: 20, y: 20, width: 20, height: 20 },
-    ]) {
-      expect(placed.x - 2 < obstacle.x + obstacle.width && placed.x + 2 > obstacle.x &&
-        placed.y - 2 < obstacle.y + obstacle.height && placed.y + 2 > obstacle.y).toBe(false);
-    }
-  });
-
-  it("places Inbox entries at random 5–15 unit gaps from their anchor", () => {
+  it("chooses a closest cardinal side candidate and supports a zero tangent offset", () => {
     const anchor = { x: 0, y: 0, width: 20, height: 20 };
     const placed = randomFreeNoteCenter(
       { x: 10, y: 10 },
@@ -203,13 +161,45 @@ describe("note creation placement", () => {
       [anchor],
       false,
       10,
-      { anchor, rng: () => 0.75 },
+      { anchor, rng: () => 0.5 },
     );
-    expect(placed).toEqual({ x: 34.5, y: 34.5 });
-    expect(placed.x - 2 - (anchor.x + anchor.width)).toBeGreaterThanOrEqual(RANDOM_CREATION_GAP_MIN);
-    expect(placed.x - 2 - (anchor.x + anchor.width)).toBeLessThanOrEqual(RANDOM_CREATION_GAP_MAX);
-    expect(placed.y - 2 - (anchor.y + anchor.height)).toBeGreaterThanOrEqual(RANDOM_CREATION_GAP_MIN);
-    expect(placed.y - 2 - (anchor.y + anchor.height)).toBeLessThanOrEqual(RANDOM_CREATION_GAP_MAX);
+    const isHorizontalSide = Math.abs(placed.x - 10) === 22 && placed.y === 10;
+    const isVerticalSide = Math.abs(placed.y - 10) === 22 && placed.x === 10;
+    expect(isHorizontalSide || isVerticalSide).toBe(true);
+    expect(RANDOM_CREATION_GAP_MIN).toBe(5);
+    expect(RANDOM_CREATION_GAP_MAX).toBe(15);
+  });
+
+  it("expands around the original source in rings when every nearby side is blocked", () => {
+    const enclosure = { x: -100, y: -100, width: 200, height: 200 };
+    const placed = randomFreeNoteCenter(
+      { x: 10, y: 10 },
+      4,
+      4,
+      [enclosure],
+      false,
+      10,
+      { rng: () => 0.5 },
+    );
+    expect(rectangleClearance(placed, 4, 4, enclosure)).toBeGreaterThanOrEqual(RANDOM_CREATION_GAP_MIN);
+    expect(Math.hypot(placed.x - 10, placed.y - 10)).toBeGreaterThan(100);
+  });
+
+  it("keeps random placements at least five units from the source and every obstacle", () => {
+    const anchor = { x: 0, y: 0, width: 20, height: 20 };
+    const blocker = { x: 28, y: -2, width: 6, height: 6 };
+    const placed = randomFreeNoteCenter(
+      { x: 10, y: 10 },
+      4,
+      4,
+      [anchor, blocker],
+      false,
+      10,
+      { anchor, rng: () => 0.25 },
+    );
+    for (const obstacle of [anchor, blocker]) {
+      expect(rectangleClearance(placed, 4, 4, obstacle)).toBeGreaterThanOrEqual(RANDOM_CREATION_GAP_MIN - 1e-9);
+    }
   });
 
   it("keeps the menu inside the viewport near the lower-right edge", () => {
@@ -219,3 +209,9 @@ describe("note creation placement", () => {
     });
   });
 });
+
+function rectangleClearance(center: { x: number; y: number }, width: number, height: number, obstacle: CreationObstacle): number {
+  const horizontal = Math.max(obstacle.x - (center.x + width / 2), center.x - width / 2 - obstacle.x - obstacle.width, 0);
+  const vertical = Math.max(obstacle.y - (center.y + height / 2), center.y - height / 2 - obstacle.y - obstacle.height, 0);
+  return Math.hypot(horizontal, vertical);
+}

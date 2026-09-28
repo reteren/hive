@@ -50,11 +50,15 @@ describe("plus and minus mini-nodes", () => {
       type: kind,
       name: baseName,
       text: "",
-      x: 50 - DEFAULT_MINI_NOTE_WIDTH / 2,
-      y: 40 - estimatedCreationHeight({ type: kind, width: DEFAULT_MINI_NOTE_WIDTH, height: null, text: "" }) / 2,
       width: DEFAULT_MINI_NOTE_WIDTH,
       height: null,
     });
+    expect(hasRandomEdgeGap({
+      x: created!.x,
+      y: created!.y,
+      width: created!.width,
+      height: estimatedCreationHeight(created!),
+    }, creationMenu.origin)).toBe(true);
     expect(created?.createdAt).toEqual(expect.any(Number));
     expect(editing.noteId).toBe(id);
     expect(selection.ids).toEqual([id]);
@@ -138,3 +142,20 @@ describe("plus and minus mini-nodes", () => {
     expect(history.cursor).toBe(1);
   });
 });
+
+function hasRandomEdgeGap(
+  frame: { x: number; y: number; width: number; height: number },
+  origin: { x: number; y: number },
+): boolean {
+  const xGap = frame.x > origin.x
+    ? frame.x - origin.x
+    : frame.x + frame.width < origin.x
+      ? origin.x - frame.x - frame.width
+      : 0;
+  const yGap = frame.y > origin.y
+    ? frame.y - origin.y
+    : frame.y + frame.height < origin.y
+      ? origin.y - frame.y - frame.height
+      : 0;
+  return [xGap, yGap].some((gap) => gap >= 5 - 1e-9 && gap <= 15 + 1e-9);
+}

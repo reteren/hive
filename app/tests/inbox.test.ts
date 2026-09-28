@@ -8,7 +8,7 @@ import { grid } from "../src/board/grid.svelte";
 import { parseProjectIndex, serializeProjectIndex } from "../src/project/index";
 import { selection } from "../src/selection/selection.svelte";
 import { resolveInboxInteraction, resolveInboxTwin, submitQuickInput } from "../src/inbox/inbox.svelte";
-import { formatInboxEntryTime, inboxEntryBaseName } from "../src/inbox/inboxLogic";
+import { formatInboxEntryTime, inboxEntryBaseName, placeInboxEntries } from "../src/inbox/inboxLogic";
 import { estimatedCreationHeight } from "../src/notes/creationPosition";
 import { INBOX_MIN_ROWS, INBOX_ROW_HEIGHT, inboxAutoHeight, inboxHeightForEntryCount, inboxMinHeight } from "../src/inbox/inboxLayout";
 
@@ -76,6 +76,70 @@ describe("Inbox quick input", () => {
     const createdLink = Object.values(links.byId).find((link) => link.to === entry.id);
     expect(createdLink).toMatchObject({ from: inbox.id, to: entry.id, kind: "strong", shape: "base" });
     expect(history.cursor).toBe(1);
+  });
+
+  it("places consecutive entries on distinct adjacent sides of the same Inbox", () => {
+    const inbox = note("inbox", "inbox", 0, { width: 30 });
+    const created: Note[] = [];
+    let nextId = 0;
+    for (let index = 0; index < 4; index += 1) {
+      const [entry] = placeInboxEntries("Repeated idea", [inbox], [inbox, ...created], {
+        createdAt: index,
+        nextId: () => `entry-${nextId++}`,
+        snap: false,
+        step: 10,
+        rng: () => 0.5,
+      });
+      expect(entry).toBeDefined();
+      if (entry) created.push(entry);
+    }
+
+    const inboxFrame = {
+      x: inbox.x,
+      y: inbox.y,
+      width: inbox.width,
+      height: estimatedCreationHeight(inbox),
+    };
+    const sides = created.map((entry) => {
+      const frame = {
+        x: entry.x,
+        y: entry.y,
+        width: entry.width,
+        height: estimatedCreationHeight(entry),
+      };
+      const centerX = frame.x + frame.width / 2;
+      const centerY = frame.y + frame.height / 2;
+      const inboxCenterX = inboxFrame.x + inboxFrame.width / 2;
+      const inboxCenterY = inboxFrame.y + inboxFrame.height / 2;
+      const offsetX = centerX - inboxCenterX;
+      const offsetY = centerY - inboxCenterY;
+      const side = Math.abs(offsetX) < 1
+        ? offsetY < 0 ? "above" : "below"
+        : Math.abs(offsetY) < 1
+          ? offsetX < 0 ? "left" : "right"
+          : "diagonal";
+
+      expect(frameGap(frame, inboxFrame)).toBeCloseTo(10);
+      return side;
+    });
+
+    expect(new Set(sides).size).toBe(4);
+    expect(sides).not.toContain("diagonal");
+
+    const frames = [
+      inboxFrame,
+      ...created.map((entry) => ({
+        x: entry.x,
+        y: entry.y,
+        width: entry.width,
+        height: estimatedCreationHeight(entry),
+      })),
+    ];
+    for (let first = 0; first < frames.length; first += 1) {
+      for (let second = first + 1; second < frames.length; second += 1) {
+        expect(frameGap(frames[first], frames[second])).toBeGreaterThanOrEqual(5 - 1e-9);
+      }
+    }
   });
 
   it("places shared twins for multiple Inboxes and resolves the group in one Undo step", () => {
@@ -176,3 +240,12 @@ describe("Inbox quick input", () => {
     expect(inboxAutoHeight(inbox)).toBe(inboxHeightForEntryCount(2));
   });
 });
+
+function frameGap(
+  first: { x: number; y: number; width: number; height: number },
+  second: { x: number; y: number; width: number; height: number },
+): number {
+  const dx = Math.max(first.x - second.x - second.width, second.x - first.x - first.width, 0);
+  const dy = Math.max(first.y - second.y - second.height, second.y - first.y - first.height, 0);
+  return Math.hypot(dx, dy);
+}

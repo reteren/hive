@@ -176,10 +176,10 @@ export function nearestFreeNoteCenter(
 }
 
 /**
- * Keep a free requested centre, but when it overlaps an object place it in a random
- * quadrant 5–15 units beyond that object's edges. Further collisions walk out from
- * the blocking object using another random edge gap. The optional anchor always uses
- * this behaviour, even when the requested centre itself is clear.
+ * Choose the closest free candidate among the eight sides around a fixed source.
+ * Cardinal candidates use a 5–15 unit edge gap and a -15..15 unit tangent offset;
+ * diagonal candidates use independent 5–15 unit gaps on both axes. When all eight
+ * candidates are blocked, the same source is searched again in outward rings.
  */
 export function randomFreeNoteCenter(
   center: Point,
@@ -197,31 +197,150 @@ export function randomFreeNoteCenter(
     throw new RangeError("Grid step must be a positive finite number when snapping is enabled.");
   }
 
-  const base = snap ? snapToGrid(center, step) : { ...center };
+  const source = isValidObstacle(options.anchor)
+    ? options.anchor
+    : { x: center.x, y: center.y, width: 0, height: 0 };
+  const sourceCenter = { x: source.x + source.width / 2, y: source.y + source.height / 2 };
   const validObstacles = uniqueObstacles([
     ...obstacles,
-    ...(options.anchor ? [options.anchor] : []),
+    ...(isValidObstacle(options.anchor) ? [options.anchor] : []),
     { x: -BEACON_SIZE / 2, y: -BEACON_SIZE / 2, width: BEACON_SIZE, height: BEACON_SIZE },
   ]);
-  const baseHits = validObstacles.filter((obstacle) => rectanglesOverlap(base, width, height, obstacle));
-  if (!options.anchor && baseHits.length === 0) return base;
-
-  let anchor = options.anchor ?? baseHits[0];
-  if (!anchor) return base;
+  const clearanceObstacles = isValidObstacle(options.anchor)
+    ? validObstacles
+    : [...validObstacles, source];
 
   const rng = options.rng ?? Math.random;
-  const signX = sampleRandom(rng) < 0.5 ? -1 : 1;
-  const signY = sampleRandom(rng) < 0.5 ? -1 : 1;
-  for (let attempt = 0; attempt <= validObstacles.length; attempt += 1) {
-    const candidate = randomAdjacentCenter(anchor, width, height, signX, signY, rng);
-    const blockers = validObstacles.filter((obstacle) => rectanglesOverlap(candidate, width, height, obstacle));
-    if (blockers.length === 0) return candidate;
-    anchor = furthestRandomBlocker(blockers, signX, signY);
+  const furthestObstacle = clearanceObstacles.reduce((extent, obstacle) => Math.max(
+    extent,
+    Math.abs(obstacle.x - sourceCenter.x),
+    Math.abs(obstacle.x + obstacle.width - sourceCenter.x),
+    Math.abs(obstacle.y - sourceCenter.y),
+    Math.abs(obstacle.y + obstacle.height - sourceCenter.y),
+  ), 0);
+  const maxRing = Math.ceil((furthestObstacle + Math.max(width, height) + RANDOM_CREATION_GAP_MAX + 15 + (snap ? step : 0)) / 10);
+
+  for (let ring = 0; ring <= maxRing; ring += 1) {
+    const directions = shuffledDirections(rng);
+    const candidates = directions.map((direction, order) => {
+      const candidate = randomDirectionalCenter(source, sourceCenter, direction, width, height, ring, rng);
+      return { center: snap ? snapToGrid(candidate, step) : candidate, order };
+    }).filter(({ center: candidate }) => hasRandomClearance(
+      candidate,
+      width,
+      height,
+      clearanceObstacles,
+    ));
+
+    candidates.sort((first, second) => {
+      const firstDistance = distanceSquared(first.center, sourceCenter);
+      const secondDistance = distanceSquared(second.center, sourceCenter);
+      return Math.abs(firstDistance - secondDistance) <= 1e-9
+        ? first.order - second.order
+        : firstDistance - secondDistance;
+    });
+    if (candidates[0]) return candidates[0].center;
   }
 
-  // This defensive path is outside the union of every obstacle, so it cannot overlap.
-  const bounds = obstacleUnion(validObstacles);
-  return randomAdjacentCenter(bounds, width, height, signX, signY, rng);
+  throw new Error("Could not find a free random creation position.");
+}
+
+type RandomDirection = "right" | "below" | "left" | "above" | "right-below" | "right-above" | "left-below" | "left-above";
+
+function isValidObstacle(obstacle: CreationObstacle | undefined): obstacle is CreationObstacle {
+  return Boolean(obstacle && [obstacle.x, obstacle.y, obstacle.width, obstacle.height].every(Number.isFinite) &&
+    obstacle.width > 0 && obstacle.height > 0);
+}
+
+function shuffledDirections(rng: () => number): RandomDirection[] {
+  const directions: RandomDirection[] = [
+    "right", "below", "left", "above",
+    "right-below", "right-above", "left-below", "left-above",
+  ];
+  for (let index = directions.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.min(index, Math.floor(sampleRandom(rng) * (index + 1)));
+    [directions[index], directions[swapIndex]] = [directions[swapIndex], directions[index]];
+  }
+  return directions;
+}
+
+function randomDirectionalCenter(
+  source: CreationObstacle,
+  sourceCenter: Point,
+  direction: RandomDirection,
+  width: number,
+  height: number,
+  ring: number,
+  rng: () => number,
+): Point {
+  const left = source.x;
+  const right = source.x + source.width;
+  const top = source.y;
+  const bottom = source.y + source.height;
+  const ringOffset = ring * 10;
+  let x: number;
+  let y: number;
+
+  switch (direction) {
+    case "right":
+      x = right + randomGap(rng, ringOffset) + width / 2;
+      y = sourceCenter.y + randomTangentOffset(rng);
+      break;
+    case "left":
+      x = left - randomGap(rng, ringOffset) - width / 2;
+      y = sourceCenter.y + randomTangentOffset(rng);
+      break;
+    case "below":
+      x = sourceCenter.x + randomTangentOffset(rng);
+      y = bottom + randomGap(rng, ringOffset) + height / 2;
+      break;
+    case "above":
+      x = sourceCenter.x + randomTangentOffset(rng);
+      y = top - randomGap(rng, ringOffset) - height / 2;
+      break;
+    case "right-below":
+      x = right + randomGap(rng, ringOffset) + width / 2;
+      y = bottom + randomGap(rng, ringOffset) + height / 2;
+      break;
+    case "right-above":
+      x = right + randomGap(rng, ringOffset) + width / 2;
+      y = top - randomGap(rng, ringOffset) - height / 2;
+      break;
+    case "left-below":
+      x = left - randomGap(rng, ringOffset) - width / 2;
+      y = bottom + randomGap(rng, ringOffset) + height / 2;
+      break;
+    case "left-above":
+      x = left - randomGap(rng, ringOffset) - width / 2;
+      y = top - randomGap(rng, ringOffset) - height / 2;
+      break;
+  }
+
+  return { x, y };
+}
+
+function randomGap(rng: () => number, ringOffset = 0): number {
+  return RANDOM_CREATION_GAP_MIN + ringOffset +
+    sampleRandom(rng) * (RANDOM_CREATION_GAP_MAX - RANDOM_CREATION_GAP_MIN);
+}
+
+function randomTangentOffset(rng: () => number): number {
+  return (sampleRandom(rng) * 2 - 1) * RANDOM_CREATION_GAP_MAX;
+}
+
+function hasRandomClearance(
+  candidate: Point,
+  width: number,
+  height: number,
+  obstacles: readonly CreationObstacle[],
+): boolean {
+  return obstacles.every((obstacle) =>
+    rectangleDistance(candidate, width, height, obstacle) >= RANDOM_CREATION_GAP_MIN - 1e-9,
+  );
+}
+
+function distanceSquared(first: Point, second: Point): number {
+  return (first.x - second.x) ** 2 + (first.y - second.y) ** 2;
 }
 
 function uniqueObstacles(obstacles: readonly CreationObstacle[]): CreationObstacle[] {
@@ -236,48 +355,9 @@ function uniqueObstacles(obstacles: readonly CreationObstacle[]): CreationObstac
   });
 }
 
-function randomAdjacentCenter(
-  obstacle: CreationObstacle,
-  width: number,
-  height: number,
-  signX: -1 | 1,
-  signY: -1 | 1,
-  rng: () => number,
-): Point {
-  const gapX = randomGap(rng);
-  const gapY = randomGap(rng);
-  return {
-    x: signX > 0
-      ? obstacle.x + obstacle.width + width / 2 + gapX
-      : obstacle.x - width / 2 - gapX,
-    y: signY > 0
-      ? obstacle.y + obstacle.height + height / 2 + gapY
-      : obstacle.y - height / 2 - gapY,
-  };
-}
-
-function randomGap(rng: () => number): number {
-  return RANDOM_CREATION_GAP_MIN + sampleRandom(rng) * (RANDOM_CREATION_GAP_MAX - RANDOM_CREATION_GAP_MIN);
-}
-
 function sampleRandom(rng: () => number): number {
   const value = rng();
   return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0.5;
-}
-
-function furthestRandomBlocker(blockers: readonly CreationObstacle[], signX: -1 | 1, signY: -1 | 1): CreationObstacle {
-  const outwardExtent = (obstacle: CreationObstacle): number =>
-    (signX > 0 ? obstacle.x + obstacle.width : -obstacle.x) +
-    (signY > 0 ? obstacle.y + obstacle.height : -obstacle.y);
-  return [...blockers].sort((first, second) => outwardExtent(second) - outwardExtent(first))[0];
-}
-
-function obstacleUnion(obstacles: readonly CreationObstacle[]): CreationObstacle {
-  const minX = Math.min(...obstacles.map((obstacle) => obstacle.x));
-  const minY = Math.min(...obstacles.map((obstacle) => obstacle.y));
-  const maxX = Math.max(...obstacles.map((obstacle) => obstacle.x + obstacle.width));
-  const maxY = Math.max(...obstacles.map((obstacle) => obstacle.y + obstacle.height));
-  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
 type Direction = "right" | "below" | "left" | "above";

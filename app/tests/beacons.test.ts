@@ -38,15 +38,21 @@ afterEach(() => {
 });
 
 describe("beacon creation and editing", () => {
-  it("creates fixed-size, named, coloured beacons at the Q origin with one history step", () => {
+  it("creates fixed-size, named, coloured beacons near the Q origin with one history step each", () => {
     const first = createNoteKind("beacon");
     const second = createNoteKind("beacon");
-    expect(board.notes[first]).toMatchObject({
-      type: "beacon", name: "Beacon", text: "", x: 50 - BEACON_SIZE / 2,
-      y: 40 - BEACON_SIZE / 2, width: BEACON_SIZE, height: BEACON_SIZE,
+    const firstBeacon = board.notes[first]!;
+    const secondBeacon = board.notes[second]!;
+    const firstFrame = { ...firstBeacon, height: firstBeacon.height ?? 0 };
+    const secondFrame = { ...secondBeacon, height: secondBeacon.height ?? 0 };
+    expect(firstBeacon).toMatchObject({
+      type: "beacon", name: "Beacon", text: "", width: BEACON_SIZE, height: BEACON_SIZE,
       color: BEACON_PALETTE[0], createdAt: expect.any(Number),
     });
-    expect(board.notes[second]).toMatchObject({ name: "Beacon 2", color: BEACON_PALETTE[1] });
+    expect(secondBeacon).toMatchObject({ name: "Beacon 2", color: BEACON_PALETTE[1] });
+    expect(hasRandomEdgeGap(firstFrame, creationMenu.origin)).toBe(true);
+    expect(hasRandomEdgeGap(secondFrame, creationMenu.origin)).toBe(true);
+    expect(frameGap(firstFrame, secondFrame)).toBeGreaterThanOrEqual(5);
     expect(history.entries).toHaveLength(2);
     undo();
     expect(board.notes[second]).toBeUndefined();
@@ -84,6 +90,32 @@ describe("beacon creation and editing", () => {
     expect(links.byId.head).toBeDefined();
   });
 });
+
+function hasRandomEdgeGap(
+  frame: { x: number; y: number; width: number; height: number },
+  origin: { x: number; y: number },
+): boolean {
+  const xGap = frame.x > origin.x
+    ? frame.x - origin.x
+    : frame.x + frame.width < origin.x
+      ? origin.x - frame.x - frame.width
+      : 0;
+  const yGap = frame.y > origin.y
+    ? frame.y - origin.y
+    : frame.y + frame.height < origin.y
+      ? origin.y - frame.y - frame.height
+      : 0;
+  return [xGap, yGap].some((gap) => gap >= 5 - 1e-9 && gap <= 15 + 1e-9);
+}
+
+function frameGap(
+  first: { x: number; y: number; width: number; height: number },
+  second: { x: number; y: number; width: number; height: number },
+): number {
+  const dx = Math.max(first.x - second.x - second.width, second.x - first.x - first.width, 0);
+  const dy = Math.max(first.y - second.y - second.height, second.y - first.y - first.height, 0);
+  return Math.hypot(dx, dy);
+}
 
 describe("beacon link rules", () => {
   it("rejects every incoming beacon link and beacon-to-beacon links, including ME", () => {

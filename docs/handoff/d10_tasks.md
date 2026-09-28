@@ -33,3 +33,5 @@ Implement:
 3. Insertion by dragging the Statistics node onto the List must work reliably with a real mouse (same drop detection as modules). The List's width grows by the extension width while inserted (node bounds/selection/links include it).
 4. Save/load, trash/archive keep listStats.
 Tests for alignment model, insert/extract round trip, Undo.
+
+TASK P2 (follow-up to P, same files) — coordinator smoke: 8 quick-input entries into one Inbox (`submitQuickInput` × 8, Inbox 30 u wide at x=-15,y=-10). Entry 2 was placed below the Inbox while the Inbox was short; the Inbox then grew (new rows, inboxAutoHeight) and now OVERLAPS entry 2. Fix: when placing around an Inbox, treat the Inbox's obstacle as its height after all pending entries are added — better, its maximum auto height (it shrinks to scroll at some max rows; use inboxLayout helpers) — so the growing Inbox never covers placed nodes. Apply the same idea to any source whose height grows with its content. Test: 10 consecutive entries → no overlap with the Inbox at its final height, min gap 5 u. The rest of P is accepted (8 directions, sides work, no chains).
