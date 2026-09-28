@@ -5,6 +5,7 @@ import { links } from "../model/links.svelte";
 /** Inbox row sizing is expressed in board units (10 CSS pixels at zoom 1). */
 export const INBOX_ROW_HEIGHT = 2.4;
 export const INBOX_MIN_ROWS = 2;
+export const INBOX_PLACEMENT_GROWTH_ROWS = 10;
 
 const INBOX_FIXED_CHROME_HEIGHT = 7.8;
 const INBOX_EMPTY_MESSAGE_HEIGHT = 0;

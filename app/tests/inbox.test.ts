@@ -10,7 +10,14 @@ import { selection } from "../src/selection/selection.svelte";
 import { resolveInboxInteraction, resolveInboxTwin, submitQuickInput } from "../src/inbox/inbox.svelte";
 import { formatInboxEntryTime, inboxEntryBaseName, placeInboxEntries } from "../src/inbox/inboxLogic";
 import { estimatedCreationHeight } from "../src/notes/creationPosition";
-import { INBOX_MIN_ROWS, INBOX_ROW_HEIGHT, inboxAutoHeight, inboxHeightForEntryCount, inboxMinHeight } from "../src/inbox/inboxLayout";
+import {
+  INBOX_MIN_ROWS,
+  INBOX_PLACEMENT_GROWTH_ROWS,
+  INBOX_ROW_HEIGHT,
+  inboxAutoHeight,
+  inboxHeightForEntryCount,
+  inboxMinHeight,
+} from "../src/inbox/inboxLayout";
 
 function note(id: string, type: Note["type"], x: number, overrides: Partial<Note> = {}): Note {
   return {
@@ -78,8 +85,9 @@ describe("Inbox quick input", () => {
     expect(history.cursor).toBe(1);
   });
 
-  it("places consecutive entries on distinct adjacent sides of the same Inbox", () => {
+  it("places consecutive entries on distinct adjacent sides of the same reserved Inbox frame", () => {
     const inbox = note("inbox", "inbox", 0, { width: 30 });
+    const autoHeight = estimatedCreationHeight(inbox);
     const created: Note[] = [];
     let nextId = 0;
     for (let index = 0; index < 4; index += 1) {
@@ -89,6 +97,7 @@ describe("Inbox quick input", () => {
         snap: false,
         step: 10,
         rng: () => 0.5,
+        inboxAutoHeights: { [inbox.id]: autoHeight },
       });
       expect(entry).toBeDefined();
       if (entry) created.push(entry);
@@ -98,7 +107,7 @@ describe("Inbox quick input", () => {
       x: inbox.x,
       y: inbox.y,
       width: inbox.width,
-      height: estimatedCreationHeight(inbox),
+      height: autoHeight + INBOX_ROW_HEIGHT * (1 + INBOX_PLACEMENT_GROWTH_ROWS),
     };
     const sides = created.map((entry) => {
       const frame = {
@@ -135,6 +144,39 @@ describe("Inbox quick input", () => {
         height: estimatedCreationHeight(entry),
       })),
     ];
+    for (let first = 0; first < frames.length; first += 1) {
+      for (let second = first + 1; second < frames.length; second += 1) {
+        expect(frameGap(frames[first], frames[second])).toBeGreaterThanOrEqual(5 - 1e-9);
+      }
+    }
+  });
+
+  it("keeps ten consecutive entries clear of the Inbox's final auto-height by at least five units", () => {
+    const inbox = note("inbox", "inbox", -15, { y: -10, width: 30 });
+    replaceBoard([inbox]);
+
+    const entryIds: string[] = [];
+    for (let index = 0; index < 10; index += 1) {
+      const result = submitQuickInput(`Entry ${index + 1}`);
+      expect(result.ok).toBe(true);
+      if (result.ok) entryIds.push(...result.noteIds);
+    }
+
+    const finalInbox = board.notes.inbox!;
+    const frames = [
+      { x: finalInbox.x, y: finalInbox.y, width: finalInbox.width, height: inboxAutoHeight(finalInbox) },
+      ...entryIds.map((id) => {
+        const entry = board.notes[id]!;
+        return {
+          x: entry.x,
+          y: entry.y,
+          width: entry.width,
+          height: estimatedCreationHeight(entry),
+        };
+      }),
+    ];
+
+    expect(inboxAutoHeight(finalInbox)).toBe(inboxHeightForEntryCount(10));
     for (let first = 0; first < frames.length; first += 1) {
       for (let second = first + 1; second < frames.length; second += 1) {
         expect(frameGap(frames[first], frames[second])).toBeGreaterThanOrEqual(5 - 1e-9);

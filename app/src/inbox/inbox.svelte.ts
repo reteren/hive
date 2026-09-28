@@ -12,6 +12,7 @@ import {
   type SelectionInteractionSource,
 } from "../selection/selection.svelte";
 import { placeInboxEntries } from "./inboxLogic";
+import { inboxAutoHeight } from "./inboxLayout";
 
 export type QuickInputResult =
   | { ok: true; noteIds: string[] }
@@ -32,6 +33,7 @@ export function submitQuickInput(text: string): QuickInputResult {
     snap: grid.snap,
     step: grid.step,
     measuredHeights,
+    inboxAutoHeights: Object.fromEntries(inboxes.map((inbox) => [inbox.id, inboxAutoHeight(inbox)])),
   });
   const createdLinks: Link[] = inboxes.map((inbox, index) => {
     const target = notes[index];

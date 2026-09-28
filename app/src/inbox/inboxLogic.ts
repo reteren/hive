@@ -7,6 +7,7 @@ import {
 } from "../notes/creationPosition";
 import { uniqueName } from "../notes/naming";
 import type { Point } from "../board/cameraMath";
+import { INBOX_PLACEMENT_GROWTH_ROWS, INBOX_ROW_HEIGHT } from "./inboxLayout";
 
 export interface InboxEntryPlacementOptions {
   groupId?: string;
@@ -16,6 +17,7 @@ export interface InboxEntryPlacementOptions {
   step: number;
   rng?: () => number;
   measuredHeights?: Readonly<Record<string, number | undefined>>;
+  inboxAutoHeights?: Readonly<Record<string, number | undefined>>;
 }
 
 /** Use the first input line as a concise note title, keeping the body untouched. */
@@ -50,14 +52,26 @@ export function placeInboxEntries(
   if (inboxes.length === 0) return [];
 
   const occupiedNames = existingNotes.map((note) => note.name);
-  const obstacles = existingNotes.map((note) =>
-    creationObstacleForNote(note, options.measuredHeights?.[note.id]),
-  );
+  const reservedInboxObstacles = new Map(inboxes.map((inbox) => {
+    const obstacle = creationObstacleForNote(inbox, options.measuredHeights?.[inbox.id]);
+    const autoHeight = options.inboxAutoHeights?.[inbox.id];
+    const currentHeight = Number.isFinite(autoHeight) && autoHeight! > 0
+      ? Math.max(autoHeight!, obstacle.height)
+      : obstacle.height;
+    return [inbox.id, {
+      ...obstacle,
+      // Reserve the current entry's row plus ten more rows for later quick inputs.
+      height: currentHeight + INBOX_ROW_HEIGHT * (1 + INBOX_PLACEMENT_GROWTH_ROWS),
+    }] as const;
+  }));
+  const obstacles = existingNotes.map((note) => reservedInboxObstacles.get(note.id) ??
+    creationObstacleForNote(note, options.measuredHeights?.[note.id]));
   const noteHeight = estimatedCreationHeight({ type: "note", width: DEFAULT_NOTE_WIDTH, height: null, text });
   const notes: Note[] = [];
 
   for (const inbox of inboxes) {
-    const inboxObstacle = creationObstacleForNote(inbox, options.measuredHeights?.[inbox.id]);
+    const inboxObstacle = reservedInboxObstacles.get(inbox.id) ??
+      creationObstacleForNote(inbox, options.measuredHeights?.[inbox.id]);
     const preferredCenter: Point = {
       x: inbox.x + inbox.width / 2,
       y: inbox.y + inboxObstacle.height / 2,
