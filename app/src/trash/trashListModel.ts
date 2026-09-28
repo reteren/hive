@@ -31,6 +31,8 @@ const noteKindLabels: Record<NoteKind, string> = {
   map: "Map",
   random: "Random Choice",
   markas: "Mark as",
+  time: "Time",
+  message: "Message",
 };
 
 /** Format one grouped delete entry for the list without counting its attached links as objects. */

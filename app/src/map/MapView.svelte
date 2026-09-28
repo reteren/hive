@@ -34,7 +34,7 @@
     purpose: "#85b8e8", mood: "#d5a3db", beacon: "#f0cf62", goal: "#7bd5b4",
     progress: "#73c6d8", calculator: "#bbabef", tierlist: "#e5a875", stats: "#9dc778",
     archive: "#baad91", trash: "#d78b82", inbox: "#86c0d4", list: "#9fc982",
-    source: "#8ca9dc", glossary: "#d2a5d4", map: "#d7bd70", random: "#e5a469", markas: "#c9a0e8",
+    source: "#8ca9dc", glossary: "#d2a5d4", map: "#d7bd70", random: "#e5a469", markas: "#c9a0e8", time: "#7fc4d8", message: "#e8c070",
   };
 
   interface ZoneSnapshot {

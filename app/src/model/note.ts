@@ -1,5 +1,6 @@
 import type { CustomMark, ListItem, NodeScope, RandomPick, SourceData, TierRow } from "./nodeData";
 import type { LinkAnchor } from "./link";
+import type { MessageNodeData, TimeNodeData } from "../time/types";
 
 /**
  * "note" — ordinary text node; "pro"/"con" — the green/red plus/minus mini-nodes (R3.5);
@@ -14,7 +15,8 @@ export type NoteKind =
   | "goal" | "progress" | "calculator" | "tierlist" | "stats"
   | "archive" | "trash"
   | "inbox" | "list" | "source" | "glossary" | "map" | "random"
-  | "markas";
+  | "markas"
+  | "time" | "message";
 
 /** R5 kinds, in create-menu order. */
 export const R5_KINDS = ["goal", "progress", "calculator", "tierlist", "stats"] as const;
@@ -25,8 +27,11 @@ export const R6_KINDS = ["archive", "trash"] as const;
 /** R7 organisational nodes. */
 export const R7_KINDS = ["inbox", "list", "source", "glossary", "map", "random", "markas"] as const;
 
+/** R8 time and message nodes (contract in src/time/types.ts). */
+export const R8_KINDS = ["time", "message"] as const;
+
 /** Default R5 node widths (u), shared by creation and resize limits. */
-export const R5_BASE_WIDTHS = { goal: 30, progress: 30, calculator: 40, tierlist: 60, stats: 30, archive: 40, trash: 40, inbox: 30, list: 30, source: 34, glossary: 40, map: 40, random: 30, markas: 30 } as const;
+export const R5_BASE_WIDTHS = { goal: 30, progress: 30, calculator: 40, tierlist: 60, stats: 30, archive: 40, trash: 40, inbox: 30, list: 30, source: 34, glossary: 40, map: 40, random: 30, markas: 30, time: 30, message: 30 } as const;
 
 /** Importance levels (R3.3): white / yellow / red / purple / rainbow. */
 export const IMPORTANCE_LEVELS = ["basic", "medium", "important", "immediately", "absolute"] as const;
@@ -106,6 +111,10 @@ export interface Note {
   createdAt?: number;
   /** Task flag and completion (R3.1). */
   task?: TaskState | null;
+  /** R8 Time node schedule and runtime (type "time"). */
+  time?: TimeNodeData;
+  /** R8 Message node settings (type "message"); the message text is `text`. */
+  message?: MessageNodeData;
   /** Task state remembered while the task flag is off, restored when it is turned back on (A03). */
   taskMemory?: TaskState | null;
   /** Importance inserted into this note (R3.3); at most one per target, embedded or external. */
