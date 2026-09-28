@@ -18,7 +18,7 @@ export function noteMoveStarts(intent: NotePressIntent, thresholdCrossed: boolea
   return intent === "move-candidate" && thresholdCrossed;
 }
 
-/** Alt alone selects a note directly; Ctrl/Shift combinations keep their existing pointer behavior. */
+/** Alt (optionally with Ctrl to add/remove from the selection) selects a note from any part of it. */
 export function shouldSelectNoteOnAltPress(
   noteId: string | null | undefined,
   altKey: boolean,
@@ -26,7 +26,7 @@ export function shouldSelectNoteOnAltPress(
   shiftKey: boolean,
   dimmed: boolean,
 ): boolean {
-  return Boolean(noteId) && altKey && !ctrlKey && !shiftKey && !dimmed;
+  return Boolean(noteId) && altKey && !shiftKey && !dimmed;
 }
 
 /** Suppress pointer-generated activation after Alt selection without eating keyboard clicks. */

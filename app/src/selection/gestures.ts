@@ -119,7 +119,12 @@ export function createScaleModeGesture(
 /** Scale note transforms from the original pointer distance, avoiding frame-to-frame drift. */
 export function updateScaleModeGesture(gesture: ScaleModeGesture, cursorWorld: Point): ScaleModeGesture {
   const distance = Math.hypot(cursorWorld.x - gesture.pivot.x, cursorWorld.y - gesture.pivot.y);
-  const factor = Number.isFinite(distance) ? distance / gesture.startDistance : gesture.factor;
+  const raw = Number.isFinite(distance) ? distance / gesture.startDistance : gesture.factor;
+  // Clamp the factor itself (not only each node's size): once any node reaches 100 % or the maximum,
+  // further mouse movement changes nothing — positions no longer keep scaling and "slide".
+  const minFactor = Math.max(...gesture.before.map((frame) => 1 / normalizeNoteScale(frame.scale)));
+  const maxFactor = Math.min(...gesture.before.map((frame) => MAX_NOTE_SCALE / normalizeNoteScale(frame.scale)));
+  const factor = Math.min(maxFactor, Math.max(minFactor, raw));
   return {
     ...gesture,
     factor,

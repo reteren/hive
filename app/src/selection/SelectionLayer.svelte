@@ -425,6 +425,11 @@ type PendingBoardMove =
       pendingAltNodeActivationPointerId = event.pointerId;
       pendingAltContextPick = null;
       closeContextPick();
+      if (event.ctrlKey) {
+        // Alt+Ctrl builds a multi-selection from any point of the nodes, without moving them.
+        toggleNoteUndoable(noteId);
+        return;
+      }
       selectNoteUndoable(noteId);
       const frames = framesForSelection();
       if (frames.length > 0) startMove(event, local, screenToWorld(camera, viewport, local), frames, noteId);
@@ -461,28 +466,29 @@ type PendingBoardMove =
       suppressBodyClickUntil = 0;
       suppressAltNodeClickUntil = 0;
 
+      // A running G grab confirms on LMB wherever the cursor is — including over a node's text,
+      // list rows or other [data-selection-ignore] parts that normally keep clicks to themselves.
+      if (grabGesture || zoneGrabGesture) {
+        const grabPoint = localPoint(event);
+        if (!grabPoint) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const grabWorld = screenToWorld(camera, viewport, grabPoint);
+        if (grabGesture) {
+          updateGrabAt(grabWorld, event.ctrlKey, event.altKey);
+          commitGrab(grabWorld, true);
+        } else {
+          updateZoneGrabAt(grabWorld, event.ctrlKey);
+          commitZoneGrab();
+        }
+        return;
+      }
+
       const target = event.target instanceof Element ? event.target : null;
       if (!target || target.closest(".selection-context-pick, [data-create-menu], [data-selection-ignore]")) return;
 
       const local = localPoint(event);
       if (!local) return;
-
-      if (grabGesture) {
-        event.preventDefault();
-        event.stopPropagation();
-        const world = screenToWorld(camera, viewport, local);
-        updateGrabAt(world, event.ctrlKey, event.altKey);
-        commitGrab(world, true);
-        return;
-      }
-
-      if (zoneGrabGesture) {
-        event.preventDefault();
-        event.stopPropagation();
-        updateZoneGrabAt(screenToWorld(camera, viewport, local), event.ctrlKey);
-        commitZoneGrab();
-        return;
-      }
 
       const world = screenToWorld(camera, viewport, local);
       if (lineToolActive) return;

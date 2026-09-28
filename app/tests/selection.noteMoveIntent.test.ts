@@ -42,7 +42,7 @@ describe("note press move intent", () => {
 
   it("selects a note for Alt alone while preserving Ctrl/Shift combinations and dimmed-note behavior", () => {
     expect(shouldSelectNoteOnAltPress("note-a", true, false, false, false)).toBe(true);
-    expect(shouldSelectNoteOnAltPress("note-a", true, true, false, false)).toBe(false);
+    expect(shouldSelectNoteOnAltPress("note-a", true, true, false, false)).toBe(true);
     expect(shouldSelectNoteOnAltPress("note-a", true, false, true, false)).toBe(false);
     expect(shouldSelectNoteOnAltPress("note-a", false, false, false, false)).toBe(false);
     expect(shouldSelectNoteOnAltPress(null, true, false, false, false)).toBe(false);
