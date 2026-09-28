@@ -51,10 +51,7 @@ export function removeMarkAsTag(noteId: string, markId: string): void {
   const remaining = marks.filter((mark) => mark.id !== markId);
   const command = createMarkAsPatchCommand(
     note,
-    {
-      customMarks: remaining,
-      ...(remaining.length === 0 && note.customMarkFrame === true ? { customMarkFrame: false } : {}),
-    },
+    { customMarks: remaining },
     writeMarkAsPatch,
     "Remove Mark as tag",
   );

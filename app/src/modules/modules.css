@@ -400,18 +400,4 @@
   }
 }
 
-.note-markas-frame {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  margin-left: 3px;
-  color: #b8b8b8;
-  font-size: 9px;
-  white-space: nowrap;
-  cursor: pointer;
-}
 
-.note-markas-frame input {
-  margin: 0;
-  accent-color: #b59bd2;
-}

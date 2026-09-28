@@ -12,6 +12,7 @@
   let draftText = $state("");
   let draftColor = $state<string>(MARKAS_PALETTE[0]);
   let error = $state("");
+  let textInput = $state<HTMLInputElement | null>(null);
 
   const HEX = /^#[0-9a-f]{6}$/i;
 
@@ -39,6 +40,16 @@
     resetDraft();
   }
 
+  /** The + is always visible: with a filled tag it adds it, otherwise it opens the editor and focuses the tag field. */
+  function addFromHeader(): void {
+    if (!collapsed && draftText.trim()) {
+      submit();
+      return;
+    }
+    if (collapsed) toggleMarkAsEditor(note.id);
+    queueMicrotask(() => textInput?.focus());
+  }
+
   function removeMark(mark: CustomMark): void {
     if (editingId === mark.id) resetDraft();
     removeMarkAsTag(note.id, mark.id);
@@ -46,7 +57,7 @@
 </script>
 
 <div class="markas-node" data-selection-ignore>
-  {#if marks.length > 0}
+  <div class="markas-head">
     <ul class="markas-tags" aria-label="Tags">
       {#each marks as mark (mark.id)}
         <li class="markas-tag" class:editing={editingId === mark.id} style:--tag-color={mark.color}>
@@ -60,7 +71,14 @@
         </li>
       {/each}
     </ul>
-  {/if}
+    <button type="button" class="markas-add" data-markas-add title={editingId ? "Save tag" : "Add tag"} aria-label={editingId ? "Save tag" : "Add tag"} onpointerdown={(event) => event.preventDefault()} onclick={addFromHeader}>
+      {#if editingId}
+        <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.3l2.3 2.3 4.7-5" /></svg>
+      {:else}
+        <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.5v7M2.5 6h7" /></svg>
+      {/if}
+    </button>
+  </div>
 
   <button
     type="button"
@@ -80,6 +98,7 @@
         <span class="markas-field-name">Tag</span>
         <input
           class="markas-text"
+          bind:this={textInput}
           bind:value={draftText}
           maxlength="30"
           placeholder={editingId ? "Edit tag" : "New tag"}
@@ -117,23 +136,15 @@
       </div>
 
       <div class="markas-footer">
-        <label class="markas-frame" title={marks.length === 0 ? "Add a tag first" : "Color the node frame with the tag colors"}>
+        <label class="markas-frame" title="Colour the frame of the note this Mark as is inserted in or linked to">
           <input
             type="checkbox"
             checked={note.customMarkFrame === true}
-            disabled={marks.length === 0}
             data-markas-frame
             onchange={(event) => setCustomMarkFrame(note.id, event.currentTarget.checked)}
           />
           <span>Frame</span>
         </label>
-        <button type="submit" class="markas-add" data-markas-add title={editingId ? "Save tag" : "Add tag"} aria-label={editingId ? "Save tag" : "Add tag"}>
-          {#if editingId}
-            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.3l2.3 2.3 4.7-5" /></svg>
-          {:else}
-            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.5v7M2.5 6h7" /></svg>
-          {/if}
-        </button>
       </div>
       {#if error}<p class="markas-error" role="alert">{error}</p>{/if}
     </form>
@@ -149,8 +160,16 @@
     font-size: 11px;
   }
 
+  .markas-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
   .markas-tags {
     display: flex;
+    flex: 1;
+    min-width: 0;
     flex-wrap: wrap;
     gap: 4px;
     margin: 0;
@@ -337,13 +356,10 @@
     accent-color: var(--accent);
   }
 
-  .markas-frame:has(input:disabled) {
-    color: #6f6f6f;
-    cursor: default;
-  }
-
   .markas-add {
     display: grid;
+    flex: 0 0 auto;
+    margin-left: auto;
     width: 22px;
     height: 22px;
     place-items: center;

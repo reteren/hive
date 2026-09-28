@@ -213,3 +213,25 @@ describe("Mark as module operations", () => {
     expect(links.byId["source-link"]).toEqual(expect.objectContaining({ from: "source", to: "linked" }));
   });
 });
+
+describe("Mark as frame placement", () => {
+  const marks: CustomMark[] = [{ id: "m1", text: "urgent", color: "#e58b83" }];
+  const notes = {
+    mk: { id: "mk", type: "markas", customMarks: marks, customMarkFrame: true },
+    linked: { id: "linked", type: "note" },
+    alone: { id: "alone", type: "note" },
+  } as const;
+  const edges = [{ from: "mk", to: "linked", kind: "strong" as const }];
+
+  it("never frames the Mark as node itself, only the note it is linked to", () => {
+    expect(effectiveCustomMarkFrameFor("mk", notes, edges)).toBe(false);
+    expect(effectiveCustomMarkFrameFor("linked", notes, edges)).toBe(true);
+    expect(effectiveCustomMarkFrameFor("alone", notes, edges)).toBe(false);
+  });
+
+  it("keeps the Frame setting on the Mark as node while it has no tags, framing once tags exist", () => {
+    const empty = { ...notes, mk: { ...notes.mk, customMarks: [] } };
+    expect(effectiveCustomMarkFrameFor("linked", empty, edges)).toBe(false);
+    expect(effectiveCustomMarkFrameFor("linked", notes, edges)).toBe(true);
+  });
+});

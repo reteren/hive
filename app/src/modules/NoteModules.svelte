@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { ImportanceLevel, Note, PurposeKind } from "../model/note";
   import { sameCustomMarkValue } from "../markas/markasLogic";
-  import { setCustomMarkFrame } from "../markas/markasActions.svelte";
   import {
     closeModulePicker,
     effectiveImportance,
@@ -142,16 +141,6 @@
             dragNoteId={isEmbedded && !isExternal ? note.id : undefined}
           />
         {/each}
-        {#if note.customMarks?.length}
-          <label class="note-markas-frame" data-selection-ignore>
-            <input
-              type="checkbox"
-              checked={note.customMarkFrame === true}
-              onchange={(event) => setCustomMarkFrame(note.id, event.currentTarget.checked)}
-            />
-            <span>Frame</span>
-          </label>
-        {/if}
       </div>
     {/if}
 

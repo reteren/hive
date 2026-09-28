@@ -118,7 +118,8 @@ export function effectiveCustomMarkFrameFor(
   edges: readonly MarkAsEdge[],
 ): boolean {
   const note = notes[noteId];
-  if (note?.type === "markas") return note.customMarkFrame === true && (note.customMarks?.length ?? 0) > 0;
+  // The Mark as node never shows the frame itself: it colours the note it is inserted in or linked to.
+  if (note?.type === "markas") return false;
   if (!isContentNote(note)) return false;
   if (note.customMarkFrame === true && (note.customMarks?.length ?? 0) > 0) return true;
   return edges.some((edge) => {
