@@ -5,6 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { initializeProjectPersistence } from "../project/persistence.svelte";
 import { initializeViewSettingsPersistence } from "../settings/persistence.svelte";
 import { initializeQuickInputShortcut } from "./shortcutRegistration";
+import { showQuickInputWindow as showQuickInputWindowHandle } from "./windowActivation";
 import { enableTrayCloseMode, markQuitRequested } from "../lifecycle/closeFlush";
 
 let toastTimer: number | null = null;
@@ -37,10 +38,10 @@ async function initializeQuickInputMain(): Promise<void> {
 
   await initializeViewSettingsPersistence();
   await initializeProjectPersistence();
-  await initializeQuickInputShortcut(() => void toggleQuickInputWindow());
+  await initializeQuickInputShortcut(() => void showQuickInputWindow());
 }
 
-async function toggleQuickInputWindow(): Promise<void> {
+async function showQuickInputWindow(): Promise<void> {
   const quickInput = await WebviewWindow.getByLabel("quick-input");
   if (!quickInput) {
     console.error("The quick input window is unavailable.");
@@ -48,13 +49,7 @@ async function toggleQuickInputWindow(): Promise<void> {
   }
 
   try {
-    if (await quickInput.isVisible()) {
-      await quickInput.hide();
-      return;
-    }
-    await quickInput.center();
-    await quickInput.show();
-    await quickInput.setFocus();
+    await showQuickInputWindowHandle(quickInput);
   } catch (error) {
     console.error("Could not open the quick input window.", error);
   }

@@ -1,5 +1,4 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import { quickInputShortcut, setQuickInputShortcutError } from "../settings/quickInputShortcut.svelte";
 import { normalizeQuickInputShortcut } from "./shortcutModel";
@@ -16,7 +15,6 @@ export async function initializeQuickInputShortcut(onActivate: () => void): Prom
   onShortcut = onActivate;
   if (!isTauri()) return;
 
-  await listen("hive://quick-input-shortcut", () => onShortcut());
   await registerConfiguredShortcut(quickInputShortcut.value);
 }
 

@@ -1,5 +1,16 @@
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
+
+pub fn show_quick_input_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("quick-input") {
+        if !window.is_visible().unwrap_or(false) {
+            let _ = window.center();
+        }
+        let _ = window.show();
+        let _ = window.set_focus();
+        let _ = window.emit("hive://quick-input-focus", ());
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct Modifiers {
@@ -136,6 +147,15 @@ struct KeyboardState {
 #[cfg(windows)]
 impl KeyboardState {
     fn process(&mut self, key: u32, pressed: bool) -> (bool, bool) {
+        let modifiers_match = pressed
+            && !is_modifier_key(key)
+            && self.shortcut
+                .filter(|shortcut| shortcut.key == key)
+                .is_some_and(|shortcut| self.modifiers_match(shortcut.modifiers));
+        self.process_event(key, pressed, modifiers_match)
+    }
+
+    fn process_event(&mut self, key: u32, pressed: bool, modifiers_match: bool) -> (bool, bool) {
         if !pressed {
             self.pressed.remove(&key);
             if self.swallowed_key == Some(key) {
@@ -156,7 +176,7 @@ impl KeyboardState {
         let Some(shortcut) = self.shortcut else {
             return (false, false);
         };
-        if shortcut.key != key || !self.modifiers_match(shortcut.modifiers) {
+        if shortcut.key != key || !modifiers_match {
             return (false, false);
         }
 
@@ -201,7 +221,10 @@ fn start_hook(app: AppHandle) -> Result<HookRuntime, String> {
         .name("hive-quick-input-event".to_string())
         .spawn(move || {
             while activation_rx.recv().is_ok() {
-                let _ = app.emit("hive://quick-input-shortcut", ());
+                let app_handle = app.clone();
+                if let Err(error) = app.run_on_main_thread(move || show_quick_input_window(&app_handle)) {
+                    eprintln!("Could not show quick input after shortcut activation: {error}");
+                }
             }
         })
         .map_err(|error| format!("Could not start shortcut event dispatch: {error}"))?;
@@ -317,6 +340,9 @@ unsafe extern "system" fn low_level_keyboard_proc(
 mod tests {
     use super::{parse_key, Modifiers, ShortcutSpec};
 
+    #[cfg(windows)]
+    use super::KeyboardState;
+
     #[test]
     fn parses_required_windows_shortcut_examples() {
         assert_eq!(ShortcutSpec::parse("Ctrl+Alt+Space"), Ok(ShortcutSpec {
@@ -339,5 +365,25 @@ mod tests {
     fn maps_function_keys_to_virtual_key_codes() {
         assert_eq!(parse_key("F24"), Some(0x87));
         assert_eq!(parse_key("F25"), None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn every_shortcut_press_activates_once_after_keyup_even_when_the_window_changes_focus() {
+        let key = 0x20;
+        let mut state = KeyboardState {
+            shortcut: Some(ShortcutSpec {
+                key,
+                modifiers: Modifiers { control: true, alt: true, shift: false, windows: false },
+            }),
+            ..KeyboardState::default()
+        };
+
+        assert_eq!(state.process_event(key, true, true), (true, true));
+        assert_eq!(state.process_event(key, true, true), (true, false));
+        assert_eq!(state.process_event(key, false, false), (true, false));
+        assert_eq!(state.swallowed_key, None);
+
+        assert_eq!(state.process_event(key, true, true), (true, true));
     }
 }

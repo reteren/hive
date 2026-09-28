@@ -50,12 +50,7 @@ fn open_main_window(app: &tauri::AppHandle) {
 }
 
 fn open_quick_input_window(app: &tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window("quick-input") {
-        let _ = window.center();
-        let _ = window.show();
-        let _ = window.set_focus();
-        let _ = window.emit("hive://quick-input-focus", ());
-    }
+    quick_input_shortcut::show_quick_input_window(app);
 }
 
 fn build_tray(app: &mut tauri::App) -> tauri::Result<()> {
