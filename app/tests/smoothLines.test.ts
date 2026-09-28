@@ -41,8 +41,10 @@ describe("Smooth lines", () => {
     addLink(incoming);
 
     expect(smoothLinesForObjects([source.id])).toBe(true);
-    expect(links.byId.outgoing).toMatchObject({ fromAnchor: { x: 1, y: 0.8 }, toAnchor: { x: 1, y: 1 } });
-    expect(links.byId.incoming).toMatchObject({ fromAnchor: { x: 1, y: 1 }, toAnchor: { x: 0.01, y: 0 } });
+    expect(links.byId.outgoing).toMatchObject({ fromAnchor: { x: 1, y: 0.62 }, toAnchor: { x: 1, y: 1 } });
+    expect(links.byId.incoming?.fromAnchor).toEqual({ x: 1, y: 1 });
+    expect(links.byId.incoming?.toAnchor?.x).toBe(0);
+    expect(links.byId.incoming?.toAnchor?.y).toBeCloseTo(1 / 18);
     expect(history.cursor).toBe(1);
 
     undo();
@@ -95,6 +97,50 @@ describe("Smooth lines", () => {
     const point = (id: string) => pointAtAnchor(bounds, links.byId[id]!.fromAnchor!);
     expect(point("lower").y).toBeGreaterThan(point("middle").y);
     expect(point("middle").y).toBeGreaterThan(point("upper").y);
+  });
+
+  it("chooses the facing edge from the centre ray, including side and distant diagonal cases", () => {
+    const target = note("target", 0, 0, 20, 5);
+    const beside = note("beside", 30, -1.5, 2, 2);
+    const farAbove = note("far-above", 9, -100, 2, 2);
+    replaceBoard([target, beside, farAbove]);
+    addLink({ id: "beside-link", from: target.id, to: beside.id, kind: "strong", shape: "base" });
+    addLink({ id: "above-link", from: target.id, to: farAbove.id, kind: "strong", shape: "base" });
+
+    expect(smoothLinesForObjects([target.id])).toBe(true);
+    expect(links.byId["beside-link"]?.fromAnchor?.x).toBe(1);
+    expect(links.byId["above-link"]?.fromAnchor).toEqual({ x: 0.5, y: 0 });
+  });
+
+  it("keeps five targets in a right-hand column on the right edge when the edge has room", () => {
+    const target = note("target", 0, 0, 20, 8);
+    const outsiders = [-4, -2, 0, 2, 4].map((offset, index) => note(`right-${index}`, 39, 3 + offset, 2, 2));
+    replaceBoard([target, ...outsiders]);
+    outsiders.forEach((outsider, index) => addLink({
+      id: `column-${index}`, from: target.id, to: outsider.id, kind: "strong", shape: "base",
+    }));
+
+    expect(smoothLinesForObjects([target.id])).toBe(true);
+    const anchors = outsiders.map((_, index) => links.byId[`column-${index}`]!.fromAnchor!);
+    expect(anchors.every((anchor) => anchor.x === 1)).toBe(true);
+    const ys = anchors.map((anchor) => anchor.y * 8).sort((first, second) => first - second);
+    for (let index = 1; index < ys.length; index += 1) {
+      expect(ys[index] - ys[index - 1]).toBeGreaterThanOrEqual(1 - 1e-9);
+    }
+  });
+
+  it("spills right-edge overflow to the adjacent edge closer to its targets", () => {
+    const target = note("target", 0, 0, 20, 5);
+    const outsiders = Array.from({ length: 5 }, (_, index) => note(`right-${index}`, 39, -4.5, 2, 2));
+    replaceBoard([target, ...outsiders]);
+    outsiders.forEach((outsider, index) => addLink({
+      id: `overflow-${index}`, from: target.id, to: outsider.id, kind: "strong", shape: "base",
+    }));
+
+    expect(smoothLinesForObjects([target.id])).toBe(true);
+    const anchors = outsiders.map((_, index) => links.byId[`overflow-${index}`]!.fromAnchor!);
+    expect(anchors.filter((anchor) => anchor.x === 1)).toHaveLength(4);
+    expect(anchors.filter((anchor) => anchor.y === 0)).toHaveLength(1);
   });
 
   it("moves overflow to neighbouring edges when a short edge cannot fit all links", () => {

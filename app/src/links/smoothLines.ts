@@ -1,3 +1,4 @@
+import type { Point } from "../board/cameraMath";
 import { registerCommand } from "../commands/registry.svelte";
 import { BEACON_SIZE } from "../model/note";
 import { ME_OBJECT_ID, type Link, type LinkAnchor } from "../model/link";
@@ -8,7 +9,6 @@ import { ME_POSITION } from "../board/camera.svelte";
 import { noteBounds, type Bounds } from "../notes/layout.svelte";
 import { selection } from "../selection/selection.svelte";
 import { selectedLinkIds } from "./selection.svelte";
-import { projectPointToAnchor } from "./anchors";
 
 interface SmoothEndpoint {
   bounds: Bounds;
@@ -30,7 +30,7 @@ interface AnchorCandidate {
   desiredPosition: number;
   angle: number;
   polarAngle: number;
-  desiredPoint: { x: number; y: number };
+  targetCenter: Point;
 }
 
 interface AnchorGroup {
@@ -38,8 +38,20 @@ interface AnchorGroup {
   candidates: AnchorCandidate[];
 }
 
+interface FittingAnchor {
+  edge: FrameEdge;
+  anchor: LinkAnchor;
+}
+
 const MIN_ANCHOR_SPACING = 1;
 const CORNER_CLEARANCE = 1;
+const FRAME_EDGES: readonly FrameEdge[] = ["top", "right", "bottom", "left"];
+const ADJACENT_EDGES: Record<FrameEdge, readonly FrameEdge[]> = {
+  top: ["left", "right"],
+  right: ["top", "bottom"],
+  bottom: ["right", "left"],
+  left: ["bottom", "top"],
+};
 
 /** Smooth the links touching the requested objects, moving anchors only on those objects. */
 export function smoothLinesForObjects(objectIds: readonly string[]): boolean {
@@ -69,29 +81,17 @@ function smoothLinks(affected: readonly Link[], targetIds: ReadonlySet<string>, 
       const otherEndpoint = endpointFor(side === "from" ? link.to : link.from);
       if (!endpoint || endpoint.circular || !otherEndpoint) continue;
 
-      const otherCenter = boundsCenter(otherEndpoint.bounds);
-      const desiredAnchor = projectPointToAnchor(endpoint.bounds, otherCenter);
-      const edge = anchorEdge(desiredAnchor);
-      const position = edge === "top"
-        ? desiredAnchor.x * endpoint.bounds.width
-        : edge === "right"
-          ? desiredAnchor.y * endpoint.bounds.height
-          : edge === "bottom"
-            ? (1 - desiredAnchor.x) * endpoint.bounds.width
-            : (1 - desiredAnchor.y) * endpoint.bounds.height;
-      const center = boundsCenter(endpoint.bounds);
-      const polarAngle = Math.atan2(otherCenter.y - center.y, otherCenter.x - center.x);
+      const targetCenter = boundsCenter(otherEndpoint.bounds);
+      const facing = rayFacingAnchor(endpoint.bounds, targetCenter);
+      const angle = Math.atan2(targetCenter.y - (endpoint.bounds.y + endpoint.bounds.height / 2), targetCenter.x - (endpoint.bounds.x + endpoint.bounds.width / 2));
       const candidate: AnchorCandidate = {
         linkId: link.id,
         side,
-        edge,
-        desiredPosition: position,
-        angle: angleForEdge(edge, polarAngle),
-        polarAngle,
-        desiredPoint: {
-          x: endpoint.bounds.x + desiredAnchor.x * endpoint.bounds.width,
-          y: endpoint.bounds.y + desiredAnchor.y * endpoint.bounds.height,
-        },
+        edge: facing.edge,
+        desiredPosition: edgeProgress(endpoint.bounds, facing.edge, facing.anchor),
+        angle: angleForEdge(facing.edge, angle),
+        polarAngle: angle,
+        targetCenter,
       };
       const group = groups.get(objectId) ?? { bounds: endpoint.bounds, candidates: [] };
       group.candidates.push(candidate);
@@ -101,7 +101,8 @@ function smoothLinks(affected: readonly Link[], targetIds: ReadonlySet<string>, 
 
   const nextById = new Map<string, SmoothAnchors>();
   for (const group of groups.values()) {
-    rebalanceCrowdedEdges(group.bounds, group.candidates);
+    if (!moveOverflowToAdjacentEdges(group.bounds, group.candidates)) continue;
+
     const byEdge = new Map<FrameEdge, AnchorCandidate[]>();
     for (const candidate of group.candidates) {
       const edgeCandidates = byEdge.get(candidate.edge) ?? [];
@@ -111,9 +112,8 @@ function smoothLinks(affected: readonly Link[], targetIds: ReadonlySet<string>, 
 
     for (const [edge, candidates] of byEdge) {
       const length = edgeLength(group.bounds, edge);
-      const cornerClearance = Math.min(CORNER_CLEARANCE, length / 2);
-      const minimum = cornerClearance;
-      const maximum = length - cornerClearance;
+      const minimum = CORNER_CLEARANCE;
+      const maximum = length - CORNER_CLEARANCE;
       const ordered = [...candidates].sort((first, second) =>
         first.angle - second.angle || first.desiredPosition - second.desiredPosition || first.linkId.localeCompare(second.linkId),
       );
@@ -147,82 +147,100 @@ function smoothLinks(affected: readonly Link[], targetIds: ReadonlySet<string>, 
   return true;
 }
 
-/** Ordered least-squares spacing, with a fallback only if the entire frame is over capacity. */
-function spreadAlongEdge(desired: readonly number[], minimum: number, maximum: number): number[] {
-  if (desired.length === 0) return [];
-  const span = Math.max(0, maximum - minimum);
-  const spacing = desired.length > 1
-    ? Math.min(MIN_ANCHOR_SPACING, span / (desired.length - 1))
-    : 0;
-  const highestBase = maximum - spacing * (desired.length - 1);
-  const adjusted = desired.map((position, index) => clamp(position, minimum, maximum) - index * spacing);
-  const fitted = isotonicRegression(adjusted);
-  return fitted.map((position, index) => clamp(position, minimum, highestBase) + index * spacing);
+/** Pick the edge where the ray from this frame's centre exits the rectangle. */
+function rayFacingAnchor(bounds: Bounds, target: Point): FittingAnchor {
+  const center = boundsCenter(bounds);
+  const dx = target.x - center.x;
+  const dy = target.y - center.y;
+  if (dx === 0 && dy === 0) return { edge: "top", anchor: { x: 0.5, y: 0 } };
+
+  const horizontalExit = dx === 0 ? Number.POSITIVE_INFINITY : bounds.width / 2 / Math.abs(dx);
+  const verticalExit = dy === 0 ? Number.POSITIVE_INFINITY : bounds.height / 2 / Math.abs(dy);
+  // On an exact diagonal the side edge is preferable: it gives a clearer route for
+  // neighbours that are mostly beside the node.
+  if (horizontalExit <= verticalExit) {
+    const edge: FrameEdge = dx >= 0 ? "right" : "left";
+    const y = center.y + dy * horizontalExit;
+    return {
+      edge,
+      anchor: { x: dx >= 0 ? 1 : 0, y: clamp01((y - bounds.y) / bounds.height) },
+    };
+  }
+
+  const edge: FrameEdge = dy >= 0 ? "bottom" : "top";
+  const x = center.x + dx * verticalExit;
+  return {
+    edge,
+    anchor: { x: clamp01((x - bounds.x) / bounds.width), y: dy >= 0 ? 1 : 0 },
+  };
 }
 
-function rebalanceCrowdedEdges(bounds: Bounds, candidates: AnchorCandidate[]): void {
-  const edges: readonly FrameEdge[] = ["top", "right", "bottom", "left"];
-  const grouped = new Map<FrameEdge, AnchorCandidate[]>(edges.map((edge) => [edge, []]));
+/** Move only anchors that cannot fit at 1 u spacing to a closer adjacent edge. */
+function moveOverflowToAdjacentEdges(bounds: Bounds, candidates: AnchorCandidate[]): boolean {
+  const grouped = new Map<FrameEdge, AnchorCandidate[]>(FRAME_EDGES.map((edge) => [edge, []]));
   for (const candidate of candidates) grouped.get(candidate.edge)!.push(candidate);
 
-  const capacity = (edge: FrameEdge): number => {
-    const length = edgeLength(bounds, edge);
-    const margin = Math.min(CORNER_CLEARANCE, length / 2);
-    return Math.floor(Math.max(0, length - margin * 2) / MIN_ANCHOR_SPACING + 1e-9) + 1;
-  };
-
-  for (let attempt = 0; attempt < candidates.length * edges.length; attempt += 1) {
-    const crowded = edges.find((edge) => grouped.get(edge)!.length > capacity(edge));
-    if (!crowded) return;
+  for (let attempt = 0; attempt < candidates.length * FRAME_EDGES.length; attempt += 1) {
+    const crowdedEdge = FRAME_EDGES.find((edge) => grouped.get(edge)!.length > edgeCapacity(bounds, edge));
+    if (!crowdedEdge) return true;
 
     let move: { candidate: AnchorCandidate; edge: FrameEdge; position: number; distance: number } | undefined;
-    for (const candidate of grouped.get(crowded)!) {
-      for (const edge of edges) {
-        if (edge === crowded || grouped.get(edge)!.length >= capacity(edge)) continue;
-        const projected = closestPointOnEdge(bounds, edge, candidate.desiredPoint);
-        if (!move || projected.distance < move.distance) {
-          move = { candidate, edge, ...projected };
-        }
+    for (const candidate of grouped.get(crowdedEdge)!) {
+      for (const edge of ADJACENT_EDGES[crowdedEdge]) {
+        if (grouped.get(edge)!.length >= edgeCapacity(bounds, edge)) continue;
+        const projected = closestPointOnEdge(bounds, edge, candidate.targetCenter);
+        if (!move || projected.distance < move.distance) move = { candidate, edge, ...projected };
       }
     }
-    if (!move) return;
+    if (!move) return false;
 
-    grouped.set(crowded, grouped.get(crowded)!.filter((candidate) => candidate !== move!.candidate));
+    grouped.set(crowdedEdge, grouped.get(crowdedEdge)!.filter((candidate) => candidate !== move!.candidate));
     move.candidate.edge = move.edge;
     move.candidate.desiredPosition = move.position;
     move.candidate.angle = angleForEdge(move.edge, move.candidate.polarAngle);
     grouped.get(move.edge)!.push(move.candidate);
   }
+  return FRAME_EDGES.every((edge) => grouped.get(edge)!.length <= edgeCapacity(bounds, edge));
 }
 
-function closestPointOnEdge(
-  bounds: Bounds,
-  edge: FrameEdge,
-  desired: { x: number; y: number },
-): { position: number; distance: number } {
+function edgeCapacity(bounds: Bounds, edge: FrameEdge): number {
   const length = edgeLength(bounds, edge);
-  const margin = Math.min(CORNER_CLEARANCE, length / 2);
-  let x = desired.x;
-  let y = desired.y;
-  if (edge === "top" || edge === "bottom") {
-    x = clamp(x, bounds.x + margin, bounds.x + bounds.width - margin);
-    y = edge === "top" ? bounds.y : bounds.y + bounds.height;
-  } else {
-    x = edge === "left" ? bounds.x : bounds.x + bounds.width;
-    y = clamp(y, bounds.y + margin, bounds.y + bounds.height - margin);
-  }
-  const along = edge === "top"
-    ? x - bounds.x
-    : edge === "right"
-      ? y - bounds.y
-      : edge === "bottom"
-        ? bounds.x + bounds.width - x
-        : bounds.y + bounds.height - y;
-  return { position: along, distance: Math.hypot(x - desired.x, y - desired.y) };
+  if (length < CORNER_CLEARANCE * 2) return 0;
+  const span = length - CORNER_CLEARANCE * 2;
+  return Math.floor(span / MIN_ANCHOR_SPACING + 1e-9) + 1;
 }
 
-function angleForEdge(edge: FrameEdge, polarAngle: number): number {
-  return edge === "left" && polarAngle < 0 ? polarAngle + Math.PI * 2 : polarAngle;
+function closestPointOnEdge(bounds: Bounds, edge: FrameEdge, target: Point): { position: number; distance: number } {
+  const length = edgeLength(bounds, edge);
+  const minimum = CORNER_CLEARANCE;
+  const maximum = length - CORNER_CLEARANCE;
+  let point: Point;
+  let position: number;
+  if (edge === "top") {
+    point = { x: clamp(target.x, bounds.x + minimum, bounds.x + maximum), y: bounds.y };
+    position = point.x - bounds.x;
+  } else if (edge === "right") {
+    point = { x: bounds.x + bounds.width, y: clamp(target.y, bounds.y + minimum, bounds.y + maximum) };
+    position = point.y - bounds.y;
+  } else if (edge === "bottom") {
+    point = { x: clamp(target.x, bounds.x + minimum, bounds.x + maximum), y: bounds.y + bounds.height };
+    position = bounds.x + bounds.width - point.x;
+  } else {
+    point = { x: bounds.x, y: clamp(target.y, bounds.y + minimum, bounds.y + maximum) };
+    position = bounds.y + bounds.height - point.y;
+  }
+  return { position, distance: Math.hypot(point.x - target.x, point.y - target.y) };
+}
+
+/** Tightens desired positions to the minimum spacing while preserving angular order. */
+function spreadAlongEdge(desired: readonly number[], minimum: number, maximum: number): number[] {
+  if (desired.length === 0) return [];
+  if (desired.length === 1) return [clamp(desired[0], minimum, maximum)];
+  const spacing = MIN_ANCHOR_SPACING;
+  const highestBase = maximum - spacing * (desired.length - 1);
+  const adjusted = desired.map((position, index) => clamp(position, minimum, maximum) - index * spacing);
+  const fitted = isotonicRegression(adjusted);
+  return fitted.map((position, index) => clamp(position, minimum, highestBase) + index * spacing);
 }
 
 /** Pool-adjacent-violators regression keeps attachments ordered with minimal movement. */
@@ -251,6 +269,13 @@ function isotonicRegression(values: readonly number[]): number[] {
   return result;
 }
 
+function edgeProgress(bounds: Bounds, edge: FrameEdge, anchor: LinkAnchor): number {
+  if (edge === "top") return anchor.x * bounds.width;
+  if (edge === "right") return anchor.y * bounds.height;
+  if (edge === "bottom") return (1 - anchor.x) * bounds.width;
+  return (1 - anchor.y) * bounds.height;
+}
+
 function anchorAtPosition(bounds: Bounds, edge: FrameEdge, position: number): LinkAnchor {
   if (edge === "top") return { x: clamp(position / bounds.width, 0, 1), y: 0 };
   if (edge === "right") return { x: 1, y: clamp(position / bounds.height, 0, 1) };
@@ -262,11 +287,8 @@ function edgeLength(bounds: Bounds, edge: FrameEdge): number {
   return edge === "top" || edge === "bottom" ? bounds.width : bounds.height;
 }
 
-function anchorEdge(anchor: LinkAnchor): FrameEdge {
-  if (anchor.y === 0) return "top";
-  if (anchor.x === 1) return "right";
-  if (anchor.y === 1) return "bottom";
-  return "left";
+function angleForEdge(edge: FrameEdge, angle: number): number {
+  return edge === "left" && angle < 0 ? angle + Math.PI * 2 : angle;
 }
 
 function endpointFor(id: string): SmoothEndpoint | null {
@@ -304,7 +326,7 @@ function anchorsEqual(first: SmoothAnchors, second: SmoothAnchors): boolean {
     first.toAnchor?.x === second.toAnchor?.x && first.toAnchor?.y === second.toAnchor?.y;
 }
 
-function boundsCenter(bounds: Bounds): { x: number; y: number } {
+function boundsCenter(bounds: Bounds): Point {
   return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
 }
 
@@ -314,6 +336,10 @@ function objectName(id: string): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(value, max));
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
 }
 
 registerCommand({
