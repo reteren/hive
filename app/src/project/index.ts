@@ -14,7 +14,7 @@ import {
   normalizeNoteScale,
 } from "../model/note";
 import { ME_OBJECT_ID, pairKey, type Link, type LinkAnchor } from "../model/link";
-import { isFrameAnchor } from "../links/anchors";
+import { isFrameAnchor, parseSmoothLineAnchorSnapshot } from "../links/anchors";
 import type { Zone } from "../model/zone";
 import type { Point } from "../board/cameraMath";
 import { beaconPaletteColor, normalizeBeaconColor } from "../beacons/beaconPalette";
@@ -53,6 +53,8 @@ export interface IndexedNote {
   customMarkFrame?: boolean;
   listStats?: boolean;
   headerHidden?: boolean;
+  smoothLines?: boolean;
+  smoothLineAnchors?: NonNullable<Note["smoothLineAnchors"]>;
   [key: string]: unknown;
 }
 
@@ -196,6 +198,8 @@ export function serializeProjectIndex(
       ...(note.customMarkFrame ? { customMarkFrame: true } : {}),
       ...(note.listStats ? { listStats: true } : {}),
       headerHidden: note.headerHidden === true ? true : undefined,
+      smoothLines: note.smoothLines === true ? true : undefined,
+      smoothLineAnchors: note.smoothLines === true ? copySmoothLineAnchorSnapshot(note.smoothLineAnchors) : undefined,
     };
   });
   validateUniqueNotes(indexedNotes);
@@ -261,6 +265,10 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       ...(entry.customMarkFrame ? { customMarkFrame: true } : {}),
       ...(entry.listStats ? { listStats: true } : {}),
       ...(entry.headerHidden ? { headerHidden: true } : {}),
+      ...(entry.smoothLines ? { smoothLines: true } : {}),
+      ...(entry.smoothLines && entry.smoothLineAnchors
+        ? { smoothLineAnchors: copySmoothLineAnchorSnapshot(entry.smoothLineAnchors) }
+        : {}),
       ...(typeof entry.createdAt === "number" && Number.isFinite(entry.createdAt) && entry.createdAt >= 0
         ? { createdAt: entry.createdAt }
         : {}),
@@ -429,6 +437,13 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
   } else if (requireV3Fields && type === "beacon" && value.color === undefined) {
     warnings.push(`Missing beacon colour for note ${id}; default colour was used.`);
   }
+  const smoothLines = value.smoothLines === true;
+  const smoothLineAnchors = smoothLines && value.smoothLineAnchors !== undefined
+    ? parseSmoothLineAnchorSnapshot(value.smoothLineAnchors)
+    : undefined;
+  if (smoothLines && value.smoothLineAnchors !== undefined && !smoothLineAnchors) {
+    warnings.push(`Invalid smooth line anchors for note ${id}; anchors will be recalculated.`);
+  }
   const zoneId = value.zoneId === undefined || value.zoneId === null ? null
     : typeof value.zoneId === "string" && validZoneIds.has(value.zoneId) ? value.zoneId : null;
   if (value.zoneId !== undefined && value.zoneId !== null && zoneId === null) {
@@ -463,6 +478,8 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
       customMarks: parseCustomMarks(value.customMarks) ?? undefined,
       customMarkFrame: value.customMarkFrame === true ? true : undefined,
       listStats: value.listStats === true ? true : undefined,
+      smoothLines: smoothLines ? true : undefined,
+      smoothLineAnchors: smoothLineAnchors ?? undefined,
     },
     warnings,
   };
@@ -648,6 +665,11 @@ function copyZone(zone: Zone): Zone {
     parts: zone.parts.map((part) => part.map((point) => ({ ...point }))),
     holes: zone.holes.map((hole) => hole.map((point) => ({ ...point }))),
   };
+}
+
+function copySmoothLineAnchorSnapshot(snapshot: Note["smoothLineAnchors"]): Note["smoothLineAnchors"] {
+  if (!snapshot) return undefined;
+  return Object.fromEntries(Object.entries(snapshot).map(([linkId, anchor]) => [linkId, anchor ? { ...anchor } : null]));
 }
 
 function finite(value: unknown): value is number {

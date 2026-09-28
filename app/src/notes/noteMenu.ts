@@ -2,7 +2,7 @@ import { board, updateNote } from "../model/board.svelte";
 import { NOTE_HEADER_HEIGHT_UNITS } from "../model/note";
 import { linksOf } from "../model/links.svelte";
 import { execute } from "../history/history.svelte";
-import { smoothLinesForObjects } from "../links/smoothLines";
+import { toggleSmoothLinesForNote } from "../links/smoothLines";
 
 /**
  * Items of the note right-click menu. Features register their entries here instead of editing
@@ -23,9 +23,10 @@ const items = new Map<string, NoteMenuItem>();
 
 registerNoteMenuItem({
   id: "links.smoothLines",
-  label: () => "Smooth lines",
-  run: (noteId) => { smoothLinesForObjects([noteId]); },
-  visible: (noteId) => linksOf(noteId).length > 0,
+  label: (noteId) => board.notes[noteId]?.smoothLines ? "Remove smooth" : "Smooth lines",
+  run: toggleSmoothLinesForNote,
+  visible: (noteId) => board.notes[noteId]?.type !== "beacon" &&
+    (board.notes[noteId]?.smoothLines === true || linksOf(noteId).length > 0),
   order: 85,
 });
 

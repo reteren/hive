@@ -67,6 +67,36 @@ describe("project index", () => {
     expect(parseProjectIndex(shown).notes[0]?.headerHidden).toBeUndefined();
   });
 
+  it("persists smooth state and pre-smoothing anchors on live, archived, and trashed notes", () => {
+    const smooth: Note = {
+      id: "smooth-live", type: "note", name: "Smooth", text: "Body", x: 0, y: 0, width: 30, height: 20,
+      smoothLines: true,
+      smoothLineAnchors: { "link-live": { x: 1, y: 0.35 }, "link-default": null },
+    };
+    const archived: Note = {
+      ...smooth, id: "smooth-archive", name: "Archived smooth",
+      smoothLineAnchors: { "archive-link": null },
+    };
+    const trashed: Note = {
+      ...smooth, id: "smooth-trash", name: "Trashed smooth",
+      smoothLineAnchors: { "trash-link": { x: 0.4, y: 0 } },
+    };
+    const index = parseProjectIndex(serializeProjectIndex([smooth], undefined, [], [], [], [], {}, [
+      { id: "archive-entry", archivedAt: 10, note: archived, links: [] },
+    ], [
+      { id: "trash-entry", deletedAt: 11, notes: [trashed], zones: [], links: [] },
+    ]));
+    const loaded = mergeLoadedNotes(index, [{
+      id: smooth.id, name: smooth.name, file: index.notes[0]!.file, text: smooth.text,
+      x: smooth.x, y: smooth.y, width: smooth.width, height: smooth.height,
+    }]);
+
+    expect(index.notes[0]).toMatchObject({ smoothLines: true, smoothLineAnchors: smooth.smoothLineAnchors });
+    expect(loaded[0]).toMatchObject({ smoothLines: true, smoothLineAnchors: smooth.smoothLineAnchors });
+    expect(index.archive[0]?.note).toMatchObject({ smoothLines: true, smoothLineAnchors: archived.smoothLineAnchors });
+    expect(index.trash[0]?.notes[0]).toMatchObject({ smoothLines: true, smoothLineAnchors: trashed.smoothLineAnchors });
+  });
+
   it("round trips mirrored calculator data, prunes orphan keys, and assigns per-node Markdown files", () => {
     const notes: Note[] = [
       { id: "calc-a", type: "calculator", name: "Trip", text: "", x: 0, y: 0, width: 40, height: null },

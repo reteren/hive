@@ -113,11 +113,16 @@ export function copyTrashNote(note: Note): Note {
     ...(note.taskMemory ? { taskMemory: { ...note.taskMemory } } : {}),
     ...(note.purposes ? { purposes: [...note.purposes] } : {}),
     ...(note.moods ? { moods: [...note.moods] } : {}),
+    ...(note.smoothLineAnchors ? { smoothLineAnchors: copySmoothLineAnchorSnapshot(note.smoothLineAnchors) } : {}),
     ...(note.scope ? { scope: { ...note.scope } } : {}),
     ...(note.tiers ? {
       tiers: note.tiers.map((row) => ({ ...row, cards: row.cards.map((card) => ({ ...card })) })),
     } : {}),
   };
+}
+
+function copySmoothLineAnchorSnapshot(snapshot: NonNullable<Note["smoothLineAnchors"]>): NonNullable<Note["smoothLineAnchors"]> {
+  return Object.fromEntries(Object.entries(snapshot).map(([linkId, anchor]) => [linkId, anchor ? { ...anchor } : null]));
 }
 
 export function copyTrashZone(zone: Zone): Zone {

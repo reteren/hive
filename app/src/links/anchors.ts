@@ -9,9 +9,45 @@ export interface ShapeEndpoints {
   endNormal: Point;
 }
 
+export type SmoothLineAnchorSnapshot = Record<string, LinkAnchor | null>;
+
 export interface CircleEndpoint {
   point: Point;
   normal: Point;
+}
+
+/** Resolve link endpoints with the same frame/circle rules used by the renderer. */
+export function resolveLinkEndpoints(
+  source: Bounds,
+  target: Bounds,
+  sourceAnchor?: LinkAnchor,
+  targetAnchor?: LinkAnchor,
+  sourceIsCircle = false,
+  targetIsCircle = false,
+): ShapeEndpoints {
+  let endpoints = shapeEndpoints(
+    source,
+    target,
+    sourceAnchor,
+    targetAnchor,
+    sourceIsCircle,
+    targetIsCircle,
+  );
+  if (sourceIsCircle) {
+    const center = centerOf(source);
+    const circle = sourceAnchor
+      ? pointOnCircleAtAnchor(center, circleRadius(source), source, sourceAnchor)
+      : pointOnCircleToward(center, circleRadius(source), endpoints.end);
+    endpoints = { ...endpoints, start: circle.point, startNormal: circle.normal };
+  }
+  if (targetIsCircle) {
+    const center = centerOf(target);
+    const circle = targetAnchor
+      ? pointOnCircleAtAnchor(center, circleRadius(target), target, targetAnchor)
+      : pointOnCircleToward(center, circleRadius(target), endpoints.start);
+    endpoints = { ...endpoints, end: circle.point, endNormal: circle.normal };
+  }
+  return endpoints;
 }
 
 /** Project a point inside a note onto its nearest frame edge. */
@@ -53,6 +89,20 @@ export function isFrameAnchor(value: unknown): value is LinkAnchor {
     (candidate.x === 0 || candidate.x === 1 || candidate.y === 0 || candidate.y === 1);
 }
 
+/** Validate the owner-side anchors remembered while persistent smoothing is enabled. */
+export function parseSmoothLineAnchorSnapshot(value: unknown): SmoothLineAnchorSnapshot | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const entries = Object.entries(value);
+  if (entries.length > 50_000) return null;
+  const result: SmoothLineAnchorSnapshot = Object.create(null) as SmoothLineAnchorSnapshot;
+  for (const [linkId, anchor] of entries) {
+    if (linkId.length === 0 || linkId.length > 200 || linkId.includes("/") || linkId.includes("\\") ||
+      !(anchor === null || isFrameAnchor(anchor))) return null;
+    result[linkId] = anchor === null ? null : { x: anchor.x, y: anchor.y };
+  }
+  return result;
+}
+
 /** Outward normal for a frame attachment. */
 export function normalAtAnchor(anchor: LinkAnchor): Point {
   const edgeAnchor = frameAnchor(anchor);
@@ -71,8 +121,8 @@ export function shapeEndpoints(
   sourceIsCenter = false,
   targetIsCenter = false,
 ): ShapeEndpoints {
-  const sourceCenter = center(source);
-  const targetCenter = center(target);
+  const sourceCenter = centerOf(source);
+  const targetCenter = centerOf(target);
   const fixedStart = sourceAnchor ? pointAtAnchor(source, sourceAnchor) : sourceIsCenter ? sourceCenter : undefined;
   const fixedEnd = targetAnchor ? pointAtAnchor(target, targetAnchor) : targetIsCenter ? targetCenter : undefined;
   const start = fixedStart ?? framePointToward(source, fixedEnd ?? targetCenter);
@@ -96,8 +146,34 @@ export function pointOnCircleToward(center: Point, radius: number, toward: Point
   };
 }
 
+/** Keep a circle attachment aligned to a persisted frame anchor's radial direction. */
+export function pointOnCircleAtAnchor(
+  center: Point,
+  radius: number,
+  bounds: Bounds,
+  anchor: LinkAnchor,
+): CircleEndpoint {
+  return pointOnCircleToward(center, radius, pointAtAnchor(bounds, anchor));
+}
+
+/** Frame anchor collinear with a ray from the rectangle's centre to a point. */
+export function anchorAlongRay(bounds: Bounds, target: Point): LinkAnchor {
+  const origin = centerOf(bounds);
+  let dx = target.x - origin.x;
+  let dy = target.y - origin.y;
+  if (dx === 0 && dy === 0) dx = 1;
+  const horizontal = dx === 0 ? Number.POSITIVE_INFINITY : bounds.width / 2 / Math.abs(dx);
+  const vertical = dy === 0 ? Number.POSITIVE_INFINITY : bounds.height / 2 / Math.abs(dy);
+  if (horizontal <= vertical) {
+    const y = origin.y + dy * horizontal;
+    return { x: dx > 0 ? 1 : 0, y: clamp01((y - bounds.y) / bounds.height) };
+  }
+  const x = origin.x + dx * vertical;
+  return { x: clamp01((x - bounds.x) / bounds.width), y: dy > 0 ? 1 : 0 };
+}
+
 function framePointToward(bounds: Bounds, toward: Point): Point {
-  const origin = center(bounds);
+  const origin = centerOf(bounds);
   let dx = toward.x - origin.x;
   let dy = toward.y - origin.y;
   if (dx === 0 && dy === 0) dx = 1;
@@ -124,8 +200,12 @@ function frameNormal(bounds: Bounds, point: Point): Point {
   }
 }
 
-function center(bounds: Bounds): Point {
+function centerOf(bounds: Bounds): Point {
   return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+}
+
+function circleRadius(bounds: Bounds): number {
+  return Math.max(0, Math.min(bounds.width, bounds.height) / 2);
 }
 
 function normalize(point: Point): Point {

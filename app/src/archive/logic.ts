@@ -30,9 +30,14 @@ export function copyArchivedNote(note: Note): Note {
     ...(note.taskMemory ? { taskMemory: { ...note.taskMemory } } : {}),
     ...(note.purposes ? { purposes: [...note.purposes] } : {}),
     ...(note.moods ? { moods: [...note.moods] } : {}),
+    ...(note.smoothLineAnchors ? { smoothLineAnchors: copySmoothLineAnchorSnapshot(note.smoothLineAnchors) } : {}),
     ...(note.scope ? { scope: { ...note.scope } } : {}),
     ...(note.tiers ? { tiers: copyTierRows(note.tiers) } : {}),
   };
+}
+
+function copySmoothLineAnchorSnapshot(snapshot: NonNullable<Note["smoothLineAnchors"]>): NonNullable<Note["smoothLineAnchors"]> {
+  return Object.fromEntries(Object.entries(snapshot).map(([linkId, anchor]) => [linkId, anchor ? { ...anchor } : null]));
 }
 
 export function copyArchivedLink(link: Link): Link {

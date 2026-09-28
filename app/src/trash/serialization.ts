@@ -1,4 +1,4 @@
-import { isFrameAnchor } from "../links/anchors";
+import { isFrameAnchor, parseSmoothLineAnchorSnapshot } from "../links/anchors";
 import { ME_OBJECT_ID, pairKey, type Link } from "../model/link";
 import { calculatorKey, parseCalculatorData, parseScope, parseTiers, type CalculatorData, parseListItems, parseRandomPick, parseSource, parseCustomMarks } from "../model/nodeData";
 import { IMPORTANCE_LEVELS, isValidNoteScale, MOOD_KINDS, PURPOSE_KINDS, type Note, type NoteKind, type TaskState } from "../model/note";
@@ -120,6 +120,9 @@ function parseTrashNote(value: unknown): Note | null {
   const scope = value.scope === undefined ? undefined : parseScope(value.scope);
   const tiers = value.tiers === undefined ? undefined : parseTiers(value.tiers);
   if (scope === null || tiers === null) return null;
+  const smoothLineAnchors = value.smoothLines === true && value.smoothLineAnchors !== undefined
+    ? parseSmoothLineAnchorSnapshot(value.smoothLineAnchors) ?? undefined
+    : undefined;
   return {
     id: value.id,
     type: value.type as NoteKind,
@@ -145,6 +148,8 @@ function parseTrashNote(value: unknown): Note | null {
     ...(value.customMarkFrame === true ? { customMarkFrame: true } : {}),
     ...(value.listStats === true ? { listStats: true } : {}),
     ...(value.headerHidden === true ? { headerHidden: true } : {}),
+    ...(value.smoothLines === true ? { smoothLines: true } : {}),
+    ...(smoothLineAnchors ? { smoothLineAnchors } : {}),
     ...(typeof value.color === "string" ? { color: value.color } : {}),
     ...(typeof value.zoneId === "string" ? { zoneId: value.zoneId } : {}),
     ...(finite(value.createdAt) ? { createdAt: value.createdAt } : {}),

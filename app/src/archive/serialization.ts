@@ -1,4 +1,4 @@
-import { isFrameAnchor } from "../links/anchors";
+import { isFrameAnchor, parseSmoothLineAnchorSnapshot } from "../links/anchors";
 import { pairKey, type Link } from "../model/link";
 import { parseCalculatorData, parseScope, parseTiers, parseListItems, parseRandomPick, parseSource, parseCustomMarks } from "../model/nodeData";
 import { IMPORTANCE_LEVELS, isValidNoteScale, MOOD_KINDS, PURPOSE_KINDS, type Note, type NoteKind, type TaskState } from "../model/note";
@@ -89,6 +89,9 @@ function parseArchivedNote(value: unknown): Note | null {
     value.moods.some((item) => !MOOD_KINDS.includes(item)))) return null;
   const scope = value.scope === undefined ? undefined : parseScope(value.scope);
   const tiers = value.tiers === undefined ? undefined : parseTiers(value.tiers);
+  const smoothLineAnchors = value.smoothLines === true && value.smoothLineAnchors !== undefined
+    ? parseSmoothLineAnchorSnapshot(value.smoothLineAnchors) ?? undefined
+    : undefined;
   if (scope === null || tiers === null || value.color !== undefined && typeof value.color !== "string" ||
     value.zoneId !== undefined && value.zoneId !== null && typeof value.zoneId !== "string" ||
     value.createdAt !== undefined && !finite(value.createdAt)) return null;
@@ -117,6 +120,8 @@ function parseArchivedNote(value: unknown): Note | null {
     ...(value.customMarkFrame === true ? { customMarkFrame: true } : {}),
     ...(value.listStats === true ? { listStats: true } : {}),
     ...(value.headerHidden === true ? { headerHidden: true } : {}),
+    ...(value.smoothLines === true ? { smoothLines: true } : {}),
+    ...(smoothLineAnchors ? { smoothLineAnchors } : {}),
     ...(typeof value.color === "string" ? { color: value.color } : {}),
     ...(typeof value.zoneId === "string" ? { zoneId: value.zoneId } : {}),
     ...(typeof value.createdAt === "number" ? { createdAt: value.createdAt } : {}),

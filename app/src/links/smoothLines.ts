@@ -2,13 +2,14 @@ import type { Point } from "../board/cameraMath";
 import { registerCommand } from "../commands/registry.svelte";
 import { BEACON_SIZE } from "../model/note";
 import { ME_OBJECT_ID, type Link, type LinkAnchor } from "../model/link";
-import { board } from "../model/board.svelte";
-import { links, updateLink } from "../model/links.svelte";
+import { board, updateNote } from "../model/board.svelte";
+import { links, linksOf, registerLinkLifecycle, updateLink } from "../model/links.svelte";
 import { execute } from "../history/history.svelte";
 import { ME_POSITION } from "../board/camera.svelte";
 import { noteBounds, type Bounds } from "../notes/layout.svelte";
-import { selection } from "../selection/selection.svelte";
+import { registerSelectionInteractionListener, selection } from "../selection/selection.svelte";
 import { selectedLinkIds } from "./selection.svelte";
+import { anchorAlongRay, projectPointToAnchor, resolveLinkEndpoints, type SmoothLineAnchorSnapshot } from "./anchors";
 
 interface SmoothEndpoint {
   bounds: Bounds;
@@ -53,12 +54,112 @@ const ADJACENT_EDGES: Record<FrameEdge, readonly FrameEdge[]> = {
   left: ["bottom", "top"],
 };
 
+let reflowQueued = false;
+
+registerLinkLifecycle({
+  onRestored: () => reflowSmoothLineAnchorsRaw(),
+  onRemoved: () => queueSmoothReflow(),
+});
+
+registerSelectionInteractionListener((_noteIds, source) => {
+  if (source === "move") reflowSmoothLineAnchorsRaw();
+});
+
 /** Smooth the links touching the requested objects, moving anchors only on those objects. */
 export function smoothLinesForObjects(objectIds: readonly string[]): boolean {
   const ids = new Set(objectIds);
   if (ids.size === 0) return false;
   const affected = Object.values(links.byId).filter((link) => ids.has(link.from) || ids.has(link.to));
   return smoothLinks(affected, ids, objectIds.length === 1 ? objectName(objectIds[0]) : `${ids.size} objects`);
+}
+
+/** Toggle the persistent per-node smoothing state as one reversible history action. */
+export function toggleSmoothLinesForNote(noteId: string): boolean {
+  const note = board.notes[noteId];
+  if (!note || note.type === "beacon") return false;
+
+  const wasEnabled = note.smoothLines === true;
+  const beforeSnapshot = copySmoothSnapshot(note.smoothLineAnchors);
+  const affected = linksOf(noteId);
+  const beforeLinks = affected.map((link) => ({ id: link.id, anchors: copyAnchors(link) }));
+  let nextSnapshot: SmoothLineAnchorSnapshot | undefined;
+  let afterLinks: Array<{ id: string; anchors: SmoothAnchors }>;
+
+  if (!wasEnabled) {
+    nextSnapshot = Object.create(null) as SmoothLineAnchorSnapshot;
+    for (const link of affected) {
+      const anchor = ownAnchor(link, noteId);
+      nextSnapshot[link.id] = anchor ? { ...anchor } : null;
+    }
+    afterLinks = calculateSmoothLinkChanges(affected, new Set([noteId]), true);
+  } else {
+    const snapshot = note.smoothLineAnchors ?? {};
+    afterLinks = affected.map((link) => {
+      const anchors = copyAnchors(link);
+      const saved = Object.prototype.hasOwnProperty.call(snapshot, link.id) ? snapshot[link.id] : null;
+      setOwnAnchor(anchors, link, noteId, saved ? { ...saved } : undefined);
+      return { id: link.id, anchors };
+    });
+  }
+
+  const afterById = new Map(afterLinks.map((item) => [item.id, item.anchors]));
+  const beforeById = new Map(beforeLinks.map((item) => [item.id, item.anchors]));
+  const changedIds = new Set([...beforeById.keys(), ...afterById.keys()]);
+  const changes = [...changedIds].flatMap((id) => {
+    const previous = beforeById.get(id);
+    const next = afterById.get(id);
+    return previous && next && !anchorsEqual(previous, next) ? [{ id, previous, next }] : [];
+  });
+  const nextEnabled = !wasEnabled;
+  execute({
+    label: nextEnabled ? "Smooth lines" : "Remove smooth",
+    target: note.name,
+    do: () => {
+      updateNote(noteId, {
+        smoothLines: nextEnabled ? true : undefined,
+        smoothLineAnchors: nextEnabled ? copySmoothSnapshot(nextSnapshot) : undefined,
+      });
+      changes.forEach(({ id, next }) => setAnchors(id, next));
+    },
+    undo: () => {
+      updateNote(noteId, {
+        smoothLines: wasEnabled ? true : undefined,
+        smoothLineAnchors: copySmoothSnapshot(beforeSnapshot),
+      });
+      changes.forEach(({ id, previous }) => setAnchors(id, previous));
+    },
+  });
+  return true;
+}
+
+/** Reflow all enabled notes after board geometry or link topology changes; anchors are derived state. */
+export function reflowSmoothLineAnchorsRaw(): void {
+  for (const noteId of board.order) {
+    const note = board.notes[noteId];
+    if (!note || note.smoothLines !== true || note.type === "beacon") continue;
+    const affected = linksOf(noteId);
+    if (affected.length === 0) continue;
+    const snapshot = copySmoothSnapshot(note.smoothLineAnchors) ?? Object.create(null) as SmoothLineAnchorSnapshot;
+    let snapshotChanged = false;
+    for (const link of affected) {
+      if (Object.prototype.hasOwnProperty.call(snapshot, link.id)) continue;
+      snapshot[link.id] = null;
+      snapshotChanged = true;
+    }
+
+    const changes = calculateSmoothLinkChanges(affected, new Set([noteId]), true);
+    changes.forEach(({ id, anchors }) => setAnchors(id, anchors));
+    if (snapshotChanged) updateNote(noteId, { smoothLineAnchors: snapshot });
+  }
+}
+
+function queueSmoothReflow(): void {
+  if (reflowQueued) return;
+  reflowQueued = true;
+  queueMicrotask(() => {
+    reflowQueued = false;
+    reflowSmoothLineAnchorsRaw();
+  });
 }
 
 /** Smooth the selected links at both of their endpoints in one history action. */
@@ -70,6 +171,27 @@ export function smoothLinesForLinks(linkIds: readonly string[]): boolean {
 }
 
 function smoothLinks(affected: readonly Link[], targetIds: ReadonlySet<string>, target: string): boolean {
+  const changes = calculateSmoothLinkChanges(affected, targetIds, false);
+  if (changes.length === 0) return false;
+
+  const previousById = new Map(affected.map((link) => [link.id, copyAnchors(link)]));
+  execute({
+    label: "Smooth lines",
+    target,
+    do: () => changes.forEach(({ id, anchors }) => setAnchors(id, anchors)),
+    undo: () => changes.forEach(({ id }) => {
+      const previous = previousById.get(id);
+      if (previous) setAnchors(id, previous);
+    }),
+  });
+  return true;
+}
+
+function calculateSmoothLinkChanges(
+  affected: readonly Link[],
+  targetIds: ReadonlySet<string>,
+  freezeOtherSides: boolean,
+): Array<{ id: string; anchors: SmoothAnchors }> {
   const groups = new Map<string, AnchorGroup>();
 
   for (const link of affected) {
@@ -134,17 +256,48 @@ function smoothLinks(affected: readonly Link[], targetIds: ReadonlySet<string>, 
     if (!next) return [];
     const previous = copyAnchors(link);
     const merged = { ...previous, ...next };
-    return anchorsEqual(previous, merged) ? [] : [{ id: link.id, previous, next: merged }];
+    if (freezeOtherSides && targetedAnchorChanged(link, previous, merged, targetIds)) {
+      const endpoints = renderedEndpoints(link);
+      if (endpoints) {
+        const from = endpointFor(link.from);
+        const to = endpointFor(link.to);
+        if (from && !targetIds.has(link.from) && !previous.fromAnchor) {
+          merged.fromAnchor = from.circular
+            ? anchorAlongRay(from.bounds, endpoints.start)
+            : projectPointToAnchor(from.bounds, endpoints.start);
+        }
+        if (to && !targetIds.has(link.to) && !previous.toAnchor) {
+          merged.toAnchor = to.circular
+            ? anchorAlongRay(to.bounds, endpoints.end)
+            : projectPointToAnchor(to.bounds, endpoints.end);
+        }
+      }
+    }
+    return anchorsEqual(previous, merged) ? [] : [{ id: link.id, anchors: merged }];
   });
-  if (changes.length === 0) return false;
+  return changes;
+}
 
-  execute({
-    label: "Smooth lines",
-    target,
-    do: () => changes.forEach(({ id, next }) => setAnchors(id, next)),
-    undo: () => changes.forEach(({ id, previous }) => setAnchors(id, previous)),
-  });
-  return true;
+function renderedEndpoints(link: Link) {
+  const from = endpointFor(link.from);
+  const to = endpointFor(link.to);
+  return from && to
+    ? resolveLinkEndpoints(from.bounds, to.bounds, link.fromAnchor, link.toAnchor, from.circular, to.circular)
+    : null;
+}
+
+function targetedAnchorChanged(
+  link: Link,
+  previous: SmoothAnchors,
+  next: SmoothAnchors,
+  targetIds: ReadonlySet<string>,
+): boolean {
+  return targetIds.has(link.from) && !sameAnchor(previous.fromAnchor, next.fromAnchor) ||
+    targetIds.has(link.to) && !sameAnchor(previous.toAnchor, next.toAnchor);
+}
+
+function sameAnchor(first?: LinkAnchor, second?: LinkAnchor): boolean {
+  return first?.x === second?.x && first?.y === second?.y;
 }
 
 /** Pick the edge where the ray from this frame's centre exits the rectangle. */
@@ -312,6 +465,24 @@ function setAnchors(id: string, anchors: SmoothAnchors): void {
     fromAnchor: anchors.fromAnchor ? { ...anchors.fromAnchor } : undefined,
     toAnchor: anchors.toAnchor ? { ...anchors.toAnchor } : undefined,
   });
+}
+
+function ownAnchor(link: Link, noteId: string): LinkAnchor | undefined {
+  if (link.from === noteId) return link.fromAnchor;
+  if (link.to === noteId) return link.toAnchor;
+  return undefined;
+}
+
+function setOwnAnchor(anchors: SmoothAnchors, link: Link, noteId: string, anchor?: LinkAnchor): void {
+  if (link.from === noteId) anchors.fromAnchor = anchor;
+  else if (link.to === noteId) anchors.toAnchor = anchor;
+}
+
+function copySmoothSnapshot(snapshot: SmoothLineAnchorSnapshot | undefined): SmoothLineAnchorSnapshot | undefined {
+  if (!snapshot) return undefined;
+  const copied = Object.create(null) as SmoothLineAnchorSnapshot;
+  for (const [linkId, anchor] of Object.entries(snapshot)) copied[linkId] = anchor ? { ...anchor } : null;
+  return copied;
 }
 
 function copyAnchors(link: Pick<Link, "fromAnchor" | "toAnchor">): SmoothAnchors {

@@ -13,7 +13,8 @@
   import { objectColor } from "./colors";
   import { marqueeIntersectsPath, strokeIntersectsPath } from "./lineGeometry";
   import { buildArrowGeometry, buildShape, buildShapeDashPaths, type ShapeResult } from "./shapes";
-  import { pointOnCircleToward, projectPointToAnchor, shapeEndpoints } from "./anchors";
+  import { pointOnCircleToward, projectPointToAnchor, resolveLinkEndpoints, shapeEndpoints } from "./anchors";
+  import { startSmoothLineSync } from "./smoothLineSync.svelte";
   import { clientToBoardPoint, clientToWorld } from "./coordinates";
   import { completeLinkGesture, previewLinkKind, resolveCutRelease, type LinkDraft } from "./gestures";
   import { cancelLineDraft, lineInteraction, setLineError } from "./interaction.svelte";
@@ -225,6 +226,7 @@
   });
 
   onMount(() => {
+    startSmoothLineSync();
     const parent = layer.parentElement;
     if (!parent) return;
     const surface: HTMLElement = parent;
@@ -582,18 +584,16 @@
   function geometryForLink(link: Link, source: Bounds, target: Bounds): ShapeResult {
     const circularSource = isBeacon(link.from);
     const circularTarget = isBeacon(link.to);
-    const endpoints = shapeEndpoints(
+    const endpoints = resolveLinkEndpoints(
       source,
       target,
-      circularSource ? undefined : link.fromAnchor,
-      circularTarget ? undefined : link.toAnchor,
+      link.fromAnchor,
+      link.toAnchor,
       circularSource,
       circularTarget,
     );
-    const sourceRoute = circularSource ? circleSource(endpoints, source) : endpoints;
-    const route = circularTarget ? circleTarget(sourceRoute, target) : sourceRoute;
     return buildShape(link.shape, {
-      ...route,
+      ...endpoints,
       sourceBounds: circularSource ? undefined : source,
       targetBounds: circularTarget ? undefined : target,
     });
@@ -628,12 +628,6 @@
     const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
     const source = pointOnCircleToward(center, BEACON_SIZE / 2, endpoints.end);
     return { ...endpoints, start: source.point, startNormal: source.normal };
-  }
-
-  function circleTarget(endpoints: ReturnType<typeof shapeEndpoints>, bounds: Bounds): ReturnType<typeof shapeEndpoints> {
-    const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
-    const target = pointOnCircleToward(center, BEACON_SIZE / 2, endpoints.start);
-    return { ...endpoints, end: target.point, endNormal: target.normal };
   }
 
   function isBeacon(id: string): boolean {

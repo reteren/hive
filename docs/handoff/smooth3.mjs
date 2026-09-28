@@ -1,0 +1,43 @@
+// Smooth lines as node state: other ends never move (screen endpoints), menu toggles to "Remove smooth", remove restores.
+import { writeFileSync } from "node:fs";
+const page = (await fetch(`http://localhost:9334/json/list`).then((r) => r.json())).find((t) => t.type === "page");
+const ws = new WebSocket(page.webSocketDebuggerUrl); let id = 0; const pending = new Map(); const errors = [];
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.method === "Runtime.exceptionThrown") errors.push(m.params.exceptionDetails.exception?.description?.slice(0, 200)); if (pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+await new Promise((r) => (ws.onopen = r));
+const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+await send("Runtime.enable");
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const ev = async (expression) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); return r.result?.result?.value ?? r.result?.exceptionDetails?.exception?.description; };
+const mouse = (type, x, y, button = "none", buttons = 0) => send("Input.dispatchMouseEvent", { type, x, y, button, buttons, clickCount: type === "mousePressed" || type === "mouseReleased" ? 1 : 0 });
+const click = async (p, button = "left") => { const b = button === "left" ? 1 : 2; await mouse("mouseMoved", p.x, p.y); await mouse("mousePressed", p.x, p.y, button, b); await mouse("mouseReleased", p.x, p.y, button, 0); await wait(300); };
+const at = (sel) => ev(`(()=>{const e=document.querySelector(${JSON.stringify(sel)});if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+const menuItems = () => ev(`[...document.querySelectorAll('button,[role=menuitem]')].map(b=>b.textContent.trim()).filter(t=>/smooth/i.test(t)).join(',')`);
+const menuClick = async (label) => { const p = await ev(`(()=>{const e=[...document.querySelectorAll('button,[role=menuitem]')].find(b=>b.textContent.trim().startsWith(${JSON.stringify(label)}));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`); if (p) await click(p); return !!p; };
+// endpoint (screen) of each link: which end is on X is determined by distance to X centre
+const ends = () => ev(`(()=>{const X=document.querySelector('[data-note-id="X"]').getBoundingClientRect();const cx=X.x+X.width/2,cy=X.y+X.height/2;const out={};
+ for(const g of document.querySelectorAll('g[data-link-id]')){const p=g.querySelector('path');if(!p)continue;const L=p.getTotalLength();const a=p.getPointAtLength(0),b=p.getPointAtLength(L);const da=Math.hypot(a.x-cx,a.y-cy),db=Math.hypot(b.x-cx,b.y-cy);const xe=da<db?a:b,oe=da<db?b:a;out[g.getAttribute('data-link-id')]={x:[+xe.x.toFixed(1),+xe.y.toFixed(1)],o:[+oe.x.toFixed(1),+oe.y.toFixed(1)]};}return JSON.stringify(out)})()`);
+await ev(`(async()=>{const b=await import('/src/model/board.svelte.ts');const l=await import('/src/model/links.svelte.ts');const c=await import('/src/board/camera.svelte.ts');const n=Date.now();
+ b.addNote({id:'X',type:'note',name:'X',text:'hub',x:-10,y:-6,width:20,height:null,createdAt:n});
+ [[30,-14],[30,-2],[30,10],[-40,-20],[-5,25]].forEach(([x,y],i)=>b.addNote({id:'o'+i,type:'note',name:'O'+i,text:'',x,y,width:12,height:null,createdAt:n+1+i}));
+ ['o0','o1','o2','o3','o4'].forEach((t,i)=>l.addLink({id:'k'+i,from:i%2?t:'X',to:i%2?'X':t,kind:'strong',shape:'base'}));
+ c.camera.x=0;c.camera.y=0;c.camera.zoom=1.2;return 1})()`);
+await wait(600);
+const before = JSON.parse(await ends());
+await click(await at('[data-note-id="X"] [data-note-header]'), "right");
+console.log("menu before:", await menuItems()); await menuClick("Smooth lines");
+const after = JSON.parse(await ends());
+const moved = (A, B, key) => Object.keys(A).filter((k) => Math.hypot(A[k][key][0] - B[k][key][0], A[k][key][1] - B[k][key][1]) > 0.6);
+console.log("smooth ON: other ends moved:", moved(before, after, "o").join(",") || "none", "| X ends moved:", moved(before, after, "x").join(",") || "none");
+writeFileSync(process.argv[2], Buffer.from((await send("Page.captureScreenshot", { format: "png" })).result.data, "base64"));
+await click(await at('[data-note-id="X"] [data-note-header]'), "right");
+console.log("menu while ON:", await menuItems()); await mouse("mouseMoved", 5, 5); await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 }); await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 }); await wait(300);
+// move O4 (below X) far to the right; X ends may redistribute, other ends of other links must stay
+const e1 = JSON.parse(await ends());
+const o4 = await at('[data-note-id="o4"] [data-note-header]');
+await mouse("mouseMoved", o4.x, o4.y); await mouse("mousePressed", o4.x, o4.y, "left", 1); for (let i = 1; i <= 10; i += 1) { await mouse("mouseMoved", o4.x + i * 25, o4.y, "left", 1); await wait(25); } await mouse("mouseReleased", o4.x + 250, o4.y, "left", 0); await wait(500);
+const e2 = JSON.parse(await ends());
+console.log("after moving O4: other ends moved (except k4):", moved(e1, e2, "o").filter((k) => k !== "k4").join(",") || "none", "| X ends moved:", moved(e1, e2, "x").join(",") || "none");
+await click(await at('[data-note-id="X"] [data-note-header]'), "right"); await menuClick("Remove smooth");
+console.log("menu after remove:", await (async () => { await click(await at('[data-note-id="X"] [data-note-header]'), "right"); return menuItems(); })());
+console.log("errors:", errors.length ? errors.join(" || ") : "none");
+ws.close();

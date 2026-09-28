@@ -1,4 +1,5 @@
 import type { CustomMark, ListItem, NodeScope, RandomPick, SourceData, TierRow } from "./nodeData";
+import type { LinkAnchor } from "./link";
 
 /**
  * "note" — ordinary text node; "pro"/"con" — the green/red plus/minus mini-nodes (R3.5);
@@ -97,6 +98,10 @@ export interface Note {
   scale?: number;
   /** When true, the note's title header is hidden. */
   headerHidden?: boolean;
+  /** Keep rectangular line attachments distributed while preserving them through project retention. */
+  smoothLines?: boolean;
+  /** Per-link owner-side anchors before smoothing; null means the default automatic attachment. */
+  smoothLineAnchors?: Record<string, LinkAnchor | null>;
   /** Creation time (ms since epoch); older projects may lack it. Used by search ordering (R2.4). */
   createdAt?: number;
   /** Task flag and completion (R3.1). */
