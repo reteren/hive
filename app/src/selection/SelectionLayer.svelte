@@ -34,6 +34,8 @@ import { measureDictionaryHeightLimits } from "../spell/dictionarySizing";
     type ZoneResizeGesture,
   } from "../zones/zoneGestures";
   import { isTextEditingTarget } from "../commands/focus";
+  import { commands } from "../commands/registry.svelte";
+  import { findMatchingCommand } from "../commands/keys";
   import {
     clearModuleDropPreview,
     tryInsertModuleOnDrop,
@@ -48,14 +50,24 @@ import { measureDictionaryHeightLimits } from "../spell/dictionarySizing";
     crossedGestureThreshold,
     moveGestureChange,
     normalizeScaleResizeAtCommit,
+    cancelScaleModeGesture,
+    createScaleModeGesture,
+    geometryHistoryCommand,
+    normalizeScaleModeAtCommit,
     resizeGestureChange,
+    scaleModeGestureChange,
+    scaleModeKeyAction,
+    scaleModePointerAction,
+    shouldShowResizeHandle,
     shouldCancelForLineTool,
+    updateScaleModeGesture,
     updateMoveGesture,
     updateResizeGesture,
     type GeometryChange,
     type MoveGesture,
     type NoteFrame,
     type ResizeGesture,
+    type ScaleModeGesture,
   } from "./gestures";
   import { hitTestNotes, hitTestZones, noteSelectionCornerRadius, notesTouchingMarquee, rectFromPoints, zonesTouchingMarquee } from "./hitTesting";
   import {
@@ -80,6 +92,8 @@ import { measureDictionaryHeightLimits } from "../spell/dictionarySizing";
   import {
     noteMoveStarts,
     notePressIntent,
+    shouldSelectNoteOnAltPress,
+    shouldSuppressAltNodeActivationClick,
     shouldToggleSelectedHeaderAfterGesture,
   } from "./noteMoveIntent";
   import { hasResizeHandle, isFixedSizeNodeKind, isStandaloneModuleKind, maximumWidthForKind, minimumHeightForKind, RESIZE_EDGES, resizeEdgeAxes, type ResizeEdge } from "./resize";
@@ -202,14 +216,17 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
 
   type GesturePointerInput = Pick<PointerEvent, "pointerId" | "altKey" | "ctrlKey" | "shiftKey" | "preventDefault">;
 
-  type PendingBoardMove =
+type PendingBoardMove =
     | { kind: "gesture"; pointerId: number; screen: Point; event: GesturePointerInput }
-    | { kind: "zone-grab" | "grab"; pointerId: number; world: Point; ctrl: boolean; alt: boolean };
+    | { kind: "zone-grab" | "grab" | "scale-mode"; pointerId: number; world: Point; ctrl: boolean; alt: boolean };
 
   let layer: HTMLDivElement;
   let boardElement: HTMLElement | null = null;
   let activeGesture: ActivePointerGesture | null = null;
   let grabGesture: MoveGesture | null = null;
+  let scaleModeGesture = $state<ScaleModeGesture | null>(null);
+  let transformModeHint = $state<"Move" | "Scale" | null>(null);
+  let shiftHeld = $state(false);
   let zoneGrabGesture: ZoneMoveGesture | null = null;
   let zoneGrabStartWorld: Point | null = null;
   let zoneGrabPrecision: PrecisionDeltaTracker | null = null;
@@ -219,6 +236,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
   let grabStartWorld: Point | null = null;
   let grabPrecision: PrecisionDeltaTracker | null = null;
   let pendingAltContextPick: PendingAltContextPick | null = null;
+  let pendingAltNodeActivationPointerId: number | null = null;
   const zoneOutlinePathCache = new WeakMap<Zone, {
     parts: Zone["parts"];
     holes: Zone["holes"];
@@ -228,6 +246,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
   let altHeld = false;
   let suppressContextMenuUntil = 0;
   let suppressBodyClickUntil = 0;
+  let suppressAltNodeClickUntil = 0;
   let restoreMovingStacking: (() => void) | null = null;
   let zoneCollisionHint = $state(false);
   let lineToolActive = $derived(isLineTool());
@@ -360,6 +379,57 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
 
     const boardEl = boardElement;
 
+    function onScaleModePointerDown(event: PointerEvent): void {
+      const gesture = scaleModeGesture;
+      if (!gesture) return;
+
+      if (scaleModePointerAction(event.button) === "cancel") {
+        suppressContextMenuUntil = performance.now() + 750;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        cancelScaleMode();
+        return;
+      }
+
+      const local = localPoint(event);
+      if (local) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        commitScaleMode(screenToWorld(camera, viewport, local), true);
+      } else {
+        commitScaleMode();
+      }
+    }
+
+    function onAltNodePointerDown(event: PointerEvent): void {
+      if (event.button !== 0 || event.isPrimary === false || activeGesture || grabGesture || zoneGrabGesture) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target || target.closest(".selection-context-pick, [data-create-menu]")) return;
+
+      const noteId = target.closest<HTMLElement>("[data-note-id]")?.dataset.noteId;
+      if (!shouldSelectNoteOnAltPress(
+        noteId,
+        event.altKey,
+        event.ctrlKey,
+        event.shiftKey,
+        noteId ? isDimmed(noteId) : false,
+      ) || !noteId || !boardState.notes[noteId]) return;
+
+      const local = localPoint(event);
+      if (!local) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      suppressBodyClickUntil = 0;
+      suppressAltNodeClickUntil = Number.POSITIVE_INFINITY;
+      pendingAltNodeActivationPointerId = event.pointerId;
+      pendingAltContextPick = null;
+      closeContextPick();
+      selectNoteUndoable(noteId);
+      const frames = framesForSelection();
+      if (frames.length > 0) startMove(event, local, screenToWorld(camera, viewport, local), frames, noteId);
+    }
+
     function onPointerDown(event: PointerEvent): void {
       if (event.button === 2 && activeGesture?.kind === "zone-move") {
         suppressContextMenuUntil = performance.now() + 750;
@@ -389,6 +459,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
 
       if (event.button !== 0 || event.isPrimary === false) return;
       suppressBodyClickUntil = 0;
+      suppressAltNodeClickUntil = 0;
 
       const target = event.target instanceof Element ? event.target : null;
       if (!target || target.closest(".selection-context-pick, [data-create-menu], [data-selection-ignore]")) return;
@@ -401,7 +472,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
         event.stopPropagation();
         const world = screenToWorld(camera, viewport, local);
         updateGrabAt(world, event.ctrlKey, event.altKey);
-        commitGrab(world);
+        commitGrab(world, true);
         return;
       }
 
@@ -413,9 +484,9 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
         return;
       }
 
+      const world = screenToWorld(camera, viewport, local);
       if (lineToolActive) return;
 
-      const world = screenToWorld(camera, viewport, local);
       if (tool.active === "zone") {
         if (zoneMode.active !== "move") return;
         const zoneId = hitTestZones(world, zones.byId, zones.order);
@@ -604,6 +675,17 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
         return;
       }
 
+      if (scaleModeGesture && event.buttons === 0 && isPointInsideBoard(local)) {
+        queueBoardMove({
+          kind: "scale-mode",
+          pointerId: event.pointerId,
+          world: screenToWorld(camera, viewport, local),
+          ctrl: event.ctrlKey,
+          alt: event.altKey,
+        });
+        return;
+      }
+
       // A middle-button pan remains owned by the camera while G move mode is active.
       if (grabGesture && event.buttons === 0 && isPointInsideBoard(local)) {
         queueBoardMove({
@@ -618,6 +700,10 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
 
     function onPointerUp(event: PointerEvent): void {
       const local = localPoint(event);
+      if (pendingAltNodeActivationPointerId === event.pointerId) {
+        pendingAltNodeActivationPointerId = null;
+        suppressAltNodeClickUntil = performance.now() + 1000;
+      }
       if (
         pendingAltContextPick?.pointerId === event.pointerId && local &&
         crossedGestureThreshold(pendingAltContextPick.startScreen, local)
@@ -635,6 +721,10 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     }
 
     function onPointerCancel(event: PointerEvent): void {
+      if (pendingAltNodeActivationPointerId === event.pointerId) {
+        pendingAltNodeActivationPointerId = null;
+        suppressAltNodeClickUntil = 0;
+      }
       cancelBoardMove(event.pointerId);
       if (activeGesture?.pointerId === event.pointerId) finishPointerGesture(event.pointerId, true);
       else completePendingAltContextPick(event.pointerId, true);
@@ -646,6 +736,11 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     }
 
     function onClick(event: MouseEvent): void {
+      if (shouldSuppressAltNodeActivationClick(suppressAltNodeClickUntil, performance.now(), event.detail)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
       if (suppressBodyClickUntil > performance.now()) {
         suppressBodyClickUntil = 0;
         event.preventDefault();
@@ -683,6 +778,11 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     }
 
     function onDoubleClick(event: MouseEvent): void {
+      if (shouldSuppressAltNodeActivationClick(suppressAltNodeClickUntil, performance.now(), event.detail)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
       const target = event.target instanceof Element ? event.target : null;
       if (!target) return;
 
@@ -750,30 +850,87 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     }
 
     function onContextMenu(event: MouseEvent): void {
-      if (!grabGesture && !zoneGrabGesture && performance.now() > suppressContextMenuUntil) return;
+      if (!grabGesture && !scaleModeGesture && !zoneGrabGesture && performance.now() > suppressContextMenuUntil) return;
       suppressContextMenuUntil = 0;
       event.preventDefault();
       event.stopPropagation();
       if (grabGesture) cancelGrab();
+      else if (scaleModeGesture) cancelScaleMode();
       else if (zoneGrabGesture) commitZoneGrab();
     }
 
     function onNativeDragStart(event: DragEvent): void {
-      if (activeGesture?.kind !== "body-move" || !activeGesture.started) return;
-      event.preventDefault();
+      if (activeGesture?.kind === "body-move" && activeGesture.started) {
+        event.preventDefault();
+        return;
+      }
+      if (activeGesture?.kind === "move" && pendingAltNodeActivationPointerId === activeGesture.pointerId) {
+        event.preventDefault();
+      }
     }
 
     function onPrecisionKeyDown(event: KeyboardEvent): void {
+      shiftHeld = event.shiftKey;
       if (!isAltKey(event)) return;
       altHeld = true;
-      if (activeGesture || grabGesture || zoneGrabGesture) event.preventDefault();
+      if (activeGesture || grabGesture || scaleModeGesture || zoneGrabGesture) event.preventDefault();
       rebasePrecision(true);
     }
 
     function onPrecisionKeyUp(event: KeyboardEvent): void {
+      shiftHeld = event.shiftKey;
       if (!isAltKey(event)) return;
       altHeld = event.altKey;
       rebasePrecision(altHeld);
+    }
+
+    function onTransformModeKeyDown(event: KeyboardEvent): void {
+      if (grabGesture) {
+        const isUndo = event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && event.code === "KeyZ";
+        if (isUndo || event.code === "Escape") {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          cancelGrab();
+          return;
+        }
+
+        if (event.code === "Enter") {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          if (pointer.world) commitGrab(pointer.world);
+          return;
+        }
+        return;
+      }
+
+      if (scaleModeGesture) {
+        const action = scaleModeKeyAction(event.code, event);
+        if (action === "cancel") {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          cancelScaleMode();
+          return;
+        }
+        if (action === "ignore") return;
+
+        const matchingCommand = findMatchingCommand(event, commands.values());
+        if (matchingCommand?.id === "select.scale") {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          if (event.repeat) return;
+          commitScaleMode();
+          return;
+        }
+        commitScaleMode();
+        return;
+      }
+
+      if (event.defaultPrevented || event.isComposing || isTextEditingTarget(event.target) || isTextEditingTarget(document.activeElement)) return;
+      const command = findMatchingCommand(event, commands.values());
+      if (command?.id !== "select.scale" || event.repeat || selection.ids.length === 0 || tool.active === "zone") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      command.run();
     }
 
     function onZoneMoveKeyDown(event: KeyboardEvent): void {
@@ -791,6 +948,8 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
       }
     }
 
+    window.addEventListener("pointerdown", onScaleModePointerDown, true);
+    window.addEventListener("pointerdown", onAltNodePointerDown, true);
     boardEl.addEventListener("pointerdown", onPointerDown, true);
     boardEl.addEventListener("dragstart", onNativeDragStart, true);
     window.addEventListener("pointermove", onPointerMove, true);
@@ -802,15 +961,20 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     boardEl.addEventListener("contextmenu", onContextMenu, true);
     window.addEventListener("keydown", onPrecisionKeyDown, true);
     window.addEventListener("keyup", onPrecisionKeyUp, true);
+    window.addEventListener("keydown", onTransformModeKeyDown, true);
     window.addEventListener("keydown", onZoneMoveKeyDown, true);
 
-    const detachController = attachSelectionController({ escape, startGrab });
+    const detachController = attachSelectionController({ escape, startGrab, startScale });
 
     function onWindowBlur(): void {
+      pendingAltNodeActivationPointerId = null;
+      suppressAltNodeClickUntil = 0;
       if (activeGesture) finishPointerGesture(activeGesture.pointerId, true);
       if (grabGesture) cancelGrab();
+      if (scaleModeGesture) cancelScaleMode();
       if (zoneGrabGesture) cancelZoneGrab();
       altHeld = false;
+      shiftHeld = false;
     }
 
     window.addEventListener("blur", onWindowBlur);
@@ -818,15 +982,19 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     return () => {
       if (activeGesture) finishPointerGesture(activeGesture.pointerId, true);
       if (grabGesture) cancelGrab();
+      if (scaleModeGesture) cancelScaleMode();
       if (zoneGrabGesture) cancelZoneGrab();
       detachController();
       window.removeEventListener("blur", onWindowBlur);
       window.removeEventListener("keydown", onPrecisionKeyDown, true);
       window.removeEventListener("keyup", onPrecisionKeyUp, true);
+      window.removeEventListener("keydown", onTransformModeKeyDown, true);
       window.removeEventListener("keydown", onZoneMoveKeyDown, true);
       window.removeEventListener("pointermove", onPointerMove, true);
       window.removeEventListener("pointerup", onPointerUp, true);
       window.removeEventListener("pointercancel", onPointerCancel, true);
+      window.removeEventListener("pointerdown", onScaleModePointerDown, true);
+      window.removeEventListener("pointerdown", onAltNodePointerDown, true);
       boardEl.removeEventListener("pointerdown", onPointerDown, true);
       boardEl.removeEventListener("dragstart", onNativeDragStart, true);
       boardEl.removeEventListener("lostpointercapture", onLostPointerCapture, true);
@@ -869,6 +1037,8 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
       if (activeGesture?.pointerId === move.pointerId) updatePointerGesture(move.event, move.screen);
     } else if (move.kind === "zone-grab") {
       if (zoneGrabGesture) updateZoneGrabAt(move.world, move.ctrl, move.alt);
+    } else if (move.kind === "scale-mode") {
+      if (scaleModeGesture) updateScaleAt(move.world);
     } else if (grabGesture) {
       updateGrabAt(move.world, move.ctrl, move.alt);
     }
@@ -1426,7 +1596,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
       if (point && id) startZoneFollowMove(id, point);
       return;
     }
-    if (grabGesture || selection.ids.length === 0) return;
+    if (grabGesture || scaleModeGesture || activeGesture || selection.ids.length === 0) return;
     const frames = framesForSelection();
     if (frames.length === 0) return;
     const anchorId = selection.primaryId && boardState.notes[selection.primaryId]
@@ -1437,12 +1607,14 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     grabStartWorld = pointer.world ? { ...pointer.world } : null;
     grabPrecision = pointer.world ? createPrecisionDeltaTracker(pointer.world, altHeld) : null;
     selection.grabActive = true;
+    transformModeHint = "Move";
   }
 
-  function commitGrab(world: Point): void {
+  function commitGrab(world: Point, suppressClick = false): void {
     flushBoardMove();
     if (!grabGesture) return;
     commitMoveGesture(grabGesture, world);
+    if (suppressClick) suppressBodyClickUntil = performance.now() + 500;
     endMovingStacking();
     clearModuleDropPreview();
     clearDropTargetPreview();
@@ -1450,6 +1622,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     grabStartWorld = null;
     grabPrecision = null;
     selection.grabActive = false;
+    transformModeHint = null;
   }
 
   function cancelGrab(): void {
@@ -1462,6 +1635,57 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     grabStartWorld = null;
     grabPrecision = null;
     selection.grabActive = false;
+    transformModeHint = null;
+  }
+
+  function startScale(): void {
+    if (tool.active === "zone" || scaleModeGesture || grabGesture || activeGesture || selection.ids.length === 0) return;
+    const frames = framesForSelection();
+    if (frames.length === 0) return;
+    const bounds = unionBounds(frames.flatMap((frame) => {
+      const note = boardState.notes[frame.id];
+      return note ? [noteBounds(note)] : [];
+    }));
+    if (!bounds) return;
+    const pivot = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    const startWorld = pointer.world ?? pivot;
+    scaleModeGesture = createScaleModeGesture(frames, pivot, startWorld, 1 / pixelsPerUnit(camera));
+    beginMovingStacking(frames);
+    transformModeHint = "Scale";
+  }
+
+  function updateScaleAt(world: Point): void {
+    if (!scaleModeGesture) return;
+    scaleModeGesture = updateScaleModeGesture(scaleModeGesture, world);
+    applyFrames(scaleModeGesture.after);
+  }
+
+  function commitScaleMode(world?: Point, suppressClick = false): void {
+    flushBoardMove();
+    if (!scaleModeGesture) return;
+    if (world) updateScaleAt(world);
+    const gesture = scaleModeGesture;
+    const after = normalizeScaleModeAtCommit(gesture);
+    applyFrames(after);
+    const change = scaleModeGestureChange({ ...gesture, after });
+    if (change) recordGeometryChange("Scale", `${change.before.length} notes`, change);
+    if (suppressClick) suppressBodyClickUntil = performance.now() + 500;
+    endMovingStacking();
+    clearModuleDropPreview();
+    clearDropTargetPreview();
+    scaleModeGesture = null;
+    transformModeHint = null;
+  }
+
+  function cancelScaleMode(): void {
+    cancelBoardMove();
+    if (!scaleModeGesture) return;
+    applyFrames(cancelScaleModeGesture(scaleModeGesture));
+    endMovingStacking();
+    clearModuleDropPreview();
+    clearDropTargetPreview();
+    scaleModeGesture = null;
+    transformModeHint = null;
   }
 
   function escape(): void {
@@ -1471,6 +1695,10 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     }
     if (grabGesture) {
       cancelGrab();
+      return;
+    }
+    if (scaleModeGesture) {
+      cancelScaleMode();
       return;
     }
     if (zoneGrabGesture) {
@@ -1701,12 +1929,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     before: readonly NoteFrame[],
     after: readonly NoteFrame[],
   ): HistoryCommand {
-    return {
-      label,
-      target,
-      do: () => applyFrames(after),
-      undo: () => applyFrames(before),
-    };
+    return geometryHistoryCommand(label, target, before, after, applyFrames);
   }
 
   function chooseContextNote(id: string, event: MouseEvent): void {
@@ -1741,7 +1964,14 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
   }
 </script>
 
-<div class="selection-layer" class:line-tool-active={lineToolActive} bind:this={layer} aria-hidden="false">
+<div
+  class="selection-layer"
+  class:line-tool-active={lineToolActive}
+  data-transform-mode={transformModeHint?.toLowerCase()}
+  data-shift-held={shiftHeld ? "true" : undefined}
+  bind:this={layer}
+  aria-hidden="false"
+>
   {#each zoneOutlines as outline (outline.id)}
     <div
       class="selection-outline selection-zone-outline"
@@ -1800,22 +2030,27 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
         {@const canShrink = canResizeBottom(outline.id)}
         {#each RESIZE_EDGES as edge (edge)}
           {@const normalResize = hasResizeHandle(outline.kind, edge, canShrink)}
-          <button
-            class={`resize-handle resize-handle-${edge}`}
-            class:resize-handle-corner={isCornerHandle(edge)}
-            class:resize-handle-side={!isCornerHandle(edge)}
-            class:module-vertical-handle={isStandaloneModuleKind(outline.kind) && isCornerHandle(edge)}
-            class:scale-only-handle={!normalResize}
-            type="button"
-            data-resize-handle={edge}
-            data-note-id={outline.id}
-            aria-disabled={lineToolActive ? "true" : undefined}
-            tabindex={lineToolActive ? -1 : undefined}
-            aria-label={`${isStandaloneModuleKind(outline.kind)
-              ? `Resize ${outline.name} height from ${edge.startsWith("top") ? "top" : "bottom"}`
-              : normalResize ? `Resize ${outline.name} from ${handleLabel(edge)}` : `Scale ${outline.name} from ${handleLabel(edge)}`}; hold Shift to scale uniformly`}
-            title={resizeHandleTitle(edge, isStandaloneModuleKind(outline.kind), !normalResize)}
-          ></button>
+          {#if shouldShowResizeHandle(outline.kind, edge, canShrink, shiftHeld)}
+            <button
+              class={`resize-handle resize-handle-${edge}`}
+              class:resize-handle-corner={isCornerHandle(edge)}
+              class:resize-handle-side={!isCornerHandle(edge)}
+              class:module-vertical-handle={isStandaloneModuleKind(outline.kind) && isCornerHandle(edge)}
+              class:scale-only-handle={!normalResize}
+              type="button"
+              data-resize-handle={edge}
+              data-shift-scale-handle={shiftHeld ? edge : undefined}
+              data-note-id={outline.id}
+              aria-disabled={lineToolActive ? "true" : undefined}
+              tabindex={lineToolActive ? -1 : undefined}
+              aria-label={`${shiftHeld || !normalResize
+                ? `Scale ${outline.name} from ${handleLabel(edge)}`
+                : isStandaloneModuleKind(outline.kind)
+                  ? `Resize ${outline.name} height from ${edge.startsWith("top") ? "top" : "bottom"}`
+                  : `Resize ${outline.name} from ${handleLabel(edge)}`}; hold Shift to scale uniformly`}
+              title={resizeHandleTitle(edge, isStandaloneModuleKind(outline.kind), !normalResize)}
+            ></button>
+          {/if}
         {/each}
       {/if}
     </div>
@@ -1863,6 +2098,16 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
 
   {#if zoneCollisionHint}
     <div class="zone-collision-hint" role="status">Zone stopped by another zone</div>
+  {/if}
+
+  {#if transformModeHint === "Move"}
+    <div class="transform-mode-hint" data-transform-mode-hint="move" role="status">
+      Move selection · click to confirm · right-click, Esc, or Ctrl+Z to cancel
+    </div>
+  {:else if transformModeHint === "Scale"}
+    <div class="transform-mode-hint" data-transform-mode-hint="scale" role="status">
+      Scale selection · click or Enter to confirm · right-click, Esc, or Ctrl+Z to cancel · any key exits
+    </div>
   {/if}
 
   {#if selection.contextPick}
@@ -2055,6 +2300,22 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     background: rgba(35, 35, 35, 0.9);
     color: var(--text);
     font-size: 11px;
+    pointer-events: none;
+  }
+
+  .transform-mode-hint {
+    position: absolute;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: calc(100% - 24px);
+    padding: 4px 8px;
+    border: 1px solid #4a4a4a;
+    border-radius: 3px;
+    background: rgba(28, 28, 28, 0.94);
+    color: var(--text);
+    font-size: 11px;
+    text-align: center;
     pointer-events: none;
   }
 

@@ -44,6 +44,7 @@ export const selection = $state({
 export interface SelectionController {
   escape(): void;
   startGrab(): void;
+  startScale(): void;
 }
 
 export type SelectionInteractionSource = "click" | "marquee" | "editing" | "move";
@@ -346,4 +347,11 @@ registerCommand({
   label: "Move Selection",
   keys: ["KeyG"],
   run: () => controller?.startGrab(),
+});
+
+registerCommand({
+  id: "select.scale",
+  label: "Scale Selection",
+  keys: ["KeyS"],
+  run: () => controller?.startScale(),
 });

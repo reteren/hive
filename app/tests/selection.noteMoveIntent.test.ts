@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   noteMoveStarts,
   notePressIntent,
+  shouldSelectNoteOnAltPress,
+  shouldSuppressAltNodeActivationClick,
   shouldToggleSelectedHeaderAfterGesture,
 } from "../src/selection/noteMoveIntent";
 
@@ -36,5 +38,21 @@ describe("note press move intent", () => {
     expect(shouldToggleSelectedHeaderAfterGesture(false, false)).toBe(true);
     expect(shouldToggleSelectedHeaderAfterGesture(true, false)).toBe(false);
     expect(shouldToggleSelectedHeaderAfterGesture(false, true)).toBe(false);
+  });
+
+  it("selects a note for Alt alone while preserving Ctrl/Shift combinations and dimmed-note behavior", () => {
+    expect(shouldSelectNoteOnAltPress("note-a", true, false, false, false)).toBe(true);
+    expect(shouldSelectNoteOnAltPress("note-a", true, true, false, false)).toBe(false);
+    expect(shouldSelectNoteOnAltPress("note-a", true, false, true, false)).toBe(false);
+    expect(shouldSelectNoteOnAltPress("note-a", false, false, false, false)).toBe(false);
+    expect(shouldSelectNoteOnAltPress(null, true, false, false, false)).toBe(false);
+    expect(shouldSelectNoteOnAltPress("dimmed", true, false, false, true)).toBe(false);
+  });
+
+  it("suppresses pointer activation after Alt selection without suppressing keyboard clicks", () => {
+    expect(shouldSuppressAltNodeActivationClick(150, 100, 1)).toBe(true);
+    expect(shouldSuppressAltNodeActivationClick(150, 100, 2)).toBe(true);
+    expect(shouldSuppressAltNodeActivationClick(99, 100, 1)).toBe(false);
+    expect(shouldSuppressAltNodeActivationClick(150, 100, 0)).toBe(false);
   });
 });

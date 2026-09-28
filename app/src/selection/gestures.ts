@@ -1,7 +1,8 @@
 import type { Point } from "../board/cameraMath";
 import { snapToGrid } from "../board/gridMath";
 import type { Bounds } from "../notes/layout.svelte";
-import { resizeNote, resizeEdgeAxes, type ResizeEdge } from "./resize";
+import type { HistoryCommand } from "../history/historyStack";
+import { hasResizeHandle, resizeNote, resizeEdgeAxes, type ResizeEdge } from "./resize";
 import { MAX_NOTE_SCALE, normalizeNoteScale, type NoteKind } from "../model/note";
 
 export const GESTURE_THRESHOLD_PX = 4;
@@ -53,6 +54,157 @@ export interface MoveGesture {
   after: NoteFrame[];
   anchorId: string;
   startWorld: Point;
+}
+
+export interface ScaleModeGesture {
+  before: NoteFrame[];
+  after: NoteFrame[];
+  pivot: Point;
+  startDistance: number;
+  factor: number;
+}
+
+export type ScaleModeExitAction = "cancel" | "confirm" | "ignore";
+
+export function scaleModeKeyAction(
+  code: string,
+  modifiers: { ctrlKey: boolean; shiftKey: boolean; altKey: boolean; metaKey: boolean },
+): ScaleModeExitAction {
+  if (code === "Escape" || (code === "KeyZ" && modifiers.ctrlKey && !modifiers.shiftKey && !modifiers.altKey && !modifiers.metaKey)) {
+    return "cancel";
+  }
+  if (code === "Enter") return "confirm";
+  if (["ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight", "AltLeft", "AltRight", "MetaLeft", "MetaRight"].includes(code)) {
+    return "ignore";
+  }
+  return "confirm";
+}
+
+export function scaleModePointerAction(button: number): "cancel" | "confirm" {
+  return button === 2 ? "cancel" : "confirm";
+}
+
+/** Whether a node outline should expose a resize or Shift-scale handle. */
+export function shouldShowResizeHandle(
+  kind: NoteKind | undefined,
+  edge: ResizeEdge,
+  canShrink: boolean,
+  shiftHeld: boolean,
+): boolean {
+  return shiftHeld || hasResizeHandle(kind, edge, canShrink);
+}
+
+/** Begin a radial scale around the selection bounds' center. */
+export function createScaleModeGesture(
+  frames: readonly NoteFrame[],
+  pivot: Point,
+  startWorld: Point,
+  minimumStartDistance = 0.001,
+): ScaleModeGesture {
+  const before = frames.map(copyFrame);
+  const minimum = Number.isFinite(minimumStartDistance) && minimumStartDistance > 0
+    ? minimumStartDistance
+    : 0.001;
+  const distance = Math.hypot(startWorld.x - pivot.x, startWorld.y - pivot.y);
+  const startDistance = Math.max(distance, minimum);
+  return {
+    before,
+    after: before.map(copyFrame),
+    pivot: { ...pivot },
+    startDistance,
+    factor: 1,
+  };
+}
+
+/** Scale note transforms from the original pointer distance, avoiding frame-to-frame drift. */
+export function updateScaleModeGesture(gesture: ScaleModeGesture, cursorWorld: Point): ScaleModeGesture {
+  const distance = Math.hypot(cursorWorld.x - gesture.pivot.x, cursorWorld.y - gesture.pivot.y);
+  const factor = Number.isFinite(distance) ? distance / gesture.startDistance : gesture.factor;
+  return {
+    ...gesture,
+    factor,
+    after: scaleModeFrames(gesture.before, gesture.pivot, factor),
+  };
+}
+
+/** Quantize scale once when radial scaling is confirmed, preserving exact base dimensions. */
+export function normalizeScaleModeAtCommit(gesture: ScaleModeGesture): NoteFrame[] {
+  const factor = Math.round(gesture.factor * 1000) / 1000;
+  return gesture.before.map((before) => {
+    const initialScale = normalizeNoteScale(before.scale);
+    const unroundedScale = Math.min(MAX_NOTE_SCALE, Math.max(1, initialScale * factor));
+    const roundedScale = Math.round(unroundedScale * 1000) / 1000;
+    const scale = roundedScale < 1.001 ? 1 : Math.min(MAX_NOTE_SCALE, roundedScale);
+    const extension = before.baseStatisticsExtensionWidth ??
+      (before.statisticsExtensionWidth ?? 0) / initialScale;
+    const baseWidth = before.baseWidth ??
+      (before.width - (before.statisticsExtensionWidth ?? 0)) / initialScale;
+    const baseHeight = before.baseHeight !== undefined
+      ? before.baseHeight
+      : before.height === null ? null : before.height / initialScale;
+    const afterX = gesture.pivot.x + (before.x - gesture.pivot.x) * factor;
+    const afterY = gesture.pivot.y + (before.y - gesture.pivot.y) * factor;
+
+    return {
+      ...before,
+      x: afterX,
+      y: afterY,
+      width: (baseWidth + extension) * scale,
+      height: baseHeight === null ? null : baseHeight * scale,
+      scale: scale > 1 ? scale : undefined,
+      baseWidth,
+      baseHeight,
+      baseStatisticsExtensionWidth: extension,
+      statisticsExtensionWidth: extension * scale,
+      scaleGesture: true,
+    };
+  });
+}
+
+export function cancelScaleModeGesture(gesture: ScaleModeGesture): NoteFrame[] {
+  return gesture.before.map(copyFrame);
+}
+
+export function scaleModeGestureChange(gesture: ScaleModeGesture): GeometryChange | null {
+  return createChange(gesture.before, gesture.after);
+}
+
+/** Build the reversible command used by confirmed selection moves and scales. */
+export function geometryHistoryCommand(
+  label: string,
+  target: string,
+  before: readonly NoteFrame[],
+  after: readonly NoteFrame[],
+  apply: (frames: readonly NoteFrame[]) => void,
+): HistoryCommand {
+  const beforeCopy = before.map(copyFrame);
+  const afterCopy = after.map(copyFrame);
+  return {
+    label,
+    target,
+    do: () => apply(afterCopy.map(copyFrame)),
+    undo: () => apply(beforeCopy.map(copyFrame)),
+  };
+}
+
+function scaleModeFrames(frames: readonly NoteFrame[], pivot: Point, factor: number): NoteFrame[] {
+  return frames.map((frame) => {
+    const initialScale = normalizeNoteScale(frame.scale);
+    const scale = Math.min(MAX_NOTE_SCALE, Math.max(1, initialScale * factor));
+    const ratio = scale / initialScale;
+    return {
+      ...frame,
+      x: pivot.x + (frame.x - pivot.x) * factor,
+      y: pivot.y + (frame.y - pivot.y) * factor,
+      width: frame.width * ratio,
+      height: frame.height === null ? null : frame.height * ratio,
+      scale,
+      ...(frame.statisticsExtensionWidth === undefined
+        ? {}
+        : { statisticsExtensionWidth: frame.statisticsExtensionWidth * ratio }),
+      scaleGesture: true,
+    };
+  });
 }
 
 export interface GeometryChange {
