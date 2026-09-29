@@ -28,6 +28,7 @@ import { measureDictionaryHeightLimits } from "../spell/dictionarySizing";
     updateZoneMoveGesture,
     updateZoneResizeGesture,
     zoneMoveShouldSnap,
+    zoneMoveUsesPrecision,
     zoneGestureChanged,
     zoneMoveHistoryCommand,
     zoneResizeHistoryCommand,
@@ -934,14 +935,14 @@ type PendingBoardMove =
       if (!isAltKey(event)) return;
       altHeld = true;
       if (activeGesture || grabGesture || scaleModeGesture || zoneGrabGesture) event.preventDefault();
-      rebasePrecision(true);
+      rebasePrecision(true, event.ctrlKey);
     }
 
     function onPrecisionKeyUp(event: KeyboardEvent): void {
       shiftHeld = event.shiftKey;
       if (!isAltKey(event)) return;
       altHeld = event.altKey;
-      rebasePrecision(altHeld);
+      rebasePrecision(altHeld, event.ctrlKey);
     }
 
     function onTransformModeKeyDown(event: KeyboardEvent): void {
@@ -1314,7 +1315,7 @@ type PendingBoardMove =
       kind: "zone-move",
       pointerId: event.pointerId,
       startScreen: screen,
-      precision: createPrecisionDeltaTracker(world, event.altKey),
+      precision: createPrecisionDeltaTracker(world, zoneMoveUsesPrecision(event.ctrlKey, event.altKey)),
       started: false,
       captured: false,
       gesture: createZoneMoveGesture(
@@ -1349,7 +1350,9 @@ type PendingBoardMove =
 
   function updateZoneGrabAt(world: Point, carryMembers: boolean, alt = altHeld): void {
     if (!zoneGrabGesture) return;
-    const precision = zoneGrabPrecision ? updatePrecisionDelta(zoneGrabPrecision, world, alt) : null;
+    const precision = zoneGrabPrecision
+      ? updatePrecisionDelta(zoneGrabPrecision, world, zoneMoveUsesPrecision(carryMembers, alt))
+      : null;
     if (precision) zoneGrabPrecision = precision.tracker;
     const adjustedWorld = zoneGrabStartWorld && precision ? addPoint(zoneGrabStartWorld, precision.delta) : world;
     zoneGrabGesture = updateZoneMoveGesture(
@@ -1448,7 +1451,10 @@ type PendingBoardMove =
 
     // Keep the last pointer position current before the drag threshold too, so an
     // Alt toggle during that interval rebases at the actual cursor location.
-    const precision = updatePrecisionDelta(gesture.precision, world, event.altKey);
+    const precisionAlt = gesture.kind === "zone-move"
+      ? zoneMoveUsesPrecision(event.ctrlKey, event.altKey)
+      : event.altKey;
+    const precision = updatePrecisionDelta(gesture.precision, world, precisionAlt);
     gesture.precision = precision.tracker;
     const thresholdCrossed = crossedGestureThreshold(gesture.startScreen, screen);
     const shouldStart = gesture.kind === "body-move"
@@ -1864,11 +1870,14 @@ type PendingBoardMove =
     selection.primaryId = next.primaryId;
   }
 
-  function rebasePrecision(alt: boolean): void {
+  function rebasePrecision(alt: boolean, ctrl = false): void {
     const gesture = activeGesture;
-    if (gesture && gesture.kind !== "marquee") gesture.precision = setPrecisionAlt(gesture.precision, alt);
+    if (gesture && gesture.kind !== "marquee") {
+      const effectiveAlt = gesture.kind === "zone-move" ? zoneMoveUsesPrecision(ctrl, alt) : alt;
+      gesture.precision = setPrecisionAlt(gesture.precision, effectiveAlt);
+    }
     if (grabPrecision) grabPrecision = setPrecisionAlt(grabPrecision, alt);
-    if (zoneGrabPrecision) zoneGrabPrecision = setPrecisionAlt(zoneGrabPrecision, alt);
+    if (zoneGrabPrecision) zoneGrabPrecision = setPrecisionAlt(zoneGrabPrecision, zoneMoveUsesPrecision(ctrl, alt));
   }
 
   function isAltKey(event: KeyboardEvent): boolean {

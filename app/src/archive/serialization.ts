@@ -6,6 +6,7 @@ import { IMPORTANCE_LEVELS, isValidNoteScale, MOOD_KINDS, PURPOSE_KINDS, type No
 import type { ArchiveEntry } from "../model/retention.svelte";
 import type { CountMode, TimeNodeData, TimeRuntime, TimeSchedule } from "../time/types";
 import { parseStopwatchData } from "../time/data";
+import { copyTimeForHost, parseEmbedSections } from "../combo/data";
 import { copyArchivedLink, copyArchivedNote } from "./logic";
 
 const ARCHIVABLE_KINDS = new Set<NoteKind>([
@@ -85,8 +86,11 @@ function parseArchivedNote(value: unknown): Note | null {
   const task = parseTask(value.task);
   const taskMemory = parseTask(value.taskMemory);
   const time = parseTimeData(value.time);
+  const message = parseMessageData(value.message);
+  const embedSections = parseEmbedSections(value.embedSections);
   if (task === false || taskMemory === false) return null;
   if (value.time !== undefined && !time) return null;
+  if (value.message !== undefined && !message || value.embedSections !== undefined && !embedSections) return null;
   if (value.importance !== undefined && value.importance !== null && !IMPORTANCE_LEVELS.includes(value.importance as typeof IMPORTANCE_LEVELS[number])) return null;
   if (value.purposes !== undefined && (!Array.isArray(value.purposes) ||
     value.purposes.some((item) => !PURPOSE_KINDS.includes(item)))) return null;
@@ -112,8 +116,9 @@ function parseArchivedNote(value: unknown): Note | null {
     ...(typeof value.scale === "number" && value.scale > 1 ? { scale: value.scale } : {}),
     ...(task ? { task } : {}),
     ...(taskMemory ? { taskMemory } : {}),
-    ...(time ? { time } : {}),
-    ...(value.type === "message" ? { message: parseMessageData(value.message) ?? defaultMessageData() } : {}),
+    ...(time ? { time: copyTimeForHost(value.type as NoteKind, time) } : {}),
+    ...(value.type === "message" ? { message: message ?? defaultMessageData() } : message ? { message } : {}),
+    ...(embedSections ? { embedSections } : {}),
     ...(value.importance ? { importance: value.importance as Note["importance"] } : {}),
     ...(value.purposes ? { purposes: value.purposes as Note["purposes"] } : {}),
     ...(value.moods ? { moods: value.moods as Note["moods"] } : {}),

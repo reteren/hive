@@ -29,6 +29,8 @@
   import { listStatisticsWidth, widthWithListStatistics } from "../stats/listStatsLayout";
   import { overview } from "../overview/overview.svelte";
   import { overviewFontSize, overviewLabelFor, overviewTextFits } from "../overview/overviewLogic";
+  import ComboHost from "../combo/ComboHost.svelte";
+  import { comboPullout } from "../combo/gestures.svelte";
 
   let { note, measureHeight }: { note: Note; measureHeight: Action<HTMLElement, string> } = $props();
   let renaming = $state(false);
@@ -148,9 +150,9 @@
   data-member-zone-id={memberZone?.id}
   style:--custom-mark-gradient={customMarkGradient}
   style:--note-header-height={`${NOTE_HEADER_HEIGHT_UNITS * PX_PER_UNIT}px`}
-  style:transform={scale === 1 ? undefined : `scale(${scale})`}
-  style:left={`${note.x * PX_PER_UNIT}px`}
-  style:top={`${note.y * PX_PER_UNIT}px`}
+  style:transform={`translate(${note.x * PX_PER_UNIT}px, ${note.y * PX_PER_UNIT}px)${scale === 1 ? "" : ` scale(${scale})`}`}
+  style:left="0px"
+  style:top="0px"
   style:width={`${widthWithListStatistics(note) * PX_PER_UNIT}px`}
   style:--list-statistics-width={`${listStatisticsWidth(note) * PX_PER_UNIT}px`}
   style:height={note.height === null ? "auto" : `${note.height * PX_PER_UNIT}px`}
@@ -204,8 +206,27 @@
       {/if}
     </header>
   {:else}
-    <header class="note-header hidden-note-header" data-note-header aria-hidden="true">
+    <header class="note-header hidden-note-header" data-note-header data-hidden-note-header aria-hidden="true">
+      <TaskCheckbox {note} />
       <span class="note-name">{note.name}</span>
+      {#if note.type === "time"}
+        <span class="time-view-switch" role="group" aria-label="Time node view" data-selection-ignore>
+          <button
+            type="button"
+            class:active={note.time?.view !== "stopwatch"}
+            aria-pressed={note.time?.view !== "stopwatch"}
+            data-selection-ignore
+            onclick={() => setTimeNodeView(note.id, "time")}
+          >Time</button>
+          <button
+            type="button"
+            class:active={note.time?.view === "stopwatch"}
+            aria-pressed={note.time?.view === "stopwatch"}
+            data-selection-ignore
+            onclick={() => setTimeNodeView(note.id, "stopwatch")}
+          >Stopwatch</button>
+        </span>
+      {/if}
     </header>
   {/if}
   {#if renameError}
@@ -222,7 +243,13 @@
     >
       {#if nodeBodyFor(note.type)}
         {@const CustomBody = nodeBodyFor(note.type)!}
-        <CustomBody {note} />
+        {#if note.type === "message" && note.time}
+          <div class="combo-message-part" data-selection-ignore data-combo-part-body="message" use:comboPullout={{ noteId: note.id, section: "message" }}>
+            <CustomBody {note} />
+          </div>
+        {:else}
+          <CustomBody {note} />
+        {/if}
       {:else if note.type === "importance" || note.type === "purpose"}
         <ModuleNodeBody {note} />
       {:else if note.type === "mood"}
@@ -230,6 +257,7 @@
       {:else}
         <NoteBody {note} />
       {/if}
+      <ComboHost {note} />
     </div>
     <div class="note-frame-edge note-frame-edge-right" data-note-header aria-hidden="true"></div>
     <div class="note-frame-edge note-frame-edge-bottom" data-note-header aria-hidden="true"></div>
@@ -342,6 +370,8 @@
     z-index: 2;
     top: 0;
     left: 0;
+    box-sizing: border-box;
+    width: 100%;
     opacity: 0;
     pointer-events: none;
   }
@@ -349,6 +379,10 @@
   .note-card[data-header-hidden="true"]:hover > .hidden-note-header {
     opacity: 0.5;
     pointer-events: auto;
+  }
+
+  .note-card[data-header-hidden="true"] > .zone-marker {
+    z-index: 3;
   }
 
   .note-frame {

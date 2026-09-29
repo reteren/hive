@@ -130,6 +130,27 @@ describe("Mark as tag rules", () => {
 });
 
 describe("Mark as module operations", () => {
+  it("inserts Mark as into a Message and keeps linked Mark as tags and frames effective on Messages", () => {
+    const mark = { id: "message-mark", text: "Review", color: "#cf91ae" };
+    const message = note({ id: "message", type: "message", message: { sound: false, overhive: false } });
+    const module = note({ id: "mark-module", type: "markas", name: "Mark as", customMarks: [mark], customMarkFrame: true });
+    replaceBoard([message, module]);
+
+    expect(tryInsertModuleOnDrop(module.id, { x: 4, y: 4 })).toBe(true);
+    expect(board.notes.message?.customMarks).toEqual([mark]);
+    expect(board.notes.message?.customMarkFrame).toBe(true);
+    expect(board.notes[module.id]).toBeUndefined();
+    expect(history.entries).toHaveLength(1);
+    undo();
+    expect(board.notes.message?.customMarks).toBeUndefined();
+    expect(board.notes[module.id]?.customMarks).toEqual([mark]);
+
+    const notes = { message, source: note({ id: "source", type: "markas", customMarks: [mark], customMarkFrame: true }) };
+    expect(effectiveCustomMarksFor("message", notes, [link("source", "message")])).toEqual([mark]);
+    expect(effectiveCustomMarkFrameFor("message", notes, [link("source", "message")])).toBe(true);
+    expect(effectiveCustomMarkFrameFor("message", notes, [link("source", "message", "weak")])).toBe(false);
+  });
+
   it("inserts tags into a note, merges duplicates, and restores both nodes on Undo", () => {
     const existing = { id: "kept", text: "Focus", color: "#aabbcc" };
     const added = { id: "added", text: "Urgent", color: "#e58b83" };

@@ -23,12 +23,14 @@ interface FocusTargetLike {
   parentNode?: FocusTargetLike | null;
 }
 
-/** True when a target or one of its ancestors owns keyboard text editing. */
+/** True when a target or ancestor owns text editing or an open dialog's keyboard input. */
 export function isTextEditingTarget(target: unknown): boolean {
   let current = toFocusTarget(target);
 
   while (current) {
     const tagName = (current.tagName ?? current.nodeName ?? "").toUpperCase();
+
+    if (tagName === "DIALOG" && current.getAttribute?.("open") != null) return true;
 
     if (tagName === "TEXTAREA" || tagName === "SELECT") return true;
     if (tagName === "INPUT") {

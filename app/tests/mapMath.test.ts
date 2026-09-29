@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { cameraViewportRect, fitMap, mapToWorld, mapTransformForBounds, projectMapLinks, wholeBoardBounds, worldToMap, zoomMapTransform } from "../src/map/mapMath";
+import { cameraViewportRect, clientToMapPoint, fitMap, mapDragThresholdExceeded, mapToWorld, mapTransformForBounds, projectMapLinks, wholeBoardBounds, worldToMap, zoomMapTransform } from "../src/map/mapMath";
+import { noteBounds } from "../src/notes/layout.svelte";
 
 describe("map geometry", () => {
   it("fits notes, zones, and ME inside the whole-board bounds", () => {
@@ -67,6 +68,41 @@ describe("map geometry", () => {
     expect(centerAfter.x).toBeCloseTo(centerBefore.x);
     expect(centerAfter.y).toBeCloseTo(centerBefore.y);
     expect(zoomed.scale).toBe(transform.scale * 2);
+  });
+
+  it("uses a captured SVG inverse matrix and ignores sub-threshold click jitter", () => {
+    const captured = { a: 0.5, b: 0, c: 0, d: 0.5, e: -30, f: 18 };
+    const changedAfterCameraPan = { ...captured, e: 80, f: -42 };
+    const client = { x: 260, y: 124 };
+    const pointAtPointerDown = clientToMapPoint(client, captured);
+
+    expect(pointAtPointerDown).toEqual({ x: 100, y: 80 });
+    expect(clientToMapPoint(client, changedAfterCameraPan)).not.toEqual(pointAtPointerDown);
+    expect(mapDragThresholdExceeded({ x: 0, y: 0 }, { x: 3.9, y: 0 })).toBe(false);
+    expect(mapDragThresholdExceeded({ x: 0, y: 0 }, { x: 4, y: 0 })).toBe(true);
+    expect(mapDragThresholdExceeded({ x: 0, y: 0 }, { x: 3, y: 3 })).toBe(true);
+  });
+
+  it("maps clicks exactly with internal zoom and Shift-scaled node bounds", () => {
+    const small = noteBounds({ id: "small", type: "note", name: "small", text: "", x: -180, y: 90, width: 30, height: 14, scale: 0.5 });
+    const large = noteBounds({ id: "large", type: "note", name: "large", text: "", x: 260, y: -130, width: 42, height: 26, scale: 2.5 });
+    const notes = [{ id: "small", ...small }, { id: "large", ...large }];
+    const bounds = wholeBoardBounds(notes, []);
+    const clickedWorld = { x: large.x + large.width * 0.37, y: large.y + large.height * 0.61 };
+
+    for (const internalZoom of [0.35, 1, 2.75, 12]) {
+      const transform = mapTransformForBounds(bounds, { width: 400, height: 300 }, 15, internalZoom);
+      const clickedMap = worldToMap(clickedWorld, transform);
+      const inverseClientMatrix = { a: 0.8, b: 0, c: 0, d: 0.8, e: -45, f: 22 };
+      const client = {
+        x: (clickedMap.x - inverseClientMatrix.e) / inverseClientMatrix.a,
+        y: (clickedMap.y - inverseClientMatrix.f) / inverseClientMatrix.d,
+      };
+      const recoveredMap = clientToMapPoint(client, inverseClientMatrix);
+      const recoveredWorld = mapToWorld(recoveredMap, transform);
+      expect(recoveredWorld.x).toBeCloseTo(clickedWorld.x, 9);
+      expect(recoveredWorld.y).toBeCloseTo(clickedWorld.y, 9);
+    }
   });
 
   it("projects strong and weak links between node centres and skips oversized link sets", () => {

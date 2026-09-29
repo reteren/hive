@@ -17,18 +17,36 @@ export function linkedTimeStatesForTask(
   for (const edge of edges) {
     if (edge.kind !== "strong" || edge.from !== taskId || seen.has(edge.to)) continue;
     const target = notes[edge.to];
-    if (target?.type !== "time" || !target.time) continue;
+    if (!target?.time) continue;
     seen.add(edge.to);
     states.push({ noteId: edge.to, enabled: target.time.enabled });
   }
+  const ownTime = notes[taskId]?.time;
+  if (ownTime && !seen.has(taskId)) states.push({ noteId: taskId, enabled: ownTime.enabled });
   return states;
+}
+
+/** Embedded task timers include their own host task; duplicate links count once. */
+export function linkedTaskCompletionForTime(
+  timeId: string,
+  edges: readonly Link[],
+  notes: Readonly<Record<string, Pick<Note, "task" | "time"> | undefined>>,
+  completingTaskId?: string,
+): { total: number; done: number; allDone: boolean } {
+  const ids = new Set<string>();
+  if (notes[timeId]?.time && notes[timeId]?.task) ids.add(timeId);
+  for (const edge of edges) {
+    if (edge.kind === "strong" && edge.to === timeId && notes[edge.from]?.task) ids.add(edge.from);
+  }
+  const done = [...ids].filter((id) => id === completingTaskId || notes[id]?.task?.done).length;
+  return { total: ids.size, done, allDone: ids.size > 0 && done === ids.size };
 }
 
 /** True when an active Time has an incoming strong link from a task-bearing note. */
 export function hasLinkedTaskForTime(
   timeId: string,
   edges: readonly Link[],
-  notes: Readonly<Record<string, Pick<Note, "task"> | undefined>>,
+  notes: Readonly<Record<string, Pick<Note, "task" | "time"> | undefined>>,
 ): boolean {
-  return edges.some((edge) => edge.kind === "strong" && edge.to === timeId && Boolean(notes[edge.from]?.task));
+  return linkedTaskCompletionForTime(timeId, edges, notes).total > 0;
 }

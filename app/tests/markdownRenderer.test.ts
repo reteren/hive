@@ -145,6 +145,20 @@ describe("static Markdown renderer", () => {
       .toBe("Current name");
   });
 
+  it("renders a reminder's linked note as its Markdown label and navigates to that object", () => {
+    const noteJumps: string[] = [];
+    const tree = createMarkdownFragment("1123123123 [Beacon](hive://note/beacon-id)", fakeDocument, {
+      resolveNote: (noteId) => noteId === "beacon-id" ? { id: noteId, name: "Beacon" } : undefined,
+      teleportToNote: (noteId) => { noteJumps.push(noteId); return true; },
+    }) as unknown as FakeNode;
+    const link = collect(tree).find((node) => node.attributes.get("data-text-link") === "");
+
+    expect(tree.textContent).toBe("1123123123 Beacon");
+    expect(link?.textContent).toBe("Beacon");
+    link?.listeners.get("click")?.({ preventDefault() {}, stopPropagation() {} } as Event);
+    expect(noteJumps).toEqual(["beacon-id"]);
+  });
+
   it("invokes link actions and keeps unsupported schemes inert", () => {
     const opened: string[] = [];
     const teleported: Array<{ x: number; y: number }> = [];

@@ -11,6 +11,8 @@
   import { links as boardLinks } from "../model/links.svelte";
   import {
     cameraViewportRect,
+    clientToMapPoint,
+    mapDragThresholdExceeded,
     MAX_PROJECTED_MAP_LINKS,
     mapTransformForBounds,
     mapToWorld,
@@ -20,6 +22,7 @@
     type MapNoteBounds,
     type MapLinkInput,
     type MapTransform,
+    type ClientToMapMatrix,
     type WorldRect,
   } from "./mapMath";
   import { cameraSnapshot, recordMapCameraChange, recordMapInternalZoomChange, restoreCamera, type CameraSnapshot } from "./cameraHistory";
@@ -89,6 +92,9 @@
   let cachedBoundsKey = "";
   let cachedBounds: WorldRect = { x: 0, y: 0, width: 0, height: 0 };
   let dragBefore: CameraSnapshot | null = null;
+  let dragStartClient: Point | null = null;
+  let dragScreenToMap: ClientToMapMatrix | null = null;
+  let mapDragging = $state(false);
   let wheelBefore: CameraSnapshot | null = null;
   let internalWheelBefore: number | null = null;
   let cameraWheelTimer: ReturnType<typeof setTimeout> | undefined;
@@ -205,14 +211,16 @@
     frame = currentFrame();
   });
 
-  function pointFromEvent(event: PointerEvent): Point | null {
+  function screenToMapMatrix(): ClientToMapMatrix | null {
     const matrix = svg?.getScreenCTM();
     if (!svg || !matrix) return null;
-    const point = svg.createSVGPoint();
-    point.x = event.clientX;
-    point.y = event.clientY;
-    const local = point.matrixTransform(matrix.inverse());
-    return { x: local.x, y: local.y };
+    const inverse = matrix.inverse();
+    return { a: inverse.a, b: inverse.b, c: inverse.c, d: inverse.d, e: inverse.e, f: inverse.f };
+  }
+
+  function pointFromEvent(event: PointerEvent, capturedMatrix?: ClientToMapMatrix | null): Point | null {
+    const matrix = capturedMatrix === undefined ? screenToMapMatrix() : capturedMatrix;
+    return matrix ? clientToMapPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
   }
 
   function moveCameraToMapPoint(point: Point, transform: MapTransform = frame.transform): void {
@@ -227,9 +235,12 @@
     finishCameraWheelZoom();
     finishInternalWheelZoom();
     dragBefore = cameraSnapshot();
+    dragStartClient = { x: event.clientX, y: event.clientY };
+    dragScreenToMap = screenToMapMatrix();
+    mapDragging = false;
     event.preventDefault();
     svg.setPointerCapture(event.pointerId);
-    const point = pointFromEvent(event);
+    const point = pointFromEvent(event, dragScreenToMap);
     if (point) {
       const latestFrame = currentFrame();
       frame = latestFrame;
@@ -238,8 +249,10 @@
   }
 
   function onPointerMove(event: PointerEvent): void {
-    if (!dragBefore) return;
-    const point = pointFromEvent(event);
+    if (!dragBefore || !dragStartClient || !dragScreenToMap) return;
+    if (!mapDragging && !mapDragThresholdExceeded(dragStartClient, { x: event.clientX, y: event.clientY })) return;
+    mapDragging = true;
+    const point = pointFromEvent(event, dragScreenToMap);
     if (point) moveCameraToMapPoint(point);
   }
 
@@ -248,6 +261,9 @@
     if (svg.hasPointerCapture(event.pointerId)) svg.releasePointerCapture(event.pointerId);
     const before = dragBefore;
     dragBefore = null;
+    dragStartClient = null;
+    dragScreenToMap = null;
+    mapDragging = false;
     recordMapCameraChange(before, "Map navigation");
   }
 
@@ -255,6 +271,9 @@
     if (!dragBefore) return;
     restoreCamera(dragBefore);
     dragBefore = null;
+    dragStartClient = null;
+    dragScreenToMap = null;
+    mapDragging = false;
   }
 
   function finishCameraWheelZoom(): void {
@@ -313,6 +332,10 @@
 
   onDestroy(() => {
     if (dragBefore) restoreCamera(dragBefore);
+    dragBefore = null;
+    dragStartClient = null;
+    dragScreenToMap = null;
+    mapDragging = false;
     finishCameraWheelZoom();
     finishInternalWheelZoom();
   });
@@ -331,6 +354,7 @@
   data-map-center-y={frame.camera.y}
   data-map-zoom={frame.camera.zoom}
   data-map-internal-zoom={frame.internalZoom}
+  data-map-dragging={mapDragging ? "true" : undefined}
   data-map-link-count={frame.links.length}
   data-map-links-skipped={frame.linksSkipped ? "true" : undefined}
   use:captureWheel

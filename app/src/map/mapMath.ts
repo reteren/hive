@@ -22,6 +22,31 @@ export interface MapTransform {
   offsetY: number;
 }
 
+/** Snapshot of an SVG screen-to-user-space matrix for one pointer gesture. */
+export interface ClientToMapMatrix {
+  a: number;
+  b: number;
+  c: number;
+  d: number;
+  e: number;
+  f: number;
+}
+
+export const MAP_DRAG_THRESHOLD_PX = 4;
+
+/** Convert CSS-pixel pointer coordinates through the inverse SVG screen matrix. */
+export function clientToMapPoint(point: Point, inverse: ClientToMapMatrix): Point {
+  return {
+    x: inverse.a * point.x + inverse.c * point.y + inverse.e,
+    y: inverse.b * point.x + inverse.d * point.y + inverse.f,
+  };
+}
+
+/** Ignore sub-threshold hand jitter so an LMB click remains a click, even at high map zoom. */
+export function mapDragThresholdExceeded(start: Point, current: Point, threshold = MAP_DRAG_THRESHOLD_PX): boolean {
+  return Math.hypot(current.x - start.x, current.y - start.y) >= threshold;
+}
+
 export interface MapLinkInput {
   id: string;
   from: string;

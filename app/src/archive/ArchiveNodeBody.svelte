@@ -132,6 +132,12 @@
 </div>
 
 <style>
+  .archive-body,
+  .archive-body :global(*) { -webkit-user-select: none; user-select: none; }
+  .archive-body :global(input:not([type="button"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="reset"])),
+  .archive-body :global(textarea),
+  .archive-body :global([contenteditable="true"]) { -webkit-user-select: text; user-select: text; }
+
   .archive-body { display: flex; min-width: 0; min-height: 0; height: 100%; flex: 1 1 auto; flex-direction: column; gap: 7px; overflow: hidden; font-size: 11px; }
   .archive-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .archive-heading span, .archive-empty, .archive-preview, .archive-item time { color: var(--text-dim); }

@@ -1,14 +1,14 @@
 <script lang="ts">
   import { links } from "../model/links.svelte";
   import { board } from "../model/board.svelte";
-  import { hasLinkedTaskForTime } from "./taskLink";
+  import { linkedTaskCompletionForTime } from "./taskLink";
 
   let { noteId }: { noteId: string } = $props();
-  let hasLinkedTask = $derived(hasLinkedTaskForTime(noteId, Object.values(links.byId), board.notes));
+  let tasks = $derived(linkedTaskCompletionForTime(noteId, Object.values(links.byId), board.notes));
 </script>
 
-{#if hasLinkedTask}
-  <p class="task-link-status" data-time-task-mode="stop">Stops when the task is done</p>
+{#if tasks.total > 0}
+  <p class="task-link-status" data-time-task-mode="stop">{tasks.total === 1 ? "Stops when the task is done" : "Stops when all linked tasks are done"}</p>
 {/if}
 
 <style>

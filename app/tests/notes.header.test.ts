@@ -32,6 +32,13 @@ describe("note header visibility", () => {
     expect(canRenameNoteHeader(false)).toBe(true);
   });
 
+  it("keeps the hidden header as a move handle while its title is locked", () => {
+    headerMenuItem().run("note-1");
+
+    expect(canRenameNoteHeader(board.notes["note-1"]?.headerHidden)).toBe(false);
+    expect(notePressIntent("header", "note-1", null)).toBe("move-candidate");
+  });
+
   it("toggles the title strip and its fixed-height space in one Undo step", () => {
     const item = headerMenuItem();
     expect(item.label("note-1")).toBe("Hide header");

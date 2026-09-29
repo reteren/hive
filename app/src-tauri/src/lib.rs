@@ -164,6 +164,7 @@ pub fn run() {
             overhive::get_overhive_snapshot,
             overhive::set_overhive_regions,
             overhive::overhive_action,
+            overhive::overhive_navigate,
             settings::load_view_settings,
             settings::save_view_settings,
             project::initialize_project,

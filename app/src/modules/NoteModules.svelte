@@ -35,7 +35,7 @@
   let shownImportance = $derived(acceptsImportance ? effectiveImportance(note.id) : null);
   let shownPurposes = $derived(isContentNote ? effectivePurposes(note.id) : []);
   let shownMoods = $derived(isContentNote ? effectiveMoods(note.id) : []);
-  let shownCustomMarks = $derived(isContentNote ? effectiveCustomMarks(note.id) : []);
+  let shownCustomMarks = $derived(acceptsImportance ? effectiveCustomMarks(note.id) : []);
   let linkedImportance = $derived(acceptsImportance ? linkedImportanceSource(note.id) : null);
   let pickerImportance = $derived(linkedImportance?.importance ?? shownImportance);
   let importanceIsExternal = $derived(linkedImportance !== null);

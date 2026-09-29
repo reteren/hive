@@ -135,6 +135,23 @@ pub fn overhive_action(app: AppHandle, window: WebviewWindow, state: tauri::Stat
     window.emit("hive://overhive-state", &*snapshot).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub fn overhive_navigate(app: AppHandle, window: WebviewWindow, target: Value) -> Result<(), String> {
+    if window.label() != LABEL { return Err("Invalid reminder window".into()); }
+    if !valid_navigation_target(&target) { return Err("Invalid reminder link target".into()); }
+    crate::open_main_window(&app);
+    app.emit_to("main", "hive://overhive-navigate", target).map_err(|e| e.to_string())
+}
+
+fn valid_navigation_target(target: &Value) -> bool {
+    match target.get("kind").and_then(Value::as_str) {
+        Some("note") => target.get("noteId").and_then(Value::as_str).is_some_and(|id| !id.is_empty()),
+        Some("point") => target.get("x").and_then(Value::as_f64).is_some_and(f64::is_finite)
+            && target.get("y").and_then(Value::as_f64).is_some_and(f64::is_finite),
+        _ => false,
+    }
+}
+
 #[cfg(windows)]
 fn foreground_main(window: &WebviewWindow) {
     use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
@@ -165,5 +182,12 @@ mod tests {
         discard_dismissed(&mut snapshot, &HashSet::from(["closed".to_string()]));
         assert_eq!(snapshot.cards, vec![serde_json::json!({"id":"kept"})]);
         assert!(snapshot.reduce_motion);
+    }
+    #[test]
+    fn overhive_navigation_accepts_only_note_ids_and_finite_points() {
+        assert!(valid_navigation_target(&serde_json::json!({"kind":"note","noteId":"beacon-1"})));
+        assert!(valid_navigation_target(&serde_json::json!({"kind":"point","x":-1.25,"y":3.5})));
+        assert!(!valid_navigation_target(&serde_json::json!({"kind":"note","noteId":""})));
+        assert!(!valid_navigation_target(&serde_json::json!({"kind":"point","x":"NaN","y":3.5})));
     }
 }

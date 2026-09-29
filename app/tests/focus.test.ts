@@ -59,4 +59,14 @@ describe("isTextEditingTarget", () => {
   it("returns false for ordinary board elements", () => {
     expect(isTextEditingTarget(fakeElement("div"))).toBe(false);
   });
+  it("gives an open dialog ownership of board shortcuts from its buttons and checkboxes", () => {
+    const dialog = fakeElement("dialog", { attributes: { open: "" } });
+    expect(isTextEditingTarget(dialog)).toBe(true);
+    expect(isTextEditingTarget(fakeElement("button", { parentElement: dialog }))).toBe(true);
+    expect(isTextEditingTarget(fakeElement("input", { type: "checkbox", parentElement: dialog }))).toBe(true);
+  });
+  it("does not suppress board shortcuts for descendants of a closed dialog", () => {
+    const dialog = fakeElement("dialog");
+    expect(isTextEditingTarget(fakeElement("button", { parentElement: dialog }))).toBe(false);
+  });
 });

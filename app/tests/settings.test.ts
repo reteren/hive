@@ -21,6 +21,7 @@ describe("view settings serialization", () => {
       fitWidthToText: false,
       backupIntervalMinutes: 15 as const,
       quickInputShortcut: "Ctrl+Shift+Space",
+      skipCompletedTimerConfirmation: false,
     };
 
     const serialized = serializeViewSettings(settings);
@@ -91,6 +92,7 @@ describe("view settings serialization", () => {
       fitWidthToText: true,
       backupIntervalMinutes: 30,
       quickInputShortcut: DEFAULT_VIEW_SETTINGS.quickInputShortcut,
+      skipCompletedTimerConfirmation: false,
     });
   });
 

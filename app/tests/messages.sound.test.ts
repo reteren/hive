@@ -33,12 +33,17 @@ describe("reminder audio", () => {
     expect(oscillator.stop).toHaveBeenCalledWith(10.25);
     expect(await playMessageSound(5)).toBe(true);
     expect(oscillator.start).toHaveBeenCalledTimes(6);
-    expect(oscillator.start).toHaveBeenLastCalledWith(11.75);
+    const starts = oscillator.start.mock.calls.map(([at]) => at as number);
+    expect(starts).toHaveLength(6);
+    expect(starts[0]).toBe(10);
+    starts.slice(1).forEach((at, index) => expect(at).toBeCloseTo(10.45 + index * 0.45));
+    oscillator.stop.mock.calls.slice(1).forEach(([at], index) => expect(at as number).toBeCloseTo(10.7 + index * 0.45));
     oscillator.onended?.();
     expect(oscillator.disconnect).toHaveBeenCalledOnce();
     expect(gain.disconnect).toHaveBeenCalledOnce();
     vi.advanceTimersByTime(350);
     expect(await playMessageSound()).toBe(true);
+    expect(oscillator.start).toHaveBeenLastCalledWith(12.7);
   });
 
   it("unlocks on an interaction without playing or queuing an old reminder tone", async () => {

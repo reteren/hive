@@ -69,7 +69,9 @@ export function linkRefusalReason(
 
   const module = sourceIsModule ? source : target;
   const content = sourceIsModule ? target : source;
-  if (!(content?.type === "message" && module?.type === "importance") && !isContentNote(content)) return "Module nodes link only to notes, pluses, or minuses (Importance also links to Message).";
+  const allowedMessageModule = content?.type === "message" && (module?.type === "importance" || module?.type === "markas");
+  if (!allowedMessageModule && !isContentNote(content)) return "Module nodes link only to notes, pluses, or minuses (Importance and Mark as also link to Message).";
+  if (module?.type === "markas") return sourceIsModule ? null : "Mark as links must point outward to a note or Message.";
   if (module?.type !== "importance" || actualKind !== "strong") return null;
 
   if (content.importance) return "This note already has an Importance source.";
@@ -84,7 +86,7 @@ export function linkRefusalReason(
 }
 
 function isModule(note: ModuleNoteLookup[string]): boolean {
-  return note?.type === "importance" || note?.type === "purpose" || note?.type === "mood";
+  return note?.type === "importance" || note?.type === "purpose" || note?.type === "mood" || note?.type === "markas";
 }
 
 function isContentNote(note: ModuleNoteLookup[string]): note is ModuleNoteValue {

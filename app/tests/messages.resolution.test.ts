@@ -6,7 +6,7 @@ import { replaceLinks } from "../src/model/links.svelte";
 import { clear, history, undo, redo } from "../src/history/history.svelte";
 import { importanceSoundCount, resolveMessageContent } from "../src/messages/resolution";
 import { tryInsertModuleOnDrop, effectiveImportance } from "../src/modules/moduleActions.svelte";
-import { canCreateLinkPair } from "../src/links/rules";
+import { canCreateLinkPair, effectiveLinkKind } from "../src/links/rules";
 import { clippedCardRects } from "../src/messages/overhiveProtocol";
 
 function note(id: string, type: Note["type"], fields: Partial<Note> = {}): Note {
@@ -47,6 +47,15 @@ describe("Message recipient resolution", () => {
     expect(board.notes.importance).toBeUndefined(); expect(history.entries).toHaveLength(1);
     undo(); expect(board.notes.importance).toBeDefined(); expect(board.notes.message.importance).toBeUndefined();
     redo(); expect(board.notes.message.importance).toBe("important");
+  });
+  it("allows Mark as to link strongly into Message like it can link into text notes", () => {
+    const message = note("message", "message");
+    const markAs = note("markas", "markas", { customMarks: [{ id: "tag", text: "Review", color: "#cf91ae" }] });
+    const notes = { message, markas: markAs };
+    expect(canCreateLinkPair("markas", "message", [], "strong", notes)).toBe(true);
+    expect(canCreateLinkPair("markas", "message", [], "weak", notes)).toBe(true);
+    expect(effectiveLinkKind("markas", "message", "weak", notes)).toBe("strong");
+    expect(canCreateLinkPair("message", "markas", [], "strong", notes)).toBe(false);
   });
   it("maps the five importance levels to exactly one through five sounds", () => {
     expect([null, "basic", "medium", "important", "immediately", "absolute"].map((level) => importanceSoundCount(level as Note["importance"]))).toEqual([1, 1, 2, 3, 4, 5]);

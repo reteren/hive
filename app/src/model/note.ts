@@ -1,6 +1,7 @@
 import type { CustomMark, ListItem, NodeScope, RandomPick, SourceData, TierRow } from "./nodeData";
 import type { LinkAnchor } from "./link";
 import type { MessageNodeData, TimeNodeData } from "../time/types";
+import type { EmbedSectionState } from "../combo/data";
 
 /**
  * "note" — ordinary text node; "pro"/"con" — the green/red plus/minus mini-nodes (R3.5);
@@ -111,10 +112,12 @@ export interface Note {
   createdAt?: number;
   /** Task flag and completion (R3.1). */
   task?: TaskState | null;
-  /** R8 Time node schedule and runtime (type "time"). */
+  /** R8 Time schedule; may be embedded on a note/task or Message host. */
   time?: TimeNodeData;
-  /** R8 Message node settings (type "message"); the message text is `text`. */
+  /** R8 Message settings; on a note/task host, the message text is `text`. */
   message?: MessageNodeData;
+  /** Visibility of embedded Message/Time sections; absent or true means expanded. */
+  embedSections?: EmbedSectionState;
   /** Task state remembered while the task flag is off, restored when it is turned back on (A03). */
   taskMemory?: TaskState | null;
   /** Importance inserted into this note (R3.3); at most one per target, embedded or external. */

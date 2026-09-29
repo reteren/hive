@@ -72,6 +72,8 @@
 <main bind:this={root} class="overhive" data-overhive onscroll={trackAnimation} oncontextmenu={(event) => event.preventDefault()}>
   {#each cards as card (card.id)}
     <ReminderCard {card} title={card.title} available={card.available}
+      linkedNotes={card.linkedNotes} frameColors={card.customMarkFrameColors} overhive
+      onNotice={(message) => { failure = message; }}
       onClose={() => { void action(card.id, "dismiss"); }} onGoTo={() => { void action(card.id, "go-to"); }} />
   {/each}
   {#if hidden > 0}<button type="button" data-overhive-more onclick={async () => { expanded = !expanded; await tick(); trackAnimation(); }}>

@@ -7,6 +7,7 @@ import type { TrashEntry } from "../model/retention.svelte";
 import type { Zone } from "../model/zone";
 import type { CountMode, TimeNodeData, TimeRuntime, TimeSchedule } from "../time/types";
 import { parseStopwatchData } from "../time/data";
+import { copyTimeForHost, parseEmbedSections } from "../combo/data";
 import { copyTrashEntry } from "./trash";
 
 const NOTE_KINDS = new Set<NoteKind>([
@@ -114,8 +115,12 @@ function parseTrashNote(value: unknown): Note | null {
   const task = parseTask(value.task);
   const taskMemory = parseTask(value.taskMemory);
   const time = parseTimeData(value.time);
+  const message = parseMessageData(value.message);
+  const embedSections = parseEmbedSections(value.embedSections);
   if (task === false || taskMemory === false ||
     value.time !== undefined && !time ||
+    value.message !== undefined && !message ||
+    value.embedSections !== undefined && !embedSections ||
     value.importance !== undefined && value.importance !== null && !IMPORTANCE_LEVELS.includes(value.importance as typeof IMPORTANCE_LEVELS[number]) ||
     value.purposes !== undefined && (!Array.isArray(value.purposes) || value.purposes.some((item) => !PURPOSE_KINDS.includes(item as typeof PURPOSE_KINDS[number]))) ||
     value.moods !== undefined && (!Array.isArray(value.moods) || value.moods.some((item) => !MOOD_KINDS.includes(item as typeof MOOD_KINDS[number]))) ||
@@ -140,8 +145,9 @@ function parseTrashNote(value: unknown): Note | null {
     ...(typeof value.scale === "number" && value.scale > 1 ? { scale: value.scale } : {}),
     ...(task ? { task } : {}),
     ...(taskMemory ? { taskMemory } : {}),
-    ...(time ? { time } : {}),
-    ...(value.type === "message" ? { message: parseMessageData(value.message) ?? defaultMessageData() } : {}),
+    ...(time ? { time: copyTimeForHost(value.type as NoteKind, time) } : {}),
+    ...(value.type === "message" ? { message: message ?? defaultMessageData() } : message ? { message } : {}),
+    ...(embedSections ? { embedSections } : {}),
     ...(value.importance ? { importance: value.importance as Note["importance"] } : {}),
     ...(value.purposes ? { purposes: value.purposes as Note["purposes"] } : {}),
     ...(value.moods ? { moods: value.moods as Note["moods"] } : {}),

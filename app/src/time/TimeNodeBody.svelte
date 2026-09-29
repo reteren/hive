@@ -12,8 +12,11 @@
   import { copyTimeNodeData } from "./data";
   import { activationSourcesForTime } from "./activationLogic";
   import { formatStopwatch, stopwatchElapsedMs, toggleManualStopwatch } from "./stopwatchLogic";
+  import { setTimeEnabled } from "./actions.svelte";
+  import { timeEnablePreference } from "./enablePreference.svelte";
+  import EnableTimeConfirmation from "./EnableTimeConfirmation.svelte";
 
-  let { note }: { note: Note } = $props();
+  let { note, embedded = false }: { note: Note; embedded?: boolean } = $props();
 
   let mode = $state<TimeSchedule["kind"]>("at");
   let atTime = $state("");
@@ -22,6 +25,7 @@
   let countMode = $state<CountMode>("calendar");
   let repeat = $state(false);
   let draftEnabled = $state(true);
+  let confirmingEnable = $state(false);
   let validationError = $state("");
   let scheduleSourceKey = "";
   let now = $state(Date.now());
@@ -65,6 +69,7 @@
   });
 
   $effect(() => {
+    if (embedded) return;
     const current = note.time;
     if (!current) return;
     const existing = current.stopwatch;
@@ -124,7 +129,7 @@
     if (error) return;
 
     const current = board.notes[note.id];
-    if (!current || current.type !== "time") return;
+    if (!current || (!embedded && current.type !== "time")) return;
     const previous = copyTimeData(current.time) ?? { schedule: copyTimeSchedule(schedule), enabled: false };
     if (scheduleKey(previous.schedule) === scheduleKey(schedule)) return;
     const next: TimeNodeData = { ...previous, schedule: copyTimeSchedule(schedule) };
@@ -144,31 +149,16 @@
   }
 
   function setEnabled(event: Event): void {
-    const enabled = (event.currentTarget as HTMLInputElement).checked;
-    draftEnabled = enabled;
-    const current = board.notes[note.id];
-    if (!current || current.type !== "time") return;
-    const previous = copyTimeData(current.time) ?? {
-      schedule: defaultAtTimeSchedule(current.createdAt ?? Date.now()),
-      enabled: false,
-    };
-    if (enabled === previous.enabled) return;
-    const next: TimeNodeData = { ...previous, enabled };
+    const input = event.currentTarget as HTMLInputElement;
+    confirmingEnable = setTimeEnabled(note.id, input.checked) === "confirmation-required";
+    draftEnabled = board.notes[note.id]?.time?.enabled ?? false;
+    input.checked = draftEnabled;
+  }
 
-    execute({
-      label: enabled ? "Enable reminder" : "Stop reminder",
-      target: current.name,
-      do: () => {
-        updateNote(note.id, { time: copyTimeData(next)! });
-        // Reset on both transitions: disabled nodes have no live countdown, and re-enabling
-        // always starts a fresh wait from now rather than catching up missed firings.
-        restartTimeNode(note.id);
-      },
-      undo: () => {
-        updateNote(note.id, { time: copyTimeData(previous)! });
-        restartTimeNode(note.id);
-      },
-    });
+  function answerEnable(enable: boolean, remember: boolean): void {
+    if (remember) timeEnablePreference.skipCompletedTimerConfirmation = true;
+    confirmingEnable = false;
+    if (enable) setTimeEnabled(note.id, true, true);
   }
 
   function changeStopwatchMode(value: string): void {
@@ -252,8 +242,8 @@
   }
 </script>
 
-<section class="time-editor" data-time-body data-time-view={note.time?.view ?? "time"} data-time-mode={mode} aria-label="Time node">
-  {#if note.time?.view === "stopwatch"}
+<section class="time-editor" data-time-body data-time-view={embedded ? "time" : note.time?.view ?? "time"} data-time-mode={mode} aria-label="Time node">
+  {#if !embedded && note.time?.view === "stopwatch"}
     <div class="stopwatch-display" role="timer" aria-live="off" data-stopwatch-counter aria-label={`${stopwatchParts.days} days ${stopwatchParts.hours} hours ${stopwatchParts.minutes} minutes ${stopwatchParts.seconds} seconds`}>
       <span>{stopwatchParts.days}<small>d</small></span>
       <span>{stopwatchParts.hours}<small>h</small></span>
@@ -353,6 +343,7 @@
   {/if}
   <TaskLinkStatus noteId={note.id} />
 </section>
+{#if confirmingEnable}<EnableTimeConfirmation onanswer={answerEnable} />{/if}
 
 <style>
   .time-editor { display: grid; gap: 7px; padding: 8px; color: #d4d4d4; font-size: 10px; }
@@ -369,7 +360,7 @@
   .time-actions { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-top: 3px; border-top: 1px solid #3c403e; }
   .time-save { min-height: 23px; padding: 2px 7px; color: #dedede; background: #333735; border: 1px solid #505552; border-radius: 3px; font: inherit; cursor: pointer; }
   .time-save:hover { background: #3d423f; }
-  .time-status { margin: 0; padding-top: 5px; color: #a2b7a1; border-top: 1px solid #3c403e; font-variant-numeric: tabular-nums; }
+  .time-status { margin: 0; min-height: 32px; padding-top: 5px; color: #a2b7a1; border-top: 1px solid #3c403e; font-variant-numeric: tabular-nums; }
   .time-error { margin: 0; color: #e38b83; font-size: 9px; }
   .stopwatch-display {
     display: flex;
@@ -385,6 +376,7 @@
     white-space: nowrap;
   }
   .stopwatch-display small { margin-left: 2px; color: #a4a49a; font: 400 9px var(--ui-font); }
+  .stopwatch-display > span { min-width: calc(2ch + 12px); text-align: right; }
   .stopwatch-mode-field { margin-top: 1px; }
   .stopwatch-project-base { color: #b3b3ae; }
   .stopwatch-project-base input:disabled { opacity: 0.78; }

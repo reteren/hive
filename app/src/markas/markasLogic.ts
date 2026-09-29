@@ -149,7 +149,7 @@ export function customMarkGradientFor(colors: readonly string[]): string | undef
 }
 
 function isContentNote(note: MarkAsNoteValue | undefined): note is MarkAsNoteValue {
-  return note?.type === "note" || note?.type === "pro" || note?.type === "con";
+  return note?.type === "note" || note?.type === "pro" || note?.type === "con" || note?.type === "message";
 }
 
 function isCustomMark(value: CustomMark): boolean {

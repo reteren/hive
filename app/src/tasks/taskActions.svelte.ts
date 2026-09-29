@@ -8,7 +8,7 @@ import { registerNoteMenuItem } from "../notes/noteMenu";
 import { cloneTaskState, createReopenTaskCommand, createTaskCompletionCommand, createTaskFlagCommand } from "./taskTransitions";
 import { taskLog, type TaskLogEntry } from "./taskLog.svelte";
 import { tasksPanel, toggleTasksPanel } from "./tasksPanelState.svelte";
-import { linkedTimeStatesForTask } from "../time/taskLink";
+import { linkedTaskCompletionForTime, linkedTimeStatesForTask } from "../time/taskLink";
 
 const nonTaskKinds = new Set<NoteKind>(["beacon", ...R5_KINDS]);
 
@@ -46,7 +46,9 @@ function transitionStore() {
       }
     },
     getLinkedTimeStates(noteId: string) {
-      return linkedTimeStatesForTask(noteId, Object.values(links.byId), board.notes);
+      const edges = Object.values(links.byId);
+      return linkedTimeStatesForTask(noteId, edges, board.notes)
+        .filter((time) => linkedTaskCompletionForTime(time.noteId, edges, board.notes, noteId).allDone);
     },
     setTimeEnabled(noteId: string, enabled: boolean): void {
       const time = board.notes[noteId]?.time;

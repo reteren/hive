@@ -24,7 +24,7 @@ export function advanceTimeCounters(
   };
 }
 
-/** Strong links are directional: only Time → Message recipients receive a due card. */
+/** Strong links are directional: Time → Message recipients receive a due card. */
 export function linkedMessagesForTime(
   timeId: string,
   notes: Readonly<Record<string, Note>>,
@@ -33,6 +33,19 @@ export function linkedMessagesForTime(
   return links.flatMap((link) => {
     if (link.from !== timeId || link.kind !== "strong") return [];
     const target = notes[link.to];
-    return target?.type === "message" ? [target] : [];
+    return target?.type === "message" || target?.message ? [target] : [];
+  });
+}
+
+/** A Task+Message host may keep its timer as a separate Time node: Task → Time still owns the card. */
+export function taskMessageHostsForTime(
+  timeId: string,
+  notes: Readonly<Record<string, Note>>,
+  links: readonly Link[],
+): Note[] {
+  return links.flatMap((link) => {
+    if (link.to !== timeId || link.kind !== "strong") return [];
+    const source = notes[link.from];
+    return source?.task && source.message ? [source] : [];
   });
 }

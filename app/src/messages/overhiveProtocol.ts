@@ -1,8 +1,15 @@
+import type { Point } from "../board/cameraMath";
 import type { ShownMessage } from "../time/types";
 
-export interface OverhiveCard extends ShownMessage { title: string; available: boolean }
+export interface OverhiveCard extends ShownMessage {
+  title: string;
+  available: boolean;
+  linkedNotes: Record<string, string>;
+  customMarkFrameColors: string[];
+}
 export interface OverhiveSnapshot { cards: OverhiveCard[]; reduceMotion: boolean; revision?: number }
 export interface CardRect { x: number; y: number; width: number; height: number }
+export type OverhiveNavigationTarget = { kind: "note"; noteId: string } | ({ kind: "point" } & Point);
 
 /** Bound native hit regions to the viewport; zero-sized animation frames must stay click-through. */
 export function clippedCardRects(rects: readonly CardRect[], width: number, height: number): CardRect[] {

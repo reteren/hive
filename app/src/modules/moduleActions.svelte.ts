@@ -546,7 +546,9 @@ function listTargetAtPoint(point: Point, excludedId: string): Note | null {
 }
 
 function dropRefusal(module: Note, target: Note): string | null {
-  if (target.type === "message" && module.type !== "importance") return "Only Importance can be inserted into a Message.";
+  if (target.type === "message" && module.type !== "importance" && module.type !== "markas") {
+    return "Only Importance and Mark as can be inserted into a Message.";
+  }
   if (module.type === target.type && (module.type === "purpose" || module.type === "mood" || module.type === "markas")) {
     const result = planModuleMerge(module, target, Object.values(links.byId), board.notes);
     return result.ok ? null : result.reason;

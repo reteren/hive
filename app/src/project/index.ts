@@ -29,6 +29,7 @@ import { copyTrashEntry } from "../trash/trash";
 import { sanitizeTrashEntries } from "../trash/serialization";
 import type { TimeNodeData, TimeSchedule, TimeRuntime, CountMode, ProjectTimeCounters } from "../time/types";
 import { copyStopwatchData, parseStopwatchData } from "../time/data";
+import { copyEmbedSections, copyTimeForHost, parseEmbedSections } from "../combo/data";
 
 export interface IndexedNote {
   id: string;
@@ -44,6 +45,7 @@ export interface IndexedNote {
   taskMemory: TaskState | null;
   time?: TimeNodeData;
   message?: MessageNodeData;
+  embedSections?: Note["embedSections"];
   importance: ImportanceLevel | null;
   purposes: PurposeKind[];
   moods: MoodKind[];
@@ -207,8 +209,9 @@ export function serializeProjectIndex(
       type: note.type,
       task: copyTaskState(note.task),
       taskMemory: copyTaskState(note.taskMemory),
-      time: note.type === "time" ? copyTimeData(note.time) : undefined,
-      message: note.type === "message" ? { ...(note.message ?? defaultMessageData()) } : undefined,
+      time: copyTimeForHost(note.type, note.time),
+      message: note.message ? { ...note.message } : note.type === "message" ? defaultMessageData() : undefined,
+      embedSections: copyEmbedSections(note.embedSections),
       importance: note.importance ?? null,
       purposes: [...new Set(note.purposes ?? [])],
       moods: [...new Set(note.moods ?? [])],
@@ -278,8 +281,9 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       ...(entry.scale === undefined ? {} : { scale: entry.scale }),
       task: copyTaskState(entry.task),
       taskMemory: copyTaskState(entry.taskMemory),
-      ...(entry.time ? { time: copyTimeData(entry.time)! } : {}),
-      ...(entry.type === "message" ? { message: { ...(entry.message ?? defaultMessageData()) } } : {}),
+      ...(entry.time ? { time: copyTimeForHost(entry.type, entry.time)! } : {}),
+      ...(entry.message ? { message: { ...entry.message } } : entry.type === "message" ? { message: defaultMessageData() } : {}),
+      ...(entry.embedSections ? { embedSections: copyEmbedSections(entry.embedSections) } : {}),
       importance: entry.importance,
       purposes: [...entry.purposes],
       ...(entry.moods.length > 0 ? { moods: [...entry.moods] } : {}),
@@ -470,9 +474,12 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
     warnings.push(`Missing beacon colour for note ${id}; default colour was used.`);
   }
 
-  const message = type === "message" ? parseMessageData(value.message) ?? defaultMessageData() : undefined;
+  const parsedMessage = parseMessageData(value.message);
+  const message = type === "message" ? parsedMessage ?? defaultMessageData() : value.message === undefined ? undefined : parsedMessage;
   const time = parseTimeData(value.time);
   if (value.time !== undefined && !time) warnings.push(`Invalid reminder schedule for note ${id}; reminder data was cleared.`);
+  const embedSections = parseEmbedSections(value.embedSections);
+  if (value.embedSections !== undefined && !embedSections) warnings.push(`Invalid embedded section state for note ${id}; sections were expanded.`);
   const smoothLines = value.smoothLines === true;
   const smoothLineAnchors = smoothLines && value.smoothLineAnchors !== undefined
     ? parseSmoothLineAnchorSnapshot(value.smoothLineAnchors)
@@ -500,8 +507,9 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
       type: type ?? "note",
       task,
       taskMemory,
-      time: time ?? undefined,
+      time: time ? copyTimeForHost(type ?? "note", time) : undefined,
       message,
+      embedSections: embedSections ?? undefined,
       importance,
       purposes: purposes.values,
       moods: moods.values,

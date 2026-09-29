@@ -7,7 +7,7 @@ import { systemPrefersReducedMotion } from "./motion";
 import type { BackupInterval } from "../backup/backupSettings.svelte";
 import { DEFAULT_QUICK_INPUT_SHORTCUT, normalizeQuickInputShortcut } from "../quickInput/shortcutModel";
 
-export const VIEW_SETTINGS_VERSION = 10;
+export const VIEW_SETTINGS_VERSION = 11;
 
 export interface CameraSettings {
   minZoom: number;
@@ -47,6 +47,7 @@ export interface ViewSettings {
   fitWidthToText: boolean;
   backupIntervalMinutes: BackupInterval;
   quickInputShortcut: string;
+  skipCompletedTimerConfirmation?: boolean;
 }
 
 /** App-wide Time totals. They belong to view settings, not to an individual project. */
@@ -74,6 +75,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
   fitWidthToText: true,
   backupIntervalMinutes: 30,
   quickInputShortcut: DEFAULT_QUICK_INPUT_SHORTCUT,
+  skipCompletedTimerConfirmation: false,
 };
 
 const MIN_ALLOWED_ZOOM_LIMIT = 0.001;
@@ -134,6 +136,7 @@ export function parseViewSettings(serialized: string | null | undefined, default
     fitWidthToText: booleanOrDefault(parsed.fitWidthToText, defaults.fitWidthToText),
     backupIntervalMinutes: backupIntervalOrDefault(parsed.backupIntervalMinutes, defaults.backupIntervalMinutes),
     quickInputShortcut: normalizeQuickInputShortcut(parsed.quickInputShortcut) ?? defaults.quickInputShortcut,
+    skipCompletedTimerConfirmation: booleanOrDefault(parsed.skipCompletedTimerConfirmation, defaults.skipCompletedTimerConfirmation ?? false),
   };
 }
 
@@ -162,6 +165,7 @@ export function serializeViewSettings(settings: ViewSettings): string {
     fitWidthToText: settings.fitWidthToText,
     backupIntervalMinutes: backupIntervalOrDefault(settings.backupIntervalMinutes, 30),
     quickInputShortcut: normalizeQuickInputShortcut(settings.quickInputShortcut) ?? DEFAULT_QUICK_INPUT_SHORTCUT,
+    skipCompletedTimerConfirmation: settings.skipCompletedTimerConfirmation === true,
   });
 }
 
@@ -230,6 +234,7 @@ function cloneViewSettings(settings: ViewSettings): ViewSettings {
     fitWidthToText: settings.fitWidthToText,
     backupIntervalMinutes: settings.backupIntervalMinutes,
     quickInputShortcut: settings.quickInputShortcut,
+    skipCompletedTimerConfirmation: settings.skipCompletedTimerConfirmation ?? false,
   };
 }
 

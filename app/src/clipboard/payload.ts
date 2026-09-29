@@ -21,6 +21,7 @@ import { shapesOverlap, translateShape } from "../zones/shape";
 import type { MessageNodeData, TimeNodeData } from "../time/types";
 import { copyTimeNodeData as cloneTimeNodeData, parseStopwatchData } from "../time/data";
 import { defaultMessageData, parseMessageData } from "../messages/data";
+import { copyEmbedSections, copyTimeForHost, parseEmbedSections } from "../combo/data";
 
 export const HIVE_CLIPBOARD_MARKER = "hive/nodes";
 export const HIVE_CLIPBOARD_VERSION = 3;
@@ -43,6 +44,7 @@ export interface ClipboardNode {
   taskMemory: TaskState | null;
   time: TimeNodeData | null;
   message: MessageNodeData | null;
+  embedSections?: Note["embedSections"];
   importance: ImportanceLevel | null;
   purposes: PurposeKind[];
   moods: MoodKind[];
@@ -92,7 +94,7 @@ export function serializeNotes(
     marker: HIVE_CLIPBOARD_MARKER,
     version: HIVE_CLIPBOARD_VERSION,
     nodes: notes.map(({
-      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, time, message, importance, purposes, moods, color, zoneId,
+      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, time, message, embedSections, importance, purposes, moods, color, zoneId,
     }) => ({
       sourceId: id,
       type,
@@ -105,8 +107,9 @@ export function serializeNotes(
       createdAt,
       task: task ? { ...task } : null,
       taskMemory: taskMemory ? { ...taskMemory } : null,
-      time: time ? copyTimeNodeData(time) : null,
+      time: time ? copyTimeForHost(type, time) ?? null : null,
       message: message ? { ...message } : null,
+      ...(embedSections ? { embedSections: copyEmbedSections(embedSections) } : {}),
       importance: importance ?? null,
       purposes: [...new Set(purposes ?? [])],
       moods: [...new Set(moods ?? [])],
@@ -343,6 +346,8 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
   const parsedMessage = parseMessageData(value.message);
   const message = parsedMessage ?? (value.type === "message" ? defaultMessageData() : null);
   if (value.message !== undefined && value.message !== null && !parsedMessage && value.type !== "message") return null;
+  const embedSections = parseEmbedSections(value.embedSections);
+  if (value.embedSections !== undefined && !embedSections) return null;
   const importance = parseImportance(value.importance);
   if (value.importance !== undefined && value.importance !== null && !importance) return null;
   const purposes = parsePurposes(value.purposes);
@@ -370,8 +375,9 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     ...(value.createdAt === undefined ? {} : { createdAt: value.createdAt }),
     task,
     taskMemory,
-    time,
+    time: time ? copyTimeForHost(value.type, time) ?? null : null,
     message,
+    ...(embedSections ? { embedSections: copyEmbedSections(embedSections) } : {}),
     importance,
     purposes,
     moods,

@@ -103,6 +103,11 @@ export function zoneMoveShouldSnap(gridSnap: boolean, carryMembers: boolean, alt
   return carryMembers ? !alt : gridSnap;
 }
 
+/** Alt slows travel only when it is not being used with Ctrl to disable zone grid snapping. */
+export function zoneMoveUsesPrecision(carryMembers: boolean, alt: boolean): boolean {
+  return alt && !carryMembers;
+}
+
 export function createZoneResizeGesture(
   zone: Zone,
   obstacles: readonly Zone[],

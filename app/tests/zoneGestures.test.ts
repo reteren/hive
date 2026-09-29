@@ -6,6 +6,7 @@ import { addZone, zones } from "../src/model/zones.svelte";
 import { deleteSelection } from "../src/clipboard/commands";
 import { clear as clearHistory, history, record, redo, undo } from "../src/history/history.svelte";
 import { clearSelection, selection, selectZonesOnly, toggleSelected } from "../src/selection/selection.svelte";
+import { createPrecisionDeltaTracker, updatePrecisionDelta } from "../src/selection/precision";
 import {
   createZoneMoveGesture,
   createZoneResizeGesture,
@@ -14,6 +15,7 @@ import {
   updateZoneMoveGesture,
   updateZoneResizeGesture,
   zoneMoveShouldSnap,
+  zoneMoveUsesPrecision,
   zoneMoveHistoryCommand,
   zoneResizeHistoryCommand,
 } from "../src/zones/zoneGestures";
@@ -69,6 +71,17 @@ describe("zone move and resize", () => {
     const moved = updateZoneMoveGesture(gesture, { x: 8, y: 0 }, zoneMoveShouldSnap(true, true, true), 10, true);
     expect(zoneBounds(moved.afterZone)).toMatchObject({ x: 11, y: 3 });
     expect(moved.afterMembers).toEqual([{ id: "member", x: 12, y: 4 }]);
+  });
+
+  it("keeps Ctrl+Alt zone travel at full speed while Alt alone remains precise", () => {
+    const start = { x: 0, y: 0 };
+    const ctrlAlt = zoneMoveUsesPrecision(true, true);
+    const fullSpeed = updatePrecisionDelta(createPrecisionDeltaTracker(start, ctrlAlt), { x: 50, y: -25 }, ctrlAlt);
+    expect(fullSpeed.delta).toEqual({ x: 50, y: -25 });
+
+    const altOnly = zoneMoveUsesPrecision(false, true);
+    const precise = updatePrecisionDelta(createPrecisionDeltaTracker(start, altOnly), { x: 50, y: -25 }, altOnly);
+    expect(precise.delta).toEqual({ x: 10, y: -5 });
   });
 
   it("cancels to the original zone and member positions and records a move as one Undo step", () => {

@@ -32,6 +32,7 @@ import { moveToTrash } from "../trash/trashActions.svelte";
 import { linkedTimeStatesForTask } from "../time/taskLink";
 import { restartTimeNode } from "../time/runtime.svelte";
 import { copyTimeNodeData } from "../time/data";
+import { copyTimeForHost } from "../combo/data";
 import {
   creationObstacleForNote,
   estimatedCreationHeight,
@@ -251,10 +252,11 @@ function selectIds(ids: readonly string[], zoneIds: readonly string[] = []): voi
 
 type CopySource = Omit<Pick<Note,
   "type" | "name" | "text" | "x" | "y" | "width" | "height" | "createdAt" |
-  "task" | "taskMemory" | "importance" | "purposes"
+  "task" | "taskMemory" | "importance" | "purposes" | "embedSections"
 >, "time" | "message"> & {
   time?: Note["time"] | null;
   message?: Note["message"] | null;
+  embedSections?: Note["embedSections"] | null;
   color?: string | null;
   zoneId?: string | null;
   sourceId: string;
@@ -311,8 +313,9 @@ function createCopies(
       height: note.type === "purpose" || note.type === "mood" ? null : note.height,
       createdAt: note.createdAt ?? Date.now(),
       ...taskFieldsForPaste(note),
-      ...(note.time ? { time: copyTimeNodeData(note.time) } : {}),
+      ...(note.time ? { time: copyTimeForHost(note.type, note.time) } : {}),
       ...(note.message ? { message: { ...note.message } } : {}),
+      ...(note.embedSections ? { embedSections: { ...note.embedSections } } : {}),
       importance: note.importance ?? null,
       purposes: [...new Set(note.purposes ?? [])],
       ...(note.type === "beacon" ? { color: note.color ?? beaconPaletteColor(0) } : note.color ? { color: note.color } : {}),

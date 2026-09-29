@@ -10,6 +10,7 @@ import { preferences, setFitWidthToText, setReduceAnimations, setTransferHintsSh
 import { backupSettings, setBackupInterval } from "../backup/backupSettings.svelte";
 import { quickInputShortcut, setQuickInputShortcutValue } from "./quickInputShortcut.svelte";
 import { setTimeCounters, timeCounters } from "../time/runtime.svelte";
+import { timeEnablePreference } from "../time/enablePreference.svelte";
 import {
   parseTimeCounters,
   parseViewSettings,
@@ -135,6 +136,7 @@ function currentSettings(): ViewSettings {
     fitWidthToText: preferences.fitWidthToText,
     backupIntervalMinutes: backupSettings.interval,
     quickInputShortcut: quickInputShortcut.value,
+    skipCompletedTimerConfirmation: timeEnablePreference.skipCompletedTimerConfirmation,
   };
 }
 
@@ -158,4 +160,5 @@ function applySettings(settings: ViewSettings): void {
   setFitWidthToText(settings.fitWidthToText);
   setBackupInterval(settings.backupIntervalMinutes);
   setQuickInputShortcutValue(settings.quickInputShortcut);
+  timeEnablePreference.skipCompletedTimerConfirmation = settings.skipCompletedTimerConfirmation ?? false;
 }

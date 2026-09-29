@@ -7,7 +7,7 @@ import { pushMessage } from "../messages/messageQueue.svelte";
 import { resolveMessageContent } from "../messages/resolution";
 import { evaluateTime, startRuntime, type TimeContext } from "./scheduler";
 import type { ProjectTimeCounters, TimeNodeData, TimeRuntime } from "./types";
-import { advanceTimeCounters, linkedMessagesForTime } from "./runtimeLogic";
+import { advanceTimeCounters, linkedMessagesForTime, taskMessageHostsForTime } from "./runtimeLogic";
 
 const TICK_MS = 1_000;
 const RUNTIME_PERSIST_MS = 30_000;
@@ -117,7 +117,7 @@ export function startTimeRuntime(): () => void {
 /** Reset a Time node's wait from its current schedule without recording Undo history. */
 export function restartTimeNode(noteId: string): void {
   const note = board.notes[noteId];
-  if (note?.type !== "time" || !note.time) return;
+  if (!note?.time) return;
   const now = Date.now();
   const runtime = startRuntime(note.time.schedule, timeContext(now));
   const time = { ...note.time, runtime };
@@ -134,7 +134,7 @@ function tick(): void {
   const liveTimeIds = new Set<string>();
   for (const noteId of board.order) {
     const note = board.notes[noteId];
-    if (note?.type !== "time" || !note.time || !note.time.enabled) continue;
+    if (!note?.time || !note.time.enabled) continue;
     liveTimeIds.add(noteId);
 
     const cached = runtimeByNoteId.get(noteId);
@@ -184,7 +184,7 @@ function timeContext(now: number): TimeContext {
 }
 
 function persistRuntime(note: Note, runtime: TimeRuntime): void {
-  if (note.type !== "time" || !note.time) return;
+  if (!note.time) return;
   const nextRuntime = { ...runtime };
   updateNote(note.id, { time: { ...note.time, runtime: nextRuntime } });
   rememberRuntime(note.id, nextRuntime);
@@ -199,15 +199,38 @@ function persistCheckedRuntimes(ids: ReadonlySet<string>): void {
   for (const noteId of ids) {
     const note = board.notes[noteId];
     const cached = runtimeByNoteId.get(noteId);
-    if (note?.type === "time" && note.time && cached?.time === note.time) {
+    if (note?.time && cached?.time === note.time) {
       persistRuntime(note, cached.runtime);
     }
   }
 }
 
 function showTimeFire(note: Note, fire: { dueAt: number; overlate: boolean }): void {
-  const recipients = linkedMessagesForTime(note.id, board.notes, Object.values(links.byId));
+  const edges = Object.values(links.byId);
+  const recipients = linkedMessagesForTime(note.id, board.notes, edges);
   if (recipients.length === 0) {
+    const taskMessageHosts = taskMessageHostsForTime(note.id, board.notes, edges);
+    const embeddedHost = note.time ? note : taskMessageHosts[0];
+    if (embeddedHost && (embeddedHost.message || embeddedHost.type === "message")) {
+      pushMessage({
+        timeId: note.id,
+        messageId: embeddedHost.id,
+        dueAt: fire.dueAt,
+        overlate: fire.overlate,
+        ...resolveMessageContent(embeddedHost, board.notes, edges, []),
+      });
+      return;
+    }
+    if (note.time && note.type !== "time") {
+      pushMessage({
+        timeId: note.id,
+        messageId: null,
+        dueAt: fire.dueAt,
+        overlate: fire.overlate,
+        ...resolveMessageContent(note, board.notes, edges, []),
+      });
+      return;
+    }
     pushMessage({
       timeId: note.id,
       messageId: null,

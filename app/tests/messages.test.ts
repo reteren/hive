@@ -6,7 +6,7 @@ import { defaultMessageData, parseMessageData } from "../src/messages/data";
 import { setMessageSettings, setMessageText } from "../src/messages/actions.svelte";
 import { dismissMessage, messageQueue, pushMessage } from "../src/messages/messageQueue.svelte";
 import { goToMessage } from "../src/messages/navigation";
-import { presentedMessage, visibleMessages } from "../src/messages/presentation";
+import { messageCardPresentation, overhiveMessageCards, presentedMessage, visibleMessages } from "../src/messages/presentation";
 import { camera } from "../src/board/camera.svelte";
 import { selection, selectOnly } from "../src/selection/selection.svelte";
 import { clear, history, redo, undo } from "../src/history/history.svelte";
@@ -77,6 +77,30 @@ describe("reminder queue", () => {
     dismissMessage(ids[5]); expect(visibleMessages(messageQueue.items)[0].text).toBe("4");
     expect(history.entries).toHaveLength(0);
   });
+  it("keeps Overhive reminders in the Hive stack and mirrors the shared card id", () => {
+    const id = pushMessage(payload({ messageId: null, overhive: true }));
+    const localCard = visibleMessages(messageQueue.items)[0];
+    const overlayCard = overhiveMessageCards(messageQueue.items, board.notes, []).find((card) => card.id === id);
+    expect(localCard.id).toBe(id);
+    expect(overlayCard).toMatchObject({ id, overhive: true });
+
+    dismissMessage(id);
+    expect(visibleMessages(messageQueue.items).some((card) => card.id === id)).toBe(false);
+    expect(overhiveMessageCards(messageQueue.items, board.notes, [])).toEqual([]);
+  });
+  it("resolves reminder note links and Mark as frame colours for both card views", () => {
+    const mark = { id: "urgent", text: "Urgent", color: "#e58b83" };
+    const message = note("message", "message", { customMarks: [], customMarkFrame: false, message: { sound: false, overhive: true } });
+    const markAs = note("mark-as", "markas", { customMarks: [mark], customMarkFrame: true });
+    const beacon = note("beacon-1", "beacon", { name: "Beacon" });
+    const card = { ...payload({ messageId: message.id, targetId: message.id, overhive: true, text: "1123 [Beacon](hive://note/beacon-1)" }), id: "shown", shownAt: 0 };
+    const presentation = messageCardPresentation(card, { message, "mark-as": markAs, "beacon-1": beacon }, [
+      { from: markAs.id, to: message.id, kind: "strong" },
+    ]);
+
+    expect(presentation).toMatchObject({ title: "message", linkedNotes: { "beacon-1": "Beacon" }, customMarkFrameColors: [mark.color] });
+    expect(presentation.overhive).toBe(true);
+  });
   it("ignores old expiration and plays the importance's tone count only when Sound is on", () => {
     const oldPayload = { ...payload({ sound: true, importance: "absolute" }), autoHideSeconds: 2 };
     const id = pushMessage(oldPayload);
@@ -128,5 +152,16 @@ describe("reminder queue", () => {
     undo();
     expect(presentedMessage(card, board.notes)).toMatchObject({ headerHidden: false, overhive: false });
     expect(messageQueue.items).toHaveLength(1);
+  });
+  it("reads embedded Message visibility settings from any host node that owns message data", () => {
+    const host = note("embedded-host", "note", {
+      headerHidden: true,
+      message: { sound: true, overhive: true },
+    });
+    const card = { ...payload({ messageId: host.id, headerHidden: false, overhive: false }), id: "embedded", shownAt: 0 };
+    expect(presentedMessage(card, { ...board.notes, [host.id]: host })).toMatchObject({
+      headerHidden: true,
+      overhive: true,
+    });
   });
 });

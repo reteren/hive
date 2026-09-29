@@ -10,6 +10,19 @@
 </div>
 
 <style>
+  .trash-node-body,
+  .trash-node-body :global(*) {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .trash-node-body :global(input:not([type="button"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="reset"])),
+  .trash-node-body :global(textarea),
+  .trash-node-body :global([contenteditable="true"]) {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
   .trash-node-body {
     display: flex;
     box-sizing: border-box;
