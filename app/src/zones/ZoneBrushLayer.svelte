@@ -8,7 +8,7 @@
   import { brushState, stepBrushSize } from "./brushState.svelte";
   import { brushSquare } from "./brush";
   import { zoneMode, setZoneToolMode, toggleZoneMoveMode } from "./zoneMode.svelte";
-  import { shouldShowZoneBrushCursor } from "./zoneMode";
+  import { shouldIgnoreZoneBrushTarget, shouldShowZoneBrushCursor } from "./zoneMode";
   import {
     appendBrushGesturePoint,
     brushStrokeState,
@@ -69,9 +69,13 @@
   }
 
   function shouldIgnoreTarget(target: EventTarget | null): boolean {
-    return target instanceof Element && Boolean(target.closest(
-      "[data-note-id], [data-beacon-id], [data-link-id], [data-selection-ignore], button, input, textarea, [contenteditable='true']",
+    const element = target instanceof Element ? target : null;
+    const insideNote = Boolean(element?.closest("[data-note-id]"));
+    const textTarget = isTextEditingTarget(target);
+    const interfaceTarget = Boolean(element?.closest(
+      "[data-beacon-id], [data-link-id], [data-selection-ignore], button, input, textarea, [contenteditable='true']",
     ));
+    return shouldIgnoreZoneBrushTarget(insideNote, textTarget, interfaceTarget);
   }
 
   function scheduleFlush(): void {
@@ -111,7 +115,7 @@
 
     function onPointerDown(event: PointerEvent): void {
       if (tool.active !== "zone" || zoneMode.active !== "brush" || zoneMode.followMoveActive || (event.button !== 0 && event.button !== 2) ||
-        isTextEditingTarget(event.target) || shouldIgnoreTarget(event.target)) return;
+        shouldIgnoreTarget(event.target)) return;
       const point = world(event.clientX, event.clientY);
       if (!point) return;
       event.preventDefault();

@@ -6,6 +6,7 @@ import { IMPORTANCE_LEVELS, isValidNoteScale, MOOD_KINDS, PURPOSE_KINDS, type No
 import type { TrashEntry } from "../model/retention.svelte";
 import type { Zone } from "../model/zone";
 import type { CountMode, TimeNodeData, TimeRuntime, TimeSchedule } from "../time/types";
+import { parseStopwatchData } from "../time/data";
 import { copyTrashEntry } from "./trash";
 
 const NOTE_KINDS = new Set<NoteKind>([
@@ -254,7 +255,17 @@ function parseTimeData(value: unknown): TimeNodeData | null {
       ...(typeof candidate.lastCheckedAt === "number" ? { lastCheckedAt: candidate.lastCheckedAt } : {}),
     };
   }
-  return { schedule, enabled: value.enabled, ...(value.taskMode === "stop" || value.taskMode === "restart" ? { taskMode: value.taskMode } : {}), ...(runtime ? { runtime } : {}) };
+  const view = value.view === undefined || value.view === "time" ? value.view : value.view === "stopwatch" ? value.view : null;
+  const stopwatch = parseStopwatchData(value.stopwatch);
+  if (view === null || stopwatch === null) return null;
+  return {
+    schedule,
+    enabled: value.enabled,
+    ...(value.taskMode === "stop" || value.taskMode === "restart" ? { taskMode: value.taskMode } : {}),
+    ...(view ? { view } : {}),
+    ...(stopwatch ? { stopwatch } : {}),
+    ...(runtime ? { runtime } : {}),
+  };
 }
 
 function isValidDate(value: string): boolean {

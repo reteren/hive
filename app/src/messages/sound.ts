@@ -1,33 +1,37 @@
 let audio: AudioContext | null = null;
-let lastToneAt = -Infinity;
+let scheduledUntil = 0;
 
 /** Called from a user gesture, so later reminder tones can run under WebAudio autoplay rules. */
 export async function prepareMessageSound(): Promise<void> {
   if (typeof AudioContext === "undefined") return;
   try {
-    if (!audio || audio.state === "closed") audio = new AudioContext();
+    if (!audio || audio.state === "closed") { audio = new AudioContext(); scheduledUntil = 0; }
     if (audio.state === "suspended") await audio.resume();
   } catch { /* A blocked/unavailable audio device must not suppress the message. */ }
 }
 
-/** A short quiet sine tone. Simultaneous reminder cards share one soft tone. */
-export async function playMessageSound(): Promise<boolean> {
+/** Importance plays 1–5 quiet tones; simultaneous cards queue rather than overlap. */
+export async function playMessageSound(count = 1): Promise<boolean> {
   if (typeof AudioContext === "undefined") return false;
-  try { if (!audio || audio.state === "closed") audio = new AudioContext(); } catch { return false; }
-  if (!audio || audio.state !== "running" || Date.now() - lastToneAt < 350) return false;
+  try { if (!audio || audio.state === "closed") { audio = new AudioContext(); scheduledUntil = 0; } } catch { return false; }
+  if (!audio || audio.state !== "running") return false;
   try {
-    const oscillator = audio.createOscillator();
-    const volume = audio.createGain();
-    const at = audio.currentTime;
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(660, at);
-    volume.gain.setValueAtTime(0, at);
-    volume.gain.linearRampToValueAtTime(0.035, at + 0.025);
-    volume.gain.linearRampToValueAtTime(0, at + 0.24);
-    oscillator.connect(volume); volume.connect(audio.destination);
-    oscillator.onended = () => { oscillator.disconnect(); volume.disconnect(); };
-    oscillator.start(at); oscillator.stop(at + 0.25);
-    lastToneAt = Date.now();
+    const repeats = Number.isFinite(count) ? Math.min(5, Math.max(1, Math.trunc(count))) : 1;
+    const start = Math.max(audio.currentTime, scheduledUntil);
+    for (let index = 0; index < repeats; index += 1) {
+      const oscillator = audio.createOscillator();
+      const volume = audio.createGain();
+      const at = start + index * 0.35;
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(660, at);
+      volume.gain.setValueAtTime(0, at);
+      volume.gain.linearRampToValueAtTime(0.035, at + 0.025);
+      volume.gain.linearRampToValueAtTime(0, at + 0.24);
+      oscillator.connect(volume); volume.connect(audio.destination);
+      oscillator.onended = () => { oscillator.disconnect(); volume.disconnect(); };
+      oscillator.start(at); oscillator.stop(at + 0.25);
+    }
+    scheduledUntil = start + repeats * 0.35;
     return true;
   } catch { return false; }
 }

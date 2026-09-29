@@ -11,13 +11,12 @@
   import { links as boardLinks } from "../model/links.svelte";
   import {
     cameraViewportRect,
-    fitMap,
     MAX_PROJECTED_MAP_LINKS,
+    mapTransformForBounds,
     mapToWorld,
     projectMapLinks,
     wholeBoardBounds,
     worldToMap,
-    zoomMapTransform,
     type MapNoteBounds,
     type MapLinkInput,
     type MapTransform,
@@ -76,20 +75,19 @@
   let svg: SVGSVGElement;
   let { variant = "overlay" }: { variant?: "overlay" | "node" } = $props();
   let frame = $state<MapFrame>({
-    transform: fitMap({ x: 0, y: 0, width: 0, height: 0 }, { width: MAP_WIDTH, height: MAP_HEIGHT }, MAP_PADDING),
+    transform: mapTransformForBounds({ x: 0, y: 0, width: 0, height: 0 }, { width: MAP_WIDTH, height: MAP_HEIGHT }, MAP_PADDING, mapViewState.zoom),
     zones: [],
     notes: [],
     beacons: [],
     links: [],
     linksSkipped: false,
-    me: worldToMap(ME_POSITION, fitMap({ x: 0, y: 0, width: 0, height: 0 }, { width: MAP_WIDTH, height: MAP_HEIGHT }, MAP_PADDING)),
+    me: worldToMap(ME_POSITION, mapTransformForBounds({ x: 0, y: 0, width: 0, height: 0 }, { width: MAP_WIDTH, height: MAP_HEIGHT }, MAP_PADDING, mapViewState.zoom)),
     viewport: { x: 0, y: 0, width: 0, height: 0 },
     camera: { x: camera.x, y: camera.y, zoom: camera.zoom },
     internalZoom: mapViewState.zoom,
   });
   let cachedBoundsKey = "";
   let cachedBounds: WorldRect = { x: 0, y: 0, width: 0, height: 0 };
-  let pendingFrame = 0;
   let dragBefore: CameraSnapshot | null = null;
   let wheelBefore: CameraSnapshot | null = null;
   let internalWheelBefore: number | null = null;
@@ -149,11 +147,7 @@
     bounds: WorldRect,
   ): MapFrame {
     const box = { width: MAP_WIDTH, height: MAP_HEIGHT };
-    const transform = zoomMapTransform(
-      fitMap(bounds, box, MAP_PADDING),
-      box,
-      mapViewState.zoom,
-    );
+    const transform = mapTransformForBounds(bounds, box, MAP_PADDING, mapViewState.zoom);
     const mapNotes: MapRectMark[] = [];
     const beacons: MapDotMark[] = [];
 
@@ -191,7 +185,7 @@
     };
   }
 
-  $effect(() => {
+  function currentFrame(): MapFrame {
     const notes = captureNotes();
     const boardZones = captureZones();
     const sourceLinks = Object.values(boardLinks.byId);
@@ -202,12 +196,13 @@
       cachedBounds = wholeBoardBounds(notes, boardZones, ME_POSITION);
       cachedBoundsKey = key;
     }
-    const next = makeFrame(notes, boardZones, linkSnapshots, linksSkipped, cachedBounds);
-    if (pendingFrame) cancelAnimationFrame(pendingFrame);
-    pendingFrame = requestAnimationFrame(() => {
-      frame = next;
-      pendingFrame = 0;
-    });
+    return makeFrame(notes, boardZones, linkSnapshots, linksSkipped, cachedBounds);
+  }
+
+  $effect(() => {
+    // Keep geometry and its click transform in the same render. A queued animation-frame
+    // assignment let the first pointer event use the initial empty-board transform.
+    frame = currentFrame();
   });
 
   function pointFromEvent(event: PointerEvent): Point | null {
@@ -220,8 +215,8 @@
     return { x: local.x, y: local.y };
   }
 
-  function moveCameraToMapPoint(point: Point): void {
-    const world = mapToWorld(point, frame.transform);
+  function moveCameraToMapPoint(point: Point, transform: MapTransform = frame.transform): void {
+    const world = mapToWorld(point, transform);
     camera.x = world.x;
     camera.y = world.y;
     refreshPointerWorld();
@@ -235,7 +230,11 @@
     event.preventDefault();
     svg.setPointerCapture(event.pointerId);
     const point = pointFromEvent(event);
-    if (point) moveCameraToMapPoint(point);
+    if (point) {
+      const latestFrame = currentFrame();
+      frame = latestFrame;
+      moveCameraToMapPoint(point, latestFrame.transform);
+    }
   }
 
   function onPointerMove(event: PointerEvent): void {
@@ -313,7 +312,6 @@
   };
 
   onDestroy(() => {
-    if (pendingFrame) cancelAnimationFrame(pendingFrame);
     if (dragBefore) restoreCamera(dragBefore);
     finishCameraWheelZoom();
     finishInternalWheelZoom();

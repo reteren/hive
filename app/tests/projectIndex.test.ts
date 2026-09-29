@@ -196,6 +196,37 @@ describe("project index", () => {
     expect(migrated.warnings).toEqual([]);
   });
 
+  it("migrates project Stopwatch metadata once and persists its epoch and scoped counters", () => {
+    const oldBoard = JSON.stringify({
+      version: 3,
+      notes: [
+        { id: "later", name: "Later", x: 0, y: 0, width: 10, createdAt: 200,
+          type: "note", task: null, taskMemory: null, importance: null, purposes: [], moods: [] },
+        { id: "earlier", name: "Earlier", x: 20, y: 0, width: 10, createdAt: 100,
+          type: "note", task: null, taskMemory: null, importance: null, purposes: [], moods: [] },
+      ],
+      taskLog: [], zones: [], beaconMarks: [], links: [],
+    });
+    const migrated = parseProjectIndexWithWarnings(oldBoard, 999);
+    expect(migrated.index.createdAt).toBe(100);
+    expect(migrated.index.projectCounters).toEqual({ appMs: 0, activeMs: 0 });
+    expect(migrated.warnings).toEqual([]);
+
+    const contents = serializeProjectIndex([], migrated.index, [], [], [], [], {}, [], [], {
+      createdAt: migrated.index.createdAt,
+      projectCounters: { appMs: 2_400, activeMs: 900 },
+    });
+    const parsed = parseProjectIndex(contents);
+    expect(parsed.createdAt).toBe(100);
+    expect(parsed.projectCounters).toEqual({ appMs: 2_400, activeMs: 900 });
+  });
+
+  it("uses a one-time migration timestamp for legacy projects without dated notes", () => {
+    const migrated = parseProjectIndexWithWarnings(JSON.stringify({ version: 1, notes: [] }), 123_456);
+    expect(migrated.index.createdAt).toBe(123_456);
+    expect(migrated.index.projectCounters).toEqual({ appMs: 0, activeMs: 0 });
+  });
+
   it("normalizes fixed-size and auto-height R5 and R6 node dimensions when loading notes", () => {
     const notes: Note[] = [
       { id: "goal", type: "goal", name: "Goal", text: "", x: 0, y: 0, width: 88, height: 62 },

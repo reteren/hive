@@ -23,6 +23,23 @@
         "resizable": true
       },
       {
+        "label": "messages-overhive",
+        "title": "hive reminders",
+        "url": "messages-overhive.html",
+        "width": 420,
+        "height": 800,
+        "visible": false,
+        "focus": false,
+        "focusable": false,
+        "alwaysOnTop": true,
+        "decorations": false,
+        "resizable": false,
+        "skipTaskbar": true,
+        "transparent": true,
+        "shadow": false,
+        "backgroundColor": "#00000000"
+      },
+      {
         "label": "quick-input",
         "title": "Quick input",
         "url": "quick-input.html",

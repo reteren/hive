@@ -27,7 +27,8 @@ import type { ArchiveEntry, TrashEntry } from "../model/retention.svelte";
 import { copyArchiveEntry, sanitizeArchiveEntries } from "../archive/serialization";
 import { copyTrashEntry } from "../trash/trash";
 import { sanitizeTrashEntries } from "../trash/serialization";
-import type { TimeNodeData, TimeSchedule, TimeRuntime, CountMode } from "../time/types";
+import type { TimeNodeData, TimeSchedule, TimeRuntime, CountMode, ProjectTimeCounters } from "../time/types";
+import { copyStopwatchData, parseStopwatchData } from "../time/data";
 
 export interface IndexedNote {
   id: string;
@@ -65,6 +66,10 @@ export interface IndexedNote {
 
 export interface ProjectIndex {
   version: 3;
+  /** Project epoch used by Stopwatch. Older indexes migrate from the oldest note creation time. */
+  createdAt: number;
+  /** Runtime-only counters accumulated while this project is open. */
+  projectCounters: ProjectTimeCounters;
   notes: IndexedNote[];
   links?: Link[];
   zones: Zone[];
@@ -86,7 +91,7 @@ export function parseProjectIndex(contents: string): ProjectIndex {
   return parseProjectIndexWithWarnings(contents).index;
 }
 
-export function parseProjectIndexWithWarnings(contents: string): { index: ProjectIndex; warnings: string[] } {
+export function parseProjectIndexWithWarnings(contents: string, now = Date.now()): { index: ProjectIndex; warnings: string[] } {
   let parsed: unknown;
   try {
     parsed = JSON.parse(contents);
@@ -125,6 +130,13 @@ export function parseProjectIndexWithWarnings(contents: string): { index: Projec
   const parsedCalculators = sanitizeCalculators(parsed.calculators);
   const parsedArchive = sanitizeArchiveEntries(parsed.archive);
   const parsedTrash = sanitizeTrashEntries(parsed.trash);
+  const noteCreationTimes = notes.flatMap((note) => typeof note.createdAt === "number" && finiteNonnegative(note.createdAt)
+    ? [note.createdAt]
+    : []);
+  const createdAt = finiteNonnegative(parsed.createdAt)
+    ? parsed.createdAt
+    : noteCreationTimes.length > 0 ? noteCreationTimes.reduce((earliest, candidate) => Math.min(earliest, candidate)) : now;
+  const projectCounters = sanitizeProjectCounters(parsed.projectCounters);
   if ((version === 2 || version === 3) && parsed.taskLog === undefined) {
     parsedTaskLog.warnings.push("Missing task log in board.json; defaulted to an empty log.");
   }
@@ -134,6 +146,8 @@ export function parseProjectIndexWithWarnings(contents: string): { index: Projec
     index: {
       ...parsed,
       version: 3,
+      createdAt,
+      projectCounters: projectCounters.value,
       notes,
       links: parsedLinks.links,
       zones: uniqueZones,
@@ -152,6 +166,10 @@ export function parseProjectIndexWithWarnings(contents: string): { index: Projec
       ...parsedCalculators.warnings,
       ...parsedArchive.warnings,
       ...parsedTrash.warnings,
+      ...(parsed.createdAt !== undefined && !finiteNonnegative(parsed.createdAt)
+        ? ["Invalid project creation time in board.json; it was restored from note dates."]
+        : []),
+      ...(projectCounters.invalid ? ["Invalid project stopwatch counters in board.json were reset to zero."] : []),
     ],
   };
 }
@@ -167,6 +185,7 @@ export function serializeProjectIndex(
   nextCalculators?: Record<string, CalculatorData>,
   nextArchive?: readonly ArchiveEntry[],
   nextTrash?: readonly TrashEntry[],
+  nextProjectMetadata?: { createdAt: number; projectCounters: ProjectTimeCounters },
 ): string {
   const extrasById = new Map(previous?.notes.map((note) => [note.id, note]) ?? []);
   const serializedZones = (nextZones ?? previous?.zones ?? []).map(copyZone);
@@ -219,6 +238,8 @@ export function serializeProjectIndex(
   return JSON.stringify({
     ...previous,
     version: 3,
+    createdAt: nextProjectMetadata?.createdAt ?? previous?.createdAt ?? fallbackProjectCreatedAt(notes),
+    projectCounters: { ...(nextProjectMetadata?.projectCounters ?? previous?.projectCounters ?? { appMs: 0, activeMs: 0 }) },
     notes: indexedNotes,
     links: [...(nextLinks ?? previous?.links ?? [])],
     taskLog: [...(nextTaskLog ?? previous?.taskLog ?? [])].map((entry) => ({ ...entry })),
@@ -697,6 +718,26 @@ function finiteNonnegative(value: unknown): value is number {
   return finite(value) && value >= 0;
 }
 
+function sanitizeProjectCounters(value: unknown): { value: ProjectTimeCounters; invalid: boolean } {
+  if (value === undefined) return { value: { appMs: 0, activeMs: 0 }, invalid: false };
+  if (!isRecord(value)) return { value: { appMs: 0, activeMs: 0 }, invalid: true };
+  const validApp = finiteNonnegative(value.appMs);
+  const validActive = finiteNonnegative(value.activeMs);
+  return {
+    value: { appMs: validApp ? value.appMs as number : 0, activeMs: validActive ? value.activeMs as number : 0 },
+    invalid: !validApp || !validActive,
+  };
+}
+
+function fallbackProjectCreatedAt(notes: readonly Note[]): number {
+  let earliest: number | undefined;
+  for (const note of notes) {
+    if (!finiteNonnegative(note.createdAt)) continue;
+    earliest = earliest === undefined ? note.createdAt : Math.min(earliest, note.createdAt);
+  }
+  return earliest ?? Date.now();
+}
+
 function parseTaskState(value: unknown): TaskState | null {
   if (value === undefined || value === null) return null;
   if (!isRecord(value) || typeof value.done !== "boolean") return null;
@@ -719,6 +760,9 @@ function copyTimeData(value: TimeNodeData | undefined): TimeNodeData | undefined
   return {
     schedule: { ...value.schedule },
     enabled: value.enabled,
+    ...(value.taskMode ? { taskMode: value.taskMode } : {}),
+    ...(value.view ? { view: value.view } : {}),
+    ...(value.stopwatch ? { stopwatch: copyStopwatchData(value.stopwatch)! } : {}),
     ...(value.runtime ? { runtime: { ...value.runtime } } : {}),
   };
 }
@@ -754,7 +798,17 @@ function parseTimeData(value: unknown): TimeNodeData | undefined | null {
       ...(typeof candidate.lastCheckedAt === "number" ? { lastCheckedAt: candidate.lastCheckedAt } : {}),
     };
   }
-  return { schedule, enabled: value.enabled, ...(value.taskMode === "stop" || value.taskMode === "restart" ? { taskMode: value.taskMode } : {}), ...(runtime ? { runtime } : {}) };
+  const view = value.view === undefined || value.view === "time" ? value.view : value.view === "stopwatch" ? value.view : null;
+  const stopwatch = parseStopwatchData(value.stopwatch);
+  if (view === null || stopwatch === null) return null;
+  return {
+    schedule,
+    enabled: value.enabled,
+    ...(value.taskMode === "stop" || value.taskMode === "restart" ? { taskMode: value.taskMode } : {}),
+    ...(view ? { view } : {}),
+    ...(stopwatch ? { stopwatch } : {}),
+    ...(runtime ? { runtime } : {}),
+  };
 }
 
 function isValidDate(value: string): boolean {

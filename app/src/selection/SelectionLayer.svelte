@@ -27,8 +27,10 @@ import { measureDictionaryHeightLimits } from "../spell/dictionarySizing";
     isRectZone,
     updateZoneMoveGesture,
     updateZoneResizeGesture,
+    zoneMoveShouldSnap,
     zoneGestureChanged,
     zoneMoveHistoryCommand,
+    zoneResizeHistoryCommand,
     type MemberPosition,
     type ZoneMoveGesture,
     type ZoneResizeGesture,
@@ -69,7 +71,7 @@ import { measureDictionaryHeightLimits } from "../spell/dictionarySizing";
     type ResizeGesture,
     type ScaleModeGesture,
   } from "./gestures";
-  import { hitTestNotes, hitTestZones, noteSelectionCornerRadius, notesTouchingMarquee, rectFromPoints, zonesTouchingMarquee } from "./hitTesting";
+  import { hitTestNotes, hitTestZones, noteSelectionCornerRadius, notesTouchingMarquee, pointInBounds, rectFromPoints, zonesTouchingMarquee } from "./hitTesting";
   import {
     cancelGroupScaleGesture,
     createGroupScaleGesture,
@@ -100,7 +102,7 @@ import { measureDictionaryHeightLimits } from "../spell/dictionarySizing";
   import { resizeDoubleClickAction } from "./resizeDoubleClick";
   import { startNoteEditing } from "../editor/editorSession";
 import { isLineTool, tool } from "../tools/tool.svelte";
-import { takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
+import { enterZoneResizeMode, exitZoneResizeMode, takeZoneMoveRequest, zoneMode } from "../zones/zoneMode.svelte";
 import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zones/zoneMovePreview.svelte";
   import {
     createPrecisionDeltaTracker,
@@ -132,6 +134,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
     height: number;
     primary: boolean;
     resizable: boolean;
+    resizeActive: boolean;
     path: string;
   }
 
@@ -203,6 +206,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
         started: boolean;
         captured: boolean;
         additive: boolean;
+        clickZoneId: string | null;
       };
 
   interface PendingAltContextPick {
@@ -247,6 +251,8 @@ type PendingBoardMove =
   let suppressContextMenuUntil = 0;
   let suppressBodyClickUntil = 0;
   let suppressAltNodeClickUntil = 0;
+  let suppressZoneResizeExitPointerId: number | null = null;
+  let suppressZoneResizeExitClickUntil = 0;
   let restoreMovingStacking: (() => void) | null = null;
   let zoneCollisionHint = $state(false);
   let lineToolActive = $derived(isLineTool());
@@ -292,7 +298,11 @@ type PendingBoardMove =
 
   let zoneOutlines = $derived.by((): ZoneOutline[] => {
     const ppu = pixelsPerUnit(camera);
-    return selection.zoneIds.flatMap((id) => {
+    const visibleIds = [...new Set([
+      ...selection.zoneIds,
+      ...(zoneMode.resizeZoneId ? [zoneMode.resizeZoneId] : []),
+    ])];
+    return visibleIds.flatMap((id) => {
       const zone = zones.byId[id];
       if (!zone) return [];
       const bounds = zoneBounds(zone);
@@ -302,8 +312,9 @@ type PendingBoardMove =
         id, name: zone.name, color: zone.color,
         left: screen.x, top: screen.y,
         width: bounds.width * ppu, height: bounds.height * ppu,
-        primary: selection.zoneIds.at(-1) === id,
+        primary: zoneMode.resizeZoneId === id || selection.zoneIds.at(-1) === id,
         resizable: isRectZone(zone),
+        resizeActive: zoneMode.resizeZoneId === id,
         path: zoneOutlinePath(zone, bounds, ppu),
       }];
     });
@@ -436,6 +447,9 @@ type PendingBoardMove =
     }
 
     function onPointerDown(event: PointerEvent): void {
+      if (suppressZoneResizeExitPointerId === event.pointerId) return;
+      const target = event.target instanceof Element ? event.target : null;
+
       if (event.button === 2 && activeGesture?.kind === "zone-move") {
         suppressContextMenuUntil = performance.now() + 750;
         zoneMode.suppressContextMenuUntil = suppressContextMenuUntil;
@@ -450,7 +464,7 @@ type PendingBoardMove =
         event.preventDefault();
         event.stopPropagation();
         const local = localPoint(event);
-        if (local) updateZoneGrabAt(screenToWorld(camera, viewport, local), event.ctrlKey);
+        if (local) updateZoneGrabAt(screenToWorld(camera, viewport, local), event.ctrlKey, event.altKey);
         commitZoneGrab();
         return;
       }
@@ -478,14 +492,13 @@ type PendingBoardMove =
           updateGrabAt(grabWorld, event.ctrlKey, event.altKey);
           commitGrab(grabWorld, true);
         } else {
-          updateZoneGrabAt(grabWorld, event.ctrlKey);
+          updateZoneGrabAt(grabWorld, event.ctrlKey, event.altKey);
           commitZoneGrab();
         }
         return;
       }
 
-      const target = event.target instanceof Element ? event.target : null;
-      if (!target || target.closest(".selection-context-pick, [data-create-menu], [data-selection-ignore]")) return;
+      if (!target || target.closest(".selection-context-pick, [data-create-menu]")) return;
 
       const local = localPoint(event);
       if (!local) return;
@@ -552,7 +565,7 @@ type PendingBoardMove =
       if (zoneResizeHandle) {
         const id = zoneResizeHandle.dataset.zoneId;
         const edge = zoneResizeHandle.dataset.zoneResizeHandle as ResizeEdge | undefined;
-        if (id && edge && id === selection.zoneIds.at(-1) && zones.byId[id]) {
+        if (id && edge && id === zoneMode.resizeZoneId && zones.byId[id]) {
           startZoneResize(event, id, edge, local, world);
         }
         return;
@@ -573,6 +586,37 @@ type PendingBoardMove =
         }
         return;
       }
+
+      // The selection rectangle itself is an intentional drag surface. Since the outline
+      // does not receive pointer events, start the group gesture from its interior too.
+      const listStatisticsExtension = target.closest("[data-list-stats-extension]");
+      const listBody = target.closest("[data-list-node]");
+      const interactiveTarget = target.closest("button, input, textarea, select, [contenteditable='true']");
+      if (
+        !event.altKey &&
+        !event.ctrlKey &&
+        selection.ids.length > 1 &&
+        selection.zoneIds.length === 0 &&
+        groupBounds &&
+        pointInBounds(world, groupBounds) &&
+        !interactiveTarget &&
+        !listStatisticsExtension
+      ) {
+        const frames = framesForSelection();
+        const anchorId = selection.primaryId && boardState.notes[selection.primaryId]
+          ? selection.primaryId
+          : frames[0]?.id;
+        if (frames.length > 1 && anchorId) {
+          startMove(event, local, world, frames, anchorId);
+          return;
+        }
+      }
+
+      // List content is normally exempt from selection so its links and row controls work.
+      // Static list surfaces remain valid move starts, while the Statistics extension keeps
+      // its dedicated pull-out gesture.
+      const canMoveFromListBody = Boolean(listBody && !listStatisticsExtension && !interactiveTarget);
+      if (target.closest("[data-selection-ignore]") && !canMoveFromListBody) return;
 
       if (header && !isTextEditingTarget(event.target) && !(noteId && isDimmed(noteId))) {
         const id = noteRoot?.dataset.noteId;
@@ -612,18 +656,16 @@ type PendingBoardMove =
         const zoneId = target.closest<HTMLElement>("[data-zone-id]")?.dataset.zoneId ??
           hitTestZones(world, zones.byId, zones.order);
         if (zoneId && zones.byId[zoneId]) {
-          if (event.ctrlKey) toggleZoneUndoable(zoneId);
-          else {
-            changeSelectionUndoable((next) => {
-              if (!next.zoneIds.includes(zoneId)) {
-                next.ids = [];
-                next.primaryId = null;
-                next.zoneIds = [zoneId];
-              } else {
-                next.zoneIds = [...next.zoneIds.filter((id) => id !== zoneId), zoneId];
-              }
-            }, undefined, true);
-          }
+          activeGesture = {
+            kind: "marquee",
+            pointerId: event.pointerId,
+            startScreen: local,
+            startWorld: world,
+            started: false,
+            captured: false,
+            additive: event.ctrlKey,
+            clickZoneId: zoneId,
+          };
           return;
         }
       }
@@ -636,6 +678,7 @@ type PendingBoardMove =
         started: false,
         captured: false,
         additive: event.ctrlKey,
+        clickZoneId: null,
       };
     }
 
@@ -705,6 +748,11 @@ type PendingBoardMove =
     }
 
     function onPointerUp(event: PointerEvent): void {
+      if (suppressZoneResizeExitPointerId === event.pointerId) {
+        suppressZoneResizeExitPointerId = null;
+        suppressZoneResizeExitClickUntil = performance.now() + 500;
+        return;
+      }
       const local = localPoint(event);
       if (pendingAltNodeActivationPointerId === event.pointerId) {
         pendingAltNodeActivationPointerId = null;
@@ -742,6 +790,12 @@ type PendingBoardMove =
     }
 
     function onClick(event: MouseEvent): void {
+      if (suppressZoneResizeExitClickUntil > performance.now()) {
+        suppressZoneResizeExitClickUntil = 0;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
       if (shouldSuppressAltNodeActivationClick(suppressAltNodeClickUntil, performance.now(), event.detail)) {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -954,8 +1008,29 @@ type PendingBoardMove =
       }
     }
 
+    function onZoneResizePointerDown(event: PointerEvent): void {
+      const activeId = zoneMode.resizeZoneId;
+      if (!activeId || (event.button !== 0 && event.button !== 2)) return;
+      const target = event.target instanceof Element ? event.target : null;
+      const handle = target?.closest<HTMLElement>("[data-zone-resize-handle]");
+      if (event.button === 0 && handle?.dataset.zoneId === activeId) return;
+      if (event.button === 0 && boardEl.contains(event.target as Node)) {
+        suppressZoneResizeExitPointerId = event.pointerId;
+      }
+      exitZoneResizeMode();
+    }
+
+    function onZoneResizeKeyDown(event: KeyboardEvent): void {
+      if (!zoneMode.resizeZoneId) return;
+      const modifier = ["ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight", "AltLeft", "AltRight", "MetaLeft", "MetaRight"]
+        .includes(event.code);
+      if (activeGesture?.kind === "zone-resize" && modifier) return;
+      exitZoneResizeMode();
+    }
+
     window.addEventListener("pointerdown", onScaleModePointerDown, true);
     window.addEventListener("pointerdown", onAltNodePointerDown, true);
+    window.addEventListener("pointerdown", onZoneResizePointerDown, true);
     boardEl.addEventListener("pointerdown", onPointerDown, true);
     boardEl.addEventListener("dragstart", onNativeDragStart, true);
     window.addEventListener("pointermove", onPointerMove, true);
@@ -967,6 +1042,7 @@ type PendingBoardMove =
     boardEl.addEventListener("contextmenu", onContextMenu, true);
     window.addEventListener("keydown", onPrecisionKeyDown, true);
     window.addEventListener("keyup", onPrecisionKeyUp, true);
+    window.addEventListener("keydown", onZoneResizeKeyDown, true);
     window.addEventListener("keydown", onTransformModeKeyDown, true);
     window.addEventListener("keydown", onZoneMoveKeyDown, true);
 
@@ -994,6 +1070,7 @@ type PendingBoardMove =
       window.removeEventListener("blur", onWindowBlur);
       window.removeEventListener("keydown", onPrecisionKeyDown, true);
       window.removeEventListener("keyup", onPrecisionKeyUp, true);
+      window.removeEventListener("keydown", onZoneResizeKeyDown, true);
       window.removeEventListener("keydown", onTransformModeKeyDown, true);
       window.removeEventListener("keydown", onZoneMoveKeyDown, true);
       window.removeEventListener("pointermove", onPointerMove, true);
@@ -1001,6 +1078,7 @@ type PendingBoardMove =
       window.removeEventListener("pointercancel", onPointerCancel, true);
       window.removeEventListener("pointerdown", onScaleModePointerDown, true);
       window.removeEventListener("pointerdown", onAltNodePointerDown, true);
+      window.removeEventListener("pointerdown", onZoneResizePointerDown, true);
       boardEl.removeEventListener("pointerdown", onPointerDown, true);
       boardEl.removeEventListener("dragstart", onNativeDragStart, true);
       boardEl.removeEventListener("lostpointercapture", onLostPointerCapture, true);
@@ -1272,7 +1350,7 @@ type PendingBoardMove =
     zoneGrabGesture = updateZoneMoveGesture(
       zoneGrabGesture,
       adjustedWorld,
-      grid.snap || carryMembers,
+      zoneMoveShouldSnap(grid.snap, carryMembers, alt),
       grid.step,
       carryMembers,
     );
@@ -1316,8 +1394,11 @@ type PendingBoardMove =
   }
 
   function finishZoneMoves(): void {
-    if (activeGesture?.kind === "zone-move") finishPointerGesture(activeGesture.pointerId, false);
-    if (zoneGrabGesture) commitZoneGrab();
+      if (activeGesture?.kind === "zone-move") finishPointerGesture(activeGesture.pointerId, false);
+      if (activeGesture?.kind === "zone-resize" && activeGesture.gesture.beforeZone.id !== zoneMode.resizeZoneId) {
+        finishPointerGesture(activeGesture.pointerId, false);
+      }
+      if (zoneGrabGesture) commitZoneGrab();
   }
 
   function startZoneResize(
@@ -1328,7 +1409,7 @@ type PendingBoardMove =
     world: Point,
   ): void {
     const zone = zones.byId[id];
-    if (!zone || !isRectZone(zone)) return;
+    if (!zone || zoneMode.resizeZoneId !== id) return;
     beginZoneMoveBatch();
     activeGesture = {
       kind: "zone-resize",
@@ -1413,7 +1494,11 @@ type PendingBoardMove =
 
     if (gesture.kind === "zone-move") {
       gesture.gesture = updateZoneMoveGesture(
-        gesture.gesture, adjustedWorld, grid.snap || event.ctrlKey, grid.step, event.ctrlKey,
+        gesture.gesture,
+        adjustedWorld,
+        zoneMoveShouldSnap(grid.snap, event.ctrlKey, event.altKey),
+        grid.step,
+        event.ctrlKey,
       );
       applyZoneMovePreview(gesture.gesture);
       zoneCollisionHint = gesture.gesture.blocked;
@@ -1422,7 +1507,7 @@ type PendingBoardMove =
 
     if (gesture.kind === "zone-resize") {
       gesture.gesture = updateZoneResizeGesture(
-        gesture.gesture, adjustedWorld, grid.snap || event.ctrlKey, grid.step,
+        gesture.gesture, adjustedWorld, grid.snap || event.ctrlKey, grid.step, event.shiftKey,
       );
       applyZoneGeometry(gesture.gesture.afterZone);
       zoneCollisionHint = gesture.gesture.blocked;
@@ -1497,7 +1582,10 @@ type PendingBoardMove =
         setMarquee(null);
       } else {
         setMarquee(null);
-        if (!gesture.additive) clearSelectionUndoable();
+        if (gesture.clickZoneId) {
+          if (gesture.additive) toggleZoneUndoable(gesture.clickZoneId);
+          else selectZoneUndoable(gesture.clickZoneId);
+        } else if (!gesture.additive) clearSelectionUndoable();
       }
     } else if (gesture.kind === "move") {
       if (cancelled) {
@@ -1548,14 +1636,8 @@ type PendingBoardMove =
       if (cancelled) {
         applyZoneGeometry(gesture.gesture.beforeZone);
       } else if (gesture.started && zoneGestureChanged(gesture.gesture.beforeZone, gesture.gesture.afterZone)) {
-        const beforeZone = gesture.gesture.beforeZone;
-        const afterZone = gesture.gesture.afterZone;
-        record({
-          label: "Resize zone",
-          target: beforeZone.name,
-          do: () => applyZoneGeometry(afterZone),
-          undo: () => applyZoneGeometry(beforeZone),
-        });
+        const command = zoneResizeHistoryCommand(gesture.gesture, applyZoneGeometry, enterZoneResizeMode);
+        if (command) record(command);
       }
       endZoneMoveBatch();
     } else if (cancelled) {
@@ -1833,6 +1915,18 @@ type PendingBoardMove =
     });
   }
 
+  function selectZoneUndoable(zoneId: string): void {
+    changeSelectionUndoable((next) => {
+      if (!next.zoneIds.includes(zoneId)) {
+        next.ids = [];
+        next.primaryId = null;
+        next.zoneIds = [zoneId];
+      } else {
+        next.zoneIds = [...next.zoneIds.filter((id) => id !== zoneId), zoneId];
+      }
+    }, undefined, true);
+  }
+
   function applyZoneMove(zone: Zone, members: readonly MemberPosition[]): void {
     applyZoneGeometry(zone);
     applyMemberPositions(members);
@@ -1999,7 +2093,7 @@ type PendingBoardMove =
           <path d={outline.path} stroke={outline.color} stroke-width={outline.primary ? 1.5 : 1} fill="none" />
         </svg>
       {/if}
-      {#if outline.primary && outline.resizable}
+      {#if outline.primary && outline.resizeActive}
         {#each RESIZE_EDGES as edge (edge)}
           <button
             class={`resize-handle resize-handle-${edge} zone-resize-handle`}
@@ -2104,16 +2198,6 @@ type PendingBoardMove =
 
   {#if zoneCollisionHint}
     <div class="zone-collision-hint" role="status">Zone stopped by another zone</div>
-  {/if}
-
-  {#if transformModeHint === "Move"}
-    <div class="transform-mode-hint" data-transform-mode-hint="move" role="status">
-      Move selection · click to confirm · right-click, Esc, or Ctrl+Z to cancel
-    </div>
-  {:else if transformModeHint === "Scale"}
-    <div class="transform-mode-hint" data-transform-mode-hint="scale" role="status">
-      Scale selection · click or Enter to confirm · right-click, Esc, or Ctrl+Z to cancel · any key exits
-    </div>
   {/if}
 
   {#if selection.contextPick}
@@ -2306,22 +2390,6 @@ type PendingBoardMove =
     background: rgba(35, 35, 35, 0.9);
     color: var(--text);
     font-size: 11px;
-    pointer-events: none;
-  }
-
-  .transform-mode-hint {
-    position: absolute;
-    bottom: 14px;
-    left: 50%;
-    transform: translateX(-50%);
-    max-width: calc(100% - 24px);
-    padding: 4px 8px;
-    border: 1px solid #4a4a4a;
-    border-radius: 3px;
-    background: rgba(28, 28, 28, 0.94);
-    color: var(--text);
-    font-size: 11px;
-    text-align: center;
     pointer-events: none;
   }
 

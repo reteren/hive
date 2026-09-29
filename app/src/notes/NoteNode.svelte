@@ -6,8 +6,9 @@
   import { execute } from "../history/history.svelte";
   import { board } from "../model/board.svelte";
   import { editing } from "./editing.svelte";
-  import { MIN_NOTE_HEIGHT } from "./layout.svelte";
+  import { measuredHeights, MIN_NOTE_HEIGHT } from "./layout.svelte";
   import { PX_PER_UNIT } from "../board/cameraMath";
+  import { camera } from "../board/camera.svelte";
   import { uniqueName } from "./naming";
   import { renameCalculatorNode } from "./calculatorRename.svelte";
   import NoteBody from "../editor/NoteBody.svelte";
@@ -18,12 +19,16 @@
   import { nodeBodyFor } from "./nodeBodies";
   import { effectiveCustomMarkFrameColors, effectiveImportance } from "../modules/moduleActions.svelte";
   import { customMarkGradientFor } from "../markas/markasLogic";
+  import { setTimeNodeView } from "../time/viewActions.svelte";
+  import { canRenameNoteHeader } from "./noteMenu";
   import { startNoteEditing } from "../editor/editorSession";
   import { tool } from "../tools/tool.svelte";
   import { zones } from "../model/zones.svelte";
   import { zoneOf } from "../zones/membership.svelte";
   import { isDimmed } from "../beacons/focus.svelte";
   import { listStatisticsWidth, widthWithListStatistics } from "../stats/listStatsLayout";
+  import { overview } from "../overview/overview.svelte";
+  import { overviewFontSize, overviewLabelFor, overviewTextFits } from "../overview/overviewLogic";
 
   let { note, measureHeight }: { note: Note; measureHeight: Action<HTMLElement, string> } = $props();
   let renaming = $state(false);
@@ -34,6 +39,11 @@
   let customMarkFrameColors = $derived(effectiveCustomMarkFrameColors(note.id));
   let customMarkGradient = $derived(customMarkGradientFor(customMarkFrameColors));
   let scale = $derived(normalizeNoteScale(note.scale));
+  let overviewLabel = $derived(overviewLabelFor(note.type, note.name));
+  let overviewWidthPx = $derived(widthWithListStatistics(note) * PX_PER_UNIT);
+  let overviewHeightPx = $derived((note.height ?? measuredHeights[note.id] ?? MIN_NOTE_HEIGHT) * PX_PER_UNIT);
+  let overviewTextVisible = $derived(overviewTextFits(overviewWidthPx, overviewHeightPx, camera.zoom, scale));
+  let overviewLabelFontSize = $derived(overviewFontSize(overviewLabel.kind, overviewLabel.title, overviewWidthPx, overviewHeightPx));
 
   function beginRename(): void {
     draftName = note.name;
@@ -47,7 +57,8 @@
   }
 
   function startRename(event: MouseEvent): void {
-    if (event.target instanceof Element && event.target.closest("input")) return;
+    if (!canRenameNoteHeader(note.headerHidden)) return;
+    if (event.target instanceof Element && event.target.closest("input, button, [data-selection-ignore]")) return;
 
     event.preventDefault();
     event.stopPropagation();
@@ -127,6 +138,7 @@
   data-note-scale={scale === 1 ? undefined : scale}
   data-header-hidden={note.headerHidden ? "true" : undefined}
   data-dimmed={isDimmed(note.id)}
+  data-alt-overview={overview.active ? "true" : undefined}
   data-editing={editing.noteId === note.id ? "true" : "false"}
   data-kind={note.type}
   data-task={note.task ? (note.task.done ? "done" : "open") : undefined}
@@ -172,6 +184,28 @@
       {:else}
         <span class="note-name">{note.name}</span>
       {/if}
+      {#if note.type === "time"}
+        <span class="time-view-switch" role="group" aria-label="Time node view" data-selection-ignore>
+          <button
+            type="button"
+            class:active={note.time?.view !== "stopwatch"}
+            aria-pressed={note.time?.view !== "stopwatch"}
+            data-selection-ignore
+            onclick={() => setTimeNodeView(note.id, "time")}
+          >Time</button>
+          <button
+            type="button"
+            class:active={note.time?.view === "stopwatch"}
+            aria-pressed={note.time?.view === "stopwatch"}
+            data-selection-ignore
+            onclick={() => setTimeNodeView(note.id, "stopwatch")}
+          >Stopwatch</button>
+        </span>
+      {/if}
+    </header>
+  {:else}
+    <header class="note-header hidden-note-header" data-note-header aria-hidden="true">
+      <span class="note-name">{note.name}</span>
     </header>
   {/if}
   {#if renameError}
@@ -200,6 +234,12 @@
     <div class="note-frame-edge note-frame-edge-right" data-note-header aria-hidden="true"></div>
     <div class="note-frame-edge note-frame-edge-bottom" data-note-header aria-hidden="true"></div>
   </div>
+  {#if overview.active && overviewTextVisible}
+    <div class="overview-label" data-overview-node-label aria-hidden="true" style:font-size={`${overviewLabelFontSize}px`}>
+      <span class="overview-kind">{overviewLabel.kind}</span>
+      {#if overviewLabel.title}<span class="overview-title">{overviewLabel.title}</span>{/if}
+    </div>
+  {/if}
 </article>
 
 <style>
@@ -219,6 +259,43 @@
     user-select: text;
   }
 
+  .note-card[data-alt-overview="true"] {
+    border: 1px solid #8a8a8a;
+    border-radius: 1px;
+    background: #707070;
+    box-shadow: none;
+    color: #f1f1f1;
+  }
+
+  .note-card[data-alt-overview="true"] > :not(.overview-label) {
+    visibility: hidden;
+  }
+
+  .overview-label {
+    position: absolute;
+    z-index: 5;
+    inset: 2px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    color: #f4f4f4;
+    font-weight: 600;
+    line-height: 1.1;
+    text-align: center;
+    user-select: none;
+    pointer-events: none;
+  }
+
+  .overview-kind,
+  .overview-title {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .note-header {
     display: flex;
     min-height: var(--note-header-height);
@@ -230,6 +307,48 @@
     font-size: 11px;
     font-weight: 600;
     user-select: none;
+  }
+
+  .time-view-switch {
+    display: inline-flex;
+    flex: 0 0 auto;
+    gap: 2px;
+    margin-left: auto;
+    padding: 2px;
+    background: #292929;
+    border: 1px solid #4b4b4b;
+    border-radius: 999px;
+  }
+
+  .time-view-switch button {
+    min-height: 17px;
+    padding: 1px 7px;
+    color: #a0a0a0;
+    background: transparent;
+    border: 0;
+    border-radius: 999px;
+    font: inherit;
+    font-size: 9px;
+    cursor: pointer;
+  }
+
+  .time-view-switch button.active {
+    color: #f0d58a;
+    background: #48402d;
+  }
+
+  .hidden-note-header {
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    left: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .note-card[data-header-hidden="true"]:hover > .hidden-note-header {
+    opacity: 0.5;
+    pointer-events: auto;
   }
 
   .note-frame {

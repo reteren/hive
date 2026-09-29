@@ -10,6 +10,8 @@
   import { isMarked } from "./marks.svelte";
   import { zoneOf } from "../zones/membership.svelte";
   import { zones } from "../model/zones.svelte";
+  import { overview } from "../overview/overview.svelte";
+  import { overviewFontSize, overviewTextFits } from "../overview/overviewLogic";
   import "./beacons.css";
 
   let draft = $state("");
@@ -62,12 +64,15 @@
       {#if note?.type === "beacon"}
         {@const memberZone = zones.byId[zoneOf(id) ?? ""]}
         {@const scale = normalizeNoteScale(note.scale)}
+        {@const overviewTextVisible = overviewTextFits(BEACON_SIZE * PX_PER_UNIT, BEACON_SIZE * PX_PER_UNIT, camera.zoom, scale)}
+        {@const overviewLabelFontSize = overviewFontSize("Beacon", note.name, BEACON_SIZE * PX_PER_UNIT, BEACON_SIZE * PX_PER_UNIT)}
         <div
           class="beacon-object"
           data-note-id={id}
           data-kind="beacon"
           data-note-scale={scale === 1 ? undefined : scale}
           data-dimmed={isDimmed(id)}
+          data-alt-overview={overview.active ? "true" : undefined}
           data-member-zone-id={memberZone?.id}
           style:left={`${note.x * PX_PER_UNIT}px`}
           style:top={`${note.y * PX_PER_UNIT}px`}
@@ -88,6 +93,12 @@
           ></button>
           {#if isMarked(id)}<span class="beacon-mark" aria-label="Marked beacon"></span>{/if}
           <span class="beacon-label" style:color={note.color ?? BEACON_PALETTE[0]}>{note.name}</span>
+          {#if overview.active && overviewTextVisible}
+            <span class="beacon-overview-label" data-overview-beacon-label aria-hidden="true" style:font-size={`${overviewLabelFontSize}px`}>
+              <span class="beacon-overview-kind">Beacon</span>
+              <span class="beacon-overview-name" style:color={note.color ?? BEACON_PALETTE[0]}>{note.name}</span>
+            </span>
+          {/if}
           {#if beaconEditor.noteId === id}
             <div class="beacon-editor" data-beacon-editor data-selection-ignore role="dialog" aria-label={beaconEditor.mode === "rename" ? "Rename beacon" : "Beacon colour"}>
               <label for="beacon-edit-input">{beaconEditor.mode === "rename" ? "Beacon name" : "Colour (hex)"}</label>

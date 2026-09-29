@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { board, replaceBoard } from "../src/model/board.svelte";
 import type { Note } from "../src/model/note";
 import type { ShownMessage } from "../src/time/types";
-import { defaultMessageData, parseAutoHideInput, parseMessageData } from "../src/messages/data";
+import { defaultMessageData, parseMessageData } from "../src/messages/data";
 import { setMessageSettings, setMessageText } from "../src/messages/actions.svelte";
 import { dismissMessage, messageQueue, pushMessage } from "../src/messages/messageQueue.svelte";
 import { goToMessage } from "../src/messages/navigation";
-import { visibleMessages } from "../src/messages/presentation";
+import { presentedMessage, visibleMessages } from "../src/messages/presentation";
 import { camera } from "../src/board/camera.svelte";
 import { selection, selectOnly } from "../src/selection/selection.svelte";
 import { clear, history, redo, undo } from "../src/history/history.svelte";
@@ -19,7 +19,7 @@ function note(id: string, type: Note["type"], fields: Partial<Note> = {}): Note 
   return { id, type, name: id, text: "", x: 100, y: 50, width: 30, height: null, ...fields };
 }
 function payload(fields: Partial<Omit<ShownMessage, "id" | "shownAt">> = {}): Omit<ShownMessage, "id" | "shownAt"> {
-  return { timeId: "time", messageId: "message", text: "First line\nSecond line", dueAt: Date.now() - 60_000, overlate: true, sound: false, autoHideSeconds: null, ...fields };
+  return { timeId: "time", messageId: "message", text: "First line\nSecond line", dueAt: Date.now() - 60_000, overlate: true, sound: false, ...fields };
 }
 beforeEach(() => {
   vi.useFakeTimers(); vi.setSystemTime(new Date("2026-09-28T12:00:00Z"));
@@ -34,27 +34,25 @@ afterEach(() => {
 
 describe("Message settings and text", () => {
   it("defaults to silent persistent cards and validates saved settings without sharing objects", () => {
-    expect(defaultMessageData()).toEqual({ sound: false, autoHideSeconds: null });
+    expect(defaultMessageData()).toEqual({ sound: false, overhive: false });
     expect(defaultMessageData()).not.toBe(defaultMessageData());
-    expect(parseMessageData({ sound: true, autoHideSeconds: 2.5 })).toEqual({ sound: true, autoHideSeconds: 2.5 });
-    for (const value of [null, [], {}, { sound: "true", autoHideSeconds: null }, { sound: true, autoHideSeconds: -1 }, { sound: false, autoHideSeconds: Infinity }]) expect(parseMessageData(value)).toBeUndefined();
-    expect(parseAutoHideInput(" ")).toEqual({ seconds: null, error: null });
-    expect(parseAutoHideInput("15")).toEqual({ seconds: 15, error: null });
-    for (const value of ["0", "-5", "no", "Infinity"]) expect(parseAutoHideInput(value).error).toBeTruthy();
+    expect(parseMessageData({ sound: true, autoHideSeconds: 2.5 })).toEqual({ sound: true, overhive: false });
+    expect(parseMessageData({ sound: true, overhive: true, autoHideSeconds: -1 })).toEqual({ sound: true, overhive: true });
+    for (const value of [null, [], {}, { sound: "true", autoHideSeconds: null }, { sound: true, overhive: "yes" }]) expect(parseMessageData(value)).toBeUndefined();
   });
   it("records one settings edit, restores missing defaults exactly and ignores no-op/invalid edits", () => {
-    expect(setMessageSettings("message", { autoHideSeconds: null })).toBe(false);
-    expect(setMessageSettings("message", { autoHideSeconds: 0 })).toBe(false);
+    expect(setMessageSettings("message", { overhive: false })).toBe(false);
+    expect(setMessageSettings("message", { sound: undefined })).toBe(false);
     expect(setMessageSettings("editing", { sound: true })).toBe(false);
     expect(history.entries).toHaveLength(0);
     expect(setMessageSettings("message", { sound: true })).toBe(true);
     expect(history.entries).toHaveLength(1);
-    expect(board.notes.message.message).toEqual({ sound: true, autoHideSeconds: null });
+    expect(board.notes.message.message).toEqual({ sound: true, overhive: false });
     undo(); expect(board.notes.message.message).toBeUndefined();
     redo(); expect(board.notes.message.message?.sound).toBe(true);
-    setMessageSettings("message", { autoHideSeconds: 10 });
+    setMessageSettings("message", { overhive: true });
     expect(history.entries).toHaveLength(2);
-    undo(); expect(board.notes.message.message?.autoHideSeconds).toBeNull();
+    undo(); expect(board.notes.message.message?.overhive).toBe(false);
   });
   it("saves multiline text immediately but merges one edit session into one Undo step", () => {
     const group = Symbol();
@@ -79,21 +77,16 @@ describe("reminder queue", () => {
     dismissMessage(ids[5]); expect(visibleMessages(messageQueue.items)[0].text).toBe("4");
     expect(history.entries).toHaveLength(0);
   });
-  it("expires cards independently, cancels dismissal timers and only plays opted-in sound", () => {
-    const short = pushMessage(payload({ autoHideSeconds: 2, sound: true }));
-    const long = pushMessage(payload({ autoHideSeconds: 5 }));
-    const permanent = pushMessage(payload());
-    expect(playMessageSound).toHaveBeenCalledTimes(1);
-    vi.advanceTimersByTime(2000);
-    expect(messageQueue.items.some((card) => card.id === short)).toBe(false);
-    dismissMessage(long); vi.advanceTimersByTime(3000);
-    expect(messageQueue.items.map((card) => card.id)).toEqual([permanent]);
+  it("ignores old expiration and plays the importance's tone count only when Sound is on", () => {
+    const oldPayload = { ...payload({ sound: true, importance: "absolute" }), autoHideSeconds: 2 };
+    const id = pushMessage(oldPayload);
+    pushMessage(payload({ importance: "important" }));
+    expect(playMessageSound).toHaveBeenCalledExactlyOnceWith(5);
+    vi.advanceTimersByTime(24 * 60 * 60 * 1000);
+    expect(messageQueue.items.some((card) => card.id === id)).toBe(true);
+    expect(messageQueue.items.find((card) => card.id === id)).not.toHaveProperty("autoHideSeconds");
     expect(vi.getTimerCount()).toBe(0);
-  });
-  it("does not overflow native timer limits for very long durations", () => {
-    const id = pushMessage(payload({ autoHideSeconds: 3_000_000 }));
-    vi.advanceTimersByTime(2_147_483_647); expect(messageQueue.items[0].id).toBe(id);
-    vi.advanceTimersByTime(3_000_000_000 - 2_147_483_647); expect(messageQueue.items).toHaveLength(0);
+    dismissMessage(id); expect(messageQueue.items).toHaveLength(1);
   });
   it("never changes focus, camera or selection on delivery even while an editor is active", () => {
     const focus = vi.fn();
@@ -117,5 +110,23 @@ describe("reminder queue", () => {
     expect(goToMessage(fallback)).toBe(true); expect(selection.ids).toEqual(["time"]);
     const missing = pushMessage(payload({ messageId: "removed" }));
     expect(goToMessage(missing)).toBe(false); expect(messageQueue.items[0].id).toBe(missing);
+  });
+  it("explicitly navigates to a linked Task instead of the Message and retains other cards", () => {
+    const kept = pushMessage(payload());
+    const taskCard = pushMessage(payload({ targetId: "editing", overhive: true }));
+    expect(goToMessage(taskCard)).toBe(true);
+    expect(selection.ids).toEqual(["editing"]);
+    expect(messageQueue.items.map((card) => card.id)).toEqual([kept]);
+  });
+  it("updates the header and desktop visibility of existing cards when the Message controls change", () => {
+    const id = pushMessage(payload());
+    const card = messageQueue.items.find((item) => item.id === id)!;
+    board.notes.message.headerHidden = true;
+    setMessageSettings("message", { overhive: true });
+    expect(presentedMessage(card, board.notes)).toMatchObject({ headerHidden: true, overhive: true });
+    board.notes.message.headerHidden = false;
+    undo();
+    expect(presentedMessage(card, board.notes)).toMatchObject({ headerHidden: false, overhive: false });
+    expect(messageQueue.items).toHaveLength(1);
   });
 });

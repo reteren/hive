@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { clear, history, undo } from "../src/history/history.svelte";
 import { board, replaceBoard } from "../src/model/board.svelte";
 import type { Note } from "../src/model/note";
-import { noteMenuItems } from "../src/notes/noteMenu";
+import { canRenameNoteHeader, noteMenuItems } from "../src/notes/noteMenu";
 import { notePressIntent } from "../src/selection/noteMoveIntent";
 
 function note(height: number | null = 20): Note {
@@ -26,6 +26,12 @@ afterEach(() => {
 });
 
 describe("note header visibility", () => {
+  it("requires showing a hidden header before renaming its title", () => {
+    expect(canRenameNoteHeader(true)).toBe(false);
+    expect(canRenameNoteHeader(undefined)).toBe(true);
+    expect(canRenameNoteHeader(false)).toBe(true);
+  });
+
   it("toggles the title strip and its fixed-height space in one Undo step", () => {
     const item = headerMenuItem();
     expect(item.label("note-1")).toBe("Hide header");

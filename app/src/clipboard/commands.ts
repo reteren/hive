@@ -31,6 +31,7 @@ import { removeCreatedBankRowForLink } from "../calculator/bankActions.svelte";
 import { moveToTrash } from "../trash/trashActions.svelte";
 import { linkedTimeStatesForTask } from "../time/taskLink";
 import { restartTimeNode } from "../time/runtime.svelte";
+import { copyTimeNodeData } from "../time/data";
 import {
   creationObstacleForNote,
   estimatedCreationHeight,
@@ -310,7 +311,7 @@ function createCopies(
       height: note.type === "purpose" || note.type === "mood" ? null : note.height,
       createdAt: note.createdAt ?? Date.now(),
       ...taskFieldsForPaste(note),
-      ...(note.time ? { time: { ...note.time, schedule: { ...note.time.schedule }, ...(note.time.runtime ? { runtime: { ...note.time.runtime } } : {}) } } : {}),
+      ...(note.time ? { time: copyTimeNodeData(note.time) } : {}),
       ...(note.message ? { message: { ...note.message } } : {}),
       importance: note.importance ?? null,
       purposes: [...new Set(note.purposes ?? [])],
@@ -379,11 +380,7 @@ function includeActiveTaskTimes(notes: readonly Note[]): Note[] {
     for (const linkedTime of linkedTimeStatesForTask(task.id, Object.values(links.byId), board.notes)) {
       const time = board.notes[linkedTime.noteId];
       if (!linkedTime.enabled || !time || includedIds.has(time.id)) continue;
-      result.push({ ...time, time: time.time ? {
-        ...time.time,
-        schedule: { ...time.time.schedule },
-        ...(time.time.runtime ? { runtime: { ...time.time.runtime } } : {}),
-      } : undefined });
+      result.push({ ...time, time: time.time ? copyTimeNodeData(time.time) : undefined });
       includedIds.add(time.id);
     }
   }

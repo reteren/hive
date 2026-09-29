@@ -79,7 +79,7 @@ export function effectiveImportanceFor(
   edges: readonly ModuleEdge[],
 ): ImportanceLevel | null {
   const note = notes[noteId];
-  if (!isAssignableNote(note)) return null;
+  if (note?.type !== "message" && !isAssignableNote(note)) return null;
   for (const module of linkedModules(noteId, "importance", notes, edges)) {
     if (module.importance && isImportanceLevel(module.importance)) return module.importance;
   }
@@ -93,7 +93,7 @@ export function linkedImportanceSourceFor(
   edges: readonly ModuleEdge[],
 ): string | null {
   const note = notes[noteId];
-  if (!isAssignableNote(note)) return null;
+  if (note?.type !== "message" && !isAssignableNote(note)) return null;
   return linkedModules(noteId, "importance", notes, edges)
     .find((module) => module.importance && isImportanceLevel(module.importance))?.id ?? null;
 }

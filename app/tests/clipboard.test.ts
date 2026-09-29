@@ -85,6 +85,11 @@ describe("clipboard payload", () => {
         enabled: true,
         runtime: { intervalStartedAt: 900, countedMs: 12, lastCheckedAt: 920 },
         taskMode: "stop",
+        view: "stopwatch",
+        stopwatch: {
+          mode: "manual", running: true, elapsedMs: 12_000, startedAt: 950,
+          nodeCreatedAppMs: 100, nodeCreatedActiveMs: 75,
+        },
       },
     };
 
@@ -95,6 +100,9 @@ describe("clipboard payload", () => {
     malformed.nodes[0].time.schedule = time.time!.schedule;
     malformed.nodes[0].time.taskMode = "prompt";
     expect(parseNotesPayload(JSON.stringify(malformed))).toBeNull();
+    malformed.nodes[0].time = time.time;
+    malformed.nodes[0].time.stopwatch.mode = "invalid";
+    expect(parseNotesPayload(JSON.stringify(malformed))).toBeNull();
   });
 
   it("preserves Message settings and defaults missing or invalid settings safely", () => {
@@ -102,7 +110,7 @@ describe("clipboard payload", () => {
       ...noteA,
       id: "message-a",
       type: "message",
-      message: { sound: true, autoHideSeconds: 15 },
+      message: { sound: true, overhive: true },
     };
     expect(parseNotesPayload(serializeNotes([message]))?.nodes[0]?.message).toEqual(message.message);
 
@@ -110,7 +118,7 @@ describe("clipboard payload", () => {
     serialized.nodes[0].message = { sound: "yes", autoHideSeconds: -1 };
     expect(parseNotesPayload(JSON.stringify(serialized))?.nodes[0]?.message).toEqual({
       sound: false,
-      autoHideSeconds: null,
+      overhive: false,
     });
   });
 

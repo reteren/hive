@@ -69,7 +69,7 @@ export function linkRefusalReason(
 
   const module = sourceIsModule ? source : target;
   const content = sourceIsModule ? target : source;
-  if (!isContentNote(content)) return "Module nodes link only to notes, pluses, or minuses.";
+  if (!(content?.type === "message" && module?.type === "importance") && !isContentNote(content)) return "Module nodes link only to notes, pluses, or minuses (Importance also links to Message).";
   if (module?.type !== "importance" || actualKind !== "strong") return null;
 
   if (content.importance) return "This note already has an Importance source.";

@@ -6,6 +6,7 @@ import type { ArchiveEntry } from "../model/retention.svelte";
 import { estimatedCreationHeight } from "../notes/creationPosition";
 import { uniqueName } from "../notes/naming";
 import { copyTierRows } from "../tierlist/logic";
+import { copyTimeNodeData } from "../time/data";
 
 export type RestorePlacement = "old" | "centre";
 
@@ -29,7 +30,7 @@ export function copyArchivedNote(note: Note): Note {
     ...(note.task ? { task: { ...note.task } } : {}),
     ...(note.taskMemory ? { taskMemory: { ...note.taskMemory } } : {}),
     ...(note.message ? { message: { ...note.message } } : {}),
-    ...(note.time ? { time: { ...note.time, schedule: { ...note.time.schedule }, ...(note.time.runtime ? { runtime: { ...note.time.runtime } } : {}) } } : {}),
+    ...(note.time ? { time: copyTimeNodeData(note.time) } : {}),
     ...(note.purposes ? { purposes: [...note.purposes] } : {}),
     ...(note.moods ? { moods: [...note.moods] } : {}),
     ...(note.smoothLineAnchors ? { smoothLineAnchors: copySmoothLineAnchorSnapshot(note.smoothLineAnchors) } : {}),

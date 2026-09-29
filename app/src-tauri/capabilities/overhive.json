@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "overhive",
+  "description": "Receive reminder snapshots and send explicit reminder actions without keyboard focus",
+  "windows": ["messages-overhive"],
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
+}

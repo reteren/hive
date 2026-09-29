@@ -12,7 +12,7 @@ describe("view settings serialization", () => {
     const settings = {
       camera: { x: 32.5, y: -80, zoom: 2.4 },
       cameraSettings: { minZoom: 0.1, maxZoom: 12, zoomSensitivity: 0.002, panSpeed: 720 },
-      grid: { step: 25, showGrid: false, snap: true },
+      grid: { step: 25, autoGrid: false, showGrid: false, snap: true },
       history: { limit: 256 },
       accessibility: { reduceAnimations: true },
       zones: { brushSize: 240 },
@@ -33,6 +33,12 @@ describe("view settings serialization", () => {
   it("uses defaults for a missing or corrupt file", () => {
     expect(parseViewSettings(null, DEFAULT_VIEW_SETTINGS)).toEqual(DEFAULT_VIEW_SETTINGS);
     expect(parseViewSettings("{not json", DEFAULT_VIEW_SETTINGS)).toEqual(DEFAULT_VIEW_SETTINGS);
+    expect(DEFAULT_VIEW_SETTINGS.grid.autoGrid).toBe(true);
+  });
+
+  it("enables Auto grid by default when loading settings saved before version 10", () => {
+    const loaded = parseViewSettings('{"version":9,"grid":{"step":25,"showGrid":false,"snap":true}}', DEFAULT_VIEW_SETTINGS);
+    expect(loaded.grid).toEqual({ step: 25, autoGrid: true, showGrid: false, snap: true });
   });
 
   it("loads older view settings without a history limit", () => {
@@ -76,7 +82,7 @@ describe("view settings serialization", () => {
     expect(settings).toEqual({
       camera: { x: 14, y: 0, zoom: 1 },
       cameraSettings: { minZoom: 0.1, maxZoom: 5, zoomSensitivity: 0.0015, panSpeed: 900 },
-      grid: { step: 10, showGrid: false, snap: false },
+      grid: { step: 10, autoGrid: true, showGrid: false, snap: false },
       history: { limit: 64 },
       accessibility: DEFAULT_VIEW_SETTINGS.accessibility,
       zones: DEFAULT_VIEW_SETTINGS.zones,

@@ -4,8 +4,9 @@ import { board, updateNote } from "../model/board.svelte";
 import { links } from "../model/links.svelte";
 import type { Note } from "../model/note";
 import { pushMessage } from "../messages/messageQueue.svelte";
+import { resolveMessageContent } from "../messages/resolution";
 import { evaluateTime, startRuntime, type TimeContext } from "./scheduler";
-import type { TimeNodeData, TimeRuntime } from "./types";
+import type { ProjectTimeCounters, TimeNodeData, TimeRuntime } from "./types";
 import { advanceTimeCounters, linkedMessagesForTime } from "./runtimeLogic";
 
 const TICK_MS = 1_000;
@@ -13,6 +14,10 @@ const RUNTIME_PERSIST_MS = 30_000;
 
 /** App-wide counters are persisted in the view-settings file, never in project history. */
 export const timeCounters = $state({ appMs: 0, activeMs: 0 });
+/** Stopwatch counters are scoped to the currently open project and exclude closed-app time. */
+export const projectStopwatch = $state({ createdAt: Date.now(), appMs: 0, activeMs: 0 });
+/** Persistence observes this low-frequency revision instead of saving the board every tick. */
+export const projectCounterSave = $state({ revision: 0 });
 
 /**
  * The cache is valid only for the exact `time` object it was derived from: notes are updated in
@@ -31,10 +36,32 @@ let lastRuntimePersistAt = 0;
 let wasFocused = false;
 let tauriFocused: boolean | null = null;
 let runtimeByNoteId = new Map<string, CachedRuntime>();
+let projectCreatedAtSnapshot = projectStopwatch.createdAt;
+let projectCounterSnapshot: ProjectTimeCounters = { appMs: 0, activeMs: 0 };
 
 export function setTimeCounters(value: { appMs: number; activeMs: number }): void {
   timeCounters.appMs = nonNegative(value.appMs);
   timeCounters.activeMs = nonNegative(value.activeMs);
+}
+
+/** Load one project's saved stopwatch epoch and app/focus counters. */
+export function setProjectStopwatchData(createdAt: number, counters: ProjectTimeCounters): void {
+  if (cleanupRuntime && lastTickAt > 0) accrueUntil(Date.now());
+  projectCreatedAtSnapshot = nonNegative(createdAt);
+  projectCounterSnapshot = { appMs: nonNegative(counters.appMs), activeMs: nonNegative(counters.activeMs) };
+  projectStopwatch.createdAt = projectCreatedAtSnapshot;
+  projectStopwatch.appMs = projectCounterSnapshot.appMs;
+  projectStopwatch.activeMs = projectCounterSnapshot.activeMs;
+  projectCounterSave.revision += 1;
+}
+
+/** Plain snapshot used by the project serializer without subscribing to each timer tick. */
+export function currentProjectStopwatchData(): { createdAt: number; projectCounters: ProjectTimeCounters } {
+  if (cleanupRuntime && lastTickAt > 0) accrueUntil(Date.now());
+  return {
+    createdAt: projectCreatedAtSnapshot,
+    projectCounters: { ...projectCounterSnapshot },
+  };
 }
 
 /** Start the main-window timer once and return a disposer for tests/lifecycle cleanup. */
@@ -127,6 +154,7 @@ function tick(): void {
 
   if (now - lastRuntimePersistAt >= RUNTIME_PERSIST_MS) {
     persistCheckedRuntimes(liveTimeIds);
+    projectCounterSave.revision += 1;
     lastRuntimePersistAt = now;
   }
 }
@@ -139,8 +167,11 @@ function syncFocus(): void {
 
 function accrueUntil(now: number): void {
   const advanced = advanceTimeCounters(timeCounters, lastTickAt, now, wasFocused);
+  projectCounterSnapshot = advanceTimeCounters(projectCounterSnapshot, lastTickAt, now, wasFocused).counters;
   timeCounters.appMs = advanced.counters.appMs;
   timeCounters.activeMs = advanced.counters.activeMs;
+  projectStopwatch.appMs = projectCounterSnapshot.appMs;
+  projectStopwatch.activeMs = projectCounterSnapshot.activeMs;
   lastTickAt = advanced.lastAt;
 }
 
@@ -184,7 +215,6 @@ function showTimeFire(note: Note, fire: { dueAt: number; overlate: boolean }): v
       dueAt: fire.dueAt,
       overlate: fire.overlate,
       sound: false,
-      autoHideSeconds: null,
     });
     return;
   }
@@ -193,11 +223,9 @@ function showTimeFire(note: Note, fire: { dueAt: number; overlate: boolean }): v
     pushMessage({
       timeId: note.id,
       messageId: recipient.id,
-      text: recipient.text,
       dueAt: fire.dueAt,
       overlate: fire.overlate,
-      sound: recipient.message?.sound ?? false,
-      autoHideSeconds: recipient.message?.autoHideSeconds ?? null,
+      ...resolveMessageContent(recipient, board.notes, Object.values(links.byId), board.order),
     });
   }
 }

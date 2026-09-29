@@ -32,6 +32,42 @@
 .beacon-circle.in-zone { outline: 3px solid var(--zone-color); outline-offset: 3px; }
 .beacon-circle.in-zone:focus-visible { outline-color: #fff; }
 
+.beacon-object[data-alt-overview="true"] .beacon-circle {
+  background: #707070;
+  box-shadow: none;
+  outline: none;
+}
+
+.beacon-object[data-alt-overview="true"] > .beacon-mark,
+.beacon-object[data-alt-overview="true"] > .beacon-label,
+.beacon-object[data-alt-overview="true"] > .beacon-editor {
+  visibility: hidden;
+}
+
+.beacon-overview-label {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: #f4f4f4;
+  font-weight: 600;
+  line-height: 1.05;
+  text-align: center;
+  pointer-events: none;
+}
+
+.beacon-overview-kind,
+.beacon-overview-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .beacon-mark {
   position: absolute;
   z-index: 1;

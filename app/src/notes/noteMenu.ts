@@ -21,6 +21,11 @@ export interface NoteMenuItem {
 
 const items = new Map<string, NoteMenuItem>();
 
+/** A hidden header is a move handle only; its title can be renamed after it is shown. */
+export function canRenameNoteHeader(headerHidden: boolean | undefined): boolean {
+  return headerHidden !== true;
+}
+
 registerNoteMenuItem({
   id: "links.smoothLines",
   label: (noteId) => board.notes[noteId]?.smoothLines ? "Remove smooth" : "Smooth lines",

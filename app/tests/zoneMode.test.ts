@@ -1,10 +1,19 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { shouldShowZoneBrushCursor } from "../src/zones/zoneMode";
-import { requestZoneMove, setZoneToolMode, takeZoneMoveRequest, toggleZoneMoveMode, zoneMode } from "../src/zones/zoneMode.svelte";
+import { shouldIgnoreZoneBrushTarget, shouldShowZoneBrushCursor } from "../src/zones/zoneMode";
+import {
+  enterZoneResizeMode,
+  exitZoneResizeMode,
+  requestZoneMove,
+  setZoneToolMode,
+  takeZoneMoveRequest,
+  toggleZoneMoveMode,
+  zoneMode,
+} from "../src/zones/zoneMode.svelte";
 
 beforeEach(() => {
   zoneMode.active = "brush";
   zoneMode.followMoveActive = false;
+  zoneMode.resizeZoneId = null;
   zoneMode.moveRequest = null;
   zoneMode.finishRequest = 0;
   zoneMode.suppressContextMenuUntil = 0;
@@ -27,6 +36,24 @@ describe("zone tool modes", () => {
     expect(shouldShowZoneBrushCursor("line-strong", "brush", true)).toBe(false);
     expect(shouldShowZoneBrushCursor("zone", "brush", false)).toBe(false);
     expect(shouldShowZoneBrushCursor("zone", "brush", true, true)).toBe(false);
+  });
+
+  it("lets zone brush input pass through notes, including their editable text", () => {
+    expect(shouldIgnoreZoneBrushTarget(true, true, true)).toBe(false);
+    expect(shouldIgnoreZoneBrushTarget(false, true, false)).toBe(true);
+    expect(shouldIgnoreZoneBrushTarget(false, false, true)).toBe(true);
+    expect(shouldIgnoreZoneBrushTarget(false, false, false)).toBe(false);
+  });
+
+  it("enters resize mode for one zone and leaves it on exit", () => {
+    enterZoneResizeMode("zone-a");
+    expect(zoneMode.resizeZoneId).toBe("zone-a");
+    expect(zoneMode.finishRequest).toBe(1);
+    enterZoneResizeMode("zone-a");
+    expect(zoneMode.finishRequest).toBe(1);
+    exitZoneResizeMode();
+    expect(zoneMode.resizeZoneId).toBeNull();
+    expect(zoneMode.finishRequest).toBe(2);
   });
 
   it("consumes a menu move request once without changing its captured world point", () => {

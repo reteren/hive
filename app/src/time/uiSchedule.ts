@@ -13,6 +13,11 @@ export function copyTimeSchedule(schedule: TimeSchedule): TimeSchedule {
   return schedule.kind === "at" ? { ...schedule } : { ...schedule };
 }
 
+/** Stable, per-node ids keep each Time node's Repeat and Enabled controls independent. */
+export function timeCheckboxId(noteId: string, field: "repeat" | "enabled"): string {
+  return `time-${encodeURIComponent(noteId)}-${field}`;
+}
+
 /** A compact hours equivalent shown next to the canonical minutes field. */
 export function intervalHoursHint(minutes: number): string {
   if (!Number.isFinite(minutes) || minutes < 1) return "Enter at least 1 minute.";

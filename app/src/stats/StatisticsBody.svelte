@@ -45,7 +45,6 @@
       <div><span>Characters</span><strong>{summary.characters}</strong></div>
       <div><span>Lines</span><strong>{summary.lines}</strong></div>
     </div>
-    <p class="statistics-note">Text notes only; calculators and tierlists are excluded.</p>
   {/if}
 </div>
 
@@ -79,19 +78,13 @@
     font-size: 9px;
     text-overflow: ellipsis;
     white-space: nowrap;
+    user-select: none;
   }
 
   .statistics-grid strong {
     color: var(--text);
     font-size: 14px;
     font-variant-numeric: tabular-nums;
-  }
-
-  .statistics-note {
-    margin: 0;
-    color: var(--text-dim);
-    font-size: 9px;
-    line-height: 1.3;
   }
 
   .tierlist-lock {

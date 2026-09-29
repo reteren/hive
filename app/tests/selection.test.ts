@@ -6,6 +6,7 @@ import {
   hitTestNotes,
   hitTestZones,
   notesTouchingMarquee,
+  pointInBounds,
   rectFromPoints,
   zonesTouchingMarquee,
 } from "../src/selection/hitTesting";
@@ -57,6 +58,13 @@ const noteB: Note = {
 };
 
 describe("selection hit testing", () => {
+  it("treats the full interior and edge of group bounds as a move surface", () => {
+    const bounds = { x: 10, y: 20, width: 30, height: 40 };
+    expect(pointInBounds({ x: 25, y: 35 }, bounds)).toBe(true);
+    expect(pointInBounds({ x: 40, y: 60 }, bounds)).toBe(true);
+    expect(pointInBounds({ x: 40.01, y: 60 }, bounds)).toBe(false);
+  });
+
   it("keeps zones in a separate selection list while allowing mixed Ctrl and marquee selection", () => {
     clearSelection();
     selectZonesOnly(["zone"]);

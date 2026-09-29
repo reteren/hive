@@ -4,6 +4,7 @@ import type { CalculatorData } from "../model/nodeData";
 import type { Note } from "../model/note";
 import type { TrashEntry } from "../model/retention.svelte";
 import type { Zone } from "../model/zone";
+import { copyTimeNodeData } from "../time/data";
 
 export interface TrashRename {
   noteId: string;
@@ -112,7 +113,7 @@ export function copyTrashNote(note: Note): Note {
     ...(note.task ? { task: { ...note.task } } : {}),
     ...(note.taskMemory ? { taskMemory: { ...note.taskMemory } } : {}),
     ...(note.message ? { message: { ...note.message } } : {}),
-    ...(note.time ? { time: { ...note.time, schedule: { ...note.time.schedule }, ...(note.time.runtime ? { runtime: { ...note.time.runtime } } : {}) } } : {}),
+    ...(note.time ? { time: copyTimeNodeData(note.time) } : {}),
     ...(note.purposes ? { purposes: [...note.purposes] } : {}),
     ...(note.moods ? { moods: [...note.moods] } : {}),
     ...(note.smoothLineAnchors ? { smoothLineAnchors: copySmoothLineAnchorSnapshot(note.smoothLineAnchors) } : {}),

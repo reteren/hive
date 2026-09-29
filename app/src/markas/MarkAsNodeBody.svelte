@@ -158,6 +158,7 @@
     gap: 6px;
     color: #d8d8d8;
     font-size: 11px;
+    user-select: none;
   }
 
   .markas-head {
@@ -197,6 +198,7 @@
     background: transparent;
     font: inherit;
     cursor: pointer;
+    user-select: none;
   }
 
   .markas-tag-label {
@@ -212,6 +214,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    user-select: none;
   }
 
   .markas-dot {
@@ -292,6 +295,7 @@
     background: #1a1a1a;
     color: #eee;
     font: inherit;
+    user-select: text;
   }
 
   .markas-text:focus { border-color: var(--accent); outline: none; }

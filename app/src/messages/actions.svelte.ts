@@ -9,7 +9,7 @@ export function setMessageSettings(noteId: string, patch: Partial<MessageNodeDat
   const before = note.message ? { ...note.message } : undefined;
   const after = parseMessageData({ ...(before ?? defaultMessageData()), ...patch });
   const previous = before ?? defaultMessageData();
-  if (!after || previous.sound === after.sound && previous.autoHideSeconds === after.autoHideSeconds) return false;
+  if (!after || previous.sound === after.sound && previous.overhive === after.overhive) return false;
   execute({
     label: "Edit message settings", target: note.name,
     do: () => updateNote(noteId, { message: { ...after } }),

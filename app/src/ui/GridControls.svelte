@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import "../board/gridCommands";
-  import { decreaseGridStep, grid, increaseGridStep } from "../board/grid.svelte";
+  import { decreaseGridStep, grid, increaseGridStep, setAutoGrid } from "../board/grid.svelte";
+  import { formatGridStep } from "../board/gridMath";
   import { formatKey } from "../commands/keys";
   import { getCommand, runCommand } from "../commands/registry.svelte";
   import magnetOffIcon from "./icons/magnet-off.png";
@@ -26,7 +27,8 @@
   function stepTitle(): string {
     const increase = commandTitle(increaseCommand);
     const decrease = commandTitle(decreaseCommand);
-    return `Grid step ${grid.step} u · Click: ${increase} · Right-click: ${decrease}`;
+    const commandKeys = [increase, decrease].filter(Boolean).join(" · ");
+    return `Grid step ${formatGridStep(grid.step)} u · base ${formatGridStep(grid.baseStep)} u${commandKeys ? ` · ${commandKeys}` : ""}`;
   }
 
   function onOutsidePointerDown(event: PointerEvent): void {
@@ -123,14 +125,22 @@
           oncontextmenu={preventStepContextMenu}
           onclick={increaseGridStep}
         >
-          <span class="step-value">{grid.step}</span>
+          <span class="step-value">{formatGridStep(grid.step)}</span>
           <span class="step-unit">u</span>
           <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false">
             <path d="m5 7 4-4 4 4M5 11l4 4 4-4" />
           </svg>
         </button>
       </div>
-      <p class="step-hint">Click to increase · Right-click to decrease</p>
+      <label class="auto-grid-setting" data-auto-grid>
+        <input
+          type="checkbox"
+          aria-label="Auto grid"
+          checked={grid.autoGrid}
+          onchange={(event) => setAutoGrid(event.currentTarget.checked)}
+        />
+        <span>Auto grid</span>
+      </label>
     </section>
   {/if}
 </div>
@@ -302,10 +312,18 @@
     stroke-linejoin: round;
   }
 
-  .step-hint {
-    margin: 5px 0 0;
-    color: var(--text-dim);
-    font-size: 9px;
+  .auto-grid-setting {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 7px;
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  .auto-grid-setting input {
+    margin: 0;
+    accent-color: var(--accent);
   }
 
   :global(html[data-reduce-motion="true"]) .expand-arrow {

@@ -26,6 +26,13 @@ describe("time scheduler", () => {
     expect(validateSchedule({ kind: "interval", minutes: 0.5, mode: "active", repeat: true })).toContain("1 minute");
   });
 
+  it("keeps a disabled reminder stopped without firing or exposing a next due time", () => {
+    const schedule: TimeSchedule = { kind: "interval", minutes: 1, mode: "calendar", repeat: true };
+    const data = timeNode(schedule, { intervalStartedAt: 1_000, lastCheckedAt: 1_000 }, false);
+    expect(evaluateTime(data, context(61_000)).fire).toBeNull();
+    expect(nextDueAt(data, context(61_000))).toBeNull();
+  });
+
   it("fires a dated local-time occurrence once", () => {
     const dueAt = at("2026-10-05", "09:15");
     const schedule: TimeSchedule = { kind: "at", date: "2026-10-05", time: "09:15" };

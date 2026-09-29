@@ -1,5 +1,6 @@
 mod backup;
 mod export;
+mod overhive;
 mod project;
 mod quick_input_shortcut;
 mod settings;
@@ -82,6 +83,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(AppLifecycle::default())
+        .manage(overhive::OverhiveState::default())
         .manage(project::ProjectState::default())
         .setup(|app| {
             app.manage(quick_input_shortcut::QuickInputShortcutService::new(app.handle().clone()));
@@ -157,6 +159,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             set_quit_requested,
             configure_quick_input_shortcut,
+            overhive::sync_overhive,
+            overhive::get_overhive_snapshot,
+            overhive::set_overhive_regions,
+            overhive::overhive_action,
             settings::load_view_settings,
             settings::save_view_settings,
             project::initialize_project,

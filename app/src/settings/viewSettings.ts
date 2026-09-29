@@ -7,7 +7,7 @@ import { systemPrefersReducedMotion } from "./motion";
 import type { BackupInterval } from "../backup/backupSettings.svelte";
 import { DEFAULT_QUICK_INPUT_SHORTCUT, normalizeQuickInputShortcut } from "../quickInput/shortcutModel";
 
-export const VIEW_SETTINGS_VERSION = 9;
+export const VIEW_SETTINGS_VERSION = 10;
 
 export interface CameraSettings {
   minZoom: number;
@@ -18,6 +18,7 @@ export interface CameraSettings {
 
 export interface GridSettings {
   step: number;
+  autoGrid: boolean;
   showGrid: boolean;
   snap: boolean;
 }
@@ -64,7 +65,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
     zoomSensitivity: 0.0015,
     panSpeed: 600,
   },
-  grid: { step: 10, showGrid: true, snap: false },
+  grid: { step: 10, autoGrid: true, showGrid: true, snap: false },
   history: { limit: DEFAULT_HISTORY_LIMIT },
   accessibility: { reduceAnimations: systemPrefersReducedMotion() },
   zones: { brushSize: BRUSH_MIN * 3 },
@@ -115,6 +116,7 @@ export function parseViewSettings(serialized: string | null | undefined, default
     cameraSettings,
     grid: {
       step: gridStepOrDefault(gridInput.step, defaults.grid.step),
+      autoGrid: booleanOrDefault(gridInput.autoGrid, defaults.grid.autoGrid),
       showGrid: booleanOrDefault(gridInput.showGrid, defaults.grid.showGrid),
       snap: booleanOrDefault(gridInput.snap, defaults.grid.snap),
     },
@@ -146,7 +148,12 @@ export function serializeViewSettings(settings: ViewSettings): string {
       zoomSensitivity: settings.cameraSettings.zoomSensitivity,
       panSpeed: settings.cameraSettings.panSpeed,
     },
-    grid: { step: settings.grid.step, showGrid: settings.grid.showGrid, snap: settings.grid.snap },
+    grid: {
+      step: settings.grid.step,
+      autoGrid: settings.grid.autoGrid,
+      showGrid: settings.grid.showGrid,
+      snap: settings.grid.snap,
+    },
     history: { limit: settings.history.limit },
     accessibility: { reduceAnimations: settings.accessibility.reduceAnimations },
     zones: { brushSize: settings.zones.brushSize },

@@ -19,6 +19,7 @@ import { zoneBounds } from "../model/zone";
 import { normalizeBeaconColor } from "../beacons/beaconPalette";
 import { shapesOverlap, translateShape } from "../zones/shape";
 import type { MessageNodeData, TimeNodeData } from "../time/types";
+import { copyTimeNodeData as cloneTimeNodeData, parseStopwatchData } from "../time/data";
 import { defaultMessageData, parseMessageData } from "../messages/data";
 
 export const HIVE_CLIPBOARD_MARKER = "hive/nodes";
@@ -266,12 +267,7 @@ export function placeNotes<T extends NoteGeometry>(
 }
 
 function copyTimeNodeData(time: TimeNodeData): TimeNodeData {
-  return {
-    schedule: { ...time.schedule },
-    enabled: time.enabled,
-    ...(time.runtime ? { runtime: { ...time.runtime } } : {}),
-    ...(time.taskMode === undefined ? {} : { taskMode: time.taskMode }),
-  };
+  return cloneTimeNodeData(time);
 }
 
 /** Translate copied notes and zones together so their relative offsets survive paste. */
@@ -390,6 +386,9 @@ function parseTimeNodeData(value: unknown): TimeNodeData | null {
 
   const rawSchedule = value.schedule;
   if (value.taskMode !== undefined && value.taskMode !== "stop" && value.taskMode !== "restart") return null;
+  if (value.view !== undefined && value.view !== "time" && value.view !== "stopwatch") return null;
+  const stopwatch = parseStopwatchData(value.stopwatch);
+  if (stopwatch === null) return null;
   let schedule: TimeNodeData["schedule"];
   if (rawSchedule.kind === "at" && typeof rawSchedule.time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(rawSchedule.time) &&
     (rawSchedule.date === null || (typeof rawSchedule.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(rawSchedule.date)))) {
@@ -420,6 +419,8 @@ function parseTimeNodeData(value: unknown): TimeNodeData | null {
     enabled: value.enabled,
     ...(runtime ? { runtime } : {}),
     ...(value.taskMode === undefined ? {} : { taskMode: value.taskMode }),
+    ...(value.view === undefined ? {} : { view: value.view }),
+    ...(stopwatch ? { stopwatch } : {}),
   };
 }
 

@@ -5,6 +5,7 @@ import { parseCalculatorData, parseScope, parseTiers, parseListItems, parseRando
 import { IMPORTANCE_LEVELS, isValidNoteScale, MOOD_KINDS, PURPOSE_KINDS, type Note, type NoteKind, type TaskState } from "../model/note";
 import type { ArchiveEntry } from "../model/retention.svelte";
 import type { CountMode, TimeNodeData, TimeRuntime, TimeSchedule } from "../time/types";
+import { parseStopwatchData } from "../time/data";
 import { copyArchivedLink, copyArchivedNote } from "./logic";
 
 const ARCHIVABLE_KINDS = new Set<NoteKind>([
@@ -187,7 +188,17 @@ function parseTimeData(value: unknown): TimeNodeData | null {
       ...(typeof candidate.lastCheckedAt === "number" ? { lastCheckedAt: candidate.lastCheckedAt } : {}),
     };
   }
-  return { schedule, enabled: value.enabled, ...(value.taskMode === "stop" || value.taskMode === "restart" ? { taskMode: value.taskMode } : {}), ...(runtime ? { runtime } : {}) };
+  const view = value.view === undefined || value.view === "time" ? value.view : value.view === "stopwatch" ? value.view : null;
+  const stopwatch = parseStopwatchData(value.stopwatch);
+  if (view === null || stopwatch === null) return null;
+  return {
+    schedule,
+    enabled: value.enabled,
+    ...(value.taskMode === "stop" || value.taskMode === "restart" ? { taskMode: value.taskMode } : {}),
+    ...(view ? { view } : {}),
+    ...(stopwatch ? { stopwatch } : {}),
+    ...(runtime ? { runtime } : {}),
+  };
 }
 
 function isValidDate(value: string): boolean {

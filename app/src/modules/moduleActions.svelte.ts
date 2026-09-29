@@ -546,6 +546,7 @@ function listTargetAtPoint(point: Point, excludedId: string): Note | null {
 }
 
 function dropRefusal(module: Note, target: Note): string | null {
+  if (target.type === "message" && module.type !== "importance") return "Only Importance can be inserted into a Message.";
   if (module.type === target.type && (module.type === "purpose" || module.type === "mood" || module.type === "markas")) {
     const result = planModuleMerge(module, target, Object.values(links.byId), board.notes);
     return result.ok ? null : result.reason;
@@ -583,7 +584,7 @@ function isExternalModule(note: Note): boolean {
 }
 
 function isAssignableNote(note: Note): boolean {
-  return note.type === "note" || note.type === "pro" || note.type === "con";
+  return note.type === "note" || note.type === "pro" || note.type === "con" || note.type === "message";
 }
 
 function writeModulePatch(noteId: string, patch: ModuleDataPatch): void {

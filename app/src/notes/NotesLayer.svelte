@@ -35,7 +35,15 @@
 
     function onContextMenu(event: MouseEvent): void {
       const target = event.target instanceof Element ? event.target : null;
-      if (!target || !target.closest(".board") || target.closest("[data-selection-ignore], [data-create-menu]")) return;
+      if (!target || !target.closest(".board")) return;
+
+      // The board owns context menus for notes and blank space. Suppress the browser menu
+      // before checking feature surfaces so no node body can leak Chrome's native menu.
+      event.preventDefault();
+      if (target.closest("[data-create-menu]")) {
+        event.stopPropagation();
+        return;
+      }
 
       const noteRoot = target.closest<HTMLElement>("[data-note-id]");
       const noteId = noteRoot?.dataset.noteId;

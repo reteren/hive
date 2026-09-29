@@ -10,6 +10,7 @@ export interface ZoneMoveRequest {
 export const zoneMode = $state({
   active: "brush" as ZoneToolMode,
   followMoveActive: false,
+  resizeZoneId: null as string | null,
   moveRequest: null as ZoneMoveRequest | null,
   finishRequest: 0,
   suppressContextMenuUntil: 0,
@@ -24,6 +25,18 @@ export function toggleZoneMoveMode(): ZoneToolMode {
 export function setZoneToolMode(mode: ZoneToolMode): void {
   if (zoneMode.active === mode) return;
   zoneMode.active = mode;
+  zoneMode.finishRequest += 1;
+}
+
+export function enterZoneResizeMode(zoneId: string): void {
+  if (zoneMode.resizeZoneId === zoneId) return;
+  zoneMode.resizeZoneId = zoneId;
+  zoneMode.finishRequest += 1;
+}
+
+export function exitZoneResizeMode(): void {
+  if (zoneMode.resizeZoneId === null) return;
+  zoneMode.resizeZoneId = null;
   zoneMode.finishRequest += 1;
 }
 

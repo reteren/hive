@@ -13,7 +13,9 @@ import {
   deleteZonesAction,
   updateZoneMoveGesture,
   updateZoneResizeGesture,
+  zoneMoveShouldSnap,
   zoneMoveHistoryCommand,
+  zoneResizeHistoryCommand,
 } from "../src/zones/zoneGestures";
 
 function zone(id: string, x: number, y: number, width: number, height: number): Zone {
@@ -55,6 +57,18 @@ describe("zone move and resize", () => {
     expect(updateZoneMoveGesture(gesture, { x: 8, y: 0 }, false, 10, false).afterMembers)
       .toEqual([{ id: "member", x: 1, y: 1 }]);
     expect(updateZoneMoveGesture(createZoneMoveGesture(moving, [], [], { x: 0, y: 0 }), { x: 8, y: 0 }, false, 10).afterMembers).toEqual([]);
+  });
+
+  it("uses Ctrl+Alt to carry zone members without grid snapping", () => {
+    expect(zoneMoveShouldSnap(true, false, false)).toBe(true);
+    expect(zoneMoveShouldSnap(false, true, false)).toBe(true);
+    expect(zoneMoveShouldSnap(true, true, true)).toBe(false);
+
+    const source = zone("a", 3, 3, 4, 4);
+    const gesture = createZoneMoveGesture(source, [], [{ id: "member", x: 4, y: 4 }], { x: 0, y: 0 });
+    const moved = updateZoneMoveGesture(gesture, { x: 8, y: 0 }, zoneMoveShouldSnap(true, true, true), 10, true);
+    expect(zoneBounds(moved.afterZone)).toMatchObject({ x: 11, y: 3 });
+    expect(moved.afterMembers).toEqual([{ id: "member", x: 12, y: 4 }]);
   });
 
   it("cancels to the original zone and member positions and records a move as one Undo step", () => {
@@ -154,6 +168,67 @@ describe("zone move and resize", () => {
     const legacy = createZoneResizeGesture(zone("legacy", 0, 0, 12, 18), [], "bottom-right", { x: 12, y: 18 });
     const legacyShrink = updateZoneResizeGesture(legacy, { x: -100, y: -100 }, false, 10);
     expect(zoneBounds(legacyShrink.afterZone)).toEqual({ x: 0, y: 0, width: 12, height: 18 });
+  });
+
+  it("keeps the zone centre fixed when Shift-resizing an edge or corner", () => {
+    const source = zone("centered", 0, 0, 100, 80);
+    const rightEdge = createZoneResizeGesture(source, [], "right", { x: 100, y: 40 });
+    const sideResize = updateZoneResizeGesture(rightEdge, { x: 110, y: 40 }, false, 10, true);
+    expect(zoneBounds(sideResize.afterZone)).toEqual({ x: -10, y: 0, width: 120, height: 80 });
+
+    const corner = createZoneResizeGesture(source, [], "top-right", { x: 100, y: 0 });
+    const cornerResize = updateZoneResizeGesture(corner, { x: 110, y: -10 }, false, 10, true);
+    expect(zoneBounds(cornerResize.afterZone)).toEqual({ x: -10, y: -10, width: 120, height: 100 });
+  });
+
+  it("undoes a resize and re-enters its mode in one history step", () => {
+    clearHistory();
+    const before = zone("resize-history", 0, 0, 100, 80);
+    const gesture = createZoneResizeGesture(before, [], "right", { x: 100, y: 40 });
+    const resized = updateZoneResizeGesture(gesture, { x: 110, y: 40 }, false, 10, true);
+    let current = resized.afterZone;
+    let resizeMode: string | null = null;
+    const command = zoneResizeHistoryCommand(resized, (next) => { current = next; }, (id) => { resizeMode = id; });
+
+    expect(command).not.toBeNull();
+    record(command!);
+    expect(history.entries).toHaveLength(1);
+    resizeMode = null;
+    undo();
+    expect(zoneBounds(current)).toEqual({ x: 0, y: 0, width: 100, height: 80 });
+    expect(resizeMode).toBe(before.id);
+    redo();
+    expect(zoneBounds(current)).toEqual({ x: -10, y: 0, width: 120, height: 80 });
+    expect(resizeMode).toBe(before.id);
+    clearHistory();
+  });
+
+  it("preserves a complex zone shape and hole while resizing its bounds", () => {
+    const irregular: Zone = {
+      id: "irregular",
+      name: "Irregular",
+      color: "#456789",
+      parts: [[{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 50, y: 80 }]],
+      holes: [[{ x: 40, y: 20 }, { x: 50, y: 40 }, { x: 60, y: 20 }]],
+    };
+    const gesture = createZoneResizeGesture(irregular, [], "right", { x: 100, y: 40 });
+    const resized = updateZoneResizeGesture(gesture, { x: 120, y: 40 }, false, 10);
+
+    expect(resized.afterZone.parts[0]).toHaveLength(3);
+    expect(resized.afterZone.holes[0]).toHaveLength(3);
+    expect(resized.afterZone.parts[0][1]).toEqual({ x: 120, y: 0 });
+    expect(resized.afterZone.holes[0][1]).toEqual({ x: 60, y: 40 });
+  });
+
+  it("clamps a Shift resize at an obstacle without moving the zone centre", () => {
+    const source = zone("centered", 0, 0, 100, 80);
+    const gesture = createZoneResizeGesture(source, [zone("obstacle", 110, 20, 20, 40)], "right", { x: 100, y: 40 });
+    const resized = updateZoneResizeGesture(gesture, { x: 130, y: 40 }, false, 10, true);
+    const bounds = zoneBounds(resized.afterZone);
+
+    expect(bounds.x + bounds.width / 2).toBeCloseTo(50, 8);
+    expect(resized.blocked).toBe(true);
+    expect(overlapByArea(bounds, zoneBounds(zone("obstacle", 110, 20, 20, 40)))).toBe(false);
   });
 });
 

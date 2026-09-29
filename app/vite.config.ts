@@ -21,6 +21,7 @@ export default defineConfig({
       input: {
         main: "index.html",
         quickInput: "quick-input.html",
+        overhive: "messages-overhive.html",
       },
     },
   },

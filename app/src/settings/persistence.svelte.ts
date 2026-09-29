@@ -1,7 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { registerCloseFlush } from "../lifecycle/closeFlush";
 import { camera, cameraSettings } from "../board/camera.svelte";
-import { grid } from "../board/grid.svelte";
+import { grid, setAutoGrid, setGridStep } from "../board/grid.svelte";
 import { history as undoHistory, setHistoryLimit } from "../history/history.svelte";
 import { brushState, setBrushSize } from "../zones/brushState.svelte";
 import { getCommandKeyOverrides, setCommandKeyOverrides } from "../commands/registry.svelte";
@@ -126,7 +126,7 @@ function currentSettings(): ViewSettings {
       zoomSensitivity: cameraSettings.zoomSensitivity,
       panSpeed: cameraSettings.panSpeed,
     },
-    grid: { step: grid.step, showGrid: grid.showGrid, snap: grid.snap },
+    grid: { step: grid.baseStep, autoGrid: grid.autoGrid, showGrid: grid.showGrid, snap: grid.snap },
     history: { limit: undoHistory.limit },
     accessibility: { reduceAnimations: preferences.reduceAnimations },
     zones: { brushSize: brushState.size },
@@ -146,7 +146,8 @@ function applySettings(settings: ViewSettings): void {
   camera.x = settings.camera.x;
   camera.y = settings.camera.y;
   camera.zoom = settings.camera.zoom;
-  grid.step = settings.grid.step;
+  setGridStep(settings.grid.step);
+  setAutoGrid(settings.grid.autoGrid);
   grid.showGrid = settings.grid.showGrid;
   grid.snap = settings.grid.snap;
   setHistoryLimit(settings.history.limit);

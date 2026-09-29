@@ -34,6 +34,28 @@ export interface TimeRuntime {
   lastCheckedAt?: number;
 }
 
+export type StopwatchMode = "project" | "node" | "active" | "app" | "manual";
+
+export interface StopwatchData {
+  mode: StopwatchMode;
+  /** Optional modes 3/4 can count from project creation instead of the Time node's creation. */
+  includeProjectTime?: boolean;
+  /** Whether the manual stopwatch is currently running. */
+  running?: boolean;
+  /** Accumulated manual stopwatch time, excluding a live run segment. */
+  elapsedMs?: number;
+  /** Start of the current manual run segment. */
+  startedAt?: number;
+  /** Project counters captured once when this Time node was first initialized. */
+  nodeCreatedAppMs?: number;
+  nodeCreatedActiveMs?: number;
+}
+
+export interface ProjectTimeCounters {
+  appMs: number;
+  activeMs: number;
+}
+
 export interface TimeNodeData {
   schedule: TimeSchedule;
   /** Off = no waiting at all (a stopped task, a user switch, an archived task until resumed). */
@@ -41,13 +63,15 @@ export interface TimeNodeData {
   runtime?: TimeRuntime;
   /** R8.4: what completing a linked task does. Only "stop" exists for now (absent = "stop"). */
   taskMode?: "stop" | "restart";
+  /** Absent means the default Time view. */
+  view?: "time" | "stopwatch";
+  stopwatch?: StopwatchData;
 }
 
-/** R8.5 Message node settings. The text is the note's own `text`. */
+/** Message cards stay until closed; old autoHideSeconds values are ignored on load. */
 export interface MessageNodeData {
   sound: boolean;
-  /** null = the card stays until closed (user decision 28.09 default). */
-  autoHideSeconds: number | null;
+  overhive: boolean;
 }
 
 /** One shown message card in the top-right queue. */
@@ -63,5 +87,9 @@ export interface ShownMessage {
   /** R8.6: shown late after sleep/restart (only the last missed occurrence is shown). */
   overlate: boolean;
   sound: boolean;
-  autoHideSeconds: number | null;
+  /** A linked Task takes precedence over Message/Time for explicit navigation. */
+  targetId?: string;
+  importance?: import("../model/note").ImportanceLevel | null;
+  headerHidden?: boolean;
+  overhive?: boolean;
 }

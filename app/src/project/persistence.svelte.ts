@@ -30,6 +30,11 @@ import { resetTransferNotices } from "../transfer/sync.svelte";
 import { tool } from "../tools/tool.svelte";
 import { editing } from "../notes/editing.svelte";
 import {
+  currentProjectStopwatchData,
+  projectCounterSave,
+  setProjectStopwatchData,
+} from "../time/runtime.svelte";
+import {
   mergeLoadedNotes,
   parseProjectIndex,
   parseProjectIndexWithWarnings,
@@ -142,6 +147,8 @@ function startBoardObserver(): void {
   $effect.root(() => {
     $effect(() => {
       if (loading || !project.ready || !project.path) return;
+      // Project stopwatch totals tick every second; schedule disk writes only at runtime checkpoints.
+      void projectCounterSave.revision;
       const snapshot = makeSnapshot();
       if (isDirty(snapshot)) scheduleSave(snapshot);
     });
@@ -155,8 +162,14 @@ function applyProject(loaded: ProjectLoad): void {
   const normalizedIndex = serializeProjectIndex(
     notes, parsedIndex, parsedIndex.links, parsedIndex.taskLog, parsedIndex.zones, parsedIndex.beaconMarks,
     parsedIndex.calculators, parsedIndex.archive, parsedIndex.trash,
+    { createdAt: parsedIndex.createdAt, projectCounters: parsedIndex.projectCounters },
   );
-  const sourceVersion = JSON.parse(loaded.indexJson) as { version?: unknown };
+  const sourceIndex = JSON.parse(loaded.indexJson) as { version?: unknown; createdAt?: unknown; projectCounters?: unknown };
+  const sourceVersion = sourceIndex.version;
+  const hasProjectStopwatchData = typeof sourceIndex.createdAt === "number" && Number.isFinite(sourceIndex.createdAt) &&
+    sourceIndex.createdAt >= 0 && isRecord(sourceIndex.projectCounters) &&
+    typeof sourceIndex.projectCounters.appMs === "number" && Number.isFinite(sourceIndex.projectCounters.appMs) && sourceIndex.projectCounters.appMs >= 0 &&
+    typeof sourceIndex.projectCounters.activeMs === "number" && Number.isFinite(sourceIndex.projectCounters.activeMs) && sourceIndex.projectCounters.activeMs >= 0;
 
   // A different project must not inherit the previous one's editor, selection or Undo steps.
   resetProjectScopedState();
@@ -166,6 +179,7 @@ function applyProject(loaded: ProjectLoad): void {
 
   loading = true;
   indexTemplate = parsedIndex;
+  setProjectStopwatchData(parsedIndex.createdAt, parsedIndex.projectCounters);
   lastSavedById = new Map(
     loaded.notes
       .filter((note) => !missingFiles.has(note.file))
@@ -175,7 +189,7 @@ function applyProject(loaded: ProjectLoad): void {
     loaded.notes.filter((note) => missingFiles.has(note.file)).map((note) => note.id),
   );
   externalDeleteWarnings = new Map();
-  lastSavedIndex = sourceVersion.version === 3 && indexWarnings.length === 0
+  lastSavedIndex = sourceVersion === 3 && indexWarnings.length === 0 && hasProjectStopwatchData
     ? normalizedIndex
     : loaded.indexJson;
   taskLog.entries = parsedIndex.taskLog.map((entry) => ({ ...entry }));
@@ -226,10 +240,11 @@ function makeSnapshot(): ProjectSnapshot {
   const currentZones = zones.order.flatMap((id) => zones.byId[id] ? [copyZone(zones.byId[id])] : []);
   const beaconMarks = [...beaconState.marked];
   const currentTrash = trash.entries.map(copyTrashEntry);
+  const projectMetadata = currentProjectStopwatchData();
   return {
     indexJson: serializeProjectIndex(
       notes, indexTemplate, currentLinks, currentTaskLog, currentZones, beaconMarks, calculators.byKey,
-      archive.entries, currentTrash,
+      archive.entries, currentTrash, projectMetadata,
     ),
     notes,
     links: currentLinks,
@@ -596,6 +611,10 @@ function scheduleIfDirty(): void {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function copyZone(zone: Zone): Zone {

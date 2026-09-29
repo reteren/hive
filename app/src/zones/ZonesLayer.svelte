@@ -5,7 +5,7 @@
   import { PX_PER_UNIT, screenToWorld, type Point } from "../board/cameraMath";
   import { zones } from "../model/zones.svelte";
   import type { Zone } from "../model/zone";
-  import { zoneNameEdge } from "../model/zone";
+  import { zoneBounds, zoneNameEdge } from "../model/zone";
   import { zoneMovePreview } from "./zoneMovePreview.svelte";
   import { tool } from "../tools/tool.svelte";
   import { deleteZone, recolorZone, renameZone, ZONE_COLORS } from "./commands";
@@ -14,7 +14,10 @@
   import { getCommand } from "../commands/registry.svelte";
   import { formatKey } from "../commands/keys";
   import { hitTestZones } from "../selection/hitTesting";
-  import { requestZoneMove, zoneMode } from "./zoneMode.svelte";
+  import { enterZoneResizeMode, requestZoneMove, zoneMode } from "./zoneMode.svelte";
+  import OverviewLayer from "../overview/OverviewLayer.svelte";
+  import { overview } from "../overview/overview.svelte";
+  import { overviewZoneFontSize } from "../overview/overviewLogic";
 
   type Menu = { id: string; x: number; y: number; zoomAtOpen: number; rename: boolean };
   let layer: HTMLDivElement;
@@ -64,7 +67,7 @@
     draftName = zone.name;
     const world = screenToWorld(camera, viewport, point);
     const zoomAtOpen = camera.zoom;
-    const anchor = fitBoardPopupAnchor(camera, viewport, world, { width: 176, height: 190 });
+    const anchor = fitBoardPopupAnchor(camera, viewport, world, { width: 176, height: 218 });
     menu = {
       id,
       x: anchor.x,
@@ -87,6 +90,14 @@
     const point = screenToWorld(camera, viewport, local(event.clientX, event.clientY));
     menu = null;
     requestZoneMove({ zoneId: id, startWorld: point });
+  }
+
+  function startResizeFromMenu(): void {
+    if (!menu) return;
+    const id = menu.id;
+    menu = null;
+    tool.active = "select";
+    enterZoneResizeMode(id);
   }
 
   function commitRename(): void {
@@ -160,12 +171,15 @@
 </script>
 
 <div class="zones-layer" bind:this={layer}>
+  <OverviewLayer />
   <svg class="zone-svg" width="100%" height="100%" aria-label="Zones">
     <g transform={transform}>
       {#each zones.order as id (id)}
         {@const zone = zones.byId[id]}
         {#if zone}
+          {@const bounds = zoneBounds(zone)}
           {@const nameEdge = cachedNameEdge(zone)}
+          {@const overviewFontSize = overviewZoneFontSize(zone.name, bounds.width, bounds.height, camera.zoom)}
           <g data-zone-id={id} transform={previewTransform(id)}>
             <path
               d={pathFor(zone)}
@@ -194,6 +208,20 @@
                 } }}
               >{zone.name}</text>
             </svg>
+            {#if overview.active && overviewFontSize !== null}
+              <text
+                class="zone-overview-label"
+                data-overview-zone-label={id}
+                x={bounds.x + bounds.width / 2}
+                y={bounds.y + bounds.height / 2}
+                fill={zone.color}
+                fill-opacity="0.6"
+                font-size={overviewFontSize}
+                text-anchor="middle"
+                dominant-baseline="middle"
+                aria-hidden="true"
+              >Zone · {zone.name}</text>
+            {/if}
           </g>
         {/if}
       {/each}
@@ -210,6 +238,7 @@
         }} onblur={commitRename} />
       {:else}
         <button type="button" role="menuitem" data-zone-move-menu onclick={startMoveFromMenu}>Move zone{moveKeys ? ` (${moveKeys})` : ""}</button>
+        <button type="button" role="menuitem" data-zone-resize-menu onclick={startResizeFromMenu}>Resize</button>
         <button type="button" role="menuitem" onclick={startRename}>Rename</button>
         <div class="zone-colours" aria-label="Zone colour">
           <span>Colour</span>
@@ -227,6 +256,7 @@
   .zones-layer, .zone-svg { position: absolute; inset: 0; pointer-events: none; }
   .zone-svg { overflow: visible; }
   .zone-name { font-size: 1.15px; font-weight: 650; paint-order: stroke; stroke: #17191d; stroke-width: 0.25px; cursor: text; outline: none; }
+  .zone-overview-label { font-weight: 650; paint-order: stroke; stroke: #17191d; stroke-width: 0.12px; pointer-events: none; }
   .zone-name:focus-visible { text-decoration: underline; text-decoration-thickness: 0.12px; text-underline-offset: 0.2px; }
   .zone-menu { position: absolute; z-index: 30; display: flex; width: 176px; flex-direction: column; gap: 3px; padding: 5px; border: 1px solid #4c4c4c; border-radius: 4px; color: var(--text); background: #242424; box-shadow: 0 5px 16px #0008; pointer-events: auto; }
   .zone-menu > button { min-height: 27px; padding: 4px 7px; border: 0; border-radius: 3px; color: inherit; background: transparent; text-align: left; cursor: pointer; }

@@ -30,12 +30,13 @@
 
   let { note }: { note: Note } = $props();
   let isContentNote = $derived(note.type === "note" || note.type === "pro" || note.type === "con");
-  let pickerKind = $derived(isContentNote && modulePicker.noteId === note.id ? modulePicker.kind : null);
-  let shownImportance = $derived(isContentNote ? effectiveImportance(note.id) : null);
+  let acceptsImportance = $derived(isContentNote || note.type === "message");
+  let pickerKind = $derived(acceptsImportance && modulePicker.noteId === note.id ? modulePicker.kind : null);
+  let shownImportance = $derived(acceptsImportance ? effectiveImportance(note.id) : null);
   let shownPurposes = $derived(isContentNote ? effectivePurposes(note.id) : []);
   let shownMoods = $derived(isContentNote ? effectiveMoods(note.id) : []);
   let shownCustomMarks = $derived(isContentNote ? effectiveCustomMarks(note.id) : []);
-  let linkedImportance = $derived(isContentNote ? linkedImportanceSource(note.id) : null);
+  let linkedImportance = $derived(acceptsImportance ? linkedImportanceSource(note.id) : null);
   let pickerImportance = $derived(linkedImportance?.importance ?? shownImportance);
   let importanceIsExternal = $derived(linkedImportance !== null);
   let isDropTarget = $derived(moduleDropPreview.targetId === note.id);
@@ -71,7 +72,7 @@
   }
 </script>
 
-{#if isContentNote && (hasModules || pickerKind || isDropTarget || moduleFeedback.noteId === note.id)}
+{#if acceptsImportance && (hasModules || pickerKind || isDropTarget || moduleFeedback.noteId === note.id)}
   <div
     class="note-modules"
     data-module-rows={rows.join(" ")}

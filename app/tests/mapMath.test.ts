@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cameraViewportRect, fitMap, mapToWorld, projectMapLinks, wholeBoardBounds, worldToMap, zoomMapTransform } from "../src/map/mapMath";
+import { cameraViewportRect, fitMap, mapToWorld, mapTransformForBounds, projectMapLinks, wholeBoardBounds, worldToMap, zoomMapTransform } from "../src/map/mapMath";
 
 describe("map geometry", () => {
   it("fits notes, zones, and ME inside the whole-board bounds", () => {
@@ -29,6 +29,19 @@ describe("map geometry", () => {
     const roundTrip = mapToWorld(worldToMap(world, transform), transform);
     expect(roundTrip.x).toBeCloseTo(world.x);
     expect(roundTrip.y).toBeCloseTo(world.y);
+  });
+
+  it("uses the first measured board bounds for both displayed marks and click conversion", () => {
+    const notes = [
+      { id: "first", x: -340, y: 180, width: 28, height: 16 },
+      { id: "second", x: 720, y: -90, width: 34, height: 22 },
+    ];
+    const bounds = wholeBoardBounds(notes, []);
+    const transform = mapTransformForBounds(bounds, { width: 400, height: 300 }, 15, 1.3);
+    const clickedWorldPoint = { x: 693, y: -61 };
+
+    expect(mapToWorld(worldToMap(clickedWorldPoint, transform), transform).x).toBeCloseTo(clickedWorldPoint.x);
+    expect(mapToWorld(worldToMap(clickedWorldPoint, transform), transform).y).toBeCloseTo(clickedWorldPoint.y);
   });
 
   it("projects the camera viewport rectangle around the camera centre", () => {

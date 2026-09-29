@@ -46,6 +46,18 @@ button {
   font: inherit;
 }
 
+input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
@@ -65,21 +77,74 @@ button {
   background: #665421;
 }
 
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+.note-card :is(label, button, [role="button"]) {
+  user-select: none;
 }
 
-::-webkit-scrollbar-track {
-  background: #1b1b1b;
+.note-card :is(input, textarea, select, [contenteditable="true"], .cm-content, .markdown-preview) {
+  user-select: text;
+}
+
+* {
+  scrollbar-color: rgb(190 190 190 / 45%) transparent !important;
+  scrollbar-width: thin !important;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+  background: transparent;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #505050;
-  border: 2px solid #1b1b1b;
-  border-radius: 8px;
+  border: 0 !important;
+  border-radius: 6px;
+  background: rgb(190 190 190 / 45%) !important;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #696969;
+  background: rgb(210 210 210 / 70%) !important;
+}
+
+body[data-alt-overview="true"] .me .dot {
+  background: #777;
+  box-shadow: none;
+  outline: none;
+}
+
+body[data-alt-overview="true"] .me .label {
+  display: flex;
+  width: 72px;
+  height: 72px;
+  left: -36px;
+  top: -36px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: var(--accent);
+  font-size: 8px;
+  letter-spacing: 0;
+  line-height: 1.1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+body[data-alt-overview="true"] .me .label::before {
+  content: "Beacon";
+}
+
+body[data-alt-overview="true"] .me .mark {
+  display: none;
+}
+
+body[data-alt-overview="true"][data-alt-overview-text="false"] .me .label {
+  visibility: hidden;
 }

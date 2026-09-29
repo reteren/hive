@@ -3,8 +3,8 @@ import { teleportToObject } from "../navigation/navigate";
 import { dismissMessage, messageQueue } from "./messageQueue.svelte";
 import type { ShownMessage } from "../time/types";
 
-export function messageTargetId(message: Pick<ShownMessage, "messageId" | "timeId">): string {
-  return message.messageId ?? message.timeId;
+export function messageTargetId(message: Pick<ShownMessage, "messageId" | "timeId" | "targetId">): string {
+  return message.targetId ?? message.messageId ?? message.timeId;
 }
 
 /** Only called by an explicit Go to click/command; enqueueing never navigates or selects. */

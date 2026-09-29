@@ -98,6 +98,11 @@ export function updateZoneMoveGesture(
   };
 }
 
+/** Ctrl carries zone members; Ctrl+Alt explicitly disables snapping for that move. */
+export function zoneMoveShouldSnap(gridSnap: boolean, carryMembers: boolean, alt: boolean): boolean {
+  return carryMembers ? !alt : gridSnap;
+}
+
 export function createZoneResizeGesture(
   zone: Zone,
   obstacles: readonly Zone[],
@@ -120,6 +125,7 @@ export function updateZoneResizeGesture(
   cursorWorld: Point,
   snap: boolean,
   step: number,
+  centered = false,
 ): ZoneResizeGesture {
   const before = zoneBounds(gesture.beforeZone);
   const axes = resizeEdgeAxes(gesture.edge);
@@ -131,31 +137,52 @@ export function updateZoneResizeGesture(
   // Existing persisted zones can be smaller than 30 u; let them stay as-is, but never shrink them.
   const minWidth = Math.min(MIN_ZONE_SIZE, before.width);
   const minHeight = Math.min(MIN_ZONE_SIZE, before.height);
-  if (axes.horizontal === "right") {
-    let right = before.x + before.width + delta.x;
-    if (snap) right = snapToGrid({ x: right, y: 0 }, step).x;
-    desired.width = Math.max(minWidth, right - before.x);
-  } else if (axes.horizontal === "left") {
-    let left = before.x + delta.x;
-    if (snap) left = snapToGrid({ x: left, y: 0 }, step).x;
-    desired.x = Math.min(left, before.x + before.width - minWidth);
-    desired.width = before.x + before.width - desired.x;
-  }
-  if (axes.vertical === "bottom") {
-    let bottom = before.y + before.height + delta.y;
-    if (snap) bottom = snapToGrid({ x: 0, y: bottom }, step).y;
-    desired.height = Math.max(minHeight, bottom - before.y);
-  } else if (axes.vertical === "top") {
-    let top = before.y + delta.y;
-    if (snap) top = snapToGrid({ x: 0, y: top }, step).y;
-    desired.y = Math.min(top, before.y + before.height - minHeight);
-    desired.height = before.y + before.height - desired.y;
+  if (centered) {
+    const centerX = before.x + before.width / 2;
+    const centerY = before.y + before.height / 2;
+    if (axes.horizontal) {
+      let handleX = (axes.horizontal === "right" ? before.x + before.width : before.x) + delta.x;
+      if (snap) handleX = snapToGrid({ x: handleX, y: 0 }, step).x;
+      const halfWidth = axes.horizontal === "right" ? handleX - centerX : centerX - handleX;
+      desired.width = Math.max(minWidth, halfWidth * 2);
+      desired.x = centerX - desired.width / 2;
+    }
+    if (axes.vertical) {
+      let handleY = (axes.vertical === "bottom" ? before.y + before.height : before.y) + delta.y;
+      if (snap) handleY = snapToGrid({ x: 0, y: handleY }, step).y;
+      const halfHeight = axes.vertical === "bottom" ? handleY - centerY : centerY - handleY;
+      desired.height = Math.max(minHeight, halfHeight * 2);
+      desired.y = centerY - desired.height / 2;
+    }
+  } else {
+    if (axes.horizontal === "right") {
+      let right = before.x + before.width + delta.x;
+      if (snap) right = snapToGrid({ x: right, y: 0 }, step).x;
+      desired.width = Math.max(minWidth, right - before.x);
+    } else if (axes.horizontal === "left") {
+      let left = before.x + delta.x;
+      if (snap) left = snapToGrid({ x: left, y: 0 }, step).x;
+      desired.x = Math.min(left, before.x + before.width - minWidth);
+      desired.width = before.x + before.width - desired.x;
+    }
+    if (axes.vertical === "bottom") {
+      let bottom = before.y + before.height + delta.y;
+      if (snap) bottom = snapToGrid({ x: 0, y: bottom }, step).y;
+      desired.height = Math.max(minHeight, bottom - before.y);
+    } else if (axes.vertical === "top") {
+      let top = before.y + delta.y;
+      if (snap) top = snapToGrid({ x: 0, y: top }, step).y;
+      desired.y = Math.min(top, before.y + before.height - minHeight);
+      desired.height = before.y + before.height - desired.y;
+    }
   }
 
-  const after = resizeAroundObstacles(before, desired, axes, gesture.obstacles);
+  const after = centered
+    ? resizeCenteredAroundObstacles(before, desired, gesture.obstacles)
+    : resizeAroundObstacles(before, desired, axes, gesture.obstacles);
   return {
     ...gesture,
-    afterZone: { ...copyZone(gesture.beforeZone), parts: [rectContour(after.x, after.y, after.width, after.height)] },
+    afterZone: scaleZoneShape(gesture.beforeZone, before, after),
     blocked: !sameBounds(after, desired),
   };
 }
@@ -181,6 +208,28 @@ export function zoneMoveHistoryCommand(
     target: gesture.beforeZone.name,
     do: () => apply(gesture.afterZone, gesture.afterMembers),
     undo: () => apply(gesture.beforeZone, gesture.beforeMembers),
+  };
+}
+
+/** Resize geometry is already previewed; undo and redo both return to its dedicated mode. */
+export function zoneResizeHistoryCommand(
+  gesture: ZoneResizeGesture,
+  apply: (zone: Zone) => void,
+  enterResizeMode: (zoneId: string) => void,
+): HistoryCommand | null {
+  if (!zoneGestureChanged(gesture.beforeZone, gesture.afterZone)) return null;
+  const zoneId = gesture.beforeZone.id;
+  return {
+    label: "Resize zone",
+    target: gesture.beforeZone.name,
+    do: () => {
+      apply(gesture.afterZone);
+      enterResizeMode(zoneId);
+    },
+    undo: () => {
+      apply(gesture.beforeZone);
+      enterResizeMode(zoneId);
+    },
   };
 }
 
@@ -311,6 +360,49 @@ function resizeAroundObstacles(
   const xy = resizeInOrder(before, desired, axes, obstacles, "xy");
   const yx = resizeInOrder(before, desired, axes, obstacles, "yx");
   return boundsDistanceSquared(xy, desired) <= boundsDistanceSquared(yx, desired) ? xy : yx;
+}
+
+function resizeCenteredAroundObstacles(before: ZoneBounds, desired: ZoneBounds, obstacles: readonly Zone[]): ZoneBounds {
+  if (obstacles.length === 0 || !rectBoundsOverlapAny(desired, obstacles)) return desired;
+  const at = (fraction: number): ZoneBounds => ({
+    x: before.x + (desired.x - before.x) * fraction,
+    y: before.y + (desired.y - before.y) * fraction,
+    width: before.width + (desired.width - before.width) * fraction,
+    height: before.height + (desired.height - before.height) * fraction,
+  });
+  let allowed = 0;
+  let blocked = 1;
+  for (let index = 0; index < 40; index += 1) {
+    const middle = (allowed + blocked) / 2;
+    if (rectBoundsOverlapAny(at(middle), obstacles)) blocked = middle;
+    else allowed = middle;
+  }
+  return at(allowed);
+}
+
+function rectBoundsOverlapAny(bounds: ZoneBounds, obstacles: readonly Zone[]): boolean {
+  const rectangle: Zone = {
+    id: "",
+    name: "",
+    color: "",
+    parts: [rectContour(bounds.x, bounds.y, bounds.width, bounds.height)],
+    holes: [],
+  };
+  return obstacles.some((obstacle) => shapesOverlap(rectangle, obstacle));
+}
+
+function scaleZoneShape(zone: Zone, before: ZoneBounds, after: ZoneBounds): Zone {
+  const scaleX = before.width === 0 ? 1 : after.width / before.width;
+  const scaleY = before.height === 0 ? 1 : after.height / before.height;
+  const scaleRing = (ring: readonly Point[]) => ring.map((point) => ({
+    x: roundCoordinate(after.x + (point.x - before.x) * scaleX),
+    y: roundCoordinate(after.y + (point.y - before.y) * scaleY),
+  }));
+  return {
+    ...copyZone(zone),
+    parts: zone.parts.map(scaleRing),
+    holes: zone.holes.map(scaleRing),
+  };
 }
 
 function resizeInOrder(

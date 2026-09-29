@@ -1,4 +1,5 @@
 import { execute } from "../history/history.svelte";
+import { emitTimeActivation } from "../time/activation.svelte";
 import { board, updateNote } from "../model/board.svelte";
 import { links } from "../model/links.svelte";
 import type { RandomPick } from "../model/nodeData";
@@ -17,11 +18,18 @@ export function pickFromList(randomId: string, rng: () => number = Math.random, 
   if (!chosen) return { ok: false, reason: "invalid-rng" };
   const before = random.randomPick ? { ...random.randomPick } : undefined;
   const pick: RandomPick = { listId: list.id, itemId: chosen.id, pickedAt: now };
+  let undoActivation = () => {};
   execute({
     label: "Pick from List",
     target: random.name,
-    do: () => updateNote(randomId, { randomPick: { ...pick } }),
-    undo: () => updateNote(randomId, { randomPick: before ? { ...before } : undefined }),
+    do: () => {
+      updateNote(randomId, { randomPick: { ...pick } });
+      undoActivation = emitTimeActivation(randomId, now);
+    },
+    undo: () => {
+      undoActivation();
+      updateNote(randomId, { randomPick: before ? { ...before } : undefined });
+    },
   });
   return { ok: true, pick };
 }

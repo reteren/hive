@@ -14,7 +14,7 @@ function message(id = "message"): Note {
   return {
     id, type: "message", name: id, text: "Remember the experiment\nBring the results",
     x: 15, y: -10, width: 30, height: null, scale: 1.5,
-    message: { sound: true, autoHideSeconds: 12.5 },
+    message: { sound: true, overhive: true },
   };
 }
 afterEach(() => { replaceBoard([]); clear(); });
@@ -31,7 +31,7 @@ describe("Message integration", () => {
     redo(); expect(board.notes[id].message).toEqual(defaultMessageData());
   });
 
-  it("round trips multiline text, sound, expiration and Shift-scale through the project index", () => {
+  it("round trips multiline text, sound, Overhive and Shift-scale through the project index", () => {
     const original = message();
     const index = parseProjectIndex(serializeProjectIndex([original]));
     const indexed = index.notes[0];
@@ -49,10 +49,23 @@ describe("Message integration", () => {
     const archiveCopy = copyArchiveEntry(index.archive[0]);
     const trashCopy = copyTrashEntry(index.trash[0]);
     archiveCopy.note.message!.sound = false;
-    trashCopy.notes[0].message!.autoHideSeconds = null;
+    trashCopy.notes[0].message!.overhive = false;
     expect(index.archive[0].note.message?.sound).toBe(true);
-    expect(index.trash[0].notes[0].message?.autoHideSeconds).toBe(12.5);
+    expect(index.trash[0].notes[0].message?.overhive).toBe(true);
     expect(sanitizeArchiveEntries([archived]).entries[0].note.message).toEqual(archived.note.message);
     expect(sanitizeTrashEntries([trashed]).entries[0].notes[0].message).toEqual(trashed.notes[0].message);
+  });
+  it("migrates old auto-hide settings in live, archived and trashed Messages without retaining expiration", () => {
+    const live = message();
+    const legacy = { sound: true, autoHideSeconds: 2 };
+    const raw = JSON.parse(serializeProjectIndex([live], undefined, [], [], [], [], {},
+      [{ id: "a", archivedAt: 42, note: live, links: [] }],
+      [{ id: "t", deletedAt: 43, notes: [live], zones: [], links: [] }]));
+    raw.notes[0].message = legacy; raw.archive[0].note.message = legacy; raw.trash[0].notes[0].message = legacy;
+    const index = parseProjectIndex(JSON.stringify(raw));
+    for (const settings of [index.notes[0].message, index.archive[0].note.message, index.trash[0].notes[0].message]) {
+      expect(settings).toEqual({ sound: true, overhive: false });
+      expect(settings).not.toHaveProperty("autoHideSeconds");
+    }
   });
 });

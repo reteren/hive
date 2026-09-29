@@ -23,7 +23,7 @@ beforeEach(() => { vi.resetModules(); vi.useFakeTimers(); vi.setSystemTime(1000)
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe("reminder audio", () => {
-  it("plays one quiet short tone for a burst and releases its audio nodes", async () => {
+  it("plays quiet short tones, queues simultaneous cards and releases audio nodes", async () => {
     const { oscillator, gain } = audioFixture();
     const { playMessageSound } = await import("../src/messages/sound");
     expect(await playMessageSound()).toBe(true);
@@ -31,7 +31,9 @@ describe("reminder audio", () => {
     expect(gain.gain.linearRampToValueAtTime).toHaveBeenCalledWith(0.035, 10.025);
     expect(gain.gain.linearRampToValueAtTime).toHaveBeenCalledWith(0, 10.24);
     expect(oscillator.stop).toHaveBeenCalledWith(10.25);
-    expect(await playMessageSound()).toBe(false);
+    expect(await playMessageSound(5)).toBe(true);
+    expect(oscillator.start).toHaveBeenCalledTimes(6);
+    expect(oscillator.start).toHaveBeenLastCalledWith(11.75);
     oscillator.onended?.();
     expect(oscillator.disconnect).toHaveBeenCalledOnce();
     expect(gain.disconnect).toHaveBeenCalledOnce();

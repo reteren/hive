@@ -121,6 +121,11 @@ export function zoomMapTransform(transform: MapTransform, box: Size, zoom: numbe
   };
 }
 
+/** Build the single fitted transform shared by a rendered map frame and its pointer conversion. */
+export function mapTransformForBounds(bounds: WorldRect, box: Size, padding: number, zoom: number): MapTransform {
+  return zoomMapTransform(fitMap(bounds, box, padding), box, zoom);
+}
+
 /** Project node-centre links for the map; large link sets are skipped to keep drawing cheap. */
 export function projectMapLinks(
   links: readonly MapLinkInput[],
