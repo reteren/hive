@@ -1,0 +1,53 @@
+// Debug 12 smoke: combo (drag Time and Message onto a Note, sections, pull-out, Undo), card links, hidden-header hover.
+import { writeFileSync } from "node:fs";
+const page = (await fetch(`http://localhost:9334/json/list`).then((r) => r.json())).find((t) => t.type === "page");
+const ws = new WebSocket(page.webSocketDebuggerUrl); let id = 0; const pending = new Map(); const errors = [];
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.method === "Runtime.exceptionThrown") errors.push(m.params.exceptionDetails.exception?.description?.slice(0, 200)); if (pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+await new Promise((r) => (ws.onopen = r));
+const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+await send("Runtime.enable");
+const dir = process.argv[2] ?? "C:/Users/reteren/AppData/Local/Temp/claude";
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const ev = async (expression) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); return r.result?.result?.value ?? r.result?.exceptionDetails?.exception?.description; };
+const mouse = (type, x, y, button = "none", buttons = 0, modifiers = 0) => send("Input.dispatchMouseEvent", { type, x, y, button, buttons, modifiers, clickCount: type === "mousePressed" || type === "mouseReleased" ? 1 : 0 });
+const drag = async (a, b) => { await mouse("mouseMoved", a.x, a.y); await mouse("mousePressed", a.x, a.y, "left", 1); for (let i = 1; i <= 12; i += 1) { await mouse("mouseMoved", a.x + (b.x - a.x) * i / 12, a.y + (b.y - a.y) * i / 12, "left", 1); await wait(30); } await mouse("mouseReleased", b.x, b.y, "left", 0); await wait(500); };
+const at = (sel) => ev(`(()=>{const e=document.querySelector(${JSON.stringify(sel)});if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,t:r.top,b:r.bottom,l:r.left,r:r.right}})()`);
+const shot = async (n) => writeFileSync(`${dir}/d12-${n}.png`, Buffer.from((await send("Page.captureScreenshot", { format: "png" })).result.data, "base64"));
+const state = () => ev(`(async()=>{const b=await import('/src/model/board.svelte.ts');const n=b.board.notes.host;return JSON.stringify({kinds:Object.values(b.board.notes).map(x=>x.type).sort().join(','),hostTime:!!n?.time,hostMsg:!!n?.message,sections:[...document.querySelectorAll('[data-note-id="host"] [data-combo-section]')].map(e=>e.getAttribute('data-combo-section')).join(',')})})()`);
+await ev(`(async()=>{const b=await import('/src/model/board.svelte.ts');const c=await import('/src/notes/noteCommands.ts');const cam=await import('/src/board/camera.svelte.ts');for(const i of [...b.board.order])b.removeNote(i);
+ b.addNote({id:'host',type:'note',name:'Task host',text:'buy milk',x:-60,y:-30,width:30,height:null,createdAt:Date.now()});
+ const t=c.createNoteKind('time');b.updateNote(t,{x:0,y:-30});window.__t=t;const m=c.createNoteKind('message');b.updateNote(m,{x:0,y:15,text:'msg text'});window.__m=m;cam.camera.x=-10;cam.camera.y=0;cam.camera.zoom=0.9;return 1})()`);
+await wait(600);
+const T = await ev("window.__t"), M = await ev("window.__m");
+console.log("start:", await state());
+await drag(await at(`[data-note-id="${T}"] [data-note-header]`), await at('[data-note-id="host"]'));
+console.log("after Time → Note:", await state());
+await drag(await at(`[data-note-id="${M}"] [data-note-header]`), await at('[data-note-id="host"]'));
+console.log("after Message → Note:", await state(), "message text field in host:", await ev(`!!document.querySelector('[data-note-id="host"] [data-message-text]')`));
+await shot("combo");
+const timePart = await at('[data-note-id="host"] [data-combo-section="time"] [data-combo-part-body]') ?? await at('[data-note-id="host"] [data-combo-section="time"]');
+if (timePart) await drag({ x: timePart.r - 6, y: timePart.b - 6 }, { x: timePart.r + 250, y: timePart.b + 60 });
+console.log("after pulling Time out:", await state());
+await send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "z", code: "KeyZ", windowsVirtualKeyCode: 90, modifiers: 2 }); await send("Input.dispatchKeyEvent", { type: "keyUp", key: "z", code: "KeyZ", windowsVirtualKeyCode: 90, modifiers: 2 }); await wait(400);
+console.log("after Ctrl+Z:", await state());
+// card with a hive link
+await ev(`(async()=>{const b=await import('/src/model/board.svelte.ts');const l=await import('/src/model/links.svelte.ts');const c=await import('/src/notes/noteCommands.ts');
+ b.addNote({id:'bc',type:'beacon',name:'Beacon',text:'',x:60,y:30,width:7.2,height:7.2,color:'#c85a5a',createdAt:Date.now()});
+ const t2=c.createNoteKind('time');const m2=c.createNoteKind('message');b.updateNote(m2,{text:'see [Beacon](hive://note/bc) now',x:40,y:-40});b.updateNote(t2,{x:40,y:-70});
+ l.addLink({id:'tl2',from:t2,to:m2,kind:'strong',shape:'base'});b.updateNote(t2,{time:{schedule:{kind:'interval',minutes:1,mode:'calendar',repeat:false},enabled:true,runtime:{intervalStartedAt:Date.now()-70000}}});return 1})()`);
+await wait(2600);
+console.log("card html link:", await ev(`(()=>{const c=[...document.querySelectorAll('[data-shown-message]')].find(e=>/see/.test(e.textContent));if(!c)return 'no card';const a=c.querySelector('a');return 'text="'+c.textContent.replace(/\\s+/g,' ').trim().slice(0,60)+'" link='+(a?a.textContent:'none')})()`));
+const link = await ev(`(()=>{const c=[...document.querySelectorAll('[data-shown-message]')].find(e=>/see/.test(e.textContent));const a=c?.querySelector('a');if(!a)return null;const r=a.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+if (link) { await mouse("mouseMoved", link.x, link.y); await mouse("mousePressed", link.x, link.y, "left", 1); await mouse("mouseReleased", link.x, link.y, "left", 0); await wait(500); }
+console.log("after clicking the link, selected:", await ev(`(async()=>{const s=await import('/src/selection/selection.svelte.ts');return s.selection.ids.join(',')||'-'})()`));
+await shot("card-link");
+// hidden header hover
+await ev(`(async()=>{const b=await import('/src/model/board.svelte.ts');const cam=await import('/src/board/camera.svelte.ts');for(const i of [...b.board.order])b.removeNote(i);b.addNote({id:'hh',type:'note',name:'Note 15',text:'футболка халф лайф',x:-20,y:-10,width:40,height:null,createdAt:Date.now(),headerHidden:true});cam.camera.x=0;cam.camera.y=0;cam.camera.zoom=1.4;return 1})()`);
+await wait(400);
+const before = await at('[data-note-id="hh"] [data-note-body]');
+const hh = await at('[data-note-id="hh"]'); await mouse("mouseMoved", hh.x, hh.y); await wait(400);
+const after = await at('[data-note-id="hh"] [data-note-body]');
+console.log("hover header:", await ev(`(()=>{const h=document.querySelector('[data-note-id="hh"] [data-hidden-note-header]');if(!h)return 'none';const s=getComputedStyle(h);const r=h.getBoundingClientRect();return 'opacity '+s.opacity+' title="'+h.textContent.trim()+'" top '+Math.round(r.top)})()`), "body moved px:", Math.round(after.t - before.t));
+await shot("header-hover");
+console.log("errors:", errors.length ? errors.join(" || ") : "none");
+ws.close();

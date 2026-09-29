@@ -365,15 +365,22 @@
     background: #48402d;
   }
 
+  /* Hidden header on hover: the real header, half transparent, floating ABOVE the node top edge
+     (as in the user's sketch), so it never covers the node content and the body does not move. */
   .hidden-note-header {
     position: absolute;
     z-index: 2;
-    top: 0;
-    left: 0;
+    bottom: 100%;
+    left: -1px;
     box-sizing: border-box;
-    width: 100%;
+    width: calc(100% + 2px);
+    border-radius: 5px 5px 0 0;
     opacity: 0;
     pointer-events: none;
+  }
+
+  .note-card[data-header-hidden="true"] {
+    overflow: visible;
   }
 
   .note-card[data-header-hidden="true"]:hover > .hidden-note-header {
