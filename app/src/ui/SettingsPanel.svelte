@@ -17,6 +17,7 @@
   import QuickInputShortcutSetting from "../settings/QuickInputShortcutSetting.svelte";
   import ExportStatus from "../export/ExportStatus.svelte";
   import SpellcheckSettings from "../spell/SpellcheckSettings.svelte";
+  import Select from "./Select.svelte";
 
   let historyLimitDraft = $state(String(history.limit));
   let closeButton = $state<HTMLButtonElement | null>(null);
@@ -57,9 +58,8 @@
     }
   }
 
-  function changeBackupInterval(event: Event): void {
-    if (!(event.currentTarget instanceof HTMLSelectElement)) return;
-    switch (Number(event.currentTarget.value)) {
+  function changeBackupInterval(value: string): void {
+    switch (Number(value)) {
       case 0: setBackupInterval(0); break;
       case 15: setBackupInterval(15); break;
       case 30: setBackupInterval(30); break;
@@ -165,12 +165,14 @@
           <div class="storage-actions">
             <label class="interval-control">
               <span>Backup interval</span>
-              <select aria-label="Automatic snapshot interval" value={backupSettings.interval} onchange={changeBackupInterval}>
-                <option value={0}>Off</option>
-                <option value={15}>15 min</option>
-                <option value={30}>30 min</option>
-                <option value={60}>60 min</option>
-              </select>
+              <span class="interval-select">
+                <Select id="settings-backup-interval" ariaLabel="Automatic snapshot interval" value={String(backupSettings.interval)} options={[
+                  { value: "0", label: "Off" },
+                  { value: "15", label: "15 min" },
+                  { value: "30", label: "30 min" },
+                  { value: "60", label: "60 min" },
+                ]} onchange={changeBackupInterval} />
+              </span>
             </label>
             <button type="button" onclick={confirmEmptyTrash} disabled={trash.entries.length === 0}>Empty trash…</button>
             <button type="button" onclick={openBackupsPanel}>Open backups</button>
@@ -358,8 +360,7 @@
     margin-top: 8px;
   }
 
-  .storage-actions button,
-  .interval-control select {
+  .storage-actions button {
     min-height: 25px;
     padding: 3px 7px;
     border: 1px solid #484848;
@@ -372,8 +373,7 @@
   }
 
   .storage-actions button:hover:not(:disabled),
-  .storage-actions button:focus-visible,
-  .interval-control select:focus-visible {
+  .storage-actions button:focus-visible {
     border-color: #806b2d;
     background: #343019;
   }
@@ -393,9 +393,10 @@
     font-size: 10px;
   }
 
-  .interval-control select {
-    min-width: 69px;
-    padding-inline: 5px;
+  .interval-select {
+    display: block;
+    width: 75px;
+    flex: 0 0 75px;
   }
 
   .storage-error {

@@ -2,6 +2,7 @@
   import { backupSettings, setBackupInterval, type BackupInterval } from "./backupSettings.svelte";
   import { backupPanelState, closeBackupsPanel } from "./panel.svelte";
   import { checkProjectHealth, createBackup, deleteBackup, listBackups, restoreBackup, type BackupInfo } from "./api";
+  import Select from "../ui/Select.svelte";
 
   let backups = $state<BackupInfo[]>([]);
   let totalSizeBytes = $state(0);
@@ -85,11 +86,9 @@
     }
   }
 
-  function setInterval(event: Event): void {
-    const target = event.currentTarget;
-    if (!(target instanceof HTMLSelectElement)) return;
-    const value = Number(target.value);
-    if (value === 0 || value === 15 || value === 30 || value === 60) setBackupInterval(value as BackupInterval);
+  function setInterval(value: string): void {
+    const interval = Number(value);
+    if (interval === 0 || interval === 15 || interval === 30 || interval === 60) setBackupInterval(interval as BackupInterval);
   }
 
   function formatDate(value: string): string {
@@ -126,12 +125,14 @@
         <button type="button" disabled={busy} onclick={runHealthCheck}>Check project health</button>
         <label>
           Automatic snapshots
-          <select value={backupSettings.interval} onchange={setInterval}>
-            <option value="0">Off</option>
-            <option value="15">Every 15 minutes</option>
-            <option value="30">Every 30 minutes</option>
-            <option value="60">Every 60 minutes</option>
-          </select>
+          <span class="backup-interval-select">
+            <Select id="backup-panel-interval" ariaLabel="Automatic snapshot interval" value={String(backupSettings.interval)} options={[
+              { value: "0", label: "Off" },
+              { value: "15", label: "Every 15 minutes" },
+              { value: "30", label: "Every 30 minutes" },
+              { value: "60", label: "Every 60 minutes" },
+            ]} onchange={setInterval} />
+          </span>
         </label>
       </div>
 
@@ -184,10 +185,11 @@
   .backup-heading p { margin-top: 4px; color: #aeb2ba; font-size: 11px; }
   .icon-button { width: 26px; height: 26px; border: 1px solid #474b52; border-radius: 3px; color: var(--text); background: #303238; font: inherit; cursor: pointer; }
   .backup-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 9px 12px; border-bottom: 1px solid #3b3e44; }
-  button, select { min-height: 27px; padding: 5px 8px; border: 1px solid #4b4f57; border-radius: 3px; color: var(--text); background: #303238; font: inherit; font-size: 11px; cursor: pointer; }
-  button:hover:not(:disabled), select:hover { border-color: var(--accent); }
+  button { min-height: 27px; padding: 5px 8px; border: 1px solid #4b4f57; border-radius: 3px; color: var(--text); background: #303238; font: inherit; font-size: 11px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
   button:disabled { opacity: .55; cursor: default; }
   .backup-actions label { display: flex; align-items: center; gap: 7px; margin-left: auto; color: #c0c2c8; font-size: 11px; }
+  .backup-interval-select { display: block; width: 150px; flex: 0 0 150px; }
   .backup-list { min-height: 90px; overflow: auto; }
   .backup-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 12px; border-bottom: 1px solid #363940; }
   .backup-copy { display: grid; gap: 4px; min-width: 0; }

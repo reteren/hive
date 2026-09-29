@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { moveSelectIndex, selectKeyboardAction } from "../time/selectLogic";
+  import { selectKeyboardAction } from "../time/selectLogic";
 
   export interface SelectOption {
     value: string;
     label: string;
+    disabled?: boolean;
   }
 
   interface Props {
@@ -12,9 +13,12 @@
     value: string;
     options: readonly SelectOption[];
     onchange: (value: string) => void;
+    disabled?: boolean;
+    title?: string;
+    ondblclick?: (event: MouseEvent) => void;
   }
 
-  let { id, ariaLabel, value, options, onchange }: Props = $props();
+  let { id, ariaLabel, value, options, onchange, disabled = false, title, ondblclick }: Props = $props();
   let trigger = $state<HTMLButtonElement>();
   let popup = $state<HTMLDivElement>();
   let open = $state(false);
@@ -23,6 +27,12 @@
 
   const popupId = $derived(`${id}-options`);
   const selectedOption = $derived(options.find((option) => option.value === value));
+
+  function initialActiveIndex(): number {
+    const selectedIndex = options.findIndex((option) => option.value === value && !option.disabled);
+    if (selectedIndex >= 0) return selectedIndex;
+    return options.findIndex((option) => !option.disabled);
+  }
 
   function setPopupPosition(): void {
     const rect = trigger?.getBoundingClientRect();
@@ -38,9 +48,9 @@
   }
 
   function openPopup(): void {
-    if (!popup || popup.matches(":popover-open")) return;
+    if (disabled || !popup || popup.matches(":popover-open")) return;
     setPopupPosition();
-    activeIndex = Math.max(0, options.findIndex((option) => option.value === value));
+    activeIndex = initialActiveIndex();
     popup.showPopover();
   }
 
@@ -51,10 +61,11 @@
 
   function handleToggle(event: ToggleEvent): void {
     open = event.newState === "open";
-    if (open) activeIndex = Math.max(0, options.findIndex((option) => option.value === value));
+    if (open) activeIndex = initialActiveIndex();
   }
 
   function handleKeydown(event: KeyboardEvent): void {
+    if (disabled) return;
     const action = selectKeyboardAction(event.key, open);
     if (action === "open") {
       event.preventDefault();
@@ -62,12 +73,19 @@
     } else if (action === "down" || action === "up") {
       event.preventDefault();
       if (options.length > 0) {
-        activeIndex = moveSelectIndex(activeIndex, action === "down" ? 1 : -1, options.length);
+        const delta = action === "down" ? 1 : -1;
+        const start = activeIndex >= 0 ? activeIndex : delta > 0 ? -1 : 0;
+        for (let offset = 1; offset <= options.length; offset += 1) {
+          const index = (start + delta * offset + options.length * 2) % options.length;
+          if (options[index].disabled) continue;
+          activeIndex = index;
+          break;
+        }
       }
     } else if (action === "select") {
       event.preventDefault();
       const active = options[activeIndex];
-      if (active) choose(active.value);
+      if (active && !active.disabled) choose(active.value);
     } else if (action === "close") {
       event.preventDefault();
       closePopup();
@@ -76,6 +94,7 @@
   }
 
   function choose(nextValue: string): void {
+    if (disabled || options.find((option) => option.value === nextValue)?.disabled) return;
     if (nextValue !== value) onchange(nextValue);
     closePopup();
     trigger?.focus();
@@ -84,19 +103,23 @@
 
 <button
   bind:this={trigger}
+  id={id}
   class="app-select-trigger"
   data-selection-ignore
   type="button"
+  disabled={disabled}
+  {title}
   role="combobox"
   aria-label={ariaLabel}
   aria-haspopup="listbox"
-  aria-activedescendant={open ? `${popupId}-option-${activeIndex}` : undefined}
+  aria-activedescendant={open && activeIndex >= 0 ? `${popupId}-option-${activeIndex}` : undefined}
   aria-controls={popupId}
   aria-expanded={open}
   popovertarget={popupId}
   popovertargetaction="toggle"
   onpointerdown={setPopupPosition}
   onkeydown={handleKeydown}
+  ondblclick={ondblclick}
 >
   <span class="app-select-value">{selectedOption?.label ?? "Select…"}</span>
   <span class="app-select-arrow" aria-hidden="true"></span>
@@ -127,7 +150,8 @@
       role="option"
       aria-selected={option.value === value}
       tabindex="-1"
-      onpointermove={() => { activeIndex = index; }}
+      disabled={option.disabled}
+      onpointermove={() => { if (!option.disabled) activeIndex = index; }}
       onclick={() => choose(option.value)}
     >
       {option.label}
@@ -156,6 +180,7 @@
 
   .app-select-trigger:hover { background: #303030; }
   .app-select-trigger:focus-visible { outline: 1px solid #d6ad53; outline-offset: 1px; }
+  .app-select-trigger:disabled { opacity: .55; cursor: default; }
   .app-select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .app-select-arrow {
     width: 7px;

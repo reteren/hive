@@ -3,6 +3,7 @@
   import { updateNote } from "../model/board.svelte";
   import type { NodeScope } from "../model/nodeData";
   import type { Note } from "../model/note";
+  import Select from "../ui/Select.svelte";
   import { createScopeChangeCommand } from "./scopeChange";
   import { linkedBeaconForNote, scopeChoiceForNote, scopeExists, scopeOptions } from "./scope.svelte";
   import { scopeKey } from "./scopeLogic";
@@ -14,8 +15,7 @@
   let missing = $derived(!scopeExists(selectedScope));
   let options = $derived(scopeOptions());
 
-  function changeScope(event: Event): void {
-    const value = (event.currentTarget as HTMLSelectElement).value;
+  function changeScope(value: string): void {
     const option = options.find((candidate) => scopeKey(candidate.scope) === value);
     if (!option) return;
 
@@ -28,22 +28,21 @@
 
 <div class="scope-picker" data-selection-ignore>
   <label for={`scope-${note.id}`}>Scope</label>
-  <select
-    id={`scope-${note.id}`}
-    value={selectedKey}
-    aria-label={`Scope for ${note.name}`}
-    disabled={Boolean(linkedBeacon)}
-    title={linkedBeacon ? "Linked to beacon — remove the link to change" : undefined}
-    onchange={changeScope}
-    ondblclick={(event) => event.stopPropagation()}
-  >
-    {#if missing}
-      <option value={selectedKey} disabled>Scope missing</option>
-    {/if}
-    {#each options as option (scopeKey(option.scope))}
-      <option value={scopeKey(option.scope)}>{option.label}</option>
-    {/each}
-  </select>
+  <span class="scope-select">
+    <Select
+      id={`scope-${note.id}`}
+      value={selectedKey}
+      ariaLabel={`Scope for ${note.name}`}
+      options={[
+        ...(missing ? [{ value: selectedKey, label: "Scope missing", disabled: true }] : []),
+        ...options.map((option) => ({ value: scopeKey(option.scope), label: option.label })),
+      ]}
+      onchange={changeScope}
+      disabled={Boolean(linkedBeacon)}
+      title={linkedBeacon ? "Linked to beacon — remove the link to change" : undefined}
+      ondblclick={(event) => event.stopPropagation()}
+    />
+  </span>
 </div>
 
 <style>
@@ -56,14 +55,9 @@
     font-size: 10px;
   }
 
-  select {
-    min-width: 0;
+  .scope-select {
+    display: block;
     flex: 1;
-    padding: 3px 20px 3px 6px;
-    color: var(--text);
-    background: #202020;
-    border: 1px solid #4a4a4a;
-    border-radius: 3px;
-    font: inherit;
+    min-width: 0;
   }
 </style>
