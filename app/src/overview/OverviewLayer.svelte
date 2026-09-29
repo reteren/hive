@@ -18,7 +18,6 @@
   });
 
   onMount(() => {
-    const pressedKeys = new Set<string>();
     const pressedPointers = new Set<number>();
     let altHeld = false;
     let activationFrame = 0;
@@ -43,17 +42,16 @@
     function onKeyDown(event: KeyboardEvent): void {
       const isAlt = event.key === "Alt" || event.code === "AltLeft" || event.code === "AltRight";
       if (!isAlt) {
-        pressedKeys.add(event.code || event.key);
         if (overview.active || activationFrame !== 0) cancelActivation();
         return;
       }
       if (event.repeat) return;
 
       altHeld = true;
-      pressedKeys.add(event.code || event.key);
-      if (!isAltOnlyCandidate(event) || pressedPointers.size !== 0 ||
-        [...pressedKeys].some((code) => code !== "AltLeft" && code !== "AltRight" && code !== "Alt") ||
-        !isIdle()) {
+      // Only the modifier state of THIS event counts: a remembered set of pressed keys goes stale
+      // when a key-up never reaches the window (Space swallowed by the Inbox shortcut hook, Tab
+      // after Alt+Tab) and then blocked the overview forever.
+      if (!isAltOnlyCandidate(event) || pressedPointers.size !== 0 || !isIdle()) {
         cancelActivation();
         return;
       }
@@ -61,14 +59,12 @@
       if (activationFrame !== 0) cancelAnimationFrame(activationFrame);
       activationFrame = requestAnimationFrame(() => {
         activationFrame = 0;
-        if (!altHeld || pressedPointers.size !== 0 || !isIdle() ||
-          [...pressedKeys].some((code) => code !== "AltLeft" && code !== "AltRight" && code !== "Alt")) return;
+        if (!altHeld || pressedPointers.size !== 0 || !isIdle()) return;
         setOverviewActive(true);
       });
     }
 
     function onKeyUp(event: KeyboardEvent): void {
-      pressedKeys.delete(event.code || event.key);
       if (event.key === "Alt" || event.code === "AltLeft" || event.code === "AltRight") cancelActivation();
     }
 
@@ -81,8 +77,13 @@
       pressedPointers.delete(event.pointerId);
     }
 
+    // A button released outside the window never sends pointerup here; the first move without
+    // buttons proves nothing is pressed any more.
+    function onPointerMove(event: PointerEvent): void {
+      if (event.buttons === 0 && pressedPointers.size !== 0) pressedPointers.clear();
+    }
+
     function onBlur(): void {
-      pressedKeys.clear();
       pressedPointers.clear();
       cancelActivation();
     }
@@ -92,6 +93,7 @@
     window.addEventListener("pointerdown", onPointerDown, true);
     window.addEventListener("pointerup", onPointerEnd, true);
     window.addEventListener("pointercancel", onPointerEnd, true);
+    window.addEventListener("pointermove", onPointerMove, true);
     window.addEventListener("blur", onBlur);
 
     return () => {
@@ -100,6 +102,7 @@
       window.removeEventListener("pointerdown", onPointerDown, true);
       window.removeEventListener("pointerup", onPointerEnd, true);
       window.removeEventListener("pointercancel", onPointerEnd, true);
+      window.removeEventListener("pointermove", onPointerMove, true);
       window.removeEventListener("blur", onBlur);
       if (activationFrame !== 0) cancelAnimationFrame(activationFrame);
       setOverviewActive(false);

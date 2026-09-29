@@ -1020,11 +1020,16 @@ type PendingBoardMove =
       exitZoneResizeMode();
     }
 
+    function isModifierKey(event: KeyboardEvent): boolean {
+      return ["Shift", "Control", "Alt", "Meta", "AltGraph"].includes(event.key) ||
+        ["ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight", "AltLeft", "AltRight", "MetaLeft", "MetaRight"].includes(event.code);
+    }
+
     function onZoneResizeKeyDown(event: KeyboardEvent): void {
       if (!zoneMode.resizeZoneId) return;
-      const modifier = ["ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight", "AltLeft", "AltRight", "MetaLeft", "MetaRight"]
-        .includes(event.code);
-      if (activeGesture?.kind === "zone-resize" && modifier) return;
+      // Ctrl/Shift/Alt/Win are part of resizing (Shift = symmetric), so they never leave the mode —
+      // not only mid-drag but also when pressed before grabbing a handle.
+      if (isModifierKey(event)) return;
       exitZoneResizeMode();
     }
 
