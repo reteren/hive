@@ -178,7 +178,6 @@
     gap: 6px;
     overflow: auto;
     pointer-events: none;
-    scrollbar-color: #505050 #1b1b1b;
     scrollbar-width: thin;
   }
 

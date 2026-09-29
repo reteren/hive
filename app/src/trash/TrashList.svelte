@@ -210,7 +210,6 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow: auto;
-    scrollbar-color: #505050 #1b1b1b;
     scrollbar-width: thin;
   }
 

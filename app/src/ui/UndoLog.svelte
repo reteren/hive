@@ -253,7 +253,6 @@
     padding: 4px;
     overflow: auto;
     list-style: none;
-    scrollbar-color: #505050 #1b1b1b;
     scrollbar-width: thin;
   }
 

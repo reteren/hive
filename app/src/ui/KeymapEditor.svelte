@@ -284,7 +284,6 @@
     min-height: 0;
     overflow: auto;
     padding: 4px 7px;
-    scrollbar-color: #505050 #1b1b1b;
     scrollbar-width: thin;
   }
 
