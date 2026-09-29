@@ -159,6 +159,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             set_quit_requested,
             configure_quick_input_shortcut,
+            quick_input_shortcut::log_overview,
             overhive::sync_overhive,
             overhive::get_overhive_snapshot,
             overhive::set_overhive_regions,

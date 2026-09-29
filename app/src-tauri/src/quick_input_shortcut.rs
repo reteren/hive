@@ -64,11 +64,21 @@ fn force_foreground(hwnd: windows_sys::Win32::Foundation::HWND) -> bool {
 /// Small rolling diagnostics log (<app log dir>/quick-input.log) so a failed activation on the
 /// user's machine can be read back; trimmed to the last ~200 lines.
 fn log_activation(app: &AppHandle, message: &str) {
+    append_log(app, "quick-input.log", message);
+}
+
+/// Alt overview diagnostics from the main window (why a lone Alt did or did not switch the view).
+#[tauri::command]
+pub fn log_overview(app: AppHandle, message: String) {
+    append_log(&app, "overview.log", &message);
+}
+
+fn append_log(app: &AppHandle, file: &str, message: &str) {
     let Ok(dir) = app.path().app_log_dir() else { return };
     if std::fs::create_dir_all(&dir).is_err() {
         return;
     }
-    let path = dir.join("quick-input.log");
+    let path = dir.join(file);
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_millis())
@@ -205,6 +215,44 @@ impl HookRuntime {
 struct HookShared {
     keyboard: std::sync::Mutex<KeyboardState>,
     activate: std::sync::mpsc::Sender<()>,
+    /// Alt-alone overview events ("down" / "up" / "cancel") for the main window.
+    overview: std::sync::mpsc::Sender<&'static str>,
+}
+
+fn is_alt_key(key: u32) -> bool {
+    matches!(key, 0x12 | 0xA4 | 0xA5)
+}
+
+/// Alt held ALONE (Alt overview). Detected here, at the OS level, because the webview does not
+/// reliably deliver a lone Alt to the page on Windows (the key belongs to the window menu).
+#[derive(Default, Debug)]
+struct AltSolo {
+    active: bool,
+}
+
+impl AltSolo {
+    /// `others_down`: another key or Ctrl/Shift/Win is held; `repeat`: Alt auto-repeat.
+    fn on_key(&mut self, key: u32, pressed: bool, others_down: bool, repeat: bool) -> Option<&'static str> {
+        if is_alt_key(key) {
+            if pressed {
+                if repeat || others_down || self.active {
+                    return None;
+                }
+                self.active = true;
+                return Some("down");
+            }
+            if self.active {
+                self.active = false;
+                return Some("up");
+            }
+            return None;
+        }
+        if pressed && self.active {
+            self.active = false;
+            return Some("cancel");
+        }
+        None
+    }
 }
 
 #[cfg(windows)]
@@ -213,6 +261,7 @@ struct KeyboardState {
     shortcut: Option<ShortcutSpec>,
     pressed: std::collections::HashSet<u32>,
     swallowed_key: Option<u32>,
+    alt_solo: AltSolo,
 }
 
 #[cfg(windows)]
@@ -284,10 +333,21 @@ fn start_hook(app: AppHandle) -> Result<HookRuntime, String> {
     use std::time::Duration;
 
     let (activation_tx, activation_rx) = mpsc::channel();
+    let (overview_tx, overview_rx) = mpsc::channel::<&'static str>();
     let shared = Arc::new(HookShared {
         keyboard: std::sync::Mutex::new(KeyboardState::default()),
         activate: activation_tx,
+        overview: overview_tx,
     });
+    let overview_app = app.clone();
+    std::thread::Builder::new()
+        .name("hive-alt-overview-event".to_string())
+        .spawn(move || {
+            while let Ok(event) = overview_rx.recv() {
+                let _ = overview_app.emit_to("main", "hive://alt-overview", event);
+            }
+        })
+        .map_err(|error| format!("Could not start the Alt overview dispatch: {error}"))?;
     let event_thread = std::thread::Builder::new()
         .name("hive-quick-input-event".to_string())
         .spawn(move || {
@@ -390,6 +450,21 @@ unsafe extern "system" fn low_level_keyboard_proc(
                 let shared = HOOK_SHARED.get()
                     .and_then(|slot| slot.lock().ok()?.clone());
                 if let Some(shared) = shared {
+                    let overview = shared.keyboard.lock().ok().and_then(|mut keyboard| {
+                        let key = event.vkCode;
+                        let repeat = is_down && keyboard.pressed.contains(&key);
+                        let others_down = other_modifiers_down()
+                            || keyboard.pressed.iter().any(|held| !is_alt_key(*held) && *held != key);
+                        let result = keyboard.alt_solo.on_key(key, is_down, others_down, repeat);
+                        if result == Some("down") && !hive_is_foreground() {
+                            keyboard.alt_solo.active = false;
+                            return None;
+                        }
+                        result
+                    });
+                    if let Some(event) = overview {
+                        let _ = shared.overview.send(event);
+                    }
                     let (swallow, activate) = shared.keyboard.lock()
                         .map(|mut keyboard| keyboard.process(event.vkCode, is_down))
                         .unwrap_or((false, false));
@@ -407,8 +482,56 @@ unsafe extern "system" fn low_level_keyboard_proc(
     unsafe { CallNextHookEx(null_mut(), code, wparam, lparam) }
 }
 
+#[cfg(windows)]
+fn other_modifiers_down() -> bool {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+    let down = |key: i32| unsafe { GetAsyncKeyState(key) } as u16 & 0x8000 != 0;
+    down(0x10) || down(0x11) || down(0x5B) || down(0x5C)
+}
+
+/// Only a lone Alt pressed while a hive window is in front toggles the overview.
+#[cfg(windows)]
+fn hive_is_foreground() -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+    unsafe {
+        let window = GetForegroundWindow();
+        if window.is_null() {
+            return false;
+        }
+        let mut process_id = 0u32;
+        GetWindowThreadProcessId(window, &mut process_id);
+        process_id == std::process::id()
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::AltSolo;
+
+    #[test]
+    fn lone_alt_goes_down_and_up_once() {
+        let mut solo = AltSolo::default();
+        assert_eq!(solo.on_key(0xA4, true, false, false), Some("down"));
+        assert_eq!(solo.on_key(0xA4, true, false, true), None);
+        assert_eq!(solo.on_key(0xA4, false, false, false), Some("up"));
+        assert_eq!(solo.on_key(0xA4, false, false, false), None);
+    }
+
+    #[test]
+    fn another_key_while_alt_is_held_cancels() {
+        let mut solo = AltSolo::default();
+        assert_eq!(solo.on_key(0xA4, true, false, false), Some("down"));
+        assert_eq!(solo.on_key(0x53, true, false, false), Some("cancel"));
+        assert_eq!(solo.on_key(0xA4, false, false, false), None);
+    }
+
+    #[test]
+    fn alt_with_other_modifiers_is_not_solo() {
+        let mut solo = AltSolo::default();
+        assert_eq!(solo.on_key(0xA4, true, true, false), None);
+        assert_eq!(solo.on_key(0xA4, false, false, false), None);
+    }
+
     use super::{parse_key, Modifiers, ShortcutSpec};
 
     #[cfg(windows)]

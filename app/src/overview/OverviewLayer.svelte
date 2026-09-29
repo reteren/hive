@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { invoke, isTauri } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import { isTextEditingTarget } from "../commands/focus";
   import { selection } from "../selection/selection.svelte";
   import { editing } from "../notes/editing.svelte";
@@ -29,14 +31,45 @@
       setOverviewActive(false);
     }
 
-    function isIdle(): boolean {
-      if (tool.active !== "select" || editing.noteId !== null || beaconEditor.noteId !== null ||
-        creationMenu.open || linkContext.menu !== null || selection.marquee !== null ||
-        selection.contextPick !== null || selection.grabActive || zoneMode.active === "move" ||
-        zoneMode.resizeZoneId !== null || isTextEditingTarget(document.activeElement)) return false;
-      return !document.querySelector(
-        "[data-create-menu], [data-link-context-menu], [data-zone-menu], [data-beacon-menu], [data-beacon-editor], [data-note-menu], [data-markas-editor], #grid-settings-popover, [data-module-picker], dialog[open]",
+    /** Why the overview may not start right now, or null when the board is idle. */
+    function idleBlocker(): string | null {
+      if (tool.active !== "select") return `tool ${tool.active}`;
+      if (editing.noteId !== null) return "editing a note";
+      if (beaconEditor.noteId !== null) return "beacon editor";
+      if (creationMenu.open) return "create menu open";
+      if (linkContext.menu !== null) return "link menu open";
+      if (selection.marquee !== null) return "marquee";
+      if (selection.contextPick !== null) return "context pick";
+      if (selection.grabActive) return "grab";
+      if (zoneMode.active === "move") return "zone move";
+      if (zoneMode.resizeZoneId !== null) return "zone resize";
+      if (isTextEditingTarget(document.activeElement)) return "text field focused";
+      // Only real pop-up menus block. (The Mark as tag editor used to be listed here: it is part
+      // of every Mark as node and open by default, so one Mark as on the board disabled Alt forever.)
+      const open = document.querySelector(
+        "[data-create-menu], [data-link-context-menu], [data-zone-menu], [data-beacon-menu], [data-beacon-editor], [data-note-menu], #grid-settings-popover, [data-module-picker], dialog[open]",
       );
+      return open ? `open: ${open.tagName.toLowerCase()}${[...open.attributes].filter((a) => a.name.startsWith("data-")).map((a) => `[${a.name}]`).join("")}` : null;
+    }
+
+    function isIdle(): boolean {
+      return idleBlocker() === null;
+    }
+
+    function diagnose(message: string): void {
+      if (isTauri()) void invoke("log_overview", { message }).catch(() => undefined);
+    }
+
+    /** Lone Alt reported by the OS keyboard hook (the webview may never see a lone Alt). */
+    function activateFromHook(): void {
+      const blocker = pressedPointers.size !== 0 ? "mouse button held" : idleBlocker();
+      if (blocker) {
+        diagnose(`hook Alt down → blocked: ${blocker}`);
+        return;
+      }
+      altHeld = true;
+      setOverviewActive(true);
+      diagnose("hook Alt down → overview on");
     }
 
     function onKeyDown(event: KeyboardEvent): void {
@@ -88,6 +121,18 @@
       cancelActivation();
     }
 
+    let unlistenHook: (() => void) | null = null;
+    let disposed = false;
+    if (isTauri()) {
+      void listen<string>("hive://alt-overview", ({ payload }) => {
+        if (payload === "down") activateFromHook();
+        else cancelActivation();
+      }).then((unlisten) => {
+        if (disposed) unlisten();
+        else unlistenHook = unlisten;
+      }).catch((error: unknown) => diagnose(`could not listen to the keyboard hook: ${String(error)}`));
+    }
+
     window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("keyup", onKeyUp, true);
     window.addEventListener("pointerdown", onPointerDown, true);
@@ -97,6 +142,8 @@
     window.addEventListener("blur", onBlur);
 
     return () => {
+      disposed = true;
+      unlistenHook?.();
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("keyup", onKeyUp, true);
       window.removeEventListener("pointerdown", onPointerDown, true);
