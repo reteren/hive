@@ -90,6 +90,7 @@
   role="combobox"
   aria-label={ariaLabel}
   aria-haspopup="listbox"
+  aria-activedescendant={open ? `${popupId}-option-${activeIndex}` : undefined}
   aria-controls={popupId}
   aria-expanded={open}
   popovertarget={popupId}
@@ -118,6 +119,7 @@
 >
   {#each options as option, index (option.value)}
     <button
+      id={`${popupId}-option-${index}`}
       type="button"
       class="app-select-option"
       class:active={index === activeIndex}

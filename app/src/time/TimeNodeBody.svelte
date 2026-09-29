@@ -263,7 +263,7 @@
 
     <label class="time-field stopwatch-mode-field">
       <span>Mode</span>
-      <Select id={`time-${note.id}-stopwatch-mode`} ariaLabel="Stopwatch mode" value={stopwatch.mode} options={[
+      <Select id={`time-${encodeURIComponent(note.id)}-stopwatch-mode`} ariaLabel="Stopwatch mode" value={stopwatch.mode} options={[
         { value: "project", label: "Since project created" },
         { value: "node", label: "Since node created" },
         { value: "active", label: "While hive window is focused" },
@@ -302,7 +302,7 @@
   {:else}
   <label class="time-field mode-field">
     <span>Mode</span>
-    <Select id={`time-${note.id}-mode`} ariaLabel="Reminder mode" value={mode} options={[
+    <Select id={`time-${encodeURIComponent(note.id)}-mode`} ariaLabel="Reminder mode" value={mode} options={[
       { value: "at", label: "At time" },
       { value: "interval", label: "Interval" },
     ]} onchange={changeMode} />
@@ -326,7 +326,7 @@
     </label>
     <label class="time-field">
       <span>Count mode</span>
-      <Select id={`time-${note.id}-count-mode`} ariaLabel="Interval count mode" value={countMode} options={[
+      <Select id={`time-${encodeURIComponent(note.id)}-count-mode`} ariaLabel="Interval count mode" value={countMode} options={[
         { value: "calendar", label: "Calendar time" },
         { value: "app", label: "While hive runs (incl. tray)" },
         { value: "active", label: "While hive window is active" },

@@ -36,7 +36,7 @@
         selection.contextPick !== null || selection.grabActive || zoneMode.active === "move" ||
         zoneMode.resizeZoneId !== null || isTextEditingTarget(document.activeElement)) return false;
       return !document.querySelector(
-        "[data-create-menu], [data-link-context-menu], [data-zone-menu], [data-beacon-menu], [data-beacon-editor], [data-note-menu]",
+        "[data-create-menu], [data-link-context-menu], [data-zone-menu], [data-beacon-menu], [data-beacon-editor], [data-note-menu], [data-markas-editor], #grid-settings-popover, [data-module-picker], dialog[open]",
       );
     }
 
@@ -61,7 +61,7 @@
       if (activationFrame !== 0) cancelAnimationFrame(activationFrame);
       activationFrame = requestAnimationFrame(() => {
         activationFrame = 0;
-        if (!altHeld || event.defaultPrevented || pressedPointers.size !== 0 || !isIdle() ||
+        if (!altHeld || pressedPointers.size !== 0 || !isIdle() ||
           [...pressedKeys].some((code) => code !== "AltLeft" && code !== "AltRight" && code !== "Alt")) return;
         setOverviewActive(true);
       });
