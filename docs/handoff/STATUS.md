@@ -1,6 +1,6 @@
 # hive — состояние (обновлено 28.09.2026)
 
-**Актуально (29.09):** дебаг 11 (27 п.) закрыт, установщик **1.3.2** ждёт проверки (1.3.1 собран без SEL — не раздавать). Смоук d11smoke.mjs + zones11.mjs пройден; руками пользователя: Overhive, число звуков по Importance, п.18 Map первый клик. НЕ использовать git worktree с junction на node_modules: `git worktree remove --force` стёр node_modules через junction (восстановлено npm ci).
+**Актуально (29.09, вечер):** дебаг 12 (14 п.) закрыт, установщик **1.3.4** ждёт проверки. Alt-обзор: одиночный Alt ловит LL-хук (hive://alt-overview) + убран блокирующий селектор [data-markas-editor]; при сбое читать <app log dir>/overview.log. Combo-ноды (Time/Message/Note): src/combo/**, поля Note.time/message/embedSections. НЕ использовать git worktree с junction на node_modules.
 
 ---
 
