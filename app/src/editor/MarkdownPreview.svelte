@@ -1,10 +1,13 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { mount, onMount, unmount } from "svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
+  import AttachmentImage from "../attachments/AttachmentImage.svelte";
+  import type { ImageRef } from "../attachments/types";
   import { board } from "../model/board.svelte";
   import { teleportToObject, teleportToPoint } from "../navigation/navigate";
   import { showLinkStatus } from "../links-in-text/contextMenu.svelte";
   import { createMarkdownFragment, linkedNoteIds } from "./markdown";
+  import { prepareMarkdownPreview } from "./markdownSyntax";
 
   let { text }: { text: string } = $props();
   let container: HTMLDivElement;
@@ -12,18 +15,72 @@
   let renderedText: string | null = null;
   let renderedAsMarkdown = false;
   let renderedNotesKey = "";
+  let mountedInlineImages: Array<Record<string, unknown>> = [];
+
+  function clearInlineImages(): void {
+    for (const component of mountedInlineImages) void unmount(component);
+    mountedInlineImages = [];
+  }
+
+  function renderMarkdown(source: string): void {
+    clearInlineImages();
+    const prepared = prepareMarkdownPreview(source);
+    container.replaceChildren(createMarkdownFragment(prepared.text, document, {
+      resolveNote: (noteId) => {
+        const note = board.notes[noteId];
+        return note ? { id: note.id, name: note.name } : undefined;
+      },
+      openExternal: openUrl,
+      teleportToPoint: (point) => teleportToPoint(point, { label: "Text link" }),
+      teleportToNote: (noteId) => teleportToObject(noteId, { label: "Text link" }),
+      onNotice: showLinkStatus,
+    }));
+
+    const labels = Array.from(container.querySelectorAll<HTMLElement>(".md-image-label"));
+    for (const inlineImage of prepared.inlineImages) {
+      const label = labels.find((candidate) => candidate.textContent === inlineImage.marker);
+      if (!label) continue;
+      const host = document.createElement("div");
+      host.className = "md-inline-image-host";
+      host.dataset.inlineImage = inlineImage.file;
+      host.style.width = `${inlineImage.widthPercent}%`;
+      label.replaceWith(host);
+
+      const image: ImageRef = {
+        file: inlineImage.file,
+        mime: "",
+        size: 0,
+        name: inlineImage.alt || undefined,
+        naturalWidth: 0,
+        naturalHeight: 0,
+      };
+      const component = mount(AttachmentImage, {
+        target: host,
+        props: {
+          image,
+          alt: inlineImage.alt,
+          class: "md-inline-image",
+          style: "width:100%;height:auto;max-height:none;object-fit:contain",
+        },
+      });
+      mountedInlineImages.push(component);
+    }
+  }
 
   onMount(() => {
     if (!("IntersectionObserver" in window)) {
       visible = true;
-      return;
+      return () => clearInlineImages();
     }
 
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) visible = true;
     });
     observer.observe(container);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      clearInlineImages();
+    };
   });
 
   $effect(() => {
@@ -37,18 +94,12 @@
     ) return;
 
     if (shouldRenderMarkdown) {
-      container.replaceChildren(createMarkdownFragment(source, document, {
-        resolveNote: (noteId) => {
-          const note = board.notes[noteId];
-          return note ? { id: note.id, name: note.name } : undefined;
-        },
-        openExternal: openUrl,
-        teleportToPoint: (point) => teleportToPoint(point, { label: "Text link" }),
-        teleportToNote: (noteId) => teleportToObject(noteId, { label: "Text link" }),
-        onNotice: showLinkStatus,
-      }));
+      renderMarkdown(source);
     }
-    else container.textContent = source;
+    else {
+      clearInlineImages();
+      container.textContent = source;
+    }
     renderedText = source;
     renderedAsMarkdown = shouldRenderMarkdown;
     renderedNotesKey = notesKey;
@@ -246,6 +297,16 @@
     border-collapse: collapse;
     overflow-x: auto;
     font-size: 0.94em;
+  }
+
+  .markdown-preview :global(.md-inline-image-host) {
+    display: block;
+    max-width: 100%;
+    margin: 0.35em 0;
+  }
+
+  .markdown-preview :global(.md-inline-image) {
+    max-width: 100%;
   }
 
   .markdown-preview :global(.md-table th),

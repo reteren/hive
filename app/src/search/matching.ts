@@ -1,4 +1,5 @@
 import type { NoteKind } from "../model/note";
+import { inlineImageTextForFit } from "../editor/markdownSyntax";
 
 export interface SearchNote {
   id: string;
@@ -79,9 +80,10 @@ export function searchNotes(
       });
     }
 
-    const textMatch = findMatchRange(note.text, foldedQuery);
+    const searchableText = inlineImageTextForFit(note.text);
+    const textMatch = findMatchRange(searchableText, foldedQuery);
     if (textMatch) {
-      const snippet = extractSnippet(note.text, textMatch.start, textMatch.end);
+      const snippet = extractSnippet(searchableText, textMatch.start, textMatch.end);
       matches.push({
         result: {
           noteId: note.id,

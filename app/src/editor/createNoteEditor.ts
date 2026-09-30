@@ -17,8 +17,9 @@ import { attachEditor, editorForNote, exitNoteEditing } from "./editorSession";
 import { toggleHeading, toggleWrapper } from "./formatting";
 import { coloredHighlights, getContrastingTextColor } from "./highlight";
 import { openHighlightPalette } from "./highlightPalette";
-import { hiveMarkdownExtensions } from "./markdownSyntax";
+import { hiveMarkdownExtensions, inlineImageTextForFit } from "./markdownSyntax";
 import { collapsedLinkMarkup, visibleMarkdownLinksInTree } from "./linkPreview";
+import { inlineImagesExtension } from "./inlineImages";
 import { applyTextEditEffects, captureTextEditEffects } from "../transfer/textEditHooks";
 import { measureAndCacheTextMinimumWidth } from "./textFitWidth";
 import { spellcheckExtension } from "../spell/spellcheck";
@@ -111,6 +112,7 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
     drawSelection(),
     highlightColors,
     linkPreview,
+    inlineImagesExtension(breakTextEditGroup),
     spellcheckExtension(() => ({ enabled: spellSettings.enabled, languages: spellSettings.languages })),
     EditorView.atomicRanges.of((view) => view.plugin(linkPreview)?.atomicRanges ?? Decoration.none),
     EditorView.domEventHandlers({
@@ -174,7 +176,12 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
       });
 
       edit.transferEffects = captureTextEditEffects(noteId, before.toString(), after.toString());
-      const textMinimum = measureAndCacheTextMinimumWidth(noteId, after.toString(), update.view.contentDOM, note.type);
+      const textMinimum = measureAndCacheTextMinimumWidth(
+        noteId,
+        inlineImageTextForFit(after.toString(), syntaxTree(update.state)),
+        update.view.contentDOM,
+        note.type,
+      );
       const currentWidth = board.notes[noteId]?.width ?? note.width;
       const nextWidth = preferences.fitWidthToText && textMinimum !== null
         ? growWidthToTextMinimum(currentWidth, textMinimum, maximumNoteWidthForKind(note.type))
