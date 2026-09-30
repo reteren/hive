@@ -1,6 +1,6 @@
 # hive — состояние (обновлено 28.09.2026)
 
-**Актуально (30.09, вечер):** R8 поставка 2 готова, установщик **1.3.8** ждёт проверки. Правила повтора в Time (Once/Daily/Weekly/Workdays/Monthly/Yearly, `occurrencesBetween` в scheduler.ts), нода Calendar (src/calendar/**, месяц + список дня + Go to), Stopwatch: Since hive started / task created / task done. Спека d19_tasks.md, run `run_bc4533db439e`, smoke r82smoke.mjs + r82rules.mjs. Дебаг 15: п.2 и п.4 в 1.3.7, п.1 (нет каретки) не воспроизводится в браузере — ждём шаги от пользователя.
+**Актуально (30.09, ночь):** R9 поставка 1 (R9.1 хранение + R9.2 картинки/GIF) готова, установщик **1.3.9** ждёт проверки. Вложения: `attachments/<sha256>.<ext>`, пул бэкапов без дублей, asset protocol; нода Image (ниже всех нод, Ctrl — пропорции, GIF играет при выделении), картинки в тексте `![alt](att:file){w=NN}` (50% по умолчанию), картинки в Tierlist; Ctrl+V маршрутизирует src/attachments/pasteDispatch.ts (Tierlist 30 → редактор 20 → доска 0). Спека d20_tasks.md, run `run_84e8959f5ea8`, smoke r9smoke.mjs. До этого: R8.2 в 1.3.8 (d19). Дебаг 15 п.1 (каретка) — ждём шаги.
 
 ---
 
