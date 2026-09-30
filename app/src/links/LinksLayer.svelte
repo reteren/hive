@@ -16,7 +16,7 @@
   import { pointOnCircleToward, projectPointToAnchor, resolveLinkEndpoints, shapeEndpoints } from "./anchors";
   import { startSmoothLineSync } from "./smoothLineSync.svelte";
   import { clientToBoardPoint, clientToWorld } from "./coordinates";
-  import { completeLinkGesture, previewLinkKind, resolveCutRelease, type LinkDraft } from "./gestures";
+  import { completeLinkGesture, previewLinkKind, resolveCutRelease, shouldSuppressLineCutContextMenu, type LinkDraft } from "./gestures";
   import { cancelLineDraft, lineInteraction, setLineError } from "./interaction.svelte";
   import { createBoardLink, cutLinks } from "./operations";
   import { effectiveLinkKind } from "./rules";
@@ -283,9 +283,13 @@
       const point = localPoint(event);
 
       if (isLineTool() && event.button === 2) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        gesture = { kind: "cut", id: event.pointerId, start: point, startLinkId: linkAt(event.target), captured: false };
+        lineInteraction.suppressContextMenuUntil = 0;
+        const startLinkId = linkAt(event.target);
+        if (startLinkId) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+        }
+        gesture = { kind: "cut", id: event.pointerId, start: point, startLinkId, captured: false };
         lineInteraction.cutStroke = [point];
         return;
       }
@@ -450,6 +454,9 @@
       lineInteraction.cutStroke = [];
 
       const dragged = Math.hypot(point.x - active.start.x, point.y - active.start.y) >= CUT_DRAG_THRESHOLD_PX;
+      lineInteraction.suppressContextMenuUntil = shouldSuppressLineCutContextMenu(
+        isLineTool(), dragged, active.startLinkId,
+      ) ? performance.now() + 750 : 0;
       const release = resolveCutRelease(dragged, active.startLinkId);
       if (release === "cut-link") {
         if (active.startLinkId) cutLinks([active.startLinkId]);
@@ -552,6 +559,7 @@
 
     function onContextMenu(event: MouseEvent): void {
       if (!isLineTool() || !surface.contains(event.target as Node | null)) return;
+      if (performance.now() >= lineInteraction.suppressContextMenuUntil) return;
       event.preventDefault();
       event.stopImmediatePropagation();
     }

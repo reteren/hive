@@ -14,7 +14,8 @@
   import { getCommand } from "../commands/registry.svelte";
   import { formatKey } from "../commands/keys";
   import { hitTestZones } from "../selection/hitTesting";
-  import { enterZoneResizeMode, requestZoneMove, zoneMode } from "./zoneMode.svelte";
+  import { activateZoneResizeFromMenu, requestZoneMove, zoneMode } from "./zoneMode.svelte";
+  import { lineInteraction } from "../links/interaction.svelte";
   import OverviewLayer from "../overview/OverviewLayer.svelte";
 
   type Menu = { id: string; x: number; y: number; zoomAtOpen: number; rename: boolean };
@@ -94,8 +95,7 @@
     if (!menu) return;
     const id = menu.id;
     menu = null;
-    tool.active = "select";
-    enterZoneResizeMode(id);
+    activateZoneResizeFromMenu(id);
   }
 
   function commitRename(): void {
@@ -132,7 +132,13 @@
         event.stopImmediatePropagation();
         return;
       }
-      if (tool.active !== "select" && !(tool.active === "zone" && zoneMode.active === "move")) return;
+      const lineToolActive = tool.active === "line-strong" || tool.active === "line-weak";
+      if (lineToolActive && performance.now() < lineInteraction.suppressContextMenuUntil) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
+      if (tool.active !== "select" && !(tool.active === "zone" && zoneMode.active === "move") && !lineToolActive) return;
       if (event.target instanceof Element && event.target.closest("[data-note-id], [data-beacon-id], [data-link-id], [data-selection-ignore]")) return;
       const point = local(event.clientX, event.clientY);
       const id = zoneAt(event.target) ?? hitTestZones(screenToWorld(camera, viewport, point), zones.byId, zones.order);
@@ -176,7 +182,11 @@
         {@const zone = zones.byId[id]}
         {#if zone}
           {@const nameEdge = cachedNameEdge(zone)}
-          <g data-zone-id={id} transform={previewTransform(id)}>
+          <g
+            data-zone-id={id}
+            data-moving={zoneMovePreview.zoneId === id ? "true" : undefined}
+            transform={previewTransform(id)}
+          >
             <path
               d={pathFor(zone)}
               fill={zone.color}
@@ -238,6 +248,7 @@
 <style>
   .zones-layer, .zone-svg { position: absolute; inset: 0; pointer-events: none; }
   .zone-svg { overflow: visible; }
+  .zone-svg [data-moving="true"] { opacity: 0.7; }
   .zone-name { font-size: 1.15px; font-weight: 650; paint-order: stroke; stroke: #17191d; stroke-width: 0.25px; cursor: text; outline: none; }
   .zone-name:focus-visible { text-decoration: underline; text-decoration-thickness: 0.12px; text-underline-offset: 0.2px; }
   .zone-menu { position: absolute; z-index: 30; display: flex; width: 176px; flex-direction: column; gap: 3px; padding: 5px; border: 1px solid #4c4c4c; border-radius: 4px; color: var(--text); background: #242424; box-shadow: 0 5px 16px #0008; pointer-events: auto; }

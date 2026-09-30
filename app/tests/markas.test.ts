@@ -98,6 +98,26 @@ describe("Mark as tag rules", () => {
     expect(effectiveCustomMarkFrameFor("target", notes, [link("source", "target", "weak")])).toBe(false);
   });
 
+  it("gives local and linked Importance frames priority over Mark as frames", () => {
+    const mark = { id: "m1", text: "Review", color: "#cf91ae" };
+    const markAs = note({ id: "markas", type: "markas", customMarks: [mark], customMarkFrame: true });
+    const localTarget = note({ id: "local", importance: "basic" });
+    const linkedTarget = note({ id: "linked" });
+    const importance = note({ id: "importance", type: "importance", importance: "important" });
+    const notes = {
+      [markAs.id]: markAs,
+      [localTarget.id]: localTarget,
+      [linkedTarget.id]: linkedTarget,
+      [importance.id]: importance,
+    };
+
+    expect(effectiveCustomMarkFrameFor(localTarget.id, notes, [link(markAs.id, localTarget.id)])).toBe(false);
+    expect(effectiveCustomMarkFrameFor(linkedTarget.id, notes, [
+      link(markAs.id, linkedTarget.id), link(importance.id, linkedTarget.id),
+    ])).toBe(false);
+    expect(effectiveCustomMarkFrameFor(linkedTarget.id, notes, [link(markAs.id, linkedTarget.id)])).toBe(true);
+  });
+
   it("records tag and frame edits as one reversible command", () => {
     const current = note();
     const stack = new HistoryStack();

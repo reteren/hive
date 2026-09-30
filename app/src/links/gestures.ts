@@ -61,6 +61,15 @@ export function resolveCutRelease(dragged: boolean, clickedLinkId: string | null
   return clickedLinkId ? "cut-link" : "ignore";
 }
 
+/** Keep context menus available for right-clicks that are not line-cut gestures. */
+export function shouldSuppressLineCutContextMenu(
+  lineToolActive: boolean,
+  dragged: boolean,
+  clickedLinkId: string | null,
+): boolean {
+  return lineToolActive && (dragged || clickedLinkId !== null);
+}
+
 export function nextTool(current: string, requested: string): string {
   return current === requested ? "select" : requested;
 }

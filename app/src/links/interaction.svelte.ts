@@ -6,6 +6,7 @@ export const lineInteraction = $state({
   sourceAnchor: null as LinkAnchor | null,
   preview: null as Point | null,
   cutStroke: [] as Point[],
+  suppressContextMenuUntil: 0,
   error: null as { message: string; x: number; y: number } | null,
 });
 

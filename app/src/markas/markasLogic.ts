@@ -2,6 +2,7 @@ import type { HistoryCommand } from "../history/historyStack";
 import type { Link } from "../model/link";
 import type { CustomMark } from "../model/nodeData";
 import type { Note } from "../model/note";
+import { effectiveImportanceFor } from "../modules/moduleLogic";
 
 export const MARKAS_PALETTE = [
   "#e58b83",
@@ -121,6 +122,7 @@ export function effectiveCustomMarkFrameFor(
   // The Mark as node never shows the frame itself: it colours the note it is inserted in or linked to.
   if (note?.type === "markas") return false;
   if (!isContentNote(note)) return false;
+  if (effectiveImportanceFor(noteId, notes, edges) !== null) return false;
   if (note.customMarkFrame === true && (note.customMarks?.length ?? 0) > 0) return true;
   return edges.some((edge) => {
     if (edge.kind !== "strong" || edge.to !== noteId) return false;

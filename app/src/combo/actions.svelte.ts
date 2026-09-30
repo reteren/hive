@@ -12,7 +12,9 @@ import { measuredHeights } from "../notes/layout.svelte";
 import { uniqueName } from "../notes/naming";
 import { defaultMessageData } from "../messages/data";
 import { copyTimeForHost, copyEmbedSections, type EmbedSectionState } from "./data";
-import { canInsertCombo, nextSectionState, planComboInsertion, type ComboSection } from "./logic";
+import { nextSectionState, planComboInsertion, type ComboSection } from "./logic";
+import { comboDropPlan } from "./dropLogic";
+import { comboHostMinimumWidth } from "./layout";
 
 export function comboInsertCommand(sourceId: string, hostId: string): HistoryCommand | null {
   const source = board.notes[sourceId];
@@ -47,6 +49,8 @@ export function comboInsertCommand(sourceId: string, hostId: string): HistoryCom
     message: plan.message ? { ...plan.message } : undefined,
     embedSections: copyEmbedSections(plan.embedSections),
   };
+  const minimumWidth = comboHostMinimumWidth(hostAfter);
+  if (minimumWidth !== null) hostAfter.width = Math.max(hostBefore.width, minimumWidth);
   const label = comboInsertionLabel(source);
 
   return {
@@ -179,7 +183,16 @@ export function worldPointFromClient(clientX: number, clientY: number): Point | 
 }
 
 export function canHostCombo(sourceId: string, hostId: string): boolean {
-  return canInsertCombo(board.notes[sourceId], board.notes[hostId]);
+  return comboDropPlan(board.notes[sourceId], board.notes[hostId]) !== null;
+}
+
+export function comboDropPlanFor(sourceId: string, targetId: string) {
+  return comboDropPlan(board.notes[sourceId], board.notes[targetId]);
+}
+
+export function comboDropCommand(sourceId: string, targetId: string): HistoryCommand | null {
+  const plan = comboDropPlanFor(sourceId, targetId);
+  return plan ? comboInsertCommand(plan.sourceId, plan.hostId) : null;
 }
 
 function linkFrom(host: Note, extracted: Note, section: ComboSection): string {

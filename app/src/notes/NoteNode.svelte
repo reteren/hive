@@ -30,7 +30,10 @@
   import { overview } from "../overview/overview.svelte";
   import { overviewFontSize, overviewLabelFor, overviewTextFits } from "../overview/overviewLogic";
   import ComboHost from "../combo/ComboHost.svelte";
-  import { comboPullout } from "../combo/gestures.svelte";
+import { comboPullout } from "../combo/gestures.svelte";
+import { activeDropTarget } from "../selection/dropTargets";
+import { isComboDropPlan } from "../combo/dropLogic";
+import { comboHostMinimumWidth } from "../combo/layout";
 
   let { note, measureHeight }: { note: Note; measureHeight: Action<HTMLElement, string> } = $props();
   let renaming = $state(false);
@@ -46,6 +49,12 @@
   let overviewHeightPx = $derived((note.height ?? measuredHeights[note.id] ?? MIN_NOTE_HEIGHT) * PX_PER_UNIT);
   let overviewTextVisible = $derived(overviewTextFits(overviewWidthPx, overviewHeightPx, camera.zoom, scale));
   let overviewLabelFontSize = $derived(overviewFontSize(overviewLabel.kind, overviewLabel.title, overviewWidthPx, overviewHeightPx));
+  let comboDropTarget = $derived(
+    $activeDropTarget?.targetId === note.id &&
+    isComboDropPlan($activeDropTarget.payload) &&
+    $activeDropTarget.payload.direction === "message-into-text-host",
+  );
+  let comboMinimumWidth = $derived(comboHostMinimumWidth(note));
 
   function beginRename(): void {
     draftName = note.name;
@@ -154,6 +163,7 @@
   style:left="0px"
   style:top="0px"
   style:width={`${widthWithListStatistics(note) * PX_PER_UNIT}px`}
+  style:min-width={comboMinimumWidth === null ? undefined : `${comboMinimumWidth * PX_PER_UNIT}px`}
   style:--list-statistics-width={`${listStatisticsWidth(note) * PX_PER_UNIT}px`}
   style:height={note.height === null ? "auto" : `${note.height * PX_PER_UNIT}px`}
   style:min-height={note.height === null ? `${MIN_NOTE_HEIGHT * PX_PER_UNIT}px` : "0px"}
@@ -239,6 +249,8 @@
     <div
       class="note-content"
       class:empty-auto-body={note.height === null && note.text.trim() === "" && (note.type === "note" || note.type === "pro" || note.type === "con")}
+      class:empty-combo-body={note.text.trim() === "" && comboMinimumWidth !== null}
+      data-combo-drop-target={comboDropTarget ? "host" : undefined}
       data-note-body
     >
       {#if nodeBodyFor(note.type)}
@@ -288,9 +300,9 @@
   }
 
   .note-card[data-alt-overview="true"] {
-    border: 1px solid #8a8a8a;
+    border: 1px solid #4a4a4a;
     border-radius: 1px;
-    background: #707070;
+    background: #353535;
     box-shadow: none;
     color: #f1f1f1;
   }
@@ -483,6 +495,16 @@
 
   .note-content.empty-auto-body {
     min-height: 40px;
+  }
+
+  .note-content.empty-combo-body {
+    min-height: 100px;
+  }
+
+  .note-content[data-combo-drop-target="host"] {
+    outline: 2px solid #f5cd4d;
+    outline-offset: -2px;
+    background-color: #f5cd4d14;
   }
 
   .note-content :global(.note-body) {

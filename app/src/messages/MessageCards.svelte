@@ -4,25 +4,25 @@
   import { links } from "../model/links.svelte";
   import { dismissMessage, messageQueue } from "./messageQueue.svelte";
   import { goToMessage } from "./navigation";
-  import { messageCardPresentation, visibleMessages, VISIBLE_MESSAGE_LIMIT } from "./presentation";
+  import { hiveMessageCards, visibleMessages, VISIBLE_MESSAGE_LIMIT } from "./presentation";
   import { installMessageSoundUnlock } from "./sound";
   import { initializeOverhiveBridge } from "./overhiveBridge.svelte";
   import ReminderCard from "./ReminderCard.svelte";
   let expanded = $state(false);
-  let cards = $derived(visibleMessages(messageQueue.items, expanded)
-    .map((card) => messageCardPresentation(card, board.notes, Object.values(links.byId))));
-  let hidden = $derived(Math.max(0, messageQueue.items.length - VISIBLE_MESSAGE_LIMIT));
+  let hiveCards = $derived(hiveMessageCards(messageQueue.items, board.notes, Object.values(links.byId)));
+  let cards = $derived(visibleMessages(hiveCards, expanded));
+  let hidden = $derived(Math.max(0, hiveCards.length - VISIBLE_MESSAGE_LIMIT));
   onMount(() => {
     const disposeSound = installMessageSoundUnlock(document);
     const disposeOverhive = initializeOverhiveBridge();
     return () => { disposeSound(); disposeOverhive(); };
   });
-  $effect(() => { if (!messageQueue.items.length) expanded = false; });
+  $effect(() => { if (!hiveCards.length) expanded = false; });
 </script>
 
-{#if messageQueue.items.length}
+{#if hiveCards.length}
   <section class="message-cards" data-message-cards data-selection-ignore aria-label="Reminders">
-    <div class="message-announcement" role="status" aria-live="polite" aria-atomic="true">{messageQueue.items.length} reminder{messageQueue.items.length === 1 ? "" : "s"}: {messageQueue.items[0]?.text}</div>
+    <div class="message-announcement" role="status" aria-live="polite" aria-atomic="true">{hiveCards.length} reminder{hiveCards.length === 1 ? "" : "s"}: {hiveCards[0]?.text}</div>
     <div class="message-list">
       {#each cards as card (card.id)}
         <ReminderCard {card} title={card.title} available={card.available}

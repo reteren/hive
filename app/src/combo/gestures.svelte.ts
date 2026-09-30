@@ -13,8 +13,9 @@ export const comboPullout: Action<HTMLElement, ComboPulloutOptions> = (node, ini
 
   function onPointerDown(event: PointerEvent): void {
     if (event.button !== 0 || !(event.target instanceof Element) ||
-      event.target.closest("button, input, textarea, select, label, [contenteditable='true']")) return;
+      event.target.closest("button, input, textarea, select, label, a, [role='button'], [role='link'], [contenteditable='true']")) return;
     gesture = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, dragging: false, preview: null };
+    event.preventDefault();
     event.stopPropagation();
     window.addEventListener("pointermove", onPointerMove, true);
     window.addEventListener("pointerup", onPointerUp, true);

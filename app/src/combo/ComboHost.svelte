@@ -3,16 +3,17 @@
   import { isTauri } from "@tauri-apps/api/core";
   import { worldToScreen } from "../board/cameraMath";
   import { camera as boardCamera, viewport as boardViewport } from "../board/camera.svelte";
-  import { board } from "../model/board.svelte";
   import type { Note } from "../model/note";
   import { defaultMessageData } from "../messages/data";
   import { prepareMessageSound } from "../messages/sound";
   import TimeNodeBody from "../time/TimeNodeBody.svelte";
   import { activeDropTarget, registerDropTarget, type DropTargetMatch } from "../selection/dropTargets";
-  import { canHostCombo, comboInsertCommand, updateEmbeddedMessageSettings } from "./actions.svelte";
+  import { comboDropPlanFor, comboInsertCommand, updateEmbeddedMessageSettings } from "./actions.svelte";
   import { comboPullout } from "./gestures.svelte";
   import { comboSectionsFor, sectionExpanded, type ComboSection } from "./logic";
   import { toggleEmbeddedSection } from "./actions.svelte";
+  import { COMBO_SECTION_WIDTH_PX } from "./layout";
+  import { isComboDropPlan } from "./dropLogic";
 
   let { note }: { note: Note } = $props();
   let root: HTMLDivElement;
@@ -29,7 +30,8 @@
         if (noteIds.length !== 1) return null;
         const sourceId = noteIds[0];
         const host = root.closest<HTMLElement>(".note-card[data-note-id]");
-        if (!board.notes[sourceId] || !host || !canHostCombo(sourceId, note.id)) return null;
+        const plan = comboDropPlanFor(sourceId, note.id);
+        if (!plan || !host) return null;
         const boardElement = document.querySelector<HTMLElement>(".board");
         if (!boardElement) return null;
         const boardRect = boardElement.getBoundingClientRect();
@@ -38,10 +40,15 @@
         const clientY = boardRect.top + screen.y;
         const bounds = host.getBoundingClientRect();
         if (clientX < bounds.left || clientX > bounds.right || clientY < bounds.top || clientY > bounds.bottom) return null;
-        return { ownerId: dropOwnerId, targetId: note.id, payload: sourceId };
+        return {
+          ownerId: dropOwnerId,
+          targetId: plan.highlightTextHostId ?? note.id,
+          payload: plan,
+        };
       },
       drop(_noteIds, match: DropTargetMatch) {
-        return typeof match.payload === "string" ? comboInsertCommand(match.payload, note.id) : null;
+        if (!isComboDropPlan(match.payload)) return null;
+        return comboInsertCommand(match.payload.sourceId, match.payload.hostId);
       },
     });
     return () => {
@@ -62,21 +69,29 @@
     <div class="combo-drop-hint" role="status">Drop Time or Message to combine</div>
   {/if}
   {#each sections as section (section)}
-    <section class="combo-section" data-combo-section={section} class:drop-target={isDropTarget}>
-      <button
-        class="combo-section-title"
-        type="button"
-        aria-expanded={sectionExpanded(note.embedSections, section)}
-        onclick={() => toggleEmbeddedSection(note.id, section)}
-      >
-        <span class="combo-section-chevron" aria-hidden="true">{sectionExpanded(note.embedSections, section) ? "▾" : "▸"}</span>
-        {section === "message" ? "Message" : "Time"}
-      </button>
+    <section
+      class="combo-section"
+      data-combo-section={section}
+      class:drop-target={isDropTarget}
+      style:width={`${COMBO_SECTION_WIDTH_PX}px`}
+      use:comboPullout={{ noteId: note.id, section }}
+    >
+      <div class="combo-section-title">
+        <span>{section === "message" ? "Message" : "Time"}</span>
+        <button
+          class="combo-section-toggle"
+          type="button"
+          aria-label={`${sectionExpanded(note.embedSections, section) ? "Collapse" : "Expand"} ${section} section`}
+          aria-expanded={sectionExpanded(note.embedSections, section)}
+          onclick={() => toggleEmbeddedSection(note.id, section)}
+        >
+          <span class="combo-section-chevron" aria-hidden="true">{sectionExpanded(note.embedSections, section) ? "▾" : "▸"}</span>
+        </button>
+      </div>
       {#if sectionExpanded(note.embedSections, section)}
         <div
           class="combo-section-body"
           data-combo-part-body={section}
-          use:comboPullout={{ noteId: note.id, section }}
         >
           {#if section === "message"}
             <div class="combo-message-settings" role="group" aria-label="Message settings">
@@ -94,16 +109,20 @@
 </div>
 
 <style>
-  .combo-host { display: grid; gap: 0; min-width: 0; }
-  .combo-section { min-width: 0; }
+  .combo-host { display: grid; gap: 0; min-width: 0; width: max-content; }
+  .combo-section { box-sizing: border-box; min-width: 0; max-width: none; user-select: none; }
   .combo-section.drop-target { border-color: var(--accent); }
   .combo-section-title {
-    display: flex; width: 100%; min-height: 25px; align-items: center; gap: 5px;
-    padding: 4px 2px; border: 0; border-top: 1px solid #4b4d52; background: transparent; color: var(--text-dim);
-    font: inherit; font-size: 10px; font-weight: 600; text-align: left; cursor: pointer;
+    display: flex; width: 100%; min-height: 25px; align-items: center; justify-content: space-between; gap: 5px;
+    padding: 3px 2px; border-top: 1px solid #4b4d52; color: var(--text-dim);
+    font-size: 10px; font-weight: 600;
   }
-  .combo-section-title:hover, .combo-section-title:focus-visible { color: var(--text); }
-  .combo-section-chevron { width: 10px; color: #c7a95e; }
+  .combo-section-toggle {
+    display: grid; place-items: center; flex: 0 0 18px; width: 18px; height: 18px;
+    padding: 0; border: 0; border-radius: 2px; color: #c7a95e; background: transparent; cursor: pointer;
+  }
+  .combo-section-toggle:hover, .combo-section-toggle:focus-visible { color: var(--text); background: #ffffff12; }
+  .combo-section-chevron { line-height: 1; }
   .combo-section-body { min-width: 0; padding: 1px 0 2px; }
   .combo-message-settings { display: grid; gap: 6px; padding: 2px 0 5px; font-size: 11px; }
   .combo-message-settings label { display: flex; align-items: center; gap: 6px; user-select: none; }

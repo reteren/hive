@@ -368,7 +368,7 @@
   line-height: 1.3;
 }
 
-/* Mark as owns the frame when enabled; the Importance chip still shows its level. */
+/* Mark as frames are shown only when no local or linked Importance frame applies. */
 .note-card[data-custom-mark-frame="true"] {
   border: 4px solid transparent;
   background:
@@ -400,4 +400,3 @@
     background-position: 0 0, 0 0;
   }
 }
-

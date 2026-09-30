@@ -5,7 +5,6 @@
   import type { Note } from "../model/note";
   import { nextDueAt, validateSchedule } from "./scheduler";
   import { projectStopwatch, restartTimeNode, timeCounters } from "./runtime.svelte";
-  import TaskLinkStatus from "./TaskLinkStatus.svelte";
   import Select from "../ui/Select.svelte";
   import type { CountMode, StopwatchMode, TimeNodeData, TimeSchedule } from "./types";
   import { copyTimeSchedule, defaultAtTimeSchedule, formatCountdown, intervalHoursHint, timeCheckboxId } from "./uiSchedule";
@@ -341,7 +340,6 @@
   </div>
   <p class="time-status" role="status" aria-live="polite" data-time-status>{status}</p>
   {/if}
-  <TaskLinkStatus noteId={note.id} />
 </section>
 {#if confirmingEnable}<EnableTimeConfirmation onanswer={answerEnable} />{/if}
 

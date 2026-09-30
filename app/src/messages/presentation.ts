@@ -54,7 +54,16 @@ export function overhiveMessageCards(
   return items.map((card) => messageCardPresentation(card, notes, edges)).filter((card) => card.overhive === true);
 }
 
-export function visibleMessages(items: readonly ShownMessage[], expanded = false): readonly ShownMessage[] {
+/** Overhive cards stay in the shared queue, but appear only in the desktop window. */
+export function hiveMessageCards(
+  items: readonly ShownMessage[],
+  notes: Readonly<Record<string, Note>>,
+  edges: readonly Pick<Link, "from" | "to" | "kind">[],
+): MessageCardPresentation[] {
+  return items.map((card) => messageCardPresentation(card, notes, edges)).filter((card) => card.overhive !== true);
+}
+
+export function visibleMessages<T extends ShownMessage>(items: readonly T[], expanded = false): readonly T[] {
   return expanded ? items : items.slice(0, VISIBLE_MESSAGE_LIMIT);
 }
 

@@ -1,4 +1,5 @@
 import type { Point } from "../board/cameraMath";
+import { tool } from "../tools/tool.svelte";
 import type { ZoneToolMode } from "./zoneMode";
 import { toggleZoneToolMode } from "./zoneMode";
 
@@ -32,6 +33,12 @@ export function enterZoneResizeMode(zoneId: string): void {
   if (zoneMode.resizeZoneId === zoneId) return;
   zoneMode.resizeZoneId = zoneId;
   zoneMode.finishRequest += 1;
+}
+
+/** A zone's Resize menu action always leaves line mode before enabling its handles. */
+export function activateZoneResizeFromMenu(zoneId: string): void {
+  tool.active = "select";
+  enterZoneResizeMode(zoneId);
 }
 
 export function exitZoneResizeMode(): void {
