@@ -42,6 +42,8 @@ export function createContentMoveCommand(source: ContentSource, target: ContentT
   if (target.kind === "list") {
     const nextItem: ListItem = item ? { ...item } : card!.kind === "text"
       ? { id: newId(), targetId: null, label: card!.text }
+      : card!.kind === "image"
+      ? { id: newId(), targetId: null, label: card!.image.name ?? "Image" }
       : { id: newId(), targetId: card!.noteId, label: board.notes[card!.noteId]?.name ?? zones.byId[card!.noteId]?.name ?? "content missing" };
     if (targetItems.some((row) => row.id === nextItem.id)) nextItem.id = newId();
     nextTargetItems = insertListItem(targetItems, nextItem, target.index);

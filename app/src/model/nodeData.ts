@@ -11,9 +11,13 @@ export type NodeScope =
   | { kind: "beacon"; id: string };
 
 /** A card in a Tierlist row: free text, or a live read-only preview of a board node (H28/H29). */
+import type { ImageRef } from "../attachments/types";
+
 export type TierCard =
   | { id: string; kind: "text"; text: string }
-  | { id: string; kind: "note"; noteId: string };
+  | { id: string; kind: "note"; noteId: string }
+  /** R9.2: a picture card; the file lives in attachments/ (see src/attachments/types.ts). */
+  | { id: string; kind: "image"; image: ImageRef };
 
 export interface TierRow {
   id: string;

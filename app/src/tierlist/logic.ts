@@ -267,6 +267,8 @@ export function updateTierCardText(rows: readonly TierRow[], rowId: string, card
 
 export function tierCardPreview(card: TierCard, notes: Readonly<Record<string, Note>>, zones: Readonly<Record<string, Zone>> = {}): TierCardPreview {
   if (card.kind === "text") return { kind: "text", text: card.text };
+  // R9.2 placeholder until the Tierlist image card lands (d20 TIER).
+  if (card.kind === "image") return { kind: "text", text: card.image.name ?? "Image" };
   const source = notes[card.noteId];
   if (!source) {
     const zone = zones[card.noteId];

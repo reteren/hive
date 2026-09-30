@@ -2,6 +2,7 @@ import type { CustomMark, ListItem, NodeScope, RandomPick, SourceData, TierRow }
 import type { LinkAnchor } from "./link";
 import type { MessageNodeData, TimeNodeData } from "../time/types";
 import type { EmbedSectionState } from "../combo/data";
+import type { ImageRef } from "../attachments/types";
 
 /**
  * "note" — ordinary text node; "pro"/"con" — the green/red plus/minus mini-nodes (R3.5);
@@ -17,7 +18,8 @@ export type NoteKind =
   | "archive" | "trash"
   | "inbox" | "list" | "source" | "glossary" | "map" | "random"
   | "markas"
-  | "time" | "message" | "calendar";
+  | "time" | "message" | "calendar"
+  | "image";
 
 /** R5 kinds, in create-menu order. */
 export const R5_KINDS = ["goal", "progress", "calculator", "tierlist", "stats"] as const;
@@ -31,8 +33,11 @@ export const R7_KINDS = ["inbox", "list", "source", "glossary", "map", "random",
 /** R8 time and message nodes (contract in src/time/types.ts). */
 export const R8_KINDS = ["time", "message", "calendar"] as const;
 
+/** R9 media objects (contract in src/attachments/types.ts). "image" lies below all other nodes. */
+export const R9_KINDS = ["image"] as const;
+
 /** Default R5 node widths (u), shared by creation and resize limits. */
-export const R5_BASE_WIDTHS = { goal: 30, progress: 30, calculator: 40, tierlist: 60, stats: 30, archive: 40, trash: 40, inbox: 30, list: 30, source: 34, glossary: 40, map: 40, random: 30, markas: 30, time: 30, message: 30, calendar: 36 } as const;
+export const R5_BASE_WIDTHS = { goal: 30, progress: 30, calculator: 40, tierlist: 60, stats: 30, archive: 40, trash: 40, inbox: 30, list: 30, source: 34, glossary: 40, map: 40, random: 30, markas: 30, time: 30, message: 30, calendar: 36, image: 30 } as const;
 
 /** Importance levels (R3.3): white / yellow / red / purple / rainbow. */
 export const IMPORTANCE_LEVELS = ["basic", "medium", "important", "immediately", "absolute"] as const;
@@ -132,6 +137,8 @@ export interface Note {
   zoneId?: string | null;
   /** Progress / Statistics (R5): what the node counts. */
   scope?: NodeScope;
+  /** Board image (kind "image", R9.2): the picture file and its intrinsic size. */
+  image?: ImageRef;
   /** Tierlist (R5.7): rows and their cards. */
   tiers?: TierRow[];
   /** List (R7.3): ordered items, each a link to a board object or a missing target. */

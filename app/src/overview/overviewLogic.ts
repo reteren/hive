@@ -26,6 +26,7 @@ const KIND_LABELS: Record<NoteKind, string> = {
   time: "Time",
   message: "Message",
   calendar: "Calendar",
+  image: "Image",
 };
 
 export interface OverviewLabel {

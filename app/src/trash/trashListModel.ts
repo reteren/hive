@@ -34,6 +34,7 @@ const noteKindLabels: Record<NoteKind, string> = {
   time: "Time",
   message: "Message",
   calendar: "Calendar",
+  image: "Image",
 };
 
 /** Format one grouped delete entry for the list without counting its attached links as objects. */
