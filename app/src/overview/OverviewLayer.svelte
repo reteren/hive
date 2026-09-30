@@ -8,7 +8,6 @@
   import { creationMenu } from "../notes/creation.svelte";
   import { linkContext } from "../links-in-text/contextMenu.svelte";
   import { beaconEditor } from "../beacons/beaconActions.svelte";
-  import { tool } from "../tools/tool.svelte";
   import { zoneMode } from "../zones/zoneMode.svelte";
   import { camera } from "../board/camera.svelte";
   import { overview, setOverviewActive } from "./overview.svelte";
@@ -18,6 +17,8 @@
     if (!overview.active) return;
     document.body.dataset.altOverviewText = overviewTextFits(72, 72, camera.zoom) ? "true" : "false";
   });
+
+  const PAN_CODES = new Set(["KeyW", "KeyA", "KeyS", "KeyD"]);
 
   onMount(() => {
     const pressedPointers = new Set<number>();
@@ -33,7 +34,6 @@
 
     /** Why the overview may not start right now, or null when the board is idle. */
     function idleBlocker(): string | null {
-      if (tool.active !== "select") return `tool ${tool.active}`;
       if (editing.noteId !== null) return "editing a note";
       if (beaconEditor.noteId !== null) return "beacon editor";
       if (creationMenu.open) return "create menu open";
@@ -74,6 +74,8 @@
 
     function onKeyDown(event: KeyboardEvent): void {
       const isAlt = event.key === "Alt" || event.code === "AltLeft" || event.code === "AltRight";
+      // WASD pans the camera and must not end the overview (the user looks around with Alt held).
+      if (!isAlt && PAN_CODES.has(event.code)) return;
       if (!isAlt) {
         if (overview.active || activationFrame !== 0) cancelActivation();
         return;
@@ -102,6 +104,8 @@
     }
 
     function onPointerDown(event: PointerEvent): void {
+      // Middle button = camera pan: allowed while looking at the overview.
+      if (event.button === 1) return;
       pressedPointers.add(event.pointerId);
       if (overview.active || activationFrame !== 0) cancelActivation();
     }

@@ -1,6 +1,7 @@
 import { camera, cameraSettings, refreshPointerWorld, setPointerScreen, viewport } from "./camera.svelte";
 import { pixelsPerUnit, zoomAt, type Point } from "./cameraMath";
 import { isTextEditingTarget } from "../commands/focus";
+import { overview } from "../overview/overview.svelte";
 
 const PAN_KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD"]);
 const SHIFT_SPEED_MULTIPLIER = 2.5;
@@ -188,7 +189,8 @@ export function attachCameraInput(board: HTMLElement): () => void {
   function onKeyDown(event: KeyboardEvent): void {
     shiftHeld = event.shiftKey;
     if (!PAN_KEYS.has(event.code)) return;
-    if (event.ctrlKey || event.altKey || event.metaKey || isTextEditingTarget(event.target)) return;
+    // Alt is allowed while the Alt overview is shown, so the user can look around with WASD.
+    if (event.ctrlKey || (event.altKey && !overview.active) || event.metaKey || isTextEditingTarget(event.target)) return;
     if (isTextEditingTarget(document.activeElement)) return;
 
     event.preventDefault();

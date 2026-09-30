@@ -33,7 +33,7 @@
 .beacon-circle.in-zone:focus-visible { outline-color: #fff; }
 
 .beacon-object[data-alt-overview="true"] .beacon-circle {
-  background: #707070;
+  background: #353535;
   box-shadow: none;
   outline: none;
 }

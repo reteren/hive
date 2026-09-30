@@ -16,8 +16,6 @@
   import { hitTestZones } from "../selection/hitTesting";
   import { enterZoneResizeMode, requestZoneMove, zoneMode } from "./zoneMode.svelte";
   import OverviewLayer from "../overview/OverviewLayer.svelte";
-  import { overview } from "../overview/overview.svelte";
-  import { overviewZoneFontSize } from "../overview/overviewLogic";
 
   type Menu = { id: string; x: number; y: number; zoomAtOpen: number; rename: boolean };
   let layer: HTMLDivElement;
@@ -177,9 +175,7 @@
       {#each zones.order as id (id)}
         {@const zone = zones.byId[id]}
         {#if zone}
-          {@const bounds = zoneBounds(zone)}
           {@const nameEdge = cachedNameEdge(zone)}
-          {@const overviewFontSize = overviewZoneFontSize(zone.name, bounds.width, bounds.height, camera.zoom)}
           <g data-zone-id={id} transform={previewTransform(id)}>
             <path
               d={pathFor(zone)}
@@ -208,20 +204,7 @@
                 } }}
               >{zone.name}</text>
             </svg>
-            {#if overview.active && overviewFontSize !== null}
-              <text
-                class="zone-overview-label"
-                data-overview-zone-label={id}
-                x={bounds.x + bounds.width / 2}
-                y={bounds.y + bounds.height / 2}
-                fill={zone.color}
-                fill-opacity="0.6"
-                font-size={overviewFontSize}
-                text-anchor="middle"
-                dominant-baseline="middle"
-                aria-hidden="true"
-              >Zone · {zone.name}</text>
-            {/if}
+            <!-- The Alt overview label of a zone is drawn by OverviewZoneLabels, above the nodes. -->
           </g>
         {/if}
       {/each}
@@ -256,7 +239,6 @@
   .zones-layer, .zone-svg { position: absolute; inset: 0; pointer-events: none; }
   .zone-svg { overflow: visible; }
   .zone-name { font-size: 1.15px; font-weight: 650; paint-order: stroke; stroke: #17191d; stroke-width: 0.25px; cursor: text; outline: none; }
-  .zone-overview-label { font-weight: 650; paint-order: stroke; stroke: #17191d; stroke-width: 0.12px; pointer-events: none; }
   .zone-name:focus-visible { text-decoration: underline; text-decoration-thickness: 0.12px; text-underline-offset: 0.2px; }
   .zone-menu { position: absolute; z-index: 30; display: flex; width: 176px; flex-direction: column; gap: 3px; padding: 5px; border: 1px solid #4c4c4c; border-radius: 4px; color: var(--text); background: #242424; box-shadow: 0 5px 16px #0008; pointer-events: auto; }
   .zone-menu > button { min-height: 27px; padding: 4px 7px; border: 0; border-radius: 3px; color: inherit; background: transparent; text-align: left; cursor: pointer; }

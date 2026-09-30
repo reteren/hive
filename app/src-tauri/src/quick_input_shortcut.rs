@@ -247,7 +247,8 @@ impl AltSolo {
             }
             return None;
         }
-        if pressed && self.active {
+        // W/A/S/D pan the camera while looking at the overview; they do not end it.
+        if pressed && self.active && !matches!(key, 0x57 | 0x41 | 0x53 | 0x44) {
             self.active = false;
             return Some("cancel");
         }
@@ -518,10 +519,18 @@ mod tests {
     }
 
     #[test]
+    fn wasd_pans_without_cancelling() {
+        let mut solo = AltSolo::default();
+        assert_eq!(solo.on_key(0xA4, true, false, false), Some("down"));
+        assert_eq!(solo.on_key(0x57, true, false, false), None);
+        assert_eq!(solo.on_key(0xA4, false, false, false), Some("up"));
+    }
+
+    #[test]
     fn another_key_while_alt_is_held_cancels() {
         let mut solo = AltSolo::default();
         assert_eq!(solo.on_key(0xA4, true, false, false), Some("down"));
-        assert_eq!(solo.on_key(0x53, true, false, false), Some("cancel"));
+        assert_eq!(solo.on_key(0x51, true, false, false), Some("cancel"));
         assert_eq!(solo.on_key(0xA4, false, false, false), None);
     }
 

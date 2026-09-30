@@ -60,10 +60,18 @@ export function overviewFontSize(kind: string, title: string | null, widthPx: nu
   return Math.max(0, Math.min(14, widthPx / (longestLine * 0.62), heightPx / (lines * 1.35)));
 }
 
+/** "Zone · 3" for a default name ("Zone 3"), "Zone" for a bare default, "Zone · Kitchen" otherwise. */
+export function overviewZoneLabel(name: string): string {
+  const trimmed = name.trim();
+  const numbered = /^zone(?:\s+(\d+))?$/i.exec(trimmed);
+  if (numbered) return numbered[1] ? `Zone · ${numbered[1]}` : "Zone";
+  return trimmed ? `Zone · ${trimmed}` : "Zone";
+}
+
 /** World-unit font size for the large center label drawn inside a zone. */
 export function overviewZoneFontSize(name: string, width: number, height: number, zoom: number): number | null {
   if (![width, height, zoom].every(Number.isFinite) || width <= 0 || height <= 0 || zoom <= 0) return null;
-  const text = `Zone · ${name}`;
+  const text = overviewZoneLabel(name);
   const size = Math.min(5, width / (Math.max(text.length, 1) * 0.58), height * 0.36);
   return size * PX_PER_UNIT * zoom >= 8 ? size : null;
 }

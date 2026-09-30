@@ -5,6 +5,7 @@ import {
   overviewLabelFor,
   overviewTextFits,
   overviewZoneFontSize,
+  overviewZoneLabel,
 } from "../src/overview/overviewLogic";
 
 describe("overview labels", () => {
@@ -52,5 +53,15 @@ describe("Alt overview activation", () => {
     expect(isAltOnlyCandidate(event({ metaKey: true }))).toBe(false);
     expect(isAltOnlyCandidate(event({ repeat: true }))).toBe(false);
     expect(isAltOnlyCandidate(event({ key: "s", code: "KeyS" }))).toBe(false);
+  });
+});
+
+describe("overview zone label", () => {
+  it("shows only the number for default zone names", () => {
+    expect(overviewZoneLabel("Zone 3")).toBe("Zone · 3");
+    expect(overviewZoneLabel("zone 12")).toBe("Zone · 12");
+    expect(overviewZoneLabel("Zone")).toBe("Zone");
+    expect(overviewZoneLabel("Kitchen")).toBe("Zone · Kitchen");
+    expect(overviewZoneLabel("Zone 3 plan")).toBe("Zone · Zone 3 plan");
   });
 });
