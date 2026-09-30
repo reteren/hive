@@ -1,6 +1,6 @@
 # hive — состояние (обновлено 28.09.2026)
 
-**Актуально (29.09, вечер):** дебаг 12 (14 п.) закрыт, установщик **1.3.4** ждёт проверки. Alt-обзор: одиночный Alt ловит LL-хук (hive://alt-overview) + убран блокирующий селектор [data-markas-editor]; при сбое читать <app log dir>/overview.log. Combo-ноды (Time/Message/Note): src/combo/**, поля Note.time/message/embedSections. НЕ использовать git worktree с junction на node_modules.
+**Актуально (30.09):** дебаг 13 (11 п.) закрыт, установщик **1.3.5** ждёт проверки. Смоук docs/handoff/d13smoke.mjs + ov13.mjs пройден. Overhive: карточка только поверх всего; Importance главнее Mark as; combo: Task→Message, вытаскивание за фон, разделы фикс. ширины, min 30 u; прозрачность 0.7 при перемещении.
 
 ---
 
