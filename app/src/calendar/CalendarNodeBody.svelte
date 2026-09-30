@@ -45,7 +45,7 @@
     counts.set(key, (counts.get(key) ?? 0) + 1);
     return counts;
   }, new Map<string, number>()));
-  const title = $derived(new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(month));
+  const title = $derived(new Intl.DateTimeFormat("en", { month: "long", year: "numeric" }).format(month));
   const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
   function moveMonth(amount: number): void {

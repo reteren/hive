@@ -1,0 +1,32 @@
+// R8.2 smoke: Calendar node with Time occurrences (daily, weekly rule), day list + Go to; stopwatch session/task modes.
+import { writeFileSync } from "node:fs";
+const page = (await fetch(`http://localhost:9334/json/list`).then((r) => r.json())).find((t) => t.type === "page");
+const ws = new WebSocket(page.webSocketDebuggerUrl); let id = 0; const pending = new Map(); const errors = [];
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.method === "Runtime.exceptionThrown") errors.push(m.params.exceptionDetails.exception?.description?.slice(0, 200)); if (pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+await new Promise((r) => (ws.onopen = r));
+const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+await send("Runtime.enable");
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const ev = async (expression) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); return r.result?.result?.value ?? r.result?.exceptionDetails?.exception?.description; };
+const mouse = (type, x, y, button = "none", buttons = 0) => send("Input.dispatchMouseEvent", { type, x, y, button, buttons, clickCount: type === "mousePressed" || type === "mouseReleased" ? 1 : 0 });
+const click = async (sel) => { const p = await ev(`(()=>{const e=document.querySelector(${JSON.stringify(sel)});if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`); if (!p) return false; await mouse("mouseMoved", p.x, p.y); await mouse("mousePressed", p.x, p.y, "left", 1); await mouse("mouseReleased", p.x, p.y, "left", 0); await wait(300); return true; };
+const shot = async (n) => writeFileSync(`C:/Users/reteren/AppData/Local/Temp/claude/${n}.png`, Buffer.from((await send("Page.captureScreenshot", { format: "png" })).result.data, "base64"));
+console.log(await ev(`(async()=>{const b=await import('/src/model/board.svelte.ts');const c=await import('/src/notes/noteCommands.ts');const cam=await import('/src/board/camera.svelte.ts');for(const i of [...b.board.order])b.removeNote(i);
+ const cal=c.createNoteKind('calendar');const t1=c.createNoteKind('time');const t2=c.createNoteKind('time');
+ const n1=b.board.notes[t1];n1.x=40;n1.y=-30;n1.name='Daily';n1.time.schedule={kind:'at',date:null,time:'09:00'};
+ const n2=b.board.notes[t2];n2.x=40;n2.y=10;n2.name='Mon-Wed';n2.time.schedule={kind:'at',date:null,time:'18:30',rule:{type:'weekly',days:[1,3]}};
+ const cn=b.board.notes[cal];cn.x=-20;cn.y=-25;cam.camera.x=15;cam.camera.y=0;cam.camera.zoom=0.9;window.__ids={cal,t1,t2};return 'created '+JSON.stringify(window.__ids)+' size '+cn.width+'x'+cn.height})()`));
+await wait(800);
+console.log("grid:", await ev(`(()=>{const d=[...document.querySelectorAll('[data-calendar-day]')];return d.length+' days; marked: '+d.filter(x=>x.querySelector('.day-dot,.day-count')).map(x=>x.dataset.calendarDay.slice(8)+'='+(x.querySelector('.day-count')?.textContent??'1')).join(' ')})()`));
+console.log("today list:", await ev(`[...document.querySelectorAll('[data-calendar-occurrence] span')].map(s=>s.textContent).join(' | ')||document.querySelector('[data-calendar-reminders]')?.textContent`));
+await shot("r82-cal");
+// pick next Monday in grid
+const mon = await ev(`(()=>{const d=[...document.querySelectorAll('[data-calendar-day]')].find(x=>new Date(x.dataset.calendarDay+'T12:00').getDay()===1&&!x.classList.contains('outside'));return d?.dataset.calendarDay})()`);
+await click(`[data-calendar-day="${mon}"]`);
+console.log("Monday", mon, "list:", await ev(`[...document.querySelectorAll('[data-calendar-occurrence] span')].map(s=>s.textContent).join(' | ')`));
+await click('[data-calendar-occurrence] button');
+await wait(900);
+console.log("after Go to camera:", await ev(`(async()=>{const cam=await import('/src/board/camera.svelte.ts');return cam.camera.x.toFixed(1)+','+cam.camera.y.toFixed(1)})()`));
+await shot("r82-goto");
+console.log("errors:", errors.length ? errors.join(" || ") : "none");
+ws.close();

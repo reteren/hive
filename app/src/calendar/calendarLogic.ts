@@ -57,6 +57,10 @@ export function calendarOccurrences(
     const time = timedNote.time;
     if (!time) continue;
     const destination = reminderDestination(timedNote, notesById, edges, orderIndex);
+    // A repeating reminder without a start date begins on the day its node was created, not in the past.
+    const firstDayMs = time.schedule.kind === "at" && time.schedule.date === null && Number.isFinite(timedNote.createdAt)
+      ? localMidnight(new Date(timedNote.createdAt as number)).getTime()
+      : -Infinity;
     if (time.schedule.kind === "interval" && time.schedule.mode === "calendar") {
       for (let dayStart = localMidnight(new Date(fromMs)); dayStart.getTime() < toMs;) {
         const dayEnd = localMidnight(new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate() + 1));
@@ -70,7 +74,7 @@ export function calendarOccurrences(
 
     function addOccurrences(dueTimes: readonly number[], start: number, end: number): void {
       for (const dueAt of dueTimes) {
-        if (!Number.isFinite(dueAt) || dueAt < start || dueAt >= end) continue;
+        if (!Number.isFinite(dueAt) || dueAt < start || dueAt >= end || dueAt < firstDayMs) continue;
         occurrences.push({ timeId: timedNote.id, dueAt, summary: destination.summary, targetId: destination.targetId });
       }
     }

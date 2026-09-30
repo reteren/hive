@@ -109,3 +109,15 @@ describe("Calendar logic", () => {
     expect(copied?.nodes[0]).toMatchObject({ type: "calendar", name: "Calendar", width: 36, height: 34 });
   });
 });
+
+it("does not project an undated repeating reminder before its node was created", async () => {
+  const { calendarOccurrences } = await import("../src/calendar/calendarLogic");
+  const { occurrencesBetween } = await import("../src/time/scheduler");
+  const created = new Date(2026, 8, 15, 10).getTime();
+  const time = { id: "t", type: "time", name: "Daily", text: "", x: 0, y: 0, width: 30, height: null, createdAt: created,
+    time: { enabled: true, schedule: { kind: "at", date: null, time: "09:00" } } } as never;
+  const days = calendarOccurrences([time], [], ["t"], new Date(2026, 8, 1).getTime(), new Date(2026, 9, 1).getTime(), occurrencesBetween)
+    .map((item) => new Date(item.dueAt).getDate());
+  expect(days[0]).toBe(15);
+  expect(days).toHaveLength(16);
+});
