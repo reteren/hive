@@ -36,3 +36,7 @@ export function isComboDropPlan(value: unknown): value is ComboDropPlan {
     (plan.highlightTextHostId === null || typeof plan.highlightTextHostId === "string") &&
     (plan.direction === "source-into-target" || plan.direction === "message-into-text-host");
 }
+
+export function highlightsComboTextHost(plan: ComboDropPlan | null, noteId: string): boolean {
+  return plan?.direction === "message-into-text-host" && plan.highlightTextHostId === noteId;
+}

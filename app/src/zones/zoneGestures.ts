@@ -98,6 +98,16 @@ export function updateZoneMoveGesture(
   };
 }
 
+/** Members whose positions actually change with this zone preview (Ctrl+move). */
+export function movedZoneMemberIds(gesture: Pick<ZoneMoveGesture, "beforeMembers" | "afterMembers">): string[] {
+  return gesture.afterMembers.flatMap((member, index) => {
+    const before = gesture.beforeMembers[index];
+    return before && before.id === member.id && (before.x !== member.x || before.y !== member.y)
+      ? [member.id]
+      : [];
+  });
+}
+
 /** Ctrl carries zone members; Ctrl+Alt explicitly disables snapping for that move. */
 export function zoneMoveShouldSnap(gridSnap: boolean, carryMembers: boolean, alt: boolean): boolean {
   return carryMembers ? !alt : gridSnap;

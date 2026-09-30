@@ -1,6 +1,7 @@
 import type { Action } from "svelte/action";
 import { extractComboPart, worldPointFromClient } from "./actions.svelte";
 import type { ComboSection } from "./logic";
+import { canStartComboPulloutFrom } from "./pulloutLogic";
 
 export interface ComboPulloutOptions {
   noteId: string;
@@ -12,8 +13,19 @@ export const comboPullout: Action<HTMLElement, ComboPulloutOptions> = (node, ini
   let gesture: { pointerId: number; x: number; y: number; dragging: boolean; preview: HTMLDivElement | null } | null = null;
 
   function onPointerDown(event: PointerEvent): void {
-    if (event.button !== 0 || !(event.target instanceof Element) ||
-      event.target.closest("button, input, textarea, select, label, a, [role='button'], [role='link'], [contenteditable='true']")) return;
+    if (event.button !== 0 || !(event.target instanceof Element) || !node.contains(event.target)) return;
+    let target: Element | null = event.target;
+    while (target) {
+      if (!canStartComboPulloutFrom({
+        tagName: target.tagName,
+        role: target.getAttribute("role"),
+        contentEditable: (target as HTMLElement).isContentEditable,
+        textLink: target.hasAttribute("data-text-link"),
+      })) return;
+      if (target === node) break;
+      target = target.parentElement;
+    }
+    if (target !== node) return;
     gesture = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, dragging: false, preview: null };
     event.preventDefault();
     event.stopPropagation();

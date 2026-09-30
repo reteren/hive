@@ -18,6 +18,7 @@ import {
   zoneMoveUsesPrecision,
   zoneMoveHistoryCommand,
   zoneResizeHistoryCommand,
+  movedZoneMemberIds,
 } from "../src/zones/zoneGestures";
 
 function zone(id: string, x: number, y: number, width: number, height: number): Zone {
@@ -59,6 +60,8 @@ describe("zone move and resize", () => {
     expect(updateZoneMoveGesture(gesture, { x: 8, y: 0 }, false, 10, false).afterMembers)
       .toEqual([{ id: "member", x: 1, y: 1 }]);
     expect(updateZoneMoveGesture(createZoneMoveGesture(moving, [], [], { x: 0, y: 0 }), { x: 8, y: 0 }, false, 10).afterMembers).toEqual([]);
+    expect(movedZoneMemberIds(second)).toEqual(["member"]);
+    expect(movedZoneMemberIds(updateZoneMoveGesture(gesture, { x: 8, y: 0 }, false, 10, false))).toEqual([]);
   });
 
   it("uses Ctrl+Alt to carry zone members without grid snapping", () => {

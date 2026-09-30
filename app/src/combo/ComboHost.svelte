@@ -22,6 +22,10 @@
   let sections = $derived(comboSectionsFor(note));
   let settings = $derived(note.message ?? defaultMessageData());
   let isDropTarget = $derived($activeDropTarget?.ownerId === dropOwnerId);
+  let activePlan = $derived(isComboDropPlan($activeDropTarget?.payload) ? $activeDropTarget.payload : null);
+  let dropHint = $derived(activePlan?.direction === "message-into-text-host"
+    ? "Drop Note or Task to combine"
+    : "Drop Time or Message to combine");
 
   onMount(() => {
     const unregister = registerDropTarget({
@@ -66,7 +70,7 @@
 
 <div bind:this={root} class="combo-host" data-selection-ignore>
   {#if isDropTarget}
-    <div class="combo-drop-hint" role="status">Drop Time or Message to combine</div>
+    <div class="combo-drop-hint" role="status">{dropHint}</div>
   {/if}
   {#each sections as section (section)}
     <section

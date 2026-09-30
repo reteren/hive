@@ -32,8 +32,8 @@
   import ComboHost from "../combo/ComboHost.svelte";
 import { comboPullout } from "../combo/gestures.svelte";
 import { activeDropTarget } from "../selection/dropTargets";
-import { isComboDropPlan } from "../combo/dropLogic";
-import { comboHostMinimumWidth } from "../combo/layout";
+import { highlightsComboTextHost, isComboDropPlan } from "../combo/dropLogic";
+import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/layout";
 
   let { note, measureHeight }: { note: Note; measureHeight: Action<HTMLElement, string> } = $props();
   let renaming = $state(false);
@@ -49,12 +49,12 @@ import { comboHostMinimumWidth } from "../combo/layout";
   let overviewHeightPx = $derived((note.height ?? measuredHeights[note.id] ?? MIN_NOTE_HEIGHT) * PX_PER_UNIT);
   let overviewTextVisible = $derived(overviewTextFits(overviewWidthPx, overviewHeightPx, camera.zoom, scale));
   let overviewLabelFontSize = $derived(overviewFontSize(overviewLabel.kind, overviewLabel.title, overviewWidthPx, overviewHeightPx));
+  let activeComboDropPlan = $derived(isComboDropPlan($activeDropTarget?.payload) ? $activeDropTarget.payload : null);
   let comboDropTarget = $derived(
-    $activeDropTarget?.targetId === note.id &&
-    isComboDropPlan($activeDropTarget.payload) &&
-    $activeDropTarget.payload.direction === "message-into-text-host",
+    $activeDropTarget?.targetId === note.id && highlightsComboTextHost(activeComboDropPlan, note.id),
   );
   let comboMinimumWidth = $derived(comboHostMinimumWidth(note));
+  let emptyComboBodyMinimum = $derived(emptyComboBodyMinimumHeight(note));
 
   function beginRename(): void {
     draftName = note.name;
@@ -249,7 +249,7 @@ import { comboHostMinimumWidth } from "../combo/layout";
     <div
       class="note-content"
       class:empty-auto-body={note.height === null && note.text.trim() === "" && (note.type === "note" || note.type === "pro" || note.type === "con")}
-      class:empty-combo-body={note.text.trim() === "" && comboMinimumWidth !== null}
+      style:min-height={emptyComboBodyMinimum === null ? undefined : `${emptyComboBodyMinimum}px`}
       data-combo-drop-target={comboDropTarget ? "host" : undefined}
       data-note-body
     >
@@ -495,10 +495,6 @@ import { comboHostMinimumWidth } from "../combo/layout";
 
   .note-content.empty-auto-body {
     min-height: 40px;
-  }
-
-  .note-content.empty-combo-body {
-    min-height: 100px;
   }
 
   .note-content[data-combo-drop-target="host"] {

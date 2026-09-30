@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { shouldIgnoreZoneBrushTarget, shouldShowZoneBrushCursor } from "../src/zones/zoneMode";
 import {
   enterZoneResizeMode,
+  activateZoneResizeFromMenu,
   exitZoneResizeMode,
   requestZoneMove,
   setZoneToolMode,
@@ -9,6 +10,7 @@ import {
   toggleZoneMoveMode,
   zoneMode,
 } from "../src/zones/zoneMode.svelte";
+import { tool } from "../src/tools/tool.svelte";
 
 beforeEach(() => {
   zoneMode.active = "brush";
@@ -17,6 +19,7 @@ beforeEach(() => {
   zoneMode.moveRequest = null;
   zoneMode.finishRequest = 0;
   zoneMode.suppressContextMenuUntil = 0;
+  tool.active = "select";
 });
 
 describe("zone tool modes", () => {
@@ -54,6 +57,13 @@ describe("zone tool modes", () => {
     exitZoneResizeMode();
     expect(zoneMode.resizeZoneId).toBeNull();
     expect(zoneMode.finishRequest).toBe(2);
+  });
+
+  it("leaves line mode and activates zone resize when chosen from the zone menu", () => {
+    tool.active = "line-weak";
+    activateZoneResizeFromMenu("zone-a");
+    expect(tool.active).toBe("select");
+    expect(zoneMode.resizeZoneId).toBe("zone-a");
   });
 
   it("consumes a menu move request once without changing its captured world point", () => {

@@ -32,6 +32,7 @@ import { measureDictionaryHeightLimits } from "../spell/dictionarySizing";
     zoneGestureChanged,
     zoneMoveHistoryCommand,
     zoneResizeHistoryCommand,
+    movedZoneMemberIds,
     type MemberPosition,
     type ZoneMoveGesture,
     type ZoneResizeGesture,
@@ -113,6 +114,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
   } from "./precision";
   import { resolveModuleDropDecision } from "./moduleDropDecision";
   import { clearDropTargetPreview, dropOnTarget, previewDropTarget } from "./dropTargets";
+  import { MovingVisuals } from "./movingVisuals";
 
   interface Outline {
     id: string;
@@ -255,6 +257,7 @@ type PendingBoardMove =
   let suppressZoneResizeExitPointerId: number | null = null;
   let suppressZoneResizeExitClickUntil = 0;
   let restoreMovingStacking: (() => void) | null = null;
+  const movingVisuals = new MovingVisuals<HTMLElement>();
   let zoneCollisionHint = $state(false);
   let lineToolActive = $derived(isLineTool());
   let noteOutlineCornerRadius = $derived(`${noteSelectionCornerRadius(camera.zoom)}px`);
@@ -1749,7 +1752,7 @@ type PendingBoardMove =
     const pivot = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
     const startWorld = pointer.world ?? pivot;
     scaleModeGesture = createScaleModeGesture(frames, pivot, startWorld, 1 / pixelsPerUnit(camera));
-    beginMovingStacking(frames);
+    beginMovingStacking(frames, false);
     transformModeHint = "Scale";
   }
 
@@ -1946,23 +1949,31 @@ type PendingBoardMove =
     applyMemberPositions(members);
   }
 
-  function beginMovingStacking(frames: readonly NoteFrame[]): void {
+  function beginMovingStacking(frames: readonly NoteFrame[], fade = true): void {
     endMovingStacking();
     if (!boardElement) return;
     const ids = new Set(frames.map((frame) => frame.id));
     const cards = [...boardElement.querySelectorAll<HTMLElement>(".note-card[data-note-id], .beacon-object[data-note-id]")]
       .filter((card) => ids.has(card.dataset.noteId ?? ""));
     restoreMovingStacking = raiseMovingCards(cards);
+    movingVisuals.setTargets(fade ? cards : []);
   }
 
   function endMovingStacking(): void {
     restoreMovingStacking?.();
     restoreMovingStacking = null;
+    movingVisuals.clear();
   }
 
   function applyZoneMovePreview(gesture: ZoneMoveGesture): void {
     setZoneMovePreview(gesture.beforeZone.id, gesture.offset);
     applyMemberPositions(gesture.afterMembers);
+    const movedIds = new Set(movedZoneMemberIds(gesture));
+    const cards = boardElement
+      ? [...boardElement.querySelectorAll<HTMLElement>(".note-card[data-note-id], .beacon-object[data-note-id]")]
+        .filter((card) => movedIds.has(card.dataset.noteId ?? ""))
+      : [];
+    movingVisuals.setTargets(cards);
   }
 
   function applyMemberPositions(members: readonly MemberPosition[]): void {
@@ -1982,6 +1993,7 @@ type PendingBoardMove =
 
   function endZoneMoveBatch(): void {
     clearZoneMovePreview();
+    movingVisuals.clear();
     if (!zoneMembershipBatchOpen) return;
     zoneMembershipBatchOpen = false;
     endZoneMembershipBatch();

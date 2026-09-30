@@ -9,6 +9,7 @@ import { board } from "../model/board.svelte";
 import { inboxMinHeight } from "../inbox/inboxLayout";
 import { userDictionary } from "../spell/dictionary.svelte";
 import { measureDictionaryHeightLimits } from "../spell/dictionarySizing";
+import { comboHostMinimumWidth } from "../combo/layout";
 import type { NoteFrame } from "./gestures";
 
 export { MIN_NOTE_WIDTH };
@@ -188,6 +189,9 @@ export function resizeNote(
   const maxHeight = initial.type === "map"
     ? Number.POSITIVE_INFINITY
     : limits.maxHeight ?? initial.maxHeight ?? (initial.type ? MIN_NOTE_HEIGHT * 1.5 * scale : Number.POSITIVE_INFINITY);
+  const hostedMinimumWidth = board.notes[initial.id]
+    ? comboHostMinimumWidth(board.notes[initial.id])
+    : null;
   let x = initial.x;
   let y = initial.y;
   let width = initial.width;
@@ -196,6 +200,7 @@ export function resizeNote(
     ? initial.minWidth ?? MAP_MIN_WIDTH * scale
     : Math.max(
       minimumWidthForKind(initial.type) * scale,
+      hostedMinimumWidth === null ? 0 : hostedMinimumWidth * scale,
       initial.minWidth ?? (preferences.fitWidthToText
         ? minimumTextWidthForNote(initial.id, maxWidth / scale) * scale
         : MIN_NOTE_WIDTH * scale),

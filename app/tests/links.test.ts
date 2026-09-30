@@ -8,7 +8,7 @@ import { canCreateLinkPair, linkRefusalReason } from "../src/links/rules";
 import { changeLinkShape, createBoardLink, cutLinks, cycleLinkShapes, unlinkSelected } from "../src/links/operations";
 import { pointAtAnchor, pointOnCircleToward, projectPointToAnchor, shapeEndpoints } from "../src/links/anchors";
 import { clientToBoardPoint, clientToWorld } from "../src/links/coordinates";
-import { completeLinkGesture, nextTool, previewLinkKind, resolveCutRelease } from "../src/links/gestures";
+import { completeLinkGesture, nextTool, previewLinkKind, resolveCutRelease, shouldSuppressLineCutContextMenu } from "../src/links/gestures";
 import { clearSelectedLink, selectLinks, selectedLinkIds, toggleLinkSelection } from "../src/links/selection.svelte";
 import { buildShape } from "../src/links/shapes";
 import { tool } from "../src/tools/tool.svelte";
@@ -173,6 +173,15 @@ describe("link anchors and line tool gestures", () => {
     expect(resolveCutRelease(false, "link-1")).toBe("cut-link");
     expect(resolveCutRelease(false, null)).toBe("ignore");
     expect(resolveCutRelease(true, null)).toBe("cut-stroke");
+  });
+
+  it("keeps regular node, zone, and board context menus available in line mode", () => {
+    // No link was hit and no cut stroke was dragged, so LinksLayer must let
+    // NotesLayer / ZonesLayer handle the regular interactive menu.
+    const surfaces = ["node", "zone", "empty board"];
+    expect(surfaces.map(() => shouldSuppressLineCutContextMenu(true, false, null))).toEqual([false, false, false]);
+    expect(shouldSuppressLineCutContextMenu(true, false, "link-1")).toBe(true);
+    expect(shouldSuppressLineCutContextMenu(true, true, null)).toBe(true);
   });
 
   it("uses a solid strong or dashed weak preview kind matching the active line tool", () => {

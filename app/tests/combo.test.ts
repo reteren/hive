@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { clear as clearHistory, execute, history, redo, undo } from "../src/history/history.svelte";
-import { board, replaceBoard } from "../src/model/board.svelte";
+import { board, replaceBoard, updateNote } from "../src/model/board.svelte";
 import { links, replaceLinks } from "../src/model/links.svelte";
 import type { Link } from "../src/model/link";
 import type { Note } from "../src/model/note";
@@ -12,6 +12,10 @@ import { extractComboPart, comboInsertCommand } from "../src/combo/actions.svelt
 import { copyTimeForHost, parseEmbedSections, copyEmbedSections } from "../src/combo/data";
 import { canInsertCombo, comboSectionsFor, nextSectionState, planComboInsertion, sectionExpanded } from "../src/combo/logic";
 import { linkedMessagesForTime, taskMessageHostsForTime } from "../src/time/runtimeLogic";
+import { comboDropPlan, highlightsComboTextHost } from "../src/combo/dropLogic";
+import { COMBO_SECTION_WIDTH_UNITS, EMPTY_COMBO_BODY_MINIMUM_PX, emptyComboBodyMinimumHeight } from "../src/combo/layout";
+import { canStartComboPulloutFrom } from "../src/combo/pulloutLogic";
+import { resizeNote } from "../src/selection/resize";
 
 const timeData: NonNullable<Note["time"]> = {
   schedule: { kind: "interval", minutes: 30, mode: "calendar", repeat: true },
@@ -220,5 +224,110 @@ describe("embedded Time runtime routing", () => {
   it("forces embedded Time view while preserving its schedule and runtime data", () => {
     expect(copyTimeForHost("note", timeData)).toEqual({ ...timeData, view: "time" });
     expect(copyTimeForHost("time", timeData)).toEqual(timeData);
+  });
+});
+
+describe("COMBO3 regressions", () => {
+  it.each([
+    { label: "Task", task: { done: false, doneAt: null } },
+    { label: "Note", task: undefined },
+  ])("lets a $label drop onto Message, highlights the text host, and keeps it as host", ({ task }) => {
+    const textHost = makeNote("text-host", "note", {
+      x: 17, y: 23, width: 46, height: 19, scale: 1.4, text: "Keep this text",
+      task, message: undefined, time: undefined,
+    });
+    const message = makeNote("message", "message", { text: "discarded", message: messageData });
+    replaceBoard([textHost, message]);
+
+    const drop = comboDropPlan(textHost, message);
+    expect(drop).toMatchObject({
+      sourceId: message.id,
+      hostId: textHost.id,
+      highlightTextHostId: textHost.id,
+      direction: "message-into-text-host",
+    });
+    expect(highlightsComboTextHost(drop, textHost.id)).toBe(true);
+    expect(highlightsComboTextHost(drop, message.id)).toBe(false);
+
+    const command = comboInsertCommand(drop!.sourceId, drop!.hostId);
+    expect(command).not.toBeNull();
+    execute(command!);
+    expect(board.order).toEqual([textHost.id]);
+    expect(board.notes[textHost.id]).toMatchObject({
+      id: textHost.id,
+      type: "note",
+      name: textHost.name,
+      x: textHost.x,
+      y: textHost.y,
+      width: textHost.width,
+      height: textHost.height,
+      scale: textHost.scale,
+      text: textHost.text,
+      task,
+      message: messageData,
+    });
+    expect(history.entries).toHaveLength(1);
+    undo();
+    expect(board.notes[textHost.id]).toEqual(textHost);
+    expect(board.notes[message.id]).toEqual(message);
+  });
+
+  it("allows pull-out drags from section background and title text, excluding controls and links", () => {
+    const eligible = ["section", "div", "span"].map((tagName) => ({ tagName }));
+    for (const target of eligible) expect(canStartComboPulloutFrom(target)).toBe(true);
+    const controls = [
+      { tagName: "button" }, { tagName: "input" }, { tagName: "textarea" },
+      { tagName: "select" }, { tagName: "label" }, { tagName: "a" },
+      { tagName: "div", role: "checkbox" }, { tagName: "div", role: "link" }, { tagName: "div", role: "menuitem" },
+      { tagName: "span", contentEditable: true }, { tagName: "span", textLink: true },
+    ];
+    for (const target of controls) expect(canStartComboPulloutFrom(target)).toBe(false);
+  });
+
+  it("keeps embedded sections fixed-width and clamps normal resize to 30u", () => {
+    const originalMessage = { ...messageData };
+    const originalTime = { ...timeData };
+    const taskHost = makeNote("resized-task", "con", {
+      x: 12, y: 7, width: 38, height: 16, text: "Already resized",
+      task: { done: false, doneAt: null }, message: undefined, time: undefined,
+    });
+    const message = makeNote("message", "message", { message: originalMessage });
+    const time = makeNote("time", "time", { time: originalTime });
+    replaceBoard([taskHost, message, time]);
+
+    const insertion = comboDropPlan(taskHost, message)!;
+    execute(comboInsertCommand(insertion.sourceId, insertion.hostId)!);
+    execute(comboInsertCommand(time.id, taskHost.id)!);
+    const combined = board.notes[taskHost.id]!;
+    expect(combined).toMatchObject({ x: 12, y: 7, width: 38, height: 16, message: originalMessage, time: { schedule: originalTime.schedule } });
+    expect(COMBO_SECTION_WIDTH_UNITS).toBe(27);
+
+    const geometry = resizeNote({
+      id: taskHost.id, x: combined.x, y: combined.y, width: combined.width, height: combined.height,
+      type: combined.type, scale: 1,
+    }, 16, "right", { x: -20, y: 0 }, false, 1);
+    expect(geometry).toEqual({ x: 12, y: 7, width: 30, height: 16 });
+    updateNote(taskHost.id, geometry);
+    expect(board.notes[taskHost.id]).toMatchObject({
+      x: 12, y: 7, width: 30, height: 16,
+      task: taskHost.task,
+      message: originalMessage,
+      time: { schedule: originalTime.schedule },
+    });
+    expect(COMBO_SECTION_WIDTH_UNITS).toBe(27);
+    expect(combined.message).toEqual(originalMessage);
+    expect(combined.time).toMatchObject({ schedule: originalTime.schedule, view: "time" });
+  });
+
+  it("sets empty text hosts with embedded sections to 2.5× the normal body minimum", () => {
+    expect(emptyComboBodyMinimumHeight(makeNote("empty-message", "note", {
+      text: "", message: messageData,
+    }))).toBe(EMPTY_COMBO_BODY_MINIMUM_PX);
+    expect(emptyComboBodyMinimumHeight(makeNote("empty-time", "note", {
+      text: "", time: timeData,
+    }))).toBe(EMPTY_COMBO_BODY_MINIMUM_PX);
+    expect(EMPTY_COMBO_BODY_MINIMUM_PX).toBe(40 * 2.5);
+    expect(emptyComboBodyMinimumHeight(makeNote("plain", "note", { text: "" }))).toBeNull();
+    expect(emptyComboBodyMinimumHeight(makeNote("filled", "note", { text: "Text", message: messageData }))).toBeNull();
   });
 });
