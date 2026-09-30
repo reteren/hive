@@ -28,7 +28,7 @@ import { copyArchiveEntry, sanitizeArchiveEntries } from "../archive/serializati
 import { copyTrashEntry } from "../trash/trash";
 import { sanitizeTrashEntries } from "../trash/serialization";
 import type { TimeNodeData, TimeSchedule, TimeRuntime, CountMode, ProjectTimeCounters } from "../time/types";
-import { copyStopwatchData, parseStopwatchData } from "../time/data";
+import { copyStopwatchData, parseCalendarRule, parseStopwatchData } from "../time/data";
 import { copyEmbedSections, copyTimeForHost, parseEmbedSections } from "../combo/data";
 
 export interface IndexedNote {
@@ -782,9 +782,10 @@ function parseTimeData(value: unknown): TimeNodeData | undefined | null {
   let schedule: TimeSchedule;
   if (raw.kind === "at") {
     const date = raw.date === undefined ? null : raw.date;
+    const rule = parseCalendarRule(raw.rule);
     if (typeof raw.time !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(raw.time) ||
-      !(date === null || typeof date === "string" && isValidDate(date))) return null;
-    schedule = { kind: "at", date, time: raw.time };
+      !(date === null || typeof date === "string" && isValidDate(date)) || raw.rule !== undefined && rule === null) return null;
+    schedule = { kind: "at", date, time: raw.time, ...(rule ? { rule } : {}) };
   } else if (raw.kind === "interval") {
     if (typeof raw.minutes !== "number" || !Number.isFinite(raw.minutes) || raw.minutes < 1 ||
       !isCountMode(raw.mode) || typeof raw.repeat !== "boolean") return null;

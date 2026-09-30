@@ -19,7 +19,7 @@ import { zoneBounds } from "../model/zone";
 import { normalizeBeaconColor } from "../beacons/beaconPalette";
 import { shapesOverlap, translateShape } from "../zones/shape";
 import type { MessageNodeData, TimeNodeData } from "../time/types";
-import { copyTimeNodeData as cloneTimeNodeData, parseStopwatchData } from "../time/data";
+import { copyTimeNodeData as cloneTimeNodeData, parseCalendarRule, parseStopwatchData } from "../time/data";
 import { defaultMessageData, parseMessageData } from "../messages/data";
 import { copyEmbedSections, copyTimeForHost, parseEmbedSections } from "../combo/data";
 
@@ -396,9 +396,11 @@ function parseTimeNodeData(value: unknown): TimeNodeData | null {
   const stopwatch = parseStopwatchData(value.stopwatch);
   if (stopwatch === null) return null;
   let schedule: TimeNodeData["schedule"];
+  const rule = parseCalendarRule(rawSchedule.rule);
   if (rawSchedule.kind === "at" && typeof rawSchedule.time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(rawSchedule.time) &&
-    (rawSchedule.date === null || (typeof rawSchedule.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(rawSchedule.date)))) {
-    schedule = { kind: "at", date: rawSchedule.date, time: rawSchedule.time };
+    (rawSchedule.date === null || (typeof rawSchedule.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(rawSchedule.date))) &&
+    !(rawSchedule.rule !== undefined && rule === null)) {
+    schedule = { kind: "at", date: rawSchedule.date, time: rawSchedule.time, ...(rule ? { rule } : {}) };
   } else if (rawSchedule.kind === "interval" && Number.isInteger(rawSchedule.minutes) && Number(rawSchedule.minutes) >= 1 &&
     (rawSchedule.mode === "calendar" || rawSchedule.mode === "app" || rawSchedule.mode === "active") && typeof rawSchedule.repeat === "boolean") {
     schedule = { kind: "interval", minutes: Number(rawSchedule.minutes), mode: rawSchedule.mode, repeat: rawSchedule.repeat };

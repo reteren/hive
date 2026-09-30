@@ -10,7 +10,13 @@ export function defaultAtTimeSchedule(now: number): Extract<TimeSchedule, { kind
 }
 
 export function copyTimeSchedule(schedule: TimeSchedule): TimeSchedule {
-  return schedule.kind === "at" ? { ...schedule } : { ...schedule };
+  if (schedule.kind === "interval") return { ...schedule };
+  return {
+    ...schedule,
+    ...(schedule.rule
+      ? { rule: schedule.rule.type === "weekly" ? { ...schedule.rule, days: [...schedule.rule.days] } : { ...schedule.rule } }
+      : {}),
+  };
 }
 
 /** Stable, per-node ids keep each Time node's Repeat and Enabled controls independent. */

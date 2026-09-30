@@ -106,13 +106,13 @@ describe("time scheduler", () => {
   it("clamps monthly day 31 to the last day of short months", () => {
     const schedule: TimeSchedule = { kind: "at", date: "2027-01-31", time: "09:00", rule: { type: "monthly", day: 31 } };
     let runtime = startRuntime(schedule, context(at("2027-01-30", "10:00")));
-    for (const date of ["2027-01-31", "2027-02-28", "2027-03-31"]) {
+    for (const date of ["2027-01-31", "2027-02-28", "2027-03-31", "2027-04-30"]) {
       const dueAt = at(date, "09:00");
       const result = evaluateTime(timeNode(schedule, runtime), context(dueAt));
       expect(result.fire?.key).toBe(`${date}T09:00`);
       runtime = result.runtime;
     }
-    expect(nextDueAt(timeNode(schedule, runtime), context(at("2027-03-31", "09:01")))).toBe(at("2027-04-30", "09:00"));
+    expect(nextDueAt(timeNode(schedule, runtime), context(at("2027-04-30", "09:01")))).toBe(at("2027-05-31", "09:00"));
   });
 
   it("clamps yearly February 29 to February 28 except in leap years", () => {
@@ -121,7 +121,9 @@ describe("time scheduler", () => {
     const first = evaluateTime(timeNode(schedule, runtime), context(at("2027-02-28", "09:00")));
 
     expect(first.fire?.key).toBe("2027-02-28T09:00");
-    expect(nextDueAt(timeNode(schedule, first.runtime), context(at("2027-02-28", "09:01")))).toBe(at("2028-02-29", "09:00"));
+    const leapDueAt = at("2028-02-29", "09:00");
+    expect(nextDueAt(timeNode(schedule, first.runtime), context(at("2027-02-28", "09:01")))).toBe(leapDueAt);
+    expect(evaluateTime(timeNode(schedule, first.runtime), context(leapDueAt)).fire?.key).toBe("2028-02-29T09:00");
   });
 
   it("coalesces missed workday occurrences into one overlate delivery", () => {
@@ -155,8 +157,8 @@ describe("time scheduler", () => {
   it("projects one-shot, daily, rule-based, and calendar interval occurrences", () => {
     const rangeStart = at("2027-02-01", "00:00");
     const rangeEnd = at("2027-05-01", "00:00");
-    const project = (schedule: TimeSchedule, runtime?: TimeNodeData["runtime"], enabled = false) =>
-      occurrencesBetween(timeNode(schedule, runtime, enabled), rangeStart, rangeEnd);
+    const project = (schedule: TimeSchedule, runtime?: TimeNodeData["runtime"], enabled = false, limit = 500) =>
+      occurrencesBetween(timeNode(schedule, runtime, enabled), rangeStart, rangeEnd, limit);
     const dates = (values: number[]) => values.map((value) => `${new Date(value).getFullYear()}-${String(new Date(value).getMonth() + 1).padStart(2, "0")}-${String(new Date(value).getDate()).padStart(2, "0")}T${String(new Date(value).getHours()).padStart(2, "0")}:${String(new Date(value).getMinutes()).padStart(2, "0")}`);
 
     expect(dates(project({ kind: "at", date: "2027-02-10", time: "09:00" }))).toEqual(["2027-02-10T09:00"]);
@@ -164,14 +166,17 @@ describe("time scheduler", () => {
     expect(daily).toHaveLength(89);
     expect(daily[0]).toBe("2027-02-01T09:00");
     expect(daily.at(-1)).toBe("2027-04-30T09:00");
-    expect(dates(project({ kind: "at", date: "2027-01-01", time: "09:00", rule: { type: "weekly", days: [1, 5] } })))
-      .toContain("2027-02-01T09:00");
-    expect(dates(project({ kind: "at", date: "2027-01-01", time: "09:00", rule: { type: "workdays" } })))
-      .not.toContain("2027-02-06T09:00");
+    expect(project({ kind: "at", date: null, time: "09:00" }, undefined, false, 2)).toHaveLength(2);
+    const weekly = dates(project({ kind: "at", date: "2027-01-01", time: "09:00", rule: { type: "weekly", days: [1, 5] } }));
+    expect(weekly[0]).toBe("2027-02-01T09:00");
+    expect(weekly.every((value) => [1, 5].includes(new Date(at(value.slice(0, 10), "09:00")).getDay()))).toBe(true);
+    const workdays = dates(project({ kind: "at", date: "2027-01-01", time: "09:00", rule: { type: "workdays" } }));
+    expect(workdays.every((value) => ![0, 6].includes(new Date(at(value.slice(0, 10), "09:00")).getDay()))).toBe(true);
     expect(dates(project({ kind: "at", date: "2027-01-01", time: "09:00", rule: { type: "monthly", day: 31 } })))
       .toEqual(["2027-02-28T09:00", "2027-03-31T09:00", "2027-04-30T09:00"]);
-    expect(dates(project({ kind: "at", date: "2027-01-01", time: "09:00", rule: { type: "yearly", month: 2, day: 29 } })))
-      .toEqual(["2027-02-28T09:00"]);
+    expect(dates(occurrencesBetween(timeNode({ kind: "at", date: "2027-01-01", time: "09:00", rule: { type: "yearly", month: 2, day: 29 } }),
+      at("2027-02-01", "00:00"), at("2029-03-01", "00:00"))))
+      .toEqual(["2027-02-28T09:00", "2028-02-29T09:00", "2029-02-28T09:00"]);
 
     const intervalStart = at("2027-02-02", "09:00");
     const interval = { kind: "interval", minutes: 60, mode: "calendar", repeat: true } as const;

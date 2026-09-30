@@ -6,7 +6,7 @@
   import { nextDueAt, validateSchedule } from "./scheduler";
   import { projectStopwatch, restartTimeNode, sessionStopwatch, timeCounters } from "./runtime.svelte";
   import Select from "../ui/Select.svelte";
-  import type { CountMode, StopwatchMode, TimeNodeData, TimeSchedule } from "./types";
+  import type { CalendarRule, CountMode, StopwatchMode, TimeNodeData, TimeSchedule } from "./types";
   import { copyTimeSchedule, defaultAtTimeSchedule, formatCountdown, intervalHoursHint, timeCheckboxId } from "./uiSchedule";
   import { copyTimeNodeData } from "./data";
   import { activationSourcesForTime } from "./activationLogic";
@@ -16,11 +16,25 @@
   import { timeEnablePreference } from "./enablePreference.svelte";
   import EnableTimeConfirmation from "./EnableTimeConfirmation.svelte";
 
+  type AtRepeatMode = "once" | "daily" | "weekly" | "workdays" | "monthly" | "yearly";
+
+  const weekdays = [
+    { day: 1, label: "Mo" }, { day: 2, label: "Tu" }, { day: 3, label: "We" },
+    { day: 4, label: "Th" }, { day: 5, label: "Fr" }, { day: 6, label: "Sa" }, { day: 0, label: "Su" },
+  ];
+  const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+    .map((label, index) => ({ value: String(index + 1), label }));
+
   let { note, embedded = false }: { note: Note; embedded?: boolean } = $props();
 
   let mode = $state<TimeSchedule["kind"]>("at");
   let atTime = $state("");
   let atDate = $state("");
+  let atRepeat = $state<AtRepeatMode>("daily");
+  let weeklyDays = $state<number[]>([new Date().getDay()]);
+  let monthlyDay = $state(1);
+  let yearlyMonth = $state(1);
+  let yearlyDay = $state(1);
   let intervalMinutes = $state(1);
   let countMode = $state<CountMode>("calendar");
   let repeat = $state(false);
@@ -72,7 +86,13 @@
     mode = schedule.kind;
     if (schedule.kind === "at") {
       atTime = schedule.time;
-      atDate = schedule.date ?? "";
+      atDate = schedule.date ?? (schedule.rule ? localDateInputValue(Date.now()) : "");
+      atRepeat = schedule.rule?.type ?? (schedule.date === null ? "daily" : "once");
+      const today = new Date();
+      weeklyDays = schedule.rule?.type === "weekly" ? [...schedule.rule.days] : [today.getDay()];
+      monthlyDay = schedule.rule?.type === "monthly" ? schedule.rule.day : today.getDate();
+      yearlyMonth = schedule.rule?.type === "yearly" ? schedule.rule.month : today.getMonth() + 1;
+      yearlyDay = schedule.rule?.type === "yearly" ? schedule.rule.day : today.getDate();
     } else {
       intervalMinutes = schedule.minutes;
       countMode = schedule.mode;
@@ -129,7 +149,13 @@
 
   function currentDraft(): TimeSchedule {
     if (mode === "at") {
-      return { kind: "at", time: atTime, date: atDate || null };
+      const rule = calendarRuleDraft();
+      return {
+        kind: "at",
+        time: atTime,
+        date: atRepeat === "daily" ? null : atDate || localDateInputValue(now),
+        ...(rule ? { rule } : {}),
+      };
     }
     return {
       kind: "interval",
@@ -235,8 +261,46 @@
 
   function scheduleKey(schedule: TimeSchedule): string {
     return schedule.kind === "at"
-      ? `at|${schedule.date ?? ""}|${schedule.time}`
+      ? `at|${schedule.date ?? ""}|${schedule.time}|${schedule.rule ? JSON.stringify(schedule.rule) : ""}`
       : `interval|${schedule.minutes}|${schedule.mode}|${schedule.repeat}`;
+  }
+
+  function changeAtRepeat(value: string): void {
+    if (!isAtRepeatMode(value)) return;
+    atRepeat = value;
+    if (value === "daily") {
+      atDate = "";
+      return;
+    }
+    if (!atDate) atDate = localDateInputValue(now);
+    if (value === "weekly" && weeklyDays.length === 0) weeklyDays = [new Date(now).getDay()];
+  }
+
+  function toggleWeekday(day: number): void {
+    weeklyDays = weeklyDays.includes(day)
+      ? weeklyDays.filter((selected) => selected !== day)
+      : [...weeklyDays, day].sort((first, second) => first - second);
+  }
+
+  function calendarRuleDraft(): CalendarRule | undefined {
+    switch (atRepeat) {
+      case "weekly": return { type: "weekly", days: [...weeklyDays] };
+      case "workdays": return { type: "workdays" };
+      case "monthly": return { type: "monthly", day: monthlyDay };
+      case "yearly": return { type: "yearly", month: yearlyMonth, day: yearlyDay };
+      case "once":
+      case "daily": return undefined;
+    }
+  }
+
+  function localDateInputValue(timestamp: number): string {
+    const date = new Date(timestamp);
+    return `${String(date.getFullYear()).padStart(4, "0")}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  }
+
+  function isAtRepeatMode(value: string): value is AtRepeatMode {
+    return value === "once" || value === "daily" || value === "weekly" || value === "workdays" ||
+      value === "monthly" || value === "yearly";
   }
 
   function copyTimeData(data: TimeNodeData | undefined): TimeNodeData | null {
@@ -328,10 +392,61 @@
       <input type="time" aria-label="Reminder time" aria-required="true" required bind:value={atTime} />
     </label>
     <label class="time-field">
-      <span>Date</span>
-      <input type="date" aria-label="Reminder date (optional)" bind:value={atDate} />
+      <span>Repeat</span>
+      <Select id={`time-${encodeURIComponent(note.id)}-at-repeat`} ariaLabel="Reminder repeat" value={atRepeat} options={[
+        { value: "once", label: "Once" },
+        { value: "daily", label: "Daily" },
+        { value: "weekly", label: "Weekly" },
+        { value: "workdays", label: "Workdays" },
+        { value: "monthly", label: "Monthly" },
+        { value: "yearly", label: "Yearly" },
+      ]} onchange={changeAtRepeat} />
     </label>
-    {#if !atDate}<p class="time-helper">Every day</p>{/if}
+    {#if atRepeat !== "daily"}
+      <label class="time-field">
+        <span>{atRepeat === "once" ? "Date" : "Starts on"}</span>
+        <input
+          type="date"
+          aria-label={atRepeat === "once" ? "Reminder date" : "Repeat starts on"}
+          required={atRepeat === "once"}
+          bind:value={atDate}
+        />
+      </label>
+    {/if}
+    {#if atRepeat === "weekly"}
+      <div class="weekday-toggles" role="group" aria-label="Repeat weekdays">
+        {#each weekdays as weekday (weekday.day)}
+          <button
+            type="button"
+            class="weekday-toggle"
+            class:active={weeklyDays.includes(weekday.day)}
+            aria-label={weekday.label}
+            aria-pressed={weeklyDays.includes(weekday.day)}
+            onclick={() => toggleWeekday(weekday.day)}
+          >{weekday.label}</button>
+        {/each}
+      </div>
+    {:else if atRepeat === "monthly"}
+      <label class="time-field">
+        <span>Day</span>
+        <input type="number" aria-label="Day of month" min="1" max="31" step="1" bind:value={monthlyDay} />
+      </label>
+      <p class="time-helper">31 = last day of short months</p>
+    {:else if atRepeat === "yearly"}
+      <div class="calendar-rule-fields">
+        <label class="time-field">
+          <span>Month</span>
+          <Select id={`time-${encodeURIComponent(note.id)}-yearly-month`} ariaLabel="Repeat month" value={String(yearlyMonth)} options={months}
+            onchange={(value) => { const month = Number(value); if (month >= 1 && month <= 12) yearlyMonth = month; }} />
+        </label>
+        <label class="time-field">
+          <span>Day</span>
+          <input type="number" aria-label="Day of year" min="1" max="31" step="1" bind:value={yearlyDay} />
+        </label>
+      </div>
+    {:else if atRepeat === "daily"}
+      <p class="time-helper">Every day</p>
+    {/if}
   {:else}
     <label class="time-field">
       <span>Minutes</span>
@@ -379,6 +494,11 @@
   .time-field input:focus-visible, .time-save:focus-visible, .time-check input:focus-visible { outline: 1px solid #d6ad53; outline-offset: 1px; }
   .time-field small, .time-helper { margin: 0; color: #8b918e; font-size: 9px; }
   .time-check { display: inline-flex; min-height: 22px; align-items: center; gap: 6px; color: #c5c9c7; }
+  .weekday-toggles { display: flex; justify-content: space-between; gap: 3px; }
+  .weekday-toggle { flex: 1 1 0; min-width: 0; min-height: 22px; padding: 2px 1px; color: #9fa49f; background: #252727; border: 1px solid #494c4b; border-radius: 3px; font: inherit; cursor: pointer; }
+  .weekday-toggle.active { color: #241f14; background: #d2a847; border-color: #d2a847; }
+  .weekday-toggle:focus-visible { outline: 1px solid #d6ad53; outline-offset: 1px; }
+  .calendar-rule-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
   .time-check input { accent-color: #d2a847; }
   .time-actions { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-top: 3px; border-top: 1px solid #3c403e; }
   .time-save { min-height: 23px; padding: 2px 7px; color: #dedede; background: #333735; border: 1px solid #505552; border-radius: 3px; font: inherit; cursor: pointer; }

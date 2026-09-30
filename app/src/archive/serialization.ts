@@ -5,7 +5,7 @@ import { parseCalculatorData, parseScope, parseTiers, parseListItems, parseRando
 import { IMPORTANCE_LEVELS, isValidNoteScale, MOOD_KINDS, PURPOSE_KINDS, type Note, type NoteKind, type TaskState } from "../model/note";
 import type { ArchiveEntry } from "../model/retention.svelte";
 import type { CountMode, TimeNodeData, TimeRuntime, TimeSchedule } from "../time/types";
-import { parseStopwatchData } from "../time/data";
+import { parseCalendarRule, parseStopwatchData } from "../time/data";
 import { copyTimeForHost, parseEmbedSections } from "../combo/data";
 import { copyArchivedLink, copyArchivedNote } from "./logic";
 
@@ -169,9 +169,10 @@ function parseTimeData(value: unknown): TimeNodeData | null {
   let schedule: TimeSchedule;
   if (raw.kind === "at") {
     const date = raw.date === undefined ? null : raw.date;
+    const rule = parseCalendarRule(raw.rule);
     if (typeof raw.time !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(raw.time) ||
-      !(date === null || typeof date === "string" && isValidDate(date))) return null;
-    schedule = { kind: "at", date, time: raw.time };
+      !(date === null || typeof date === "string" && isValidDate(date)) || raw.rule !== undefined && rule === null) return null;
+    schedule = { kind: "at", date, time: raw.time, ...(rule ? { rule } : {}) };
   } else if (raw.kind === "interval") {
     if (typeof raw.minutes !== "number" || !Number.isFinite(raw.minutes) || raw.minutes < 1 ||
       !isCountMode(raw.mode) || typeof raw.repeat !== "boolean") return null;

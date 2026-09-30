@@ -290,7 +290,10 @@ function isValidCalendarRule(rule: CalendarRule): boolean {
 }
 
 function daysInMonth(year: number, month: number): number {
-  return new Date(year, month, 0, 12).getDate();
+  const date = new Date(0);
+  date.setHours(12, 0, 0, 0);
+  date.setFullYear(year, month, 0);
+  return date.getDate();
 }
 
 function timeParts(time: string): [number, number] {

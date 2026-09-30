@@ -1,14 +1,49 @@
-import type { TimeNodeData, StopwatchData } from "./types";
+import type { CalendarRule, TimeNodeData, StopwatchData } from "./types";
 
 export function copyTimeNodeData(value: TimeNodeData): TimeNodeData {
   return {
-    schedule: { ...value.schedule },
+    schedule: value.schedule.kind === "at"
+      ? { ...value.schedule, ...(value.schedule.rule ? { rule: copyCalendarRule(value.schedule.rule) } : {}) }
+      : { ...value.schedule },
     enabled: value.enabled,
     ...(value.taskMode ? { taskMode: value.taskMode } : {}),
     ...(value.view ? { view: value.view } : {}),
     ...(value.stopwatch ? { stopwatch: { ...value.stopwatch } } : {}),
     ...(value.runtime ? { runtime: { ...value.runtime } } : {}),
   };
+}
+
+/** Parse a calendar repeat rule; absent means legacy behavior and null means malformed data. */
+export function parseCalendarRule(value: unknown): CalendarRule | undefined | null {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) return null;
+  switch (value.type) {
+    case "weekly":
+      if (!Array.isArray(value.days) || value.days.length === 0 ||
+        !value.days.every((day) => Number.isInteger(day) && day >= 0 && day <= 6) ||
+        new Set(value.days).size !== value.days.length) return null;
+      return { type: "weekly", days: [...value.days] as number[] };
+    case "workdays": return { type: "workdays" };
+    case "monthly":
+      return Number.isInteger(value.day) && (value.day as number) >= 1 && (value.day as number) <= 31
+        ? { type: "monthly", day: value.day as number }
+        : null;
+    case "yearly": {
+      const month = value.month;
+      const day = value.day;
+      const daysInMonth = typeof month === "number" && Number.isInteger(month) && month >= 1 && month <= 12
+        ? [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]!
+        : 0;
+      return Number.isInteger(day) && (day as number) >= 1 && (day as number) <= daysInMonth
+        ? { type: "yearly", month: month as number, day: day as number }
+        : null;
+    }
+    default: return null;
+  }
+}
+
+function copyCalendarRule(rule: CalendarRule): CalendarRule {
+  return rule.type === "weekly" ? { ...rule, days: [...rule.days] } : { ...rule };
 }
 
 export function copyStopwatchData(value: StopwatchData | undefined): StopwatchData | undefined {
