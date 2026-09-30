@@ -1,6 +1,6 @@
 # hive — состояние (обновлено 28.09.2026)
 
-**Актуально (30.09):** дебаг 14 (6 п.) закрыт, установщик **1.3.6** ждёт проверки. Alt-обзор теперь один слой src/overview/OverviewNodes.svelte (8–9 мс на 300 нод), маяки своим цветом; Message с подключённой задачей — поле только для чтения с её текстом; combo: разделы фикс. ширины, мин. высота, поле текста ≥100px.
+**Актуально (30.09, вечер):** R8 поставка 2 готова, установщик **1.3.8** ждёт проверки. Правила повтора в Time (Once/Daily/Weekly/Workdays/Monthly/Yearly, `occurrencesBetween` в scheduler.ts), нода Calendar (src/calendar/**, месяц + список дня + Go to), Stopwatch: Since hive started / task created / task done. Спека d19_tasks.md, run `run_bc4533db439e`, smoke r82smoke.mjs + r82rules.mjs. Дебаг 15: п.2 и п.4 в 1.3.7, п.1 (нет каретки) не воспроизводится в браузере — ждём шаги от пользователя.
 
 ---
 
