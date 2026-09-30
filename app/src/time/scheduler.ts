@@ -1,4 +1,4 @@
-import { COUNT_MODES, type CountMode, type TimeNodeData, type TimeRuntime, type TimeSchedule } from "./types";
+import { COUNT_MODES, type CalendarRule, type CountMode, type TimeNodeData, type TimeRuntime, type TimeSchedule } from "./types";
 
 /** Clock values supplied by the runtime service. App and active totals are monotonic. */
 export interface TimeContext {
@@ -25,6 +25,7 @@ export function validateSchedule(schedule: TimeSchedule): string | null {
   if (schedule.kind === "at") {
     if (!isValidTime(schedule.time)) return "Enter a time in HH:MM format.";
     if (schedule.date !== null && !isValidDate(schedule.date)) return "Enter a valid date in YYYY-MM-DD format.";
+    if (schedule.rule !== undefined && !isValidCalendarRule(schedule.rule)) return "Choose a valid calendar repeat rule.";
     return null;
   }
 
@@ -65,6 +66,19 @@ export function nextDueAt(data: TimeNodeData, context: TimeContext): number | nu
   const runtime = normalizedRuntime(data.schedule, data.runtime, context);
 
   if (data.schedule.kind === "at") {
+    if (data.schedule.rule) {
+      const previousCheck = runtime.lastCheckedAt ?? context.now;
+      const highWaterNow = Math.max(context.now, previousCheck);
+      const startDate = data.schedule.date ?? localDateOnlyKey(previousCheck);
+      const latest = latestRuleOccurrence(data.schedule, context.now, startDate);
+      if (latest && latest.dueAt >= previousCheck && runtime.lastFiredKey !== latest.key) return latest.dueAt;
+
+      const next = nextRuleOccurrence(data.schedule, highWaterNow, startDate);
+      if (!next) return null;
+      if (runtime.lastFiredKey !== next.key) return next.dueAt;
+      return nextRuleOccurrence(data.schedule, next.dueAt, startDate)?.dueAt ?? null;
+    }
+
     if (data.schedule.date !== null) {
       const dueAt = localDateTime(data.schedule.date, data.schedule.time);
       const key = `${data.schedule.date}T${data.schedule.time}`;
@@ -100,6 +114,61 @@ export function nextDueAt(data: TimeNodeData, context: TimeContext): number | nu
   return context.now + Math.max(0, durationMs - elapsed);
 }
 
+/** Returns wall-clock due times in [fromMs, toMs), independent of whether the node is enabled. */
+export function occurrencesBetween(
+  data: TimeNodeData,
+  fromMs: number,
+  toMs: number,
+  limit = 500,
+): number[] {
+  const safeLimit = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 500;
+  if (safeLimit === 0 || !Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs <= fromMs ||
+    validateSchedule(data.schedule) !== null) return [];
+
+  const schedule = data.schedule;
+  if (schedule.kind === "interval") {
+    if (schedule.mode !== "calendar" || !Number.isFinite(data.runtime?.intervalStartedAt)) return [];
+    const step = schedule.minutes * MINUTE_MS;
+    const startedAt = data.runtime!.intervalStartedAt!;
+    if (!schedule.repeat) {
+      const dueAt = startedAt + step;
+      return dueAt >= fromMs && dueAt < toMs ? [dueAt] : [];
+    }
+
+    let occurrence = Math.max(1, Math.ceil((fromMs - startedAt) / step));
+    const dueTimes: number[] = [];
+    for (; dueTimes.length < safeLimit; occurrence++) {
+      const dueAt = startedAt + occurrence * step;
+      if (dueAt >= toMs) break;
+      if (dueAt >= fromMs) dueTimes.push(dueAt);
+    }
+    return dueTimes;
+  }
+
+  if (!schedule.rule && schedule.date !== null) {
+    const dueAt = localDateTime(schedule.date, schedule.time);
+    return dueAt >= fromMs && dueAt < toMs ? [dueAt] : [];
+  }
+
+  let firstDay = localDayAt(fromMs);
+  const startDate = schedule.rule ? schedule.date : null;
+  if (startDate && localDateOnlyKey(firstDay) < startDate) firstDay = localDayFromDateString(startDate);
+
+  const dueTimes: number[] = [];
+  for (let day = firstDay; dueTimes.length < safeLimit;) {
+    const dateKey = localDateOnlyKey(day);
+    const [hour, minute] = timeParts(schedule.time);
+    const dueAt = localDateTimeFromParts(day.getFullYear(), day.getMonth() + 1, day.getDate(), hour, minute);
+    if (dueAt >= toMs) break;
+    if (dueAt >= fromMs && (!startDate || dateKey >= startDate) &&
+      (!schedule.rule || ruleAllowsDate(schedule.rule, day))) {
+      dueTimes.push(dueAt);
+    }
+    day = nextLocalDay(day);
+  }
+  return dueTimes;
+}
+
 function evaluateAt(
   schedule: Extract<TimeSchedule, { kind: "at" }>,
   runtime: TimeRuntime,
@@ -107,6 +176,25 @@ function evaluateAt(
 ): { fire: TimeFire | null; runtime: TimeRuntime } {
   const previousCheck = runtime.lastCheckedAt ?? context.now;
   const checkedAt = highWater(previousCheck, context.now);
+
+  if (schedule.rule) {
+    const startDate = schedule.date ?? localDateOnlyKey(previousCheck);
+    const occurrence = latestRuleOccurrence(schedule, context.now, startDate);
+    if (!occurrence || occurrence.dueAt < previousCheck || occurrence.key === runtime.lastFiredKey) {
+      return { fire: null, runtime: { ...runtime, lastCheckedAt: checkedAt } };
+    }
+
+    const previousOccurrence = latestRuleOccurrence(schedule, occurrence.dueAt - 1, startDate);
+    const missedEarlierOccurrence = previousOccurrence !== null && previousOccurrence.dueAt >= previousCheck;
+    return {
+      fire: {
+        key: occurrence.key,
+        dueAt: occurrence.dueAt,
+        overlate: missedEarlierOccurrence || isLate(occurrence.dueAt, previousCheck, context.now),
+      },
+      runtime: { ...runtime, lastFiredKey: occurrence.key, lastCheckedAt: checkedAt },
+    };
+  }
 
   if (schedule.date !== null) {
     const dueAt = localDateTime(schedule.date, schedule.time);
@@ -133,6 +221,102 @@ function evaluateAt(
     },
     runtime: { ...runtime, lastFiredKey: key, lastCheckedAt: checkedAt },
   };
+}
+
+interface RuleOccurrence {
+  dateKey: string;
+  key: string;
+  dueAt: number;
+}
+
+function latestRuleOccurrence(
+  schedule: Extract<TimeSchedule, { kind: "at" }>,
+  upperBound: number,
+  minimumDate: string,
+): RuleOccurrence | null {
+  if (!schedule.rule || !Number.isFinite(upperBound)) return null;
+  for (let day = localDayAt(upperBound), checked = 0; checked < 370; day = previousLocalDay(day), checked++) {
+    const dateKey = localDateOnlyKey(day);
+    if (dateKey < minimumDate) return null;
+    if (!ruleAllowsDate(schedule.rule, day)) continue;
+    const [hour, minute] = timeParts(schedule.time);
+    const dueAt = localDateTimeFromParts(day.getFullYear(), day.getMonth() + 1, day.getDate(), hour, minute);
+    if (dueAt <= upperBound) return { dateKey, key: `${dateKey}T${schedule.time}`, dueAt };
+  }
+  return null;
+}
+
+function nextRuleOccurrence(
+  schedule: Extract<TimeSchedule, { kind: "at" }>,
+  after: number,
+  minimumDate: string,
+): RuleOccurrence | null {
+  if (!schedule.rule || !Number.isFinite(after)) return null;
+  let firstDay = localDayAt(after);
+  if (localDateOnlyKey(firstDay) < minimumDate) firstDay = localDayFromDateString(minimumDate);
+  for (let day = firstDay, checked = 0; checked < 370; day = nextLocalDay(day), checked++) {
+    const dateKey = localDateOnlyKey(day);
+    if (!ruleAllowsDate(schedule.rule, day)) continue;
+    const [hour, minute] = timeParts(schedule.time);
+    const dueAt = localDateTimeFromParts(day.getFullYear(), day.getMonth() + 1, day.getDate(), hour, minute);
+    if (dueAt > after) return { dateKey, key: `${dateKey}T${schedule.time}`, dueAt };
+  }
+  return null;
+}
+
+function ruleAllowsDate(rule: CalendarRule, date: Date): boolean {
+  switch (rule.type) {
+    case "weekly": return rule.days.includes(date.getDay());
+    case "workdays": return date.getDay() >= 1 && date.getDay() <= 5;
+    case "monthly": return date.getDate() === Math.min(rule.day, daysInMonth(date.getFullYear(), date.getMonth() + 1));
+    case "yearly": return date.getMonth() + 1 === rule.month &&
+      date.getDate() === Math.min(rule.day, daysInMonth(date.getFullYear(), rule.month));
+  }
+}
+
+function isValidCalendarRule(rule: CalendarRule): boolean {
+  if (!rule || typeof rule !== "object") return false;
+  switch (rule.type) {
+    case "weekly":
+      return Array.isArray(rule.days) && rule.days.length > 0 &&
+        rule.days.every((day) => Number.isInteger(day) && day >= 0 && day <= 6) &&
+        new Set(rule.days).size === rule.days.length;
+    case "workdays": return true;
+    case "monthly": return Number.isInteger(rule.day) && rule.day >= 1 && rule.day <= 31;
+    case "yearly": return Number.isInteger(rule.month) && rule.month >= 1 && rule.month <= 12 &&
+      Number.isInteger(rule.day) && rule.day >= 1 && rule.day <= daysInMonth(2000, rule.month);
+    default: return false;
+  }
+}
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(year, month, 0, 12).getDate();
+}
+
+function timeParts(time: string): [number, number] {
+  return time.split(":").map(Number) as [number, number];
+}
+
+function localDayFromDateString(value: string): Date {
+  const [year, month, day] = value.split("-").map(Number);
+  return localDayFromParts(year, month, day);
+}
+
+function nextLocalDay(date: Date): Date {
+  const next = new Date(date);
+  next.setDate(next.getDate() + 1);
+  return localDayFromParts(next.getFullYear(), next.getMonth() + 1, next.getDate());
+}
+
+function previousLocalDay(date: Date): Date {
+  const previous = new Date(date);
+  previous.setDate(previous.getDate() - 1);
+  return localDayFromParts(previous.getFullYear(), previous.getMonth() + 1, previous.getDate());
+}
+
+function localDateOnlyKey(timestampOrDate: number | Date): string {
+  const date = typeof timestampOrDate === "number" ? new Date(timestampOrDate) : timestampOrDate;
+  return `${formatYear(date.getFullYear())}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
 
 function evaluateInterval(
