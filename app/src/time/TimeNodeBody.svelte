@@ -4,13 +4,14 @@
   import { links } from "../model/links.svelte";
   import type { Note } from "../model/note";
   import { nextDueAt, validateSchedule } from "./scheduler";
-  import { projectStopwatch, restartTimeNode, timeCounters } from "./runtime.svelte";
+  import { projectStopwatch, restartTimeNode, sessionStopwatch, timeCounters } from "./runtime.svelte";
   import Select from "../ui/Select.svelte";
   import type { CountMode, StopwatchMode, TimeNodeData, TimeSchedule } from "./types";
   import { copyTimeSchedule, defaultAtTimeSchedule, formatCountdown, intervalHoursHint, timeCheckboxId } from "./uiSchedule";
   import { copyTimeNodeData } from "./data";
   import { activationSourcesForTime } from "./activationLogic";
   import { formatStopwatch, stopwatchElapsedMs, toggleManualStopwatch } from "./stopwatchLogic";
+  import { firstLinkedTaskForTime } from "./taskLink";
   import { setTimeEnabled } from "./actions.svelte";
   import { timeEnablePreference } from "./enablePreference.svelte";
   import EnableTimeConfirmation from "./EnableTimeConfirmation.svelte";
@@ -34,15 +35,32 @@
     running: false,
     elapsedMs: 0,
   });
+  const linkedTask = $derived(firstLinkedTaskForTime(note.id, Object.values(links.byId), board.notes, board.order));
   const stopwatchElapsed = $derived(stopwatchElapsedMs({
     mode: stopwatch.mode,
     noteCreatedAt: note.createdAt,
     projectCreatedAt: projectStopwatch.createdAt,
+    sessionStartedAt: sessionStopwatch.startedAt,
+    linkedTask: linkedTask ? {
+      createdAt: linkedTask.createdAt,
+      doneAt: linkedTask.task?.done ? linkedTask.task.doneAt : null,
+    } : null,
     counters: { appMs: projectStopwatch.appMs, activeMs: projectStopwatch.activeMs },
     stopwatch,
     now,
   }));
-  const stopwatchParts = $derived(formatStopwatch(stopwatchElapsed));
+  const stopwatchParts = $derived(stopwatchElapsed === null ? null : formatStopwatch(stopwatchElapsed));
+  const stopwatchHint = $derived(
+    (stopwatch.mode === "taskCreated" || stopwatch.mode === "taskDone") && !linkedTask
+      ? "Link a task to this Time"
+      : stopwatch.mode === "taskDone" && (!linkedTask?.task?.done || linkedTask.task.doneAt == null)
+        ? "Task not done yet"
+        : stopwatch.mode === "taskCreated" && linkedTask?.createdAt === undefined
+          ? "Task creation time unavailable"
+          : stopwatch.mode === "session" && sessionStopwatch.startedAt === null
+            ? "Starting session"
+            : "",
+  );
   const activationSources = $derived(activationSourcesForTime(note.id, board.notes, Object.values(links.byId)));
 
   $effect(() => {
@@ -173,7 +191,7 @@
     }
     nextStopwatch.includeProjectTime = value === "project"
       ? true
-      : value === "node" || value === "manual"
+      : value !== "active" && value !== "app"
         ? false
         : previousStopwatch.mode === value ? previousStopwatch.includeProjectTime ?? false : false;
     saveStopwatchChange("Change stopwatch mode", current.name, previous, { ...previous, stopwatch: nextStopwatch });
@@ -237,24 +255,31 @@
   }
 
   function isStopwatchMode(value: string): value is StopwatchMode {
-    return value === "project" || value === "node" || value === "active" || value === "app" || value === "manual";
+    return value === "project" || value === "node" || value === "session" || value === "taskCreated"
+      || value === "taskDone" || value === "active" || value === "app" || value === "manual";
   }
 </script>
 
 <section class="time-editor" data-time-body data-time-view={embedded ? "time" : note.time?.view ?? "time"} data-time-mode={mode} aria-label="Time node">
   {#if !embedded && note.time?.view === "stopwatch"}
-    <div class="stopwatch-display" role="timer" aria-live="off" data-stopwatch-counter aria-label={`${stopwatchParts.days} days ${stopwatchParts.hours} hours ${stopwatchParts.minutes} minutes ${stopwatchParts.seconds} seconds`}>
-      <span>{stopwatchParts.days}<small>d</small></span>
-      <span>{stopwatchParts.hours}<small>h</small></span>
-      <span>{stopwatchParts.minutes}<small>m</small></span>
-      <span>{stopwatchParts.seconds}<small>s</small></span>
+    <div class="stopwatch-display" role="timer" aria-live="off" data-stopwatch-counter aria-label={stopwatchParts ? `${stopwatchParts.days} days ${stopwatchParts.hours} hours ${stopwatchParts.minutes} minutes ${stopwatchParts.seconds} seconds` : stopwatchHint}>
+      {#if stopwatchParts}
+        <span>{stopwatchParts.days}<small>d</small></span>
+        <span>{stopwatchParts.hours}<small>h</small></span>
+        <span>{stopwatchParts.minutes}<small>m</small></span>
+        <span>{stopwatchParts.seconds}<small>s</small></span>
+      {:else}<span>—</span>{/if}
     </div>
+    {#if stopwatchElapsed === null}<p class="time-helper" data-stopwatch-hint>{stopwatchHint}</p>{/if}
 
     <label class="time-field stopwatch-mode-field">
       <span>Mode</span>
       <Select id={`time-${encodeURIComponent(note.id)}-stopwatch-mode`} ariaLabel="Stopwatch mode" value={stopwatch.mode} options={[
         { value: "project", label: "Since project created" },
         { value: "node", label: "Since node created" },
+        { value: "session", label: "Since hive started" },
+        { value: "taskCreated", label: "Since task created" },
+        { value: "taskDone", label: "Since task done" },
         { value: "active", label: "While hive window is focused" },
         { value: "app", label: "While hive runs" },
         { value: "manual", label: "On stop/resume command" },
@@ -262,16 +287,16 @@
     </label>
 
     {@const optionalProjectBase = stopwatch.mode === "active" || stopwatch.mode === "app"}
-    <label class="time-check stopwatch-project-base" class:optional={optionalProjectBase}>
+    {#if optionalProjectBase}<label class="time-check stopwatch-project-base optional">
       <input
         type="checkbox"
         data-stopwatch-project-base
-        checked={stopwatch.mode === "project" || optionalProjectBase && stopwatch.includeProjectTime === true}
-        disabled={!optionalProjectBase}
+        checked={stopwatch.includeProjectTime === true}
         onchange={setProjectTimeBase}
       />
       <span>Since project created</span>
     </label>
+    {/if}
 
     {#if stopwatch.mode === "manual"}
       <button class="stopwatch-toggle" type="button" data-stopwatch-toggle onclick={toggleManual}>

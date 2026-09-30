@@ -16,6 +16,8 @@ const RUNTIME_PERSIST_MS = 30_000;
 export const timeCounters = $state({ appMs: 0, activeMs: 0 });
 /** Stopwatch counters are scoped to the currently open project and exclude closed-app time. */
 export const projectStopwatch = $state({ createdAt: Date.now(), appMs: 0, activeMs: 0 });
+/** First runtime start in this process; never saved with a project. */
+export const sessionStopwatch = $state({ startedAt: null as number | null });
 /** Persistence observes this low-frequency revision instead of saving the board every tick. */
 export const projectCounterSave = $state({ revision: 0 });
 
@@ -69,6 +71,7 @@ export function startTimeRuntime(): () => void {
   if (cleanupRuntime) return cleanupRuntime;
 
   lastTickAt = Date.now();
+  sessionStopwatch.startedAt ??= lastTickAt;
   lastRuntimePersistAt = lastTickAt;
   wasFocused = windowHasFocus();
 

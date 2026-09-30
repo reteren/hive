@@ -37,7 +37,8 @@ export function parseStopwatchData(value: unknown): StopwatchData | null | undef
 }
 
 function isStopwatchMode(value: unknown): value is StopwatchData["mode"] {
-  return value === "project" || value === "node" || value === "active" || value === "app" || value === "manual";
+  return value === "project" || value === "node" || value === "session" || value === "taskCreated"
+    || value === "taskDone" || value === "active" || value === "app" || value === "manual";
 }
 
 function finiteNonnegative(value: unknown): value is number {

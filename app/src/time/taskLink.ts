@@ -6,6 +6,24 @@ export interface LinkedTimeState {
   enabled: boolean;
 }
 
+/** First strongly connected task in board order, regardless of link direction. */
+export function firstLinkedTaskForTime(
+  timeId: string,
+  edges: readonly Link[],
+  notes: Readonly<Record<string, Pick<Note, "task" | "createdAt"> | undefined>>,
+  order: readonly string[],
+): Pick<Note, "task" | "createdAt"> | null {
+  const linkedIds = new Set<string>();
+  if (notes[timeId]?.task) linkedIds.add(timeId); // An embedded Time on its own Task.
+  for (const edge of edges) {
+    if (edge.kind !== "strong") continue;
+    if (edge.from === timeId && notes[edge.to]?.task) linkedIds.add(edge.to);
+    if (edge.to === timeId && notes[edge.from]?.task) linkedIds.add(edge.from);
+  }
+  const firstId = order.find((id) => linkedIds.has(id)) ?? [...linkedIds][0];
+  return firstId ? notes[firstId] ?? null : null;
+}
+
 /** Return only strong, directed Task → Time links; weak and reverse links are visual only. */
 export function linkedTimeStatesForTask(
   taskId: string,

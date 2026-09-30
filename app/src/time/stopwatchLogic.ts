@@ -11,13 +11,19 @@ export function stopwatchElapsedMs(input: {
   mode: StopwatchMode;
   noteCreatedAt: number | undefined;
   projectCreatedAt: number;
+  sessionStartedAt: number | null;
+  linkedTask: { createdAt: number | undefined; doneAt: number | null } | null;
   counters: ProjectTimeCounters;
   stopwatch: StopwatchData;
   now: number;
-}): number {
-  const { mode, noteCreatedAt, projectCreatedAt, counters, stopwatch, now } = input;
+}): number | null {
+  const { mode, noteCreatedAt, projectCreatedAt, sessionStartedAt, linkedTask, counters, stopwatch, now } = input;
   if (mode === "project") return Math.max(0, now - projectCreatedAt);
   if (mode === "node") return Math.max(0, now - (noteCreatedAt ?? projectCreatedAt));
+  if (mode === "session") return sessionStartedAt === null ? null : Math.max(0, now - sessionStartedAt);
+  if (mode === "taskCreated") return linkedTask?.createdAt === undefined ? null : Math.max(0, now - linkedTask.createdAt);
+  if (mode === "taskDone") return linkedTask?.doneAt === null || linkedTask?.doneAt === undefined
+    ? null : Math.max(0, now - linkedTask.doneAt);
   if (mode === "active") {
     const elapsed = stopwatch.includeProjectTime
       ? counters.activeMs
