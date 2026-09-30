@@ -2,9 +2,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Note } from "../src/model/note";
 import type { Link } from "../src/model/link";
 import { board, replaceBoard } from "../src/model/board.svelte";
-import { replaceLinks } from "../src/model/links.svelte";
+import { links, replaceLinks } from "../src/model/links.svelte";
 import { clear, history, undo, redo } from "../src/history/history.svelte";
-import { importanceSoundCount, resolveMessageContent } from "../src/messages/resolution";
+import { importanceSoundCount, messageTextFieldState, resolveMessageContent } from "../src/messages/resolution";
+import { unlink } from "../src/links/operations";
 import { tryInsertModuleOnDrop, effectiveImportance } from "../src/modules/moduleActions.svelte";
 import { canCreateLinkPair, effectiveLinkKind } from "../src/links/rules";
 import { clippedCardRects } from "../src/messages/overhiveProtocol";
@@ -16,6 +17,52 @@ function edge(from: string, to: string, kind: Link["kind"] = "strong"): Link { r
 afterEach(() => { replaceBoard([]); replaceLinks([]); clear(); });
 
 describe("Message recipient resolution", () => {
+  it.each([true, false])("locks the field to a strong Task link in either direction (reversed=%s)", (reversed) => {
+    const message = note("message", "message", { text: "Private draft" });
+    const task = note("task", "note", { task: { done: false, doneAt: null }, text: "Task text\nSecond line" });
+    replaceBoard([message, task]);
+    const link = reversed ? edge(task.id, message.id) : edge(message.id, task.id);
+    replaceLinks([link]);
+    const field = messageTextFieldState(message, board.notes, [link], board.order);
+    expect(field).toEqual({ value: task.text, readOnly: true, linkedTaskId: task.id });
+    expect(resolveMessageContent(message, board.notes, [link], board.order)).toMatchObject({ text: field.value, targetId: task.id });
+    expect(board.notes.message.text).toBe("Private draft");
+  });
+  it("restores the untouched Message draft on unlink, then the linked Task text on Undo", () => {
+    const message = note("message", "message", { text: "Saved Message draft" });
+    const task = note("task", "note", { task: { done: true, doneAt: 42 }, text: "Complete task" });
+    const link = edge("task", "message");
+    replaceBoard([message, task]); replaceLinks([link]); clear();
+    const field = () => messageTextFieldState(board.notes.message, board.notes, Object.values(links.byId), board.order);
+    expect(field()).toEqual({ value: "Complete task", readOnly: true, linkedTaskId: "task" });
+    expect(unlink(link.id)).toBe(true);
+    expect(field()).toEqual({ value: "Saved Message draft", readOnly: false, linkedTaskId: null });
+    expect(board.notes.message.text).toBe("Saved Message draft");
+    expect(history.entries).toHaveLength(1);
+    undo(); expect(field()).toEqual({ value: "Complete task", readOnly: true, linkedTaskId: "task" });
+    redo(); expect(field()).toEqual({ value: "Saved Message draft", readOnly: false, linkedTaskId: null });
+  });
+  it("uses the first linked Task in board order and follows edits of that Task", () => {
+    const message = note("message", "message", { text: "Own text" });
+    const first = note("first", "note", { task: { done: false, doneAt: null }, text: "First task" });
+    const second = note("second", "note", { task: { done: false, doneAt: null }, text: "Second task" });
+    replaceBoard([second, message, first]);
+    const edges = [edge("message", "first"), edge("second", "message")];
+    expect(messageTextFieldState(message, board.notes, edges, board.order)).toMatchObject({ value: "Second task", linkedTaskId: "second" });
+    board.notes.second.text = "Edited second task";
+    expect(messageTextFieldState(message, board.notes, edges, board.order).value).toBe("Edited second task");
+    board.order = ["first", "message", "second"];
+    expect(messageTextFieldState(message, board.notes, edges, board.order)).toMatchObject({ value: "First task", linkedTaskId: "first" });
+  });
+  it("keeps the Message editable when links are weak or point to a note without Task state", () => {
+    const message = note("message", "message", { text: "Own text" });
+    const ordinary = note("ordinary", "note", { text: "Ordinary note" });
+    const task = note("task", "note", { task: { done: false, doneAt: null }, text: "Task" });
+    const notes = { message, ordinary, task };
+    for (const edges of [[], [edge("message", "task", "weak")], [edge("ordinary", "message")]]) {
+      expect(messageTextFieldState(message, notes, edges)).toEqual({ value: "Own text", readOnly: false, linkedTaskId: null });
+    }
+  });
   it.each([true, false])("uses Task text and navigation in either strong direction (reversed=%s)", (reversed) => {
     const message = note("message", "message", { headerHidden: true, message: { sound: true, overhive: true } });
     const task = note("task", "note", { task: { done: false, doneAt: null }, text: "Task\nbody" });

@@ -9,7 +9,7 @@ import { board } from "../model/board.svelte";
 import { inboxMinHeight } from "../inbox/inboxLayout";
 import { userDictionary } from "../spell/dictionary.svelte";
 import { measureDictionaryHeightLimits } from "../spell/dictionarySizing";
-import { comboHostMinimumWidth } from "../combo/layout";
+import { comboHostMinimumWidth, comboMinimumHeightForNote } from "../combo/layout";
 import type { NoteFrame } from "./gestures";
 
 export { MIN_NOTE_WIDTH };
@@ -192,6 +192,13 @@ export function resizeNote(
   const hostedMinimumWidth = board.notes[initial.id]
     ? comboHostMinimumWidth(board.notes[initial.id])
     : null;
+  const hostedMinimumHeight = board.notes[initial.id]
+    ? comboMinimumHeightForNote(initial.id, board.notes[initial.id])
+    : null;
+  const minimumHeight = Math.max(
+    initial.minHeight ?? minimumHeightForKind(initial.type) * scale,
+    hostedMinimumHeight === null ? 0 : hostedMinimumHeight * scale,
+  );
   let x = initial.x;
   let y = initial.y;
   let width = initial.width;
@@ -233,14 +240,14 @@ export function resizeNote(
       }
     } else height = standaloneModule
       ? clampModuleHeight((bottom - initial.y) / scale, initial.type) * scale
-      : Math.max((initial.minHeight ?? minimumHeightForKind(initial.type) * scale), Math.min(maxHeight, bottom - initial.y));
+      : Math.max(minimumHeight, Math.min(maxHeight, bottom - initial.y));
   } else if (axes.vertical === "top") {
     let top = initial.y + delta.y;
     if (snap) top = snapToGrid({ x: 0, y: top }, step).y;
     const fixedBottom = initial.y + visualHeight;
     height = standaloneModule
       ? clampModuleHeight((fixedBottom - top) / scale, initial.type) * scale
-      : Math.max((initial.minHeight ?? minimumHeightForKind(initial.type) * scale), Math.min(maxHeight, fixedBottom - top));
+      : Math.max(minimumHeight, Math.min(maxHeight, fixedBottom - top));
     y = fixedBottom - height;
   }
 

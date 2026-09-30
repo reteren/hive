@@ -47,7 +47,7 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
     $activeDropTarget?.targetId === note.id && highlightsComboTextHost(activeComboDropPlan, note.id),
   );
   let comboMinimumWidth = $derived(comboHostMinimumWidth(note));
-  let emptyComboBodyMinimum = $derived(emptyComboBodyMinimumHeight(note));
+  let comboBodyMinimum = $derived(emptyComboBodyMinimumHeight(note));
 
   function beginRename(): void {
     draftName = note.name;
@@ -241,7 +241,7 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
     <div
       class="note-content"
       class:empty-auto-body={note.height === null && note.text.trim() === "" && (note.type === "note" || note.type === "pro" || note.type === "con")}
-      style:min-height={emptyComboBodyMinimum === null ? undefined : `${emptyComboBodyMinimum}px`}
+      class:combo-host-content={comboBodyMinimum !== null}
       data-combo-drop-target={comboDropTarget ? "host" : undefined}
       data-note-body
     >
@@ -454,5 +454,23 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
 
   .note-content :global(.note-body) {
     min-height: 1em;
+  }
+
+  .note-content.combo-host-content {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    overflow: visible;
+  }
+
+  .note-content.combo-host-content > :global(.note-body) {
+    flex: 1 0 auto;
+    min-height: 100px;
+  }
+
+  .note-content.combo-host-content > :global(.note-body.fixed-height) {
+    height: auto;
+    min-height: 100px;
+    overflow: visible;
   }
 </style>

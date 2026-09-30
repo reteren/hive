@@ -13,7 +13,13 @@ import { copyTimeForHost, parseEmbedSections, copyEmbedSections } from "../src/c
 import { canInsertCombo, comboSectionsFor, nextSectionState, planComboInsertion, sectionExpanded } from "../src/combo/logic";
 import { linkedMessagesForTime, taskMessageHostsForTime } from "../src/time/runtimeLogic";
 import { comboDropPlan, highlightsComboTextHost } from "../src/combo/dropLogic";
-import { COMBO_SECTION_WIDTH_UNITS, EMPTY_COMBO_BODY_MINIMUM_PX, emptyComboBodyMinimumHeight } from "../src/combo/layout";
+import {
+  COMBO_SECTION_WIDTH_UNITS,
+  EMPTY_COMBO_BODY_MINIMUM_PX,
+  comboMinimumHeightForNote,
+  comboMinimumHeightUnits,
+  emptyComboBodyMinimumHeight,
+} from "../src/combo/layout";
 import { canStartComboPulloutFrom } from "../src/combo/pulloutLogic";
 import { resizeNote } from "../src/selection/resize";
 
@@ -319,7 +325,7 @@ describe("COMBO3 regressions", () => {
     expect(combined.time).toMatchObject({ schedule: originalTime.schedule, view: "time" });
   });
 
-  it("sets empty text hosts with embedded sections to 2.5× the normal body minimum", () => {
+  it("sets text hosts with embedded sections to 2.5× the normal body minimum", () => {
     expect(emptyComboBodyMinimumHeight(makeNote("empty-message", "note", {
       text: "", message: messageData,
     }))).toBe(EMPTY_COMBO_BODY_MINIMUM_PX);
@@ -328,6 +334,49 @@ describe("COMBO3 regressions", () => {
     }))).toBe(EMPTY_COMBO_BODY_MINIMUM_PX);
     expect(EMPTY_COMBO_BODY_MINIMUM_PX).toBe(40 * 2.5);
     expect(emptyComboBodyMinimumHeight(makeNote("plain", "note", { text: "" }))).toBeNull();
-    expect(emptyComboBodyMinimumHeight(makeNote("filled", "note", { text: "Text", message: messageData }))).toBeNull();
+    expect(emptyComboBodyMinimumHeight(makeNote("filled", "note", { text: "Text", message: messageData })))
+      .toBe(EMPTY_COMBO_BODY_MINIMUM_PX);
+    expect(emptyComboBodyMinimumHeight(makeNote("plain-filled", "note", { text: "Text" }))).toBeNull();
+  });
+
+  it("keeps a combined note's body minimum and natural sections inside its minimum height", () => {
+    const messageHost = makeNote("message-host", "note", { message: messageData });
+    const bothSections = makeNote("both", "note", { message: messageData, time: timeData, headerHidden: true });
+    const expectedMessageHeight = (28 + 12 + 16 + 2 + EMPTY_COMBO_BODY_MINIMUM_PX + 55) / 10;
+
+    expect(comboMinimumHeightUnits(messageHost, {
+      headerHeightPx: 28,
+      frameChromeHeightPx: 12,
+      bodyPaddingHeightPx: 16,
+      borderHeightPx: 2,
+      sectionsNaturalHeightPx: 55,
+    })).toBe(expectedMessageHeight);
+    expect(comboMinimumHeightUnits(bothSections, {
+      frameChromeHeightPx: 12,
+      bodyPaddingHeightPx: 16,
+      borderHeightPx: 2,
+      sectionsNaturalHeightPx: 375,
+    })).toBe((12 + 16 + 2 + EMPTY_COMBO_BODY_MINIMUM_PX + 375) / 10);
+    expect(comboMinimumHeightUnits(makeNote("plain"))).toBeNull();
+    expect(comboMinimumHeightForNote("both", bothSections)).toBeGreaterThan(expectedMessageHeight);
+  });
+
+  it("clamps bottom and top resize handles above the combined layout minimum", () => {
+    const combined = makeNote("combined", "note", { height: 14, message: messageData, time: timeData });
+    replaceBoard([combined]);
+    const minimum = comboMinimumHeightForNote(combined.id, combined)!;
+    const frame = {
+      id: combined.id, x: combined.x, y: combined.y, width: combined.width, height: combined.height,
+      type: combined.type, scale: 1,
+    };
+
+    const bottom = resizeNote(frame, 14, "bottom", { x: 0, y: -100 }, false, 1);
+    expect(bottom.height).toBe(minimum);
+    expect(bottom.height).toBeGreaterThan(14);
+
+    const top = resizeNote(frame, 14, "top", { x: 0, y: 100 }, false, 1);
+    expect(top.height).toBe(minimum);
+    if (top.height === null) throw new Error("Combined note resize must return a concrete height.");
+    expect(top.y + top.height).toBeCloseTo(combined.y + 14);
   });
 });

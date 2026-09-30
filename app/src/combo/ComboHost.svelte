@@ -113,12 +113,12 @@
 </div>
 
 <style>
-  .combo-host { display: grid; gap: 0; min-width: 0; width: max-content; }
-  .combo-section { box-sizing: border-box; min-width: 0; max-width: none; user-select: none; }
+  .combo-host { display: flex; flex: 0 0 auto; flex-direction: column; align-items: flex-start; gap: 0; min-width: 0; width: max-content; margin-top: auto; }
+  .combo-section { box-sizing: border-box; flex: 0 0 auto; align-self: flex-start; min-width: 0; max-width: none; border-top: 1px solid #4b4d52; user-select: none; }
   .combo-section.drop-target { border-color: var(--accent); }
   .combo-section-title {
     display: flex; width: 100%; min-height: 25px; align-items: center; justify-content: space-between; gap: 5px;
-    padding: 3px 2px; border-top: 1px solid #4b4d52; color: var(--text-dim);
+    box-sizing: border-box; padding: 3px 2px; color: var(--text-dim);
     font-size: 10px; font-weight: 600;
   }
   .combo-section-toggle {
