@@ -54,21 +54,21 @@ describe("Message recipient resolution", () => {
     board.order = ["first", "message", "second"];
     expect(messageTextFieldState(message, board.notes, edges, board.order)).toMatchObject({ value: "First task", linkedTaskId: "first" });
   });
-  it("keeps the Message editable when links are weak or point to a note without Task state", () => {
+  it("locks the Message to a linked Task or Note over any line kind, in either direction", () => {
     const message = note("message", "message", { text: "Own text" });
     const ordinary = note("ordinary", "note", { text: "Ordinary note" });
     const task = note("task", "note", { task: { done: false, doneAt: null }, text: "Task" });
     const notes = { message, ordinary, task };
-    for (const edges of [[], [edge("message", "task", "weak")], [edge("ordinary", "message")]]) {
-      expect(messageTextFieldState(message, notes, edges)).toEqual({ value: "Own text", readOnly: false, linkedTaskId: null });
-    }
+    expect(messageTextFieldState(message, notes, [])).toEqual({ value: "Own text", readOnly: false, linkedTaskId: null });
+    expect(messageTextFieldState(message, notes, [edge("message", "task", "weak")])).toEqual({ value: "Task", readOnly: true, linkedTaskId: "task" });
+    expect(messageTextFieldState(message, notes, [edge("ordinary", "message")])).toEqual({ value: "Ordinary note", readOnly: true, linkedTaskId: "ordinary" });
   });
-  it.each([true, false])("uses Task text and navigation in either strong direction (reversed=%s)", (reversed) => {
+  it.each([true, false])("uses Task text and navigation in either direction and any line kind (reversed=%s)", (reversed) => {
     const message = note("message", "message", { headerHidden: true, message: { sound: true, overhive: true } });
     const task = note("task", "note", { task: { done: false, doneAt: null }, text: "Task\nbody" });
     const link = reversed ? edge(task.id, message.id) : edge(message.id, task.id);
     expect(resolveMessageContent(message, { message, task }, [link])).toMatchObject({ text: "Task\nbody", targetId: "task", headerHidden: true, sound: true, overhive: true });
-    expect(resolveMessageContent(message, { message, task }, [{ ...link, kind: "weak" }])).toMatchObject({ text: message.text, targetId: message.id });
+    expect(resolveMessageContent(message, { message, task }, [{ ...link, kind: "weak" }])).toMatchObject({ text: "Task\nbody", targetId: "task" });
   });
   it("chooses the first Task by board order and combines Message and Task importance by highest level", () => {
     const message = note("message", "message", { importance: "medium" });

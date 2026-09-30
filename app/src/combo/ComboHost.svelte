@@ -77,7 +77,6 @@
       class="combo-section"
       data-combo-section={section}
       class:drop-target={isDropTarget}
-      style:width={`${COMBO_SECTION_WIDTH_PX}px`}
       use:comboPullout={{ noteId: note.id, section }}
     >
       <div class="combo-section-title">
@@ -96,6 +95,7 @@
         <div
           class="combo-section-body"
           data-combo-part-body={section}
+          style:width={`${COMBO_SECTION_WIDTH_PX}px`}
         >
           {#if section === "message"}
             <div class="combo-message-settings" role="group" aria-label="Message settings">
@@ -113,8 +113,10 @@
 </div>
 
 <style>
-  .combo-host { display: flex; flex: 0 0 auto; flex-direction: column; align-items: flex-start; gap: 0; min-width: 0; width: max-content; margin-top: auto; }
-  .combo-section { box-sizing: border-box; flex: 0 0 auto; align-self: flex-start; min-width: 0; max-width: none; border-top: 1px solid #4b4d52; user-select: none; }
+  /* The divider line and the title row (with the collapse arrow at its end) follow the node width;
+     only the section controls keep their fixed width (user, debug 15). */
+  .combo-host { display: flex; flex: 0 0 auto; flex-direction: column; align-items: stretch; gap: 0; min-width: 0; width: 100%; margin-top: auto; }
+  .combo-section { box-sizing: border-box; flex: 0 0 auto; align-self: stretch; min-width: 0; max-width: none; border-top: 1px solid #4b4d52; user-select: none; }
   .combo-section.drop-target { border-color: var(--accent); }
   .combo-section-title {
     display: flex; width: 100%; min-height: 25px; align-items: center; justify-content: space-between; gap: 5px;
