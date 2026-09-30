@@ -30,6 +30,8 @@ import { sanitizeTrashEntries } from "../trash/serialization";
 import type { TimeNodeData, TimeSchedule, TimeRuntime, CountMode, ProjectTimeCounters } from "../time/types";
 import { copyStopwatchData, parseCalendarRule, parseStopwatchData } from "../time/data";
 import { copyEmbedSections, copyTimeForHost, parseEmbedSections } from "../combo/data";
+import type { ImageRef } from "../attachments/types";
+import { parseImageRef } from "../images/imageLogic";
 
 export interface IndexedNote {
   id: string;
@@ -63,6 +65,7 @@ export interface IndexedNote {
   headerHidden?: boolean;
   smoothLines?: boolean;
   smoothLineAnchors?: NonNullable<Note["smoothLineAnchors"]>;
+  image?: ImageRef;
   [key: string]: unknown;
 }
 
@@ -226,6 +229,7 @@ export function serializeProjectIndex(
       ...(note.customMarks?.length ? { customMarks: note.customMarks } : {}),
       ...(note.customMarkFrame ? { customMarkFrame: true } : {}),
       ...(note.listStats ? { listStats: true } : {}),
+      image: note.image ? { ...note.image } : undefined,
       headerHidden: note.headerHidden === true ? true : undefined,
       smoothLines: note.smoothLines === true ? true : undefined,
       smoothLineAnchors: note.smoothLines === true ? copySmoothLineAnchorSnapshot(note.smoothLineAnchors) : undefined,
@@ -298,6 +302,7 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       ...(entry.customMarks?.length ? { customMarks: entry.customMarks } : {}),
       ...(entry.customMarkFrame ? { customMarkFrame: true } : {}),
       ...(entry.listStats ? { listStats: true } : {}),
+      ...(entry.image ? { image: { ...entry.image } } : {}),
       ...(entry.headerHidden ? { headerHidden: true } : {}),
       ...(entry.smoothLines ? { smoothLines: true } : {}),
       ...(entry.smoothLines && entry.smoothLineAnchors
@@ -417,6 +422,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
   }
 
   const type = parseNoteKind(value.type);
+  const image = value.image === undefined ? undefined : parseImageRef(value.image);
   const file = typeof value.file === "string" && value.file.length > 0
     ? value.file
     : type === "calculator"
@@ -435,6 +441,13 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
   }
 
   const warnings: string[] = [];
+  if (value.image !== undefined && !image || type === "image" && !image) {
+    warnings.push(`Invalid or missing image data for note ${id}; the image placeholder will be shown.`);
+  }
+  if (type === "image" && height === null) {
+    height = image ? width * image.naturalHeight / image.naturalWidth : width;
+    warnings.push(`Missing image height for note ${id}; restored it from the image aspect ratio.`);
+  }
   const scale = value.scale === undefined ? undefined : isValidNoteScale(value.scale) ? value.scale : null;
   if (scale === null) warnings.push(`Invalid scale for note ${id}; defaulted to 1.`);
   if (value.type !== undefined && type === null) warnings.push(`Invalid type for note ${id}; defaulted to note.`);
@@ -513,6 +526,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
       importance,
       purposes: purposes.values,
       moods: moods.values,
+      image: image ?? undefined,
       color: type === "beacon" ? color ?? beaconPaletteColor(0) : color,
       zoneId,
       scope: parseScope(value.scope) ?? undefined,
@@ -547,7 +561,7 @@ function parseNoteKind(value: unknown): NoteKind | null {
   return value === "note" || value === "pro" || value === "con" ||
     value === "importance" || value === "purpose" || value === "mood" || value === "beacon" ||
     value === "goal" || value === "progress" || value === "calculator" || value === "tierlist" || value === "stats" ||
-    value === "archive" || value === "trash" ||
+    value === "archive" || value === "trash" || value === "image" ||
     value === "inbox" || value === "list" || value === "source" || value === "glossary" || value === "map" || value === "random" || value === "markas" || value === "time" || value === "message" || value === "calendar"
     ? value
     : null;

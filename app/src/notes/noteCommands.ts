@@ -25,6 +25,7 @@ import { registerNoteMenuItem } from "./noteMenu";
 import {
   captureSelectionSnapshot,
   clearSelection,
+  includeSelected,
   restoreSelectionSnapshot,
   selectOnly,
   selection,
@@ -36,6 +37,8 @@ import { MODULE_NOTE_HEIGHT, MODULE_NOTE_WIDTH } from "../modules/moduleLogic";
 import { beaconPaletteColor } from "../beacons/beaconPalette";
 import { restartTimeNode } from "../time/runtime.svelte";
 import { defaultAtTimeSchedule } from "../time/uiSchedule";
+import type { ImageRef } from "../attachments/types";
+import { imageNodeName, initialImageSize } from "../images/imageLogic";
 
 export const DEFAULT_MINI_NOTE_WIDTH = 18;
 
@@ -103,6 +106,50 @@ export function createNoteKind(kind: NoteKind): string {
   });
 
   return id;
+}
+
+/** Add imported pictures as independent image nodes with one history entry per import action. */
+export function createImageNotes(images: readonly ImageRef[], center: Point): string[] {
+  if (images.length === 0) return [];
+  const occupiedNames = Object.values(board.notes).map((note) => note.name);
+  const notes = images.map((image, index): Note => {
+    const size = initialImageSize(image);
+    const name = uniqueName(imageNodeName(image.name), occupiedNames);
+    occupiedNames.push(name);
+    const cascade = index * 2.2;
+    return {
+      id: newId(),
+      type: "image",
+      name,
+      text: "",
+      x: center.x + cascade - size.width / 2,
+      y: center.y + cascade - size.height / 2,
+      width: size.width,
+      height: size.height,
+      createdAt: Date.now(),
+      headerHidden: true,
+      image: { ...image },
+    };
+  });
+  const ids = notes.map((note) => note.id);
+  const startIndex = board.order.length;
+  const previousSelection = captureSelectionSnapshot();
+
+  execute({
+    label: "Import images",
+    target: `${notes.length} ${notes.length === 1 ? "image" : "images"}`,
+    do: () => {
+      notes.forEach((note, index) => addNote(note, startIndex + index));
+      clearSelection();
+      if (ids[0]) selectOnly(ids[0]);
+      for (const id of ids.slice(1)) includeSelected(id);
+    },
+    undo: () => {
+      for (const id of [...ids].reverse()) removeNote(id);
+      restoreSelectionSnapshot(previousSelection);
+    },
+  });
+  return ids;
 }
 
 /** Add a linked mini-node beside an existing node as one undoable board operation. */

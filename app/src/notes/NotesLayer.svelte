@@ -15,6 +15,8 @@
   import { formatPointAddress } from "../links-in-text/format";
   import TasksPanel from "../tasks/TasksPanel.svelte";
   import { boardPopupStyle, dismissBoardPopup, fitBoardPopupAnchor } from "../ui/boardAnchor";
+  import { imageFirstOrder } from "../images/imageLogic";
+  import { handleBoardImagePaste, registerImageDropHandler } from "../images/imageActions";
 
   registerNoteMenuItem({
     id: "notes.copyLink",
@@ -28,10 +30,13 @@
     return menu?.kind === "note" ? noteMenuItems(menu.noteId) : [];
   });
   let contextMenuZoomAtOpen = $state(1);
+  let orderedNoteIds = $derived(imageFirstOrder(board.order, board.notes));
 
   onMount(() => {
     const boardElement = document.querySelector<HTMLElement>(".board");
     if (!boardElement) return;
+    const unregisterImageDrop = registerImageDropHandler();
+    window.addEventListener("paste", handleBoardImagePaste, true);
 
     function onContextMenu(event: MouseEvent): void {
       const target = event.target instanceof Element ? event.target : null;
@@ -111,6 +116,8 @@
     boardElement.addEventListener("contextmenu", onContextMenu, true);
     window.addEventListener("click", onWindowClick, true);
     return () => {
+      unregisterImageDrop();
+      window.removeEventListener("paste", handleBoardImagePaste, true);
       boardElement.removeEventListener("contextmenu", onContextMenu, true);
       window.removeEventListener("click", onWindowClick, true);
     };
@@ -178,7 +185,7 @@
 
 <div class="notes-layer">
   <div class="notes-world" style:transform={worldTransform}>
-    {#each board.order as noteId (noteId)}
+    {#each orderedNoteIds as noteId (noteId)}
       {@const note = board.notes[noteId]}
       {#if note && note.type !== "beacon"}
         <NoteNode {note} measureHeight={observeAutoHeight} />

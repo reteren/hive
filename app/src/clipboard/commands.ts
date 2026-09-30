@@ -33,6 +33,7 @@ import { linkedTimeStatesForTask } from "../time/taskLink";
 import { restartTimeNode } from "../time/runtime.svelte";
 import { copyTimeNodeData } from "../time/data";
 import { copyTimeForHost } from "../combo/data";
+import { importClipboardItems, importImageFiles, viewportCenter } from "../images/imageActions";
 import {
   creationObstacleForNote,
   estimatedCreationHeight,
@@ -174,6 +175,10 @@ export async function pasteFromClipboard(): Promise<void> {
 
   try {
     const source = await readClipboard();
+    if (source.kind === "images") {
+      await importImageFiles(source.files, viewportCenter());
+      return;
+    }
     if (source.kind === "hive") {
       const copies = createCopies(source.payload.nodes, source.payload.zones, destination, source.payload.links);
       if (!copies) {
@@ -252,7 +257,7 @@ function selectIds(ids: readonly string[], zoneIds: readonly string[] = []): voi
 
 type CopySource = Omit<Pick<Note,
   "type" | "name" | "text" | "x" | "y" | "width" | "height" | "createdAt" |
-  "task" | "taskMemory" | "importance" | "purposes" | "embedSections"
+  "task" | "taskMemory" | "importance" | "purposes" | "embedSections" | "headerHidden" | "image"
 >, "time" | "message"> & {
   time?: Note["time"] | null;
   message?: Note["message"] | null;
@@ -316,6 +321,8 @@ function createCopies(
       ...(note.time ? { time: copyTimeForHost(note.type, note.time) } : {}),
       ...(note.message ? { message: { ...note.message } } : {}),
       ...(note.embedSections ? { embedSections: { ...note.embedSections } } : {}),
+      ...(note.headerHidden ? { headerHidden: true } : {}),
+      ...(note.image ? { image: { ...note.image } } : {}),
       importance: note.importance ?? null,
       purposes: [...new Set(note.purposes ?? [])],
       ...(note.type === "beacon" ? { color: note.color ?? beaconPaletteColor(0) } : note.color ? { color: note.color } : {}),
@@ -517,7 +524,10 @@ async function writeSelectionToClipboard(notes: readonly Note[], copiedZones: re
   }
 }
 
-type ClipboardSource = { kind: "hive"; payload: NonNullable<ReturnType<typeof parseNotesPayload>> } | { kind: "text"; text: string };
+type ClipboardSource =
+  | { kind: "hive"; payload: NonNullable<ReturnType<typeof parseNotesPayload>> }
+  | { kind: "images"; files: File[] }
+  | { kind: "text"; text: string };
 
 async function readClipboard(): Promise<ClipboardSource> {
   const clipboard = navigator.clipboard;
@@ -528,6 +538,8 @@ async function readClipboard(): Promise<ClipboardSource> {
   if (clipboard.read) {
     try {
       const items = await clipboard.read();
+      const imageFiles = await importClipboardItems(items);
+      if (imageFiles.length > 0) return { kind: "images", files: imageFiles };
       for (const item of items) {
         const customType = item.types.find((type) => MIME_FORMATS.includes(type as typeof MIME_FORMATS[number]));
         if (customType) {
@@ -569,6 +581,7 @@ function sameNotes(first: readonly Note[], second: readonly Note[]): boolean {
     return other && note.id === other.id && note.name === other.name && note.text === other.text &&
       note.type === other.type && note.x === other.x && note.y === other.y && note.width === other.width &&
       note.height === other.height && note.createdAt === other.createdAt &&
+      note.headerHidden === other.headerHidden && JSON.stringify(note.image ?? null) === JSON.stringify(other.image ?? null) &&
       JSON.stringify(note.task ?? null) === JSON.stringify(other.task ?? null) &&
       JSON.stringify(note.taskMemory ?? null) === JSON.stringify(other.taskMemory ?? null) &&
       note.importance === other.importance &&

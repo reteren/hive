@@ -22,6 +22,8 @@ import type { MessageNodeData, TimeNodeData } from "../time/types";
 import { copyTimeNodeData as cloneTimeNodeData, parseCalendarRule, parseStopwatchData } from "../time/data";
 import { defaultMessageData, parseMessageData } from "../messages/data";
 import { copyEmbedSections, copyTimeForHost, parseEmbedSections } from "../combo/data";
+import type { ImageRef } from "../attachments/types";
+import { parseImageRef } from "../images/imageLogic";
 
 export const HIVE_CLIPBOARD_MARKER = "hive/nodes";
 export const HIVE_CLIPBOARD_VERSION = 3;
@@ -50,6 +52,8 @@ export interface ClipboardNode {
   moods: MoodKind[];
   color?: string | null;
   zoneId?: string | null;
+  headerHidden?: boolean;
+  image?: ImageRef;
 }
 
 export interface ClipboardZone extends Omit<Zone, "id"> {
@@ -94,7 +98,7 @@ export function serializeNotes(
     marker: HIVE_CLIPBOARD_MARKER,
     version: HIVE_CLIPBOARD_VERSION,
     nodes: notes.map(({
-      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, time, message, embedSections, importance, purposes, moods, color, zoneId,
+      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, time, message, embedSections, importance, purposes, moods, color, zoneId, headerHidden, image,
     }) => ({
       sourceId: id,
       type,
@@ -115,6 +119,8 @@ export function serializeNotes(
       moods: [...new Set(moods ?? [])],
       color: color ?? null,
       zoneId: zoneId ?? null,
+      ...(headerHidden ? { headerHidden: true } : {}),
+      ...(image ? { image: { ...image } } : {}),
     })),
     links: links.flatMap((link) => noteIds.has(link.from) && noteIds.has(link.to)
       ? [{
@@ -330,7 +336,7 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     (value.type !== "note" && value.type !== "pro" && value.type !== "con" &&
       value.type !== "importance" && value.type !== "purpose" && value.type !== "mood" && value.type !== "beacon" &&
       value.type !== "goal" && value.type !== "progress" && value.type !== "calculator" &&
-      value.type !== "tierlist" && value.type !== "stats" && value.type !== "time" && value.type !== "message" && value.type !== "calendar") ||
+      value.type !== "tierlist" && value.type !== "stats" && value.type !== "time" && value.type !== "message" && value.type !== "calendar" && value.type !== "image") ||
     typeof value.name !== "string" || typeof value.text !== "string" ||
     !finite(value.x) || !finite(value.y) || !finite(value.width) || value.width <= 0 ||
     !(value.height === null || (finite(value.height) && value.height > 0)) ||
@@ -362,6 +368,9 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     ? null
     : typeof value.zoneId === "string" && value.zoneId.trim() ? value.zoneId : null;
   if (value.zoneId !== undefined && value.zoneId !== null && zoneId === null) return null;
+  const image = value.image === undefined ? null : parseImageRef(value.image);
+  if (value.image !== undefined && !image || value.type === "image" && (!image || !finite(value.height) || value.height <= 0) ||
+    value.headerHidden !== undefined && typeof value.headerHidden !== "boolean") return null;
 
   return {
     sourceId: value.sourceId,
@@ -383,6 +392,8 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     moods,
     color,
     zoneId,
+    ...(value.headerHidden === true ? { headerHidden: true } : {}),
+    ...(image ? { image } : {}),
   };
 }
 

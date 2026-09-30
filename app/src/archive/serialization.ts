@@ -7,12 +7,13 @@ import type { ArchiveEntry } from "../model/retention.svelte";
 import type { CountMode, TimeNodeData, TimeRuntime, TimeSchedule } from "../time/types";
 import { parseCalendarRule, parseStopwatchData } from "../time/data";
 import { copyTimeForHost, parseEmbedSections } from "../combo/data";
+import { parseImageRef } from "../images/imageLogic";
 import { copyArchivedLink, copyArchivedNote } from "./logic";
 
 const ARCHIVABLE_KINDS = new Set<NoteKind>([
   "note", "pro", "con", "importance", "purpose", "mood",
   "goal", "progress", "calculator", "tierlist", "stats",
-  "inbox", "list", "source", "glossary", "map", "random", "markas", "time", "message", "calendar",
+  "inbox", "list", "source", "glossary", "map", "random", "markas", "time", "message", "calendar", "image",
 ]);
 const LINK_SHAPES = new Set<Link["shape"]>(["base", "orthogonal", "zigzag", "wave"]);
 
@@ -20,7 +21,10 @@ export function copyArchiveEntry(entry: ArchiveEntry): ArchiveEntry {
   return {
     id: entry.id,
     archivedAt: entry.archivedAt,
-    note: copyArchivedNote(entry.note),
+    note: {
+      ...copyArchivedNote(entry.note),
+      ...(entry.note.image ? { image: { ...entry.note.image } } : {}),
+    },
     links: entry.links.map(copyArchivedLink),
     ...(entry.calculatorData ? { calculatorData: parseCalculatorData(entry.calculatorData) ?? undefined } : {}),
   };
@@ -88,7 +92,10 @@ function parseArchivedNote(value: unknown): Note | null {
   const time = parseTimeData(value.time);
   const message = parseMessageData(value.message);
   const embedSections = parseEmbedSections(value.embedSections);
+  const image = value.image === undefined ? null : parseImageRef(value.image);
   if (task === false || taskMemory === false) return null;
+  if (value.image !== undefined && !image || value.type === "image" && (!image || !finite(value.height) || value.height <= 0) ||
+    value.headerHidden !== undefined && typeof value.headerHidden !== "boolean") return null;
   if (value.time !== undefined && !time) return null;
   if (value.message !== undefined && !message || value.embedSections !== undefined && !embedSections) return null;
   if (value.importance !== undefined && value.importance !== null && !IMPORTANCE_LEVELS.includes(value.importance as typeof IMPORTANCE_LEVELS[number])) return null;
@@ -119,6 +126,8 @@ function parseArchivedNote(value: unknown): Note | null {
     ...(time ? { time: copyTimeForHost(value.type as NoteKind, time) } : {}),
     ...(value.type === "message" ? { message: message ?? defaultMessageData() } : message ? { message } : {}),
     ...(embedSections ? { embedSections } : {}),
+    ...(image ? { image } : {}),
+    ...(value.headerHidden === true ? { headerHidden: true } : {}),
     ...(value.importance ? { importance: value.importance as Note["importance"] } : {}),
     ...(value.purposes ? { purposes: value.purposes as Note["purposes"] } : {}),
     ...(value.moods ? { moods: value.moods as Note["moods"] } : {}),

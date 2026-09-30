@@ -7,6 +7,8 @@
   import { tool } from "../tools/tool.svelte";
   import { cancelLineDraft } from "../links/interaction.svelte";
   import { clearSelectedLink } from "../links/selection.svelte";
+  import { pickImageFiles, reportImportError } from "../attachments/service";
+  import { importImagePaths } from "../images/imageActions";
 
   let menuElement = $state<HTMLElement | null>(null);
 
@@ -83,6 +85,21 @@
 
   function createMessageFromMenu(): void {
     createNoteKind("message");
+    switchToSelectToolAfterCreation();
+    if (!creationMenu.pinned) closeCreationMenu();
+  }
+
+  async function createImagesFromMenu(): Promise<void> {
+    let paths: string[];
+    try {
+      paths = await pickImageFiles();
+    } catch (error) {
+      reportImportError(error instanceof Error ? error.message : String(error));
+      return;
+    }
+    if (paths.length === 0) return;
+    const created = await importImagePaths(paths, { x: camera.x, y: camera.y });
+    if (!created) return;
     switchToSelectToolAfterCreation();
     if (!creationMenu.pinned) closeCreationMenu();
   }
@@ -182,6 +199,10 @@
       <button class="create-item" type="button" data-create-kind="message" onclick={createMessageFromMenu}>
         <span class="r5-icon" aria-hidden="true"></span>
         <span>Message</span>
+      </button>
+      <button class="create-item" type="button" data-create-kind="image" onclick={createImagesFromMenu}>
+        <span class="r5-icon image-icon" aria-hidden="true"></span>
+        <span>Image…</span>
       </button>
     </div>
   </aside>
@@ -383,4 +404,8 @@
   .calendar-icon { position: relative; border-radius: 2px; }
   .calendar-icon::before { position: absolute; inset: 2px 2px auto; height: 2px; background: currentColor; content: ""; }
   .calendar-icon::after { position: absolute; inset: 6px 2px 2px; background: repeating-linear-gradient(90deg, currentColor 0 1px, transparent 1px 3px), repeating-linear-gradient(0deg, currentColor 0 1px, transparent 1px 3px); content: ""; }
+
+  .image-icon { position: relative; border-radius: 2px; }
+  .image-icon::before { position: absolute; inset: 2px; border: 1px solid currentColor; border-radius: 1px; content: ""; }
+  .image-icon::after { position: absolute; right: 3px; bottom: 3px; left: 3px; height: 5px; background: linear-gradient(140deg, transparent 0 27%, currentColor 29% 39%, transparent 41%), linear-gradient(40deg, transparent 0 41%, currentColor 43% 56%, transparent 58%); content: ""; }
 </style>

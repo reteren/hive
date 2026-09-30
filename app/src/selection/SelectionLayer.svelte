@@ -100,7 +100,7 @@ import { measureDictionaryHeightLimits } from "../spell/dictionarySizing";
     shouldSuppressAltNodeActivationClick,
     shouldToggleSelectedHeaderAfterGesture,
   } from "./noteMoveIntent";
-  import { hasResizeHandle, isFixedSizeNodeKind, isStandaloneModuleKind, maximumWidthForKind, minimumHeightForKind, RESIZE_EDGES, resizeEdgeAxes, type ResizeEdge } from "./resize";
+import { hasResizeHandle, isFixedSizeNodeKind, isStandaloneModuleKind, maximumWidthForKind, minimumHeightForKind, resizeNote, RESIZE_EDGES, resizeEdgeAxes, type ResizeEdge } from "./resize";
   import { resizeDoubleClickAction } from "./resizeDoubleClick";
   import { startNoteEditing } from "../editor/editorSession";
 import { isLineTool, tool } from "../tools/tool.svelte";
@@ -230,6 +230,7 @@ type PendingBoardMove =
   let layer: HTMLDivElement;
   let boardElement: HTMLElement | null = null;
   let activeGesture: ActivePointerGesture | null = null;
+  let imageResizeHintVisible = $state(false);
   let grabGesture: MoveGesture | null = null;
   let scaleModeGesture = $state<ScaleModeGesture | null>(null);
   let transformModeHint = $state<"Move" | "Scale" | null>(null);
@@ -1264,6 +1265,7 @@ type PendingBoardMove =
     const note = boardState.notes[id];
     if (!note) return;
     closeContextPick();
+    imageResizeHintVisible = false;
     activeGesture = {
       kind: "resize",
       pointerId: event.pointerId,
@@ -1542,13 +1544,34 @@ type PendingBoardMove =
     }
 
     if (gesture.kind === "resize") {
-      gesture.gesture = updateResizeGesture(
+      const updated = updateResizeGesture(
         gesture.gesture,
         adjustedWorld,
-        grid.snap || event.ctrlKey,
+        gesture.gesture.before.type === "image" && event.ctrlKey ? grid.snap : grid.snap || event.ctrlKey,
         grid.step,
         event.shiftKey,
       );
+      if (gesture.gesture.before.type === "image" && event.ctrlKey) {
+        const before = gesture.gesture.before;
+        const geometry = resizeNote(
+          before,
+          gesture.gesture.visualHeight,
+          gesture.gesture.edge,
+          {
+            x: adjustedWorld.x - gesture.gesture.startWorld.x,
+            y: adjustedWorld.y - gesture.gesture.startWorld.y,
+          },
+          grid.snap,
+          grid.step,
+          gesture.gesture.standaloneModule,
+          { maxWidth: before.maxWidth, maxHeight: before.maxHeight },
+          true,
+        );
+        gesture.gesture = { ...updated, after: { ...before, ...geometry } };
+      } else {
+        gesture.gesture = updated;
+      }
+      imageResizeHintVisible = gesture.gesture.before.type === "image" && gesture.started;
       applyFrames([gesture.gesture.after]);
       return;
     }
@@ -1569,6 +1592,7 @@ type PendingBoardMove =
     const gesture = activeGesture;
     if (!gesture || gesture.pointerId !== pointerId) return;
     activeGesture = null;
+    imageResizeHintVisible = false;
     if (gesture.kind === "move" || gesture.kind === "body-move") endMovingStacking();
     zoneCollisionHint = false;
 
@@ -1955,7 +1979,7 @@ type PendingBoardMove =
     const ids = new Set(frames.map((frame) => frame.id));
     const cards = [...boardElement.querySelectorAll<HTMLElement>(".note-card[data-note-id], .beacon-object[data-note-id]")]
       .filter((card) => ids.has(card.dataset.noteId ?? ""));
-    restoreMovingStacking = raiseMovingCards(cards);
+    restoreMovingStacking = raiseMovingCards(cards.filter((card) => card.dataset.kind !== "image"));
     movingVisuals.setTargets(fade ? cards : []);
   }
 
@@ -2074,7 +2098,8 @@ type PendingBoardMove =
     return axes.horizontal !== null && axes.vertical !== null;
   }
 
-  function resizeHandleTitle(edge: ResizeEdge, standaloneModule = false, scaleOnly = false): string {
+  function resizeHandleTitle(edge: ResizeEdge, standaloneModule = false, scaleOnly = false, kind?: NoteKind): string {
+    if (kind === "image") return `Resize from ${handleLabel(edge)}; hold Ctrl to keep proportions`;
     if (scaleOnly) return `Scale from ${handleLabel(edge)}; hold Shift while dragging`;
     if (standaloneModule) {
       return `Resize height from ${edge.startsWith("top") ? "top" : "bottom"}; hold Shift to scale uniformly`;
@@ -2173,8 +2198,8 @@ type PendingBoardMove =
                 ? `Scale ${outline.name} from ${handleLabel(edge)}`
                 : isStandaloneModuleKind(outline.kind)
                   ? `Resize ${outline.name} height from ${edge.startsWith("top") ? "top" : "bottom"}`
-                  : `Resize ${outline.name} from ${handleLabel(edge)}`}; hold Shift to scale uniformly`}
-              title={resizeHandleTitle(edge, isStandaloneModuleKind(outline.kind), !normalResize)}
+                  : `Resize ${outline.name} from ${handleLabel(edge)}`}; hold ${outline.kind === "image" ? "Ctrl to keep proportions" : "Shift to scale uniformly"}`}
+              title={resizeHandleTitle(edge, isStandaloneModuleKind(outline.kind), !normalResize, outline.kind)}
             ></button>
           {/if}
         {/each}
@@ -2224,6 +2249,10 @@ type PendingBoardMove =
 
   {#if zoneCollisionHint}
     <div class="zone-collision-hint" role="status">Zone stopped by another zone</div>
+  {/if}
+
+  {#if imageResizeHintVisible}
+    <div class="image-resize-hint" role="status">Ctrl: keep proportions</div>
   {/if}
 
   {#if selection.contextPick}
@@ -2412,6 +2441,20 @@ type PendingBoardMove =
     transform: translateX(-50%);
     padding: 4px 8px;
     border: 1px solid #765d2b;
+    border-radius: 3px;
+    background: rgba(35, 35, 35, 0.9);
+    color: var(--text);
+    font-size: 11px;
+    pointer-events: none;
+  }
+
+  .image-resize-hint {
+    position: absolute;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 4px 8px;
+    border: 1px solid #4c4c4c;
     border-radius: 3px;
     background: rgba(35, 35, 35, 0.9);
     color: var(--text);

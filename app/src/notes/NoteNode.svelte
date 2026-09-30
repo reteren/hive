@@ -17,12 +17,14 @@
   import ModuleNodeBody from "../modules/ModuleNodeBody.svelte";
   import MoodNodeBody from "../moods/MoodNodeBody.svelte";
   import CalendarNodeBody from "../calendar/CalendarNodeBody.svelte";
+  import ImageNodeBody from "../images/ImageNodeBody.svelte";
   import { nodeBodyFor } from "./nodeBodies";
   import { effectiveCustomMarkFrameColors, effectiveImportance } from "../modules/moduleActions.svelte";
   import { customMarkGradientFor } from "../markas/markasLogic";
   import { setTimeNodeView } from "../time/viewActions.svelte";
   import { canRenameNoteHeader } from "./noteMenu";
   import { startNoteEditing } from "../editor/editorSession";
+  import { selection } from "../selection/selection.svelte";
   import { tool } from "../tools/tool.svelte";
   import { zones } from "../model/zones.svelte";
   import { zoneOf } from "../zones/membership.svelte";
@@ -129,7 +131,7 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
 
   function beginEditingFromDoubleClick(event: MouseEvent): void {
     if (editing.noteId === note.id || !(event.target instanceof Element)) return;
-    if (note.type === "importance" || note.type === "purpose" || note.type === "mood" || note.type === "markas" || note.type === "calendar") return;
+    if (note.type === "importance" || note.type === "purpose" || note.type === "mood" || note.type === "markas" || note.type === "calendar" || note.type === "image") return;
     if (event.target.closest(".note-header, [data-text-link], input, button")) return;
     tool.active = "select";
     startNoteEditing(note.id, { x: event.clientX, y: event.clientY });
@@ -209,7 +211,7 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
       {/if}
     </header>
   {:else}
-    <header class="note-header hidden-note-header" data-note-header data-hidden-note-header aria-hidden="true">
+    <header class="note-header hidden-note-header" data-note-header data-hidden-note-header aria-hidden="true" ondblclick={startRename}>
       <TaskCheckbox {note} />
       <span class="note-name">{note.name}</span>
       {#if note.type === "time"}
@@ -261,6 +263,8 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
         <MoodNodeBody {note} />
       {:else if note.type === "calendar"}
         <CalendarNodeBody />
+      {:else if note.type === "image"}
+        <ImageNodeBody image={note.image} selected={selection.ids.includes(note.id)} name={note.name} />
       {:else}
         <NoteBody {note} />
       {/if}
@@ -432,6 +436,25 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
     background: var(--note-body);
     overflow-wrap: anywhere;
     user-select: text;
+  }
+
+  .note-card[data-kind="image"] > .note-frame {
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .note-card[data-kind="image"] .note-frame-edge {
+    display: none;
+  }
+
+  .note-card[data-kind="image"] .note-content {
+    grid-area: 1 / 1;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+    background: transparent;
+    user-select: none;
   }
 
   .zone-marker {

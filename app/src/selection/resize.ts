@@ -50,6 +50,7 @@ const RULES: Partial<Record<NoteKind, NodeResizeRule>> = {
   source: FIXED_RULE,
   markas: FIXED_RULE,
   tierlist: FIXED_RULE,
+  image: { width: "free", height: "free", handles: "all", groupDimensions: "scale" },
   list: { width: "locked", height: "free", handles: "bottom-if-shrinkable", groupDimensions: "preserve" },
   purpose: { width: "locked", height: "free", handles: "none", groupDimensions: "scale" },
   mood: { width: "locked", height: "free", handles: "none", groupDimensions: "scale" },
@@ -141,10 +142,11 @@ export function maximumWidthForKind(kind: NoteKind | undefined): number {
 }
 
 export function minimumWidthForKind(kind: NoteKind | undefined): number {
-  return kind === "map" ? MAP_MIN_WIDTH : defaultWidthForKind(kind);
+  return kind === "image" ? 4 : kind === "map" ? MAP_MIN_WIDTH : defaultWidthForKind(kind);
 }
 
 export function minimumHeightForKind(kind: NoteKind | undefined): number {
+  if (kind === "image") return 4;
   if (kind === "map") return MAP_MIN_HEIGHT;
   if (kind === "calendar") return CALENDAR_MIN_HEIGHT;
   const width = defaultWidthForKind(kind);
@@ -173,6 +175,7 @@ export function resizeNote(
   step: number,
   standaloneModule = false,
   limits: ResizeLimits = {},
+  preserveImageAspectRatio = false,
 ): ResizedGeometry {
   if (isFixedSizeNodeKind(initial.type)) {
     return { x: initial.x, y: initial.y, width: initial.width, height: initial.height };
@@ -188,7 +191,7 @@ export function resizeNote(
   const axes = resizeEdgeAxes(edge);
   const scale = normalizeNoteScale(initial.scale);
   const maxWidth = limits.maxWidth ?? initial.maxWidth ?? maximumWidthForKind(initial.type) * scale;
-  const maxHeight = initial.type === "map"
+  const maxHeight = initial.type === "image" || initial.type === "map"
     ? Number.POSITIVE_INFINITY
     : limits.maxHeight ?? initial.maxHeight ?? (initial.type ? MIN_NOTE_HEIGHT * 1.5 * scale : Number.POSITIVE_INFINITY);
   const hostedMinimumWidth = board.notes[initial.id]
@@ -207,6 +210,8 @@ export function resizeNote(
   let height = initial.height;
   const minimumWidth = initial.type === "map"
     ? initial.minWidth ?? MAP_MIN_WIDTH * scale
+    : initial.type === "image"
+      ? Math.max(4 * scale, initial.minWidth ?? 0)
     : Math.max(
       minimumWidthForKind(initial.type) * scale,
       hostedMinimumWidth === null ? 0 : hostedMinimumWidth * scale,
@@ -214,6 +219,21 @@ export function resizeNote(
         ? minimumTextWidthForNote(initial.id, maxWidth / scale) * scale
         : MIN_NOTE_WIDTH * scale),
     );
+
+  if (initial.type === "image" && preserveImageAspectRatio) {
+    return resizeImagePreservingAspect(
+      initial,
+      visualHeight,
+      edge,
+      delta,
+      snap,
+      step,
+      minimumWidth,
+      minimumHeight,
+      maxWidth,
+      maxHeight,
+    );
+  }
 
   if (!isResizeWidthLocked(initial.type) && !standaloneModule && axes.horizontal === "right") {
     let right = initial.x + initial.width + delta.x;
@@ -254,6 +274,63 @@ export function resizeNote(
   }
 
   return { x, y, width, height };
+}
+
+function resizeImagePreservingAspect(
+  initial: NoteFrame,
+  visualHeight: number,
+  edge: ResizeEdge,
+  delta: Point,
+  snap: boolean,
+  step: number,
+  minimumWidth: number,
+  minimumHeight: number,
+  maxWidth: number,
+  maxHeight: number,
+): ResizedGeometry {
+  const axes = resizeEdgeAxes(edge);
+  const initialWidth = Math.max(0.001, initial.width);
+  const initialHeight = Math.max(0.001, initial.height ?? visualHeight);
+  let scaleX = 1;
+  let scaleY = 1;
+
+  if (axes.horizontal === "right") {
+    const right = initial.x + initialWidth + delta.x;
+    const snappedRight = snap ? snapToGrid({ x: right, y: 0 }, step).x : right;
+    scaleX = (snappedRight - initial.x) / initialWidth;
+  } else if (axes.horizontal === "left") {
+    const left = initial.x + delta.x;
+    scaleX = (initial.x + initialWidth - (snap ? snapToGrid({ x: left, y: 0 }, step).x : left)) / initialWidth;
+  }
+  if (axes.vertical === "bottom") {
+    const bottom = initial.y + initialHeight + delta.y;
+    const snappedBottom = snap ? snapToGrid({ x: 0, y: bottom }, step).y : bottom;
+    scaleY = (snappedBottom - initial.y) / initialHeight;
+  } else if (axes.vertical === "top") {
+    const top = initial.y + delta.y;
+    scaleY = (initial.y + initialHeight - (snap ? snapToGrid({ x: 0, y: top }, step).y : top)) / initialHeight;
+  }
+
+  const corner = axes.horizontal !== null && axes.vertical !== null;
+  const requestedFactor = corner
+    ? Math.abs(scaleX - 1) >= Math.abs(scaleY - 1) ? scaleX : scaleY
+    : axes.horizontal !== null ? scaleX : scaleY;
+  const minimumFactor = Math.max(minimumWidth / initialWidth, minimumHeight / initialHeight);
+  const maximumFactor = Math.max(minimumFactor, Math.min(maxWidth / initialWidth, maxHeight / initialHeight));
+  const factor = Math.min(maximumFactor, Math.max(minimumFactor, requestedFactor));
+  const width = initialWidth * factor;
+  const height = initialHeight * factor;
+
+  return {
+    x: axes.horizontal === "left"
+      ? initial.x + initialWidth - width
+      : axes.horizontal === null ? initial.x - (width - initialWidth) / 2 : initial.x,
+    y: axes.vertical === "top"
+      ? initial.y + initialHeight - height
+      : axes.vertical === null ? initial.y - (height - initialHeight) / 2 : initial.y,
+    width,
+    height,
+  };
 }
 
 function minimumShrinkHeight(initial: NoteFrame, autoHeight: number): number {
