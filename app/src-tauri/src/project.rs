@@ -185,7 +185,7 @@ pub fn initialize_project(
                         .lock()
                         .map_err(|_| "project state is unavailable")? = Some(project.root.clone());
                     let mut project = project;
-                    enable_project_watch(&watcher, &mut project);
+                    enable_project_watch(&app, &watcher, &mut project);
                     return Ok(project.load);
                 }
                 Err(error) => {
@@ -224,7 +224,7 @@ pub fn initialize_project(
         .root
         .lock()
         .map_err(|_| "project state is unavailable")? = Some(project.root.clone());
-    enable_project_watch(&watcher, &mut project);
+    enable_project_watch(&app, &watcher, &mut project);
     Ok(project.load)
 }
 
@@ -255,7 +255,7 @@ pub fn create_project(
         .lock()
         .map_err(|_| "project state is unavailable")? = Some(project.root.clone());
     let mut project = project;
-    enable_project_watch(&watcher, &mut project);
+    enable_project_watch(&app, &watcher, &mut project);
     Ok(project.load)
 }
 
@@ -272,7 +272,7 @@ pub fn open_project(
         .root
         .lock()
         .map_err(|_| "project state is unavailable")? = Some(project.root.clone());
-    enable_project_watch(&watcher, &mut project);
+    enable_project_watch(&app, &watcher, &mut project);
     Ok(project.load)
 }
 
@@ -373,7 +373,10 @@ pub fn acknowledge_external_file_change(
     Ok(watcher.acknowledge_external_change(&path, text.as_deref().map(str::as_bytes)))
 }
 
-fn enable_project_watch(watcher: &ProjectWatcher, project: &mut OpenedProject) {
+fn enable_project_watch(app: &AppHandle, watcher: &ProjectWatcher, project: &mut OpenedProject) {
+    if let Err(error) = crate::attachments::refresh_asset_protocol_scope(app, &project.root) {
+        project.load.warnings.push(format!("Project images may not load: {error}"));
+    }
     let notes_directory = project.root.join(NOTES_DIRECTORY);
     if let Err(error) = watcher.watch_notes(&notes_directory) {
         project

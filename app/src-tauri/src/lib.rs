@@ -1,3 +1,4 @@
+mod attachments;
 mod backup;
 mod export;
 mod overhive;
@@ -157,6 +158,9 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            attachments::attachment_import_bytes,
+            attachments::attachment_import_path,
+            attachments::attachment_directory,
             set_quit_requested,
             configure_quick_input_shortcut,
             quick_input_shortcut::log_overview,

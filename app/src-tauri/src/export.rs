@@ -12,6 +12,7 @@ use crate::project::{active_project_root, validate_project_index_contents, Proje
 
 const INDEX_FILE_NAME: &str = "board.json";
 const BACKUPS_RELATIVE_PATH: &str = ".hive/backups";
+const ATTACHMENTS_POOL_DIRECTORY: &str = "attachments-pool";
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Serialize)]
@@ -45,7 +46,7 @@ pub fn import_project_zip(zip_path: String, destination_path: String) -> Result<
 #[tauri::command]
 pub fn project_storage_stats(state: State<'_, ProjectState>) -> Result<StorageStats, String> {
     let root = active_project_root(&state)?;
-    let project_bytes = directory_size(&root)
+    let project_bytes = directory_size_excluding(&root, &root.join(BACKUPS_RELATIVE_PATH))
         .map_err(|error| format!("could not measure project folder: {error}"))?;
     let backups = root.join(BACKUPS_RELATIVE_PATH);
     let (snapshot_count, snapshot_bytes) = snapshot_storage(&backups)?;
@@ -81,7 +82,7 @@ fn snapshot_storage(backups: &Path) -> Result<(u64, u64), String> {
     for entry in entries {
         let entry = entry.map_err(|error| format!("could not read snapshot entry: {error}"))?;
         let name = entry.file_name().to_string_lossy().into_owned();
-        if !is_snapshot_directory_name(&name) {
+        if name == ATTACHMENTS_POOL_DIRECTORY || !is_snapshot_directory_name(&name) {
             continue;
         }
         let metadata = fs::symlink_metadata(entry.path()).map_err(|error| {
@@ -107,6 +108,9 @@ fn snapshot_storage(backups: &Path) -> Result<(u64, u64), String> {
             )
         })?);
     }
+    bytes = bytes.saturating_add(directory_size(&backups.join(ATTACHMENTS_POOL_DIRECTORY)).map_err(|error| {
+        format!("could not measure pooled attachments: {error}")
+    })?);
     Ok((count, bytes))
 }
 
@@ -475,6 +479,20 @@ fn directory_size(path: &Path) -> io::Result<u64> {
     Ok(total)
 }
 
+fn directory_size_excluding(path: &Path, excluded: &Path) -> io::Result<u64> {
+    if path == excluded { return Ok(0); }
+    if !path.exists() { return Ok(0); }
+    let metadata = fs::symlink_metadata(path)?;
+    if metadata.file_type().is_symlink() { return Ok(0); }
+    if metadata.is_file() { return Ok(metadata.len()); }
+    if !metadata.is_dir() { return Ok(0); }
+    let mut total = 0_u64;
+    for entry in fs::read_dir(path)? {
+        total = total.saturating_add(directory_size_excluding(&entry?.path(), excluded)?);
+    }
+    Ok(total)
+}
+
 fn temporary_path(destination: &Path) -> PathBuf {
     let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
     let name = destination
@@ -574,6 +592,7 @@ mod tests {
         let destination = root.join("imported");
         fs::create_dir_all(source.join("notes")).expect("create notes");
         fs::create_dir_all(source.join("data")).expect("create data folder");
+        fs::create_dir_all(source.join("attachments")).expect("create attachments folder");
         fs::create_dir_all(source.join(".hive/removed")).expect("create retained project data");
         fs::create_dir_all(source.join(".hive/backups/snapshot-1")).expect("create backups");
         fs::create_dir_all(&destination).expect("create destination");
@@ -581,6 +600,8 @@ mod tests {
         fs::write(source.join("board.json"), board_index).expect("write board index");
         fs::write(source.join("notes/one.md"), "note body").expect("write note body");
         fs::write(source.join("data/attachment.bin"), [0_u8, 1, 2, 255]).expect("write other data");
+        let attachment_name = format!("{}.png", "a".repeat(64));
+        fs::write(source.join("attachments").join(&attachment_name), [8_u8, 9, 10]).expect("write image attachment");
         fs::write(
             source.join(".hive/removed/deleted.md"),
             "retained note file",
@@ -607,6 +628,10 @@ mod tests {
         assert_eq!(
             fs::read(destination.join("data/attachment.bin")).expect("read imported data"),
             [0_u8, 1, 2, 255]
+        );
+        assert_eq!(
+            fs::read(destination.join("attachments").join(&attachment_name)).expect("read imported attachment"),
+            [8_u8, 9, 10]
         );
         assert_eq!(
             fs::read_to_string(destination.join(".hive/removed/deleted.md"))

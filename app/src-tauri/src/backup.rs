@@ -1,4 +1,5 @@
 use crate::project::{self, ProjectState};
+use crate::attachments;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
@@ -14,6 +15,8 @@ const BACKUPS_DIRECTORY: &str = "backups";
 const INDEX_FILE: &str = "board.json";
 const NOTES_DIRECTORY: &str = "notes";
 const ATTACHMENTS_DIRECTORY: &str = "attachments";
+const ATTACHMENTS_POOL_DIRECTORY: &str = "attachments-pool";
+const ATTACHMENTS_MANIFEST: &str = "attachments.json";
 const META_FILE: &str = "snapshot.json";
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -84,9 +87,7 @@ pub fn backup_status(state: State<'_, ProjectState>) -> Result<BackupStatus, Str
 #[tauri::command]
 pub fn delete_backup(state: State<'_, ProjectState>, id: String) -> Result<(), String> {
     let root = project::active_project_root(&state)?;
-    let backup = backup_path(&root, &id)?;
-    ensure_real_directory(&backup)?;
-    fs::remove_dir_all(&backup).map_err(|error| format!("could not delete snapshot: {error}"))
+    delete_backup_at(&root, &id)
 }
 
 #[tauri::command]
@@ -122,6 +123,8 @@ fn create_backup_at(root: &Path) -> Result<BackupInfo, String> {
 
     let fingerprint = project_fingerprint(&root)?;
     let (hive_dir, backups_dir) = ensure_backup_directories(&root)?;
+    let attachments_pool = backups_dir.join(ATTACHMENTS_POOL_DIRECTORY);
+    ensure_directory_create_safe(&attachments_pool)?;
     let id = unique_snapshot_id(&backups_dir);
     let temp = backups_dir.join(format!(".tmp-{}-{}", std::process::id(), next_counter()));
     fs::create_dir(&temp)
@@ -130,17 +133,24 @@ fn create_backup_at(root: &Path) -> Result<BackupInfo, String> {
     let result = (|| {
         copy_file(&index_path, &temp.join(INDEX_FILE))?;
         copy_directory_tree(&notes_path, &temp.join(NOTES_DIRECTORY))?;
-        if has_attachments {
-            copy_directory_tree(&attachments_path, &temp.join(ATTACHMENTS_DIRECTORY))?;
-        }
-        if project_fingerprint(&temp)? != fingerprint {
+        let attachment_files = if has_attachments {
+            copy_attachments_to_pool(&attachments_path, &attachments_pool)?
+        } else {
+            Vec::new()
+        };
+        let manifest = serde_json::to_vec_pretty(&attachment_files)
+            .map_err(|error| format!("could not encode attachment manifest: {error}"))?;
+        write_new_file(&temp.join(ATTACHMENTS_MANIFEST), &manifest)
+            .map_err(|error| format!("could not write attachment manifest: {error}"))?;
+        if project_fingerprint(&root)? != fingerprint {
             return Err(
                 "project files changed while the snapshot was being written; try again".to_string(),
             );
         }
+        let snapshot_fingerprint = snapshot_fingerprint(&temp, &attachments_pool)?;
         let meta = SnapshotMeta {
             id: id.clone(),
-            fingerprint,
+            fingerprint: snapshot_fingerprint,
             note_count,
         };
         let meta_contents = serde_json::to_vec_pretty(&meta)
@@ -168,7 +178,7 @@ fn list_backups_at(root: &Path) -> Result<BackupListing, String> {
     for entry in entries {
         let entry = entry.map_err(|error| format!("could not read snapshot entry: {error}"))?;
         let id = entry.file_name().to_string_lossy().into_owned();
-        if !is_snapshot_id(&id) {
+        if id == ATTACHMENTS_POOL_DIRECTORY || !is_snapshot_id(&id) {
             continue;
         }
         let path = entry.path();
@@ -181,7 +191,8 @@ fn list_backups_at(root: &Path) -> Result<BackupListing, String> {
         backups.push(backup_info(&path, &id, meta.note_count)?);
     }
     backups.sort_by(|left, right| right.id.cmp(&left.id));
-    let total_size_bytes = backups.iter().map(|backup| backup.size_bytes).sum();
+    let total_size_bytes = backups.iter().map(|backup| backup.size_bytes).sum::<u64>()
+        .saturating_add(optional_directory_size(&backups_dir.join(ATTACHMENTS_POOL_DIRECTORY))?);
     Ok(BackupListing {
         backups,
         total_size_bytes,
@@ -218,7 +229,7 @@ fn validate_snapshot(path: &Path) -> Result<SnapshotMeta, String> {
         .map_err(|error| format!("could not read snapshot board.json: {error}"))?;
     project::validate_project_index_contents(&contents)?;
     ensure_real_directory(&path.join(NOTES_DIRECTORY))?;
-    let _ = optional_directory_present(&path.join(ATTACHMENTS_DIRECTORY))?;
+    let has_legacy_attachments = optional_directory_present(&path.join(ATTACHMENTS_DIRECTORY))?;
     let meta = read_snapshot_meta(path)?;
     let directory_id = path
         .file_name()
@@ -228,7 +239,24 @@ fn validate_snapshot(path: &Path) -> Result<SnapshotMeta, String> {
         return Err("snapshot metadata does not match its directory name".to_string());
     }
     let note_count = project::validate_project_index_contents(&contents)?;
-    if note_count != meta.note_count || project_fingerprint(path)? != meta.fingerprint {
+    let fingerprint = if let Some(files) = read_attachment_manifest(path)? {
+        if has_legacy_attachments {
+            return Err("snapshot contains both pooled and embedded attachments".to_string());
+        }
+        let pool = path.parent().ok_or_else(|| "snapshot has no parent folder".to_string())?
+            .join(ATTACHMENTS_POOL_DIRECTORY);
+        for file in &files {
+            let target = pool.join(file);
+            ensure_regular_file(&target)?;
+            let hash = file.split_once('.').map(|(hash, _)| hash).unwrap_or_default();
+            attachments::verify_existing_attachment(&target, hash)?;
+        }
+        snapshot_fingerprint(path, &pool)?
+    } else {
+        // Snapshots made before pooled storage keep their embedded attachments folder.
+        project_fingerprint(path)?
+    };
+    if note_count != meta.note_count || fingerprint != meta.fingerprint {
         return Err("snapshot contents do not match its integrity metadata".to_string());
     }
     Ok(meta)
@@ -241,6 +269,145 @@ fn read_snapshot_meta(path: &Path) -> Result<SnapshotMeta, String> {
         .map_err(|error| format!("could not read snapshot metadata: {error}"))?;
     serde_json::from_slice(&contents)
         .map_err(|error| format!("snapshot metadata is invalid: {error}"))
+}
+
+fn read_attachment_manifest(snapshot: &Path) -> Result<Option<Vec<String>>, String> {
+    let path = snapshot.join(ATTACHMENTS_MANIFEST);
+    match fs::symlink_metadata(&path) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("could not inspect attachment manifest: {error}")),
+        Ok(_) => ensure_regular_file(&path)?,
+    }
+    let contents = fs::read(&path).map_err(|error| format!("could not read attachment manifest: {error}"))?;
+    let files: Vec<String> = serde_json::from_slice(&contents)
+        .map_err(|error| format!("attachment manifest is invalid: {error}"))?;
+    let mut unique = HashSet::new();
+    for file in &files {
+        attachments::validate_attachment_filename(file)?;
+        if !unique.insert(file) {
+            return Err("attachment manifest contains duplicate file names".to_string());
+        }
+    }
+    Ok(Some(files))
+}
+
+fn copy_attachments_to_pool(source: &Path, pool: &Path) -> Result<Vec<String>, String> {
+    ensure_real_directory(source)?;
+    ensure_directory_create_safe(pool)?;
+    let mut entries = fs::read_dir(source)
+        .map_err(|error| format!("could not read attachments folder: {error}"))?
+        .map(|entry| entry.map_err(|error| format!("could not read attachment entry: {error}")))
+        .collect::<Result<Vec<_>, _>>()?;
+    entries.sort_by_key(|entry| entry.file_name());
+    let mut files = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        attachments::validate_attachment_filename(&name)?;
+        let file_type = entry.file_type().map_err(|error| format!("could not inspect attachment {name}: {error}"))?;
+        if !file_type.is_file() || file_type.is_symlink() {
+            return Err(format!("attachment {name} is not a regular file"));
+        }
+        let source_file = entry.path();
+        ensure_regular_file(&source_file)?;
+        let hash = name.split_once('.').map(|(hash, _)| hash).unwrap_or_default();
+        attachments::verify_existing_attachment(&source_file, hash)?;
+        let pooled = pool.join(&name);
+        match fs::symlink_metadata(&pooled) {
+            Ok(_) => {
+                ensure_regular_file(&pooled)?;
+                attachments::verify_existing_attachment(&pooled, hash)?;
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => copy_pool_file(&source_file, &pooled)?,
+            Err(error) => return Err(format!("could not inspect pooled attachment {name}: {error}")),
+        }
+        files.push(name);
+    }
+    Ok(files)
+}
+
+fn copy_pool_file(source: &Path, destination: &Path) -> Result<(), String> {
+    let filename = destination.file_name().and_then(|name| name.to_str()).unwrap_or("attachment");
+    let temporary = destination.with_file_name(format!(".tmp-{}-{}-{filename}", std::process::id(), next_counter()));
+    let result = (|| {
+        let mut input = fs::File::open(source).map_err(|error| format!("could not read attachment: {error}"))?;
+        let mut output = OpenOptions::new().write(true).create_new(true).open(&temporary)
+            .map_err(|error| format!("could not stage pooled attachment: {error}"))?;
+        io::copy(&mut input, &mut output).map_err(|error| format!("could not copy attachment to pool: {error}"))?;
+        output.sync_all().map_err(|error| format!("could not finish pooled attachment: {error}"))?;
+        drop(output);
+        match fs::hard_link(&temporary, destination) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                ensure_regular_file(destination)?;
+                let hash = destination.file_name().and_then(|name| name.to_str())
+                    .and_then(|name| name.split_once('.').map(|(hash, _)| hash)).unwrap_or_default();
+                attachments::verify_existing_attachment(destination, hash)
+            }
+            Err(error) => Err(format!("could not install pooled attachment: {error}")),
+        }
+    })();
+    let _ = fs::remove_file(&temporary);
+    result
+}
+
+fn snapshot_fingerprint(snapshot: &Path, pool: &Path) -> Result<String, String> {
+    let mut entries = vec![
+        (INDEX_FILE.to_string(), snapshot.join(INDEX_FILE)),
+        (ATTACHMENTS_MANIFEST.to_string(), snapshot.join(ATTACHMENTS_MANIFEST)),
+    ];
+    let notes = snapshot.join(NOTES_DIRECTORY);
+    let mut note_files = Vec::new();
+    collect_files(&notes, &mut note_files)?;
+    entries.extend(note_files.into_iter().map(|path| {
+        let relative = path.strip_prefix(snapshot).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+        (relative, path)
+    }));
+    if let Some(files) = read_attachment_manifest(snapshot)? {
+        for file in files {
+            entries.push((format!("{ATTACHMENTS_DIRECTORY}/{file}"), pool.join(file)));
+        }
+    }
+    fingerprint_entries(entries)
+}
+
+fn garbage_collect_attachment_pool(backups: &Path) -> Result<(), String> {
+    ensure_real_directory(backups)?;
+    let pool = backups.join(ATTACHMENTS_POOL_DIRECTORY);
+    if !optional_directory_present(&pool)? { return Ok(()); }
+    let entries = fs::read_dir(backups)
+        .map_err(|error| format!("could not inspect snapshots for attachment cleanup: {error}"))?;
+    let mut referenced = HashSet::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("could not read snapshot entry: {error}"))?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !is_snapshot_id(&name) { continue; }
+        let path = entry.path();
+        ensure_real_directory(&path)?;
+        if let Some(files) = read_attachment_manifest(&path)? {
+            referenced.extend(files);
+        }
+    }
+    let entries = fs::read_dir(&pool)
+        .map_err(|error| format!("could not list pooled attachments: {error}"))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("could not read pooled attachment: {error}"))?;
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().into_owned();
+        ensure_regular_file(&path)?;
+        attachments::validate_attachment_filename(&name)?;
+        if !referenced.contains(&name) {
+            fs::remove_file(&path).map_err(|error| format!("could not remove unused pooled attachment {name}: {error}"))?;
+        }
+    }
+    Ok(())
+}
+
+fn delete_backup_at(root: &Path, id: &str) -> Result<(), String> {
+    let backup = backup_path(root, id)?;
+    ensure_real_directory(&backup)?;
+    fs::remove_dir_all(&backup).map_err(|error| format!("could not delete snapshot: {error}"))?;
+    let backups = backup.parent().ok_or_else(|| "snapshot has no parent folder".to_string())?;
+    garbage_collect_attachment_pool(backups)
 }
 
 fn restore_snapshot_at(root: &Path, backup: &Path) -> Result<(), String> {
@@ -259,9 +426,19 @@ fn restore_snapshot_at(root: &Path, backup: &Path) -> Result<(), String> {
     let stage_result = (|| {
         copy_file(&backup.join(INDEX_FILE), &staged.join(INDEX_FILE))?;
         copy_directory_tree(&backup.join(NOTES_DIRECTORY), &staged.join(NOTES_DIRECTORY))?;
-        let backup_attachments = backup.join(ATTACHMENTS_DIRECTORY);
-        if optional_directory_present(&backup_attachments)? {
-            copy_directory_tree(&backup_attachments, &staged.join(ATTACHMENTS_DIRECTORY))?;
+        if let Some(files) = read_attachment_manifest(backup)? {
+            let pool = backup.parent().ok_or_else(|| "snapshot has no parent folder".to_string())?
+                .join(ATTACHMENTS_POOL_DIRECTORY);
+            let attachments = staged.join(ATTACHMENTS_DIRECTORY);
+            fs::create_dir(&attachments).map_err(|error| format!("could not prepare restored attachments: {error}"))?;
+            for file in files {
+                copy_file(&pool.join(&file), &attachments.join(&file))?;
+            }
+        } else {
+            let backup_attachments = backup.join(ATTACHMENTS_DIRECTORY);
+            if optional_directory_present(&backup_attachments)? {
+                copy_directory_tree(&backup_attachments, &staged.join(ATTACHMENTS_DIRECTORY))?;
+            }
         }
         Ok::<(), String>(())
     })();
@@ -484,6 +661,33 @@ fn check_project_health_at(root: &Path) -> HealthReport {
         findings.push(format!("notes/{file} has no board.json entry"));
     }
 
+    let mut attachment_references = HashSet::new();
+    collect_json_attachment_references(&value, &mut attachment_references);
+    match fs::read_dir(&notes_dir) {
+        Ok(entries) => {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|extension| extension.to_str()).is_some_and(|extension| extension.eq_ignore_ascii_case("md")) {
+                    if let Ok(text) = fs::read_to_string(path) {
+                        collect_inline_attachment_references(&text, &mut attachment_references);
+                    }
+                }
+            }
+        }
+        Err(_) => {}
+    }
+    let attachments_dir = root.join(ATTACHMENTS_DIRECTORY);
+    let mut attachment_references = attachment_references.into_iter().collect::<Vec<_>>();
+    attachment_references.sort();
+    for file in attachment_references {
+        let exists = attachments::validate_attachment_filename(&file).is_ok()
+            && ensure_real_directory(&attachments_dir).is_ok()
+            && ensure_regular_file(&attachments_dir.join(&file)).is_ok();
+        if !exists {
+            findings.push(format!("Missing attachment {file}"));
+        }
+    }
+
     if let Some(links) = index.get("links").and_then(Value::as_array) {
         for (position, link) in links.iter().enumerate() {
             let Some(link) = link.as_object() else {
@@ -590,13 +794,18 @@ fn project_fingerprint(root: &Path) -> Result<String, String> {
             collect_files(&directory, &mut files)?;
         }
     }
-    files.sort();
+    let entries = files.into_iter().map(|path| {
+        let relative = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+        (relative, path)
+    }).collect();
+    fingerprint_entries(entries)
+}
+
+fn fingerprint_entries(mut entries: Vec<(String, PathBuf)>) -> Result<String, String> {
+    entries.sort_by(|left, right| left.0.cmp(&right.0));
     let mut hash = 0xcbf29ce484222325_u64;
-    for path in files {
-        let relative = path
-            .strip_prefix(root)
-            .map_err(|_| "project file escaped its folder")?;
-        for byte in relative.to_string_lossy().replace('\\', "/").as_bytes() {
+    for (relative, path) in entries {
+        for byte in relative.as_bytes() {
             hash ^= u64::from(*byte);
             hash = hash.wrapping_mul(0x100000001b3);
         }
@@ -605,7 +814,7 @@ fn project_fingerprint(root: &Path) -> Result<String, String> {
         let bytes = fs::read(&path).map_err(|error| {
             format!(
                 "could not read project file {}: {error}",
-                relative.display()
+                relative
             )
         })?;
         for byte in bytes {
@@ -616,6 +825,42 @@ fn project_fingerprint(root: &Path) -> Result<String, String> {
         hash = hash.wrapping_mul(0x100000001b3);
     }
     Ok(format!("{hash:016x}"))
+}
+
+fn collect_json_attachment_references(value: &Value, output: &mut HashSet<String>) {
+    match value {
+        Value::Object(object) => {
+            let image_container = object.get("type").and_then(Value::as_str) == Some("image")
+                || object.get("kind").and_then(Value::as_str) == Some("image");
+            let image_ref = object.contains_key("mime") || object.contains_key("naturalWidth");
+            if image_container || image_ref {
+                if let Some(file) = object.get("file").and_then(Value::as_str) {
+                    output.insert(file.to_string());
+                }
+            }
+            for child in object.values() {
+                collect_json_attachment_references(child, output);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                collect_json_attachment_references(item, output);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_inline_attachment_references(text: &str, output: &mut HashSet<String>) {
+    let mut remaining = text;
+    while let Some(index) = remaining.find("att:") {
+        let after = &remaining[index + 4..];
+        let file = after.split([')', '}', '\n', '\r', ' ', '\t']).next().unwrap_or_default();
+        if !file.is_empty() {
+            output.insert(file.to_string());
+        }
+        remaining = after;
+    }
 }
 
 fn collect_files(directory: &Path, output: &mut Vec<PathBuf>) -> Result<(), String> {
@@ -737,6 +982,10 @@ fn optional_directory_present(path: &Path) -> Result<bool, String> {
             path.display()
         )),
     }
+}
+
+fn optional_directory_size(path: &Path) -> Result<u64, String> {
+    if optional_directory_present(path)? { directory_size(path) } else { Ok(0) }
 }
 
 fn commit_snapshot_directory(temp: &Path, destination: &Path) -> Result<(), String> {
@@ -893,8 +1142,8 @@ fn remove_path(path: &Path) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        check_project_health_at, commit_snapshot_directory, create_backup_at, list_backups_at,
-        restore_snapshot_at,
+        check_project_health_at, commit_snapshot_directory, create_backup_at, delete_backup_at,
+        list_backups_at, project_fingerprint, restore_snapshot_at,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -914,17 +1163,22 @@ mod tests {
         root
     }
 
+    fn write_attachment(root: &PathBuf, bytes: &[u8]) -> String {
+        let name = format!("{}.png", crate::attachments::sha256_hex(bytes));
+        fs::create_dir_all(root.join("attachments")).expect("create attachments folder");
+        fs::write(root.join("attachments").join(&name), bytes).expect("write attachment");
+        name
+    }
+
     #[test]
     fn snapshot_restore_round_trip_preserves_project_files_and_keeps_restore_point() {
         let root = project("round-trip");
-        fs::create_dir_all(root.join("attachments")).expect("create attachments folder");
-        fs::write(root.join("attachments/source.bin"), b"source attachment")
-            .expect("write attachment");
+        let original_attachment = b"source attachment";
+        let original_file = write_attachment(&root, original_attachment);
         let info = create_backup_at(&root).expect("create snapshot");
         fs::write(root.join("notes/First.md"), "changed note").expect("change live note");
         fs::write(root.join("notes/Extra.md"), "extra").expect("add live file");
-        fs::write(root.join("attachments/source.bin"), b"changed attachment")
-            .expect("change attachment");
+        let changed_file = write_attachment(&root, b"changed attachment");
         create_backup_at(&root).expect("snapshot current state before restore");
 
         restore_snapshot_at(&root, &root.join(".hive/backups").join(&info.id))
@@ -936,9 +1190,10 @@ mod tests {
         );
         assert!(!root.join("notes/Extra.md").exists());
         assert_eq!(
-            fs::read(root.join("attachments/source.bin")).expect("read attachment"),
-            b"source attachment"
+            fs::read(root.join("attachments").join(&original_file)).expect("read attachment"),
+            original_attachment
         );
+        assert!(!root.join("attachments").join(changed_file).exists());
         assert_eq!(
             list_backups_at(&root)
                 .expect("list snapshots")
@@ -946,6 +1201,48 @@ mod tests {
                 .len(),
             2
         );
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn pooled_attachment_is_collected_only_after_its_last_snapshot_is_deleted() {
+        let root = project("pool-gc");
+        let old_file = write_attachment(&root, b"old bytes");
+        let first = create_backup_at(&root).expect("create first snapshot");
+        fs::remove_file(root.join("attachments").join(&old_file)).expect("remove old attachment");
+        let new_file = write_attachment(&root, b"new bytes");
+        create_backup_at(&root).expect("create second snapshot");
+        let pool = root.join(".hive/backups/attachments-pool");
+        assert!(pool.join(&old_file).exists());
+        assert!(pool.join(&new_file).exists());
+
+        delete_backup_at(&root, &first.id).expect("delete first snapshot");
+
+        assert!(!pool.join(&old_file).exists());
+        assert!(pool.join(&new_file).exists());
+        assert_eq!(list_backups_at(&root).expect("list snapshots").backups.len(), 1);
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn restores_a_legacy_snapshot_with_embedded_attachments() {
+        let root = project("legacy-restore");
+        let snapshots = root.join(".hive/backups");
+        let legacy = snapshots.join("legacy-snapshot");
+        fs::create_dir_all(legacy.join("notes")).expect("create legacy notes");
+        fs::create_dir_all(legacy.join("attachments")).expect("create legacy attachments");
+        fs::copy(root.join("board.json"), legacy.join("board.json")).expect("copy legacy index");
+        fs::copy(root.join("notes/First.md"), legacy.join("notes/First.md")).expect("copy legacy note");
+        fs::write(legacy.join("attachments/old-photo.bin"), b"legacy attachment").expect("write legacy attachment");
+        let fingerprint = project_fingerprint(&legacy).expect("fingerprint legacy snapshot");
+        let meta = serde_json::json!({ "id": "legacy-snapshot", "fingerprint": fingerprint, "noteCount": 1 });
+        fs::write(legacy.join("snapshot.json"), serde_json::to_vec(&meta).expect("encode metadata")).expect("write metadata");
+        fs::write(root.join("notes/First.md"), "new live note").expect("change live project");
+
+        restore_snapshot_at(&root, &legacy).expect("restore old snapshot");
+
+        assert_eq!(fs::read_to_string(root.join("notes/First.md")).expect("read restored note"), "original note");
+        assert_eq!(fs::read(root.join("attachments/old-photo.bin")).expect("read restored attachment"), b"legacy attachment");
         fs::remove_dir_all(root).expect("remove fixture");
     }
 
@@ -1046,6 +1343,25 @@ mod tests {
             fs::read(root.join("board.json")).expect("read unchanged board"),
             board
         );
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn health_check_reports_missing_board_and_inline_attachments() {
+        let root = project("missing-attachments");
+        let board_file = format!("{}.png", "a".repeat(64));
+        let inline_file = format!("{}.jpg", "b".repeat(64));
+        let board = format!(
+            r#"{{"version":1,"notes":[{{"id":"image-1","name":"Photo","file":"Photo.md","x":1,"y":2,"width":30,"height":10,"type":"image","image":{{"file":"{board_file}","mime":"image/png","size":1,"naturalWidth":1,"naturalHeight":1}}}}],"links":[],"zones":[]}}"#
+        );
+        fs::write(root.join("board.json"), board).expect("write board with image ref");
+        fs::write(root.join("notes/Photo.md"), format!("![inline](att:{inline_file})"))
+            .expect("write inline image token");
+
+        let report = check_project_health_at(&root);
+
+        assert!(report.findings.contains(&format!("Missing attachment {board_file}")));
+        assert!(report.findings.contains(&format!("Missing attachment {inline_file}")));
         fs::remove_dir_all(root).expect("remove fixture");
     }
 }
