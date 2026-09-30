@@ -62,6 +62,7 @@ const MODULE_RULE: NodeResizeRule = { width: "locked", height: "free", handles: 
 const DEFAULT_RULE: NodeResizeRule = { width: "free", height: "free", handles: "all", groupDimensions: "scale" };
 export const MAP_MIN_WIDTH = 20;
 export const MAP_MIN_HEIGHT = 15;
+export const CALENDAR_MIN_HEIGHT = 34;
 
 export function resizeRuleForKind(kind: NoteKind | undefined): NodeResizeRule {
   if (kind) {
@@ -145,6 +146,7 @@ export function minimumWidthForKind(kind: NoteKind | undefined): number {
 
 export function minimumHeightForKind(kind: NoteKind | undefined): number {
   if (kind === "map") return MAP_MIN_HEIGHT;
+  if (kind === "calendar") return CALENDAR_MIN_HEIGHT;
   const width = defaultWidthForKind(kind);
   const initialHeight = kind === "beacon" ? BEACON_SIZE : kind === "importance" ? MODULE_NOTE_HEIGHT : null;
   return estimatedCreationHeight({ type: kind ?? "note", width, height: initialHeight, text: "" });

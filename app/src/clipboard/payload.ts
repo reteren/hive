@@ -330,7 +330,7 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     (value.type !== "note" && value.type !== "pro" && value.type !== "con" &&
       value.type !== "importance" && value.type !== "purpose" && value.type !== "mood" && value.type !== "beacon" &&
       value.type !== "goal" && value.type !== "progress" && value.type !== "calculator" &&
-      value.type !== "tierlist" && value.type !== "stats" && value.type !== "time" && value.type !== "message") ||
+      value.type !== "tierlist" && value.type !== "stats" && value.type !== "time" && value.type !== "message" && value.type !== "calendar") ||
     typeof value.name !== "string" || typeof value.text !== "string" ||
     !finite(value.x) || !finite(value.y) || !finite(value.width) || value.width <= 0 ||
     !(value.height === null || (finite(value.height) && value.height > 0)) ||

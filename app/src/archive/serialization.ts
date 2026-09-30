@@ -12,7 +12,7 @@ import { copyArchivedLink, copyArchivedNote } from "./logic";
 const ARCHIVABLE_KINDS = new Set<NoteKind>([
   "note", "pro", "con", "importance", "purpose", "mood",
   "goal", "progress", "calculator", "tierlist", "stats",
-  "inbox", "list", "source", "glossary", "map", "random", "markas", "time", "message",
+  "inbox", "list", "source", "glossary", "map", "random", "markas", "time", "message", "calendar",
 ]);
 const LINK_SHAPES = new Set<Link["shape"]>(["base", "orthogonal", "zigzag", "wave"]);
 

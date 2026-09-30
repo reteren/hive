@@ -60,7 +60,7 @@ export function createNoteKind(kind: NoteKind): string {
   const height = estimatedCreationHeight({
     type: kind,
     width,
-    height: kind === "beacon" ? BEACON_SIZE : kind === "importance" ? MODULE_NOTE_HEIGHT : kind === "trash" || kind === "archive" ? 40 : kind === "map" ? 30 : kind === "source" ? 24 : null,
+    height: kind === "beacon" ? BEACON_SIZE : kind === "calendar" ? 34 : kind === "importance" ? MODULE_NOTE_HEIGHT : kind === "trash" || kind === "archive" ? 40 : kind === "map" ? 30 : kind === "source" ? 24 : null,
     text: "",
   });
   const id = newId();
@@ -93,7 +93,7 @@ export function createNoteKind(kind: NoteKind): string {
       clearSelection();
       clearSelectedLink();
       selectOnly(id);
-      if (!isModule && kind !== "beacon" && !nodeBodyFor(kind)) editing.noteId = id;
+      if (!isModule && kind !== "beacon" && kind !== "calendar" && !nodeBodyFor(kind)) editing.noteId = id;
     },
     undo: () => {
       removeNote(id);
@@ -169,7 +169,7 @@ function makeNote(kind: NoteKind, id: string, position: Point, createdAt: number
       : kind === "importance" || kind === "purpose" || kind === "mood"
         ? MODULE_NOTE_WIDTH
         : DEFAULT_MINI_NOTE_WIDTH,
-    height: kind === "beacon" ? BEACON_SIZE : kind === "importance" ? MODULE_NOTE_HEIGHT : kind === "trash" || kind === "archive" ? 40 : kind === "map" ? 30 : kind === "source" ? 24 : null,
+    height: kind === "beacon" ? BEACON_SIZE : kind === "calendar" ? 34 : kind === "importance" ? MODULE_NOTE_HEIGHT : kind === "trash" || kind === "archive" ? 40 : kind === "map" ? 30 : kind === "source" ? 24 : null,
     createdAt,
     ...(kind === "importance" ? { importance: "basic" as const } : {}),
     ...(kind === "purpose" ? { purposes: [] } : {}),
@@ -203,6 +203,7 @@ function kindLabel(kind: NoteKind): string {
   if (kind === "markas") return "Mark as";
   if (kind === "time") return "Time";
   if (kind === "message") return "Message";
+  if (kind === "calendar") return "Calendar";
   return "Note";
 }
 

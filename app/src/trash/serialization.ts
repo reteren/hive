@@ -13,7 +13,7 @@ import { copyTrashEntry } from "./trash";
 const NOTE_KINDS = new Set<NoteKind>([
   "note", "pro", "con", "importance", "purpose", "mood", "beacon",
   "goal", "progress", "calculator", "tierlist", "stats", "archive", "trash",
-  "inbox", "list", "source", "glossary", "map", "random", "markas", "time", "message",
+  "inbox", "list", "source", "glossary", "map", "random", "markas", "time", "message", "calendar",
 ]);
 const LINK_SHAPES = new Set<Link["shape"]>(["base", "orthogonal", "zigzag", "wave"]);
 const MAX_ENTRIES = 10_000;

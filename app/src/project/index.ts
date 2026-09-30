@@ -548,7 +548,7 @@ function parseNoteKind(value: unknown): NoteKind | null {
     value === "importance" || value === "purpose" || value === "mood" || value === "beacon" ||
     value === "goal" || value === "progress" || value === "calculator" || value === "tierlist" || value === "stats" ||
     value === "archive" || value === "trash" ||
-    value === "inbox" || value === "list" || value === "source" || value === "glossary" || value === "map" || value === "random" || value === "markas" || value === "time" || value === "message"
+    value === "inbox" || value === "list" || value === "source" || value === "glossary" || value === "map" || value === "random" || value === "markas" || value === "time" || value === "message" || value === "calendar"
     ? value
     : null;
 }

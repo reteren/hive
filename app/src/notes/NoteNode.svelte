@@ -16,6 +16,7 @@
   import NoteModules from "../modules/NoteModules.svelte";
   import ModuleNodeBody from "../modules/ModuleNodeBody.svelte";
   import MoodNodeBody from "../moods/MoodNodeBody.svelte";
+  import CalendarNodeBody from "../calendar/CalendarNodeBody.svelte";
   import { nodeBodyFor } from "./nodeBodies";
   import { effectiveCustomMarkFrameColors, effectiveImportance } from "../modules/moduleActions.svelte";
   import { customMarkGradientFor } from "../markas/markasLogic";
@@ -128,7 +129,7 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
 
   function beginEditingFromDoubleClick(event: MouseEvent): void {
     if (editing.noteId === note.id || !(event.target instanceof Element)) return;
-    if (note.type === "importance" || note.type === "purpose" || note.type === "mood" || note.type === "markas") return;
+    if (note.type === "importance" || note.type === "purpose" || note.type === "mood" || note.type === "markas" || note.type === "calendar") return;
     if (event.target.closest(".note-header, [data-text-link], input, button")) return;
     tool.active = "select";
     startNoteEditing(note.id, { x: event.clientX, y: event.clientY });
@@ -258,6 +259,8 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
         <ModuleNodeBody {note} />
       {:else if note.type === "mood"}
         <MoodNodeBody {note} />
+      {:else if note.type === "calendar"}
+        <CalendarNodeBody />
       {:else}
         <NoteBody {note} />
       {/if}

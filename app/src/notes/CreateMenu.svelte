@@ -75,6 +75,12 @@
     if (!creationMenu.pinned) closeCreationMenu();
   }
 
+  function createCalendarFromMenu(): void {
+    createNoteKind("calendar");
+    switchToSelectToolAfterCreation();
+    if (!creationMenu.pinned) closeCreationMenu();
+  }
+
   function createMessageFromMenu(): void {
     createNoteKind("message");
     switchToSelectToolAfterCreation();
@@ -168,6 +174,10 @@
       <button class="create-item" type="button" data-create-kind="time" onclick={createTimeFromMenu}>
         <span class="r5-icon time-icon" aria-hidden="true"></span>
         <span>Time</span>
+      </button>
+      <button class="create-item" type="button" data-create-kind="calendar" onclick={createCalendarFromMenu}>
+        <span class="r5-icon calendar-icon" aria-hidden="true"></span>
+        <span>Calendar</span>
       </button>
       <button class="create-item" type="button" data-create-kind="message" onclick={createMessageFromMenu}>
         <span class="r5-icon" aria-hidden="true"></span>
@@ -369,4 +379,8 @@
 
   .time-icon::before { top: 2px; left: 4px; width: 1px; height: 3px; }
   .time-icon::after { top: 5px; left: 4px; width: 3px; height: 1px; }
+
+  .calendar-icon { position: relative; border-radius: 2px; }
+  .calendar-icon::before { position: absolute; inset: 2px 2px auto; height: 2px; background: currentColor; content: ""; }
+  .calendar-icon::after { position: absolute; inset: 6px 2px 2px; background: repeating-linear-gradient(90deg, currentColor 0 1px, transparent 1px 3px), repeating-linear-gradient(0deg, currentColor 0 1px, transparent 1px 3px); content: ""; }
 </style>
