@@ -139,7 +139,9 @@ function imageDecorations(view: EditorView, breakHistoryGroup: BreakHistoryGroup
           to,
           value: Decoration.replace({
             widget: new InlineImageWidget(from, to, raw, token, breakHistoryGroup),
-            block: true,
+            // Block decorations are not allowed from a ViewPlugin (CodeMirror throws "No tile at position");
+            // the widget is inline and laid out as a block by its own CSS instead.
+            block: false,
           }),
         });
         return false;

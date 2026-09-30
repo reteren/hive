@@ -9,6 +9,7 @@ import {
   type FileDropHandler,
   type ImportResult,
 } from "../attachments/service";
+import { dispatchImagePaste, registerImagePasteHandler } from "../attachments/pasteDispatch";
 import { screenToWorld, type Point } from "../board/cameraMath";
 import { createImageNotes } from "../notes/noteCommands";
 
@@ -80,6 +81,14 @@ export function imageDropHandler(paths: string[], target: Element | null, client
   return true;
 }
 
+/** Board fallback (priority 0) for image paste; Tierlist rows and the text editor take precedence. */
+export function registerImagePasteToBoard(): () => void {
+  return registerImagePasteHandler(0, (files) => {
+    void importImageFiles(files, viewportCenter());
+    return true;
+  });
+}
+
 export function registerImageDropHandler(): () => void {
   return registerFileDropHandler(0, imageDropHandler satisfies FileDropHandler);
 }
@@ -91,7 +100,7 @@ export function handleBoardImagePaste(event: ClipboardEvent): void {
   const files = clipboardImageFiles(event);
   if (files.length === 0) return;
   event.preventDefault();
-  void importImageFiles(files, { x: camera.x, y: camera.y });
+  dispatchImagePaste(files);
 }
 
 export function viewportCenter(): Point {

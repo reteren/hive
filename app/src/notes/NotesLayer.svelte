@@ -16,7 +16,7 @@
   import TasksPanel from "../tasks/TasksPanel.svelte";
   import { boardPopupStyle, dismissBoardPopup, fitBoardPopupAnchor } from "../ui/boardAnchor";
   import { imageFirstOrder } from "../images/imageLogic";
-  import { handleBoardImagePaste, registerImageDropHandler } from "../images/imageActions";
+  import { handleBoardImagePaste, registerImageDropHandler, registerImagePasteToBoard } from "../images/imageActions";
 
   registerNoteMenuItem({
     id: "notes.copyLink",
@@ -36,6 +36,7 @@
     const boardElement = document.querySelector<HTMLElement>(".board");
     if (!boardElement) return;
     const unregisterImageDrop = registerImageDropHandler();
+    const unregisterImagePaste = registerImagePasteToBoard();
     window.addEventListener("paste", handleBoardImagePaste, true);
 
     function onContextMenu(event: MouseEvent): void {
@@ -117,6 +118,7 @@
     window.addEventListener("click", onWindowClick, true);
     return () => {
       unregisterImageDrop();
+      unregisterImagePaste();
       window.removeEventListener("paste", handleBoardImagePaste, true);
       boardElement.removeEventListener("contextmenu", onContextMenu, true);
       window.removeEventListener("click", onWindowClick, true);

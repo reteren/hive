@@ -33,7 +33,8 @@ import { linkedTimeStatesForTask } from "../time/taskLink";
 import { restartTimeNode } from "../time/runtime.svelte";
 import { copyTimeNodeData } from "../time/data";
 import { copyTimeForHost } from "../combo/data";
-import { importClipboardItems, importImageFiles, viewportCenter } from "../images/imageActions";
+import { importClipboardItems } from "../images/imageActions";
+import { dispatchImagePaste } from "../attachments/pasteDispatch";
 import {
   creationObstacleForNote,
   estimatedCreationHeight,
@@ -176,7 +177,7 @@ export async function pasteFromClipboard(): Promise<void> {
   try {
     const source = await readClipboard();
     if (source.kind === "images") {
-      await importImageFiles(source.files, viewportCenter());
+      dispatchImagePaste(source.files);
       return;
     }
     if (source.kind === "hive") {

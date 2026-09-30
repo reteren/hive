@@ -44,7 +44,7 @@
       {image}
       alt={name}
       class="image-node-picture"
-      style="width:100%;height:100%;object-fit:contain;pointer-events:none;user-select:none"
+      style="width:100%;height:100%;object-fit:fill;pointer-events:none;user-select:none"
     />
   {:else if image && isGif}
     {#if url}
@@ -66,7 +66,7 @@
         {image}
         alt={name}
         class="image-node-picture"
-        style="width:100%;height:100%;object-fit:contain;pointer-events:none;user-select:none"
+        style="width:100%;height:100%;object-fit:fill;pointer-events:none;user-select:none"
       />
     {/if}
   {:else}
@@ -90,7 +90,7 @@
     display: block;
     width: 100%;
     height: 100%;
-    object-fit: contain;
+    object-fit: fill;
     image-rendering: auto;
     pointer-events: none;
     user-select: none;
