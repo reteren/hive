@@ -18,6 +18,7 @@ export const LIST_ICONS: Record<ListRowKind, ListIcon> = {
   mood: { label: "Mood", color: "#91bbcf", paths: ["M9 2.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13 M6 7h.01 M12 7h.01 M5.5 10.5q3.5 4 7 0"] },
   markas: { label: "Mark as", color: "#c4a1d9", paths: ["M2.5 3h6l7 7-5.5 5.5-7-7Z M5.5 5.5h.01"] },
   time: { label: "Time", color: "#7fc4d8", paths: ["M10 3.5a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13Z M10 6.5v3.8l2.6 1.6"] },
+  calendar: { label: "Calendar", color: "#8fc4a0", paths: ["M4 5.5h12v11H4Z M4 8.5h12 M7.5 3.5v3 M12.5 3.5v3"] },
   message: { label: "Message", color: "#e8c070", paths: ["M3.5 4.5h13v8.5h-7.5l-3.5 3v-3h-2Z"] },
   goal: { label: "Goal", color: "#d8b976", paths: ["M9 3a6 6 0 1 0 0 12 6 6 0 0 0 0-12 M9 6a3 3 0 1 0 0 6 3 3 0 0 0 0-6 M9 9l6-6"] },
   progress: { label: "Progress", color: "#91c8a4", paths: ["M3 5h12v8H3Z M6 7v4 M9 7v4"] },

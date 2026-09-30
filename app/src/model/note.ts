@@ -17,7 +17,7 @@ export type NoteKind =
   | "archive" | "trash"
   | "inbox" | "list" | "source" | "glossary" | "map" | "random"
   | "markas"
-  | "time" | "message";
+  | "time" | "message" | "calendar";
 
 /** R5 kinds, in create-menu order. */
 export const R5_KINDS = ["goal", "progress", "calculator", "tierlist", "stats"] as const;
@@ -29,10 +29,10 @@ export const R6_KINDS = ["archive", "trash"] as const;
 export const R7_KINDS = ["inbox", "list", "source", "glossary", "map", "random", "markas"] as const;
 
 /** R8 time and message nodes (contract in src/time/types.ts). */
-export const R8_KINDS = ["time", "message"] as const;
+export const R8_KINDS = ["time", "message", "calendar"] as const;
 
 /** Default R5 node widths (u), shared by creation and resize limits. */
-export const R5_BASE_WIDTHS = { goal: 30, progress: 30, calculator: 40, tierlist: 60, stats: 30, archive: 40, trash: 40, inbox: 30, list: 30, source: 34, glossary: 40, map: 40, random: 30, markas: 30, time: 30, message: 30 } as const;
+export const R5_BASE_WIDTHS = { goal: 30, progress: 30, calculator: 40, tierlist: 60, stats: 30, archive: 40, trash: 40, inbox: 30, list: 30, source: 34, glossary: 40, map: 40, random: 30, markas: 30, time: 30, message: 30, calendar: 36 } as const;
 
 /** Importance levels (R3.3): white / yellow / red / purple / rainbow. */
 export const IMPORTANCE_LEVELS = ["basic", "medium", "important", "immediately", "absolute"] as const;

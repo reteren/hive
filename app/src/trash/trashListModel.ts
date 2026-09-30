@@ -33,6 +33,7 @@ const noteKindLabels: Record<NoteKind, string> = {
   markas: "Mark as",
   time: "Time",
   message: "Message",
+  calendar: "Calendar",
 };
 
 /** Format one grouped delete entry for the list without counting its attached links as objects. */

@@ -19,8 +19,23 @@ export const DEFAULT_COUNT_MODE: CountMode = "calendar";
  * - "interval": fires `minutes` after its start, counted in `mode`; `repeat` restarts the count
  *   after each firing.
  */
+/**
+ * R8.7 calendar repeat rule for an "at" schedule (optional; absent = old behaviour: date → once,
+ * no date → every day). With a rule, `date` is ignored except as the first allowed day (null = today).
+ * - weekly: fires at `time` on the listed weekdays (0 = Sunday … 6 = Saturday).
+ * - workdays: Monday–Friday.
+ * - monthly: on day `day` (1–31) of every month; a shorter month fires on its last day.
+ * - yearly: every year on `month`/`day` (month 1–12); 29 February fires on 28 February in
+ *   non-leap years.
+ */
+export type CalendarRule =
+  | { type: "weekly"; days: number[] }
+  | { type: "workdays" }
+  | { type: "monthly"; day: number }
+  | { type: "yearly"; month: number; day: number };
+
 export type TimeSchedule =
-  | { kind: "at"; date: string | null; time: string }
+  | { kind: "at"; date: string | null; time: string; rule?: CalendarRule }
   | { kind: "interval"; minutes: number; mode: CountMode; repeat: boolean };
 
 /** Persisted runtime of one Time node (lives on the note, saved with the project). */
@@ -34,7 +49,12 @@ export interface TimeRuntime {
   lastCheckedAt?: number;
 }
 
-export type StopwatchMode = "project" | "node" | "active" | "app" | "manual";
+/**
+ * R8.8 session modes added: "session" = since hive was started this time; "taskCreated" = since the
+ * linked task (strong Task → Time) was created ("how long I have not been doing it"); "taskDone" =
+ * since that task was completed (shows no value while it is open).
+ */
+export type StopwatchMode = "project" | "node" | "active" | "app" | "manual" | "session" | "taskCreated" | "taskDone";
 
 export interface StopwatchData {
   mode: StopwatchMode;
