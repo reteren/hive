@@ -7,6 +7,7 @@ import { grid } from "../board/grid.svelte";
 import { estimatedCreationHeight, notePositionAt } from "../notes/creationPosition";
 import { editing } from "../notes/editing.svelte";
 import { clearSelectedLink } from "../links/selection.svelte";
+import type { ImageRef } from "../attachments/types";
 import {
   captureSelectionSnapshot,
   clearSelection,
@@ -93,6 +94,15 @@ export function addTextTierCard(noteId: string, rowId: string): string {
   const card: TierCard = { id: newId(), kind: "text", text: "" };
   changeTierlist(noteId, "Add tier card", addTierCard(rowsForTierlist(noteId), rowId, card));
   return card.id;
+}
+
+/** Add every successfully imported image from one picker, paste, or drop as one Undo step. */
+export function addImageTierCards(noteId: string, rowId: string, images: readonly ImageRef[]): string[] {
+  if (images.length === 0) return [];
+  const cards: TierCard[] = images.map((image) => ({ id: newId(), kind: "image", image: { ...image } }));
+  const nextRows = cards.reduce((next, card) => addTierCard(next, rowId, card), rowsForTierlist(noteId));
+  if (!changeTierlist(noteId, images.length === 1 ? "Add image card" : "Add image cards", nextRows)) return [];
+  return cards.map(({ id }) => id);
 }
 
 export function addNoteTierCard(noteId: string, rowId: string, sourceNoteId: string): HistoryCommand | null {

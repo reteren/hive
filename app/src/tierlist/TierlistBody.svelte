@@ -14,7 +14,19 @@
   import { camera, viewport } from "../board/camera.svelte";
   import { screenToWorld, worldToScreen, type Point } from "../board/cameraMath";
   import { activeDropTarget, registerDropTarget, type DropTargetMatch } from "../selection/dropTargets";
+  import AttachmentImage from "../attachments/AttachmentImage.svelte";
+  import { registerImagePasteHandler } from "../attachments/pasteDispatch";
   import {
+    importImageFile,
+    importImagePath,
+    pickImageFiles,
+    registerFileDropHandler,
+    reportImportError,
+    type ImportResult,
+  } from "../attachments/service";
+  import type { ImageRef } from "../attachments/types";
+  import {
+    addImageTierCards,
     addNoteTierCard,
     addTextTierCard,
     addTierlistRow,
@@ -105,6 +117,7 @@
   let cardInsertionIndicator: HTMLSpanElement | null = null;
   let cardInsertionIndicatorRoot: HTMLElement | null = null;
   let cardDropTargetArea: HTMLElement | null = null;
+  let hoveredRowId: string | null = null;
 
   const rowColors = ["#FF4B5C", "#FFB347", "#FFE66D", "#C3FF68", "#7DFFB3", "#5CD8FF", "#9F8BFF", DEFAULT_NEW_TIER_COLOR];
 
@@ -125,6 +138,21 @@
     const target = tierCardDropTargetAt(point, measureTierRows());
     return target ? { kind: "tierlist", noteId: note.id, rowId: target.rowId, index: target.index } : null;
   }));
+
+  onMount(() => {
+    const unregisterFileDrop = registerFileDropHandler(30, handleTierlistFileDrop);
+    const unregisterImagePaste = registerImagePasteHandler(30, (files) => {
+      const activeElement = document.activeElement instanceof Element ? document.activeElement : null;
+      const rowId = rowIdAt(activeElement) ?? hoveredRowId;
+      if (!rowId) return false;
+      void importImageFilesIntoRow(rowId, files);
+      return true;
+    });
+    return () => {
+      unregisterFileDrop();
+      unregisterImagePaste();
+    };
+  });
 
   $effect(() => {
     const preview = $contentDragPreview;
@@ -238,6 +266,60 @@
     void tick().then(() => cardInput?.focus());
   }
 
+  async function addImageFromPicker(rowId: string): Promise<void> {
+    const paths = await pickImageFiles();
+    if (paths.length > 0) await importImagePathsIntoRow(rowId, paths);
+  }
+
+  async function importImagePathsIntoRow(rowId: string, paths: string[]): Promise<void> {
+    const results = await Promise.all(paths.map((path) => importImagePath(path)));
+    commitImageImports(rowId, results);
+  }
+
+  async function importImageFilesIntoRow(rowId: string, files: File[]): Promise<void> {
+    const results = await Promise.all(files.map((file) => importImageFile(file)));
+    commitImageImports(rowId, results);
+  }
+
+  function commitImageImports(rowId: string, results: readonly ImportResult[]): void {
+    const images: ImageRef[] = [];
+    const errors: string[] = [];
+    for (const result of results) {
+      if (result.ok) images.push(result.image);
+      else errors.push(result.error);
+    }
+    if (errors.length > 0) reportImportError(errors.join("\n"));
+    if (images.length === 0 || !rows.some((row) => row.id === rowId)) return;
+
+    dismissTierHints();
+    const cardIds = addImageTierCards(note.id, rowId, images);
+    if (cardIds.length > 0) selectedCard = { rowId, cardId: cardIds[0] };
+  }
+
+  function handleTierlistFileDrop(
+    paths: string[],
+    target: Element | null,
+    client: { x: number; y: number },
+  ): boolean {
+    if (paths.length === 0 || !root) return false;
+    const hit = target ?? document.elementFromPoint(client.x, client.y);
+    const rowId = rowIdAt(hit);
+    if (!rowId) return false;
+    void importImagePathsIntoRow(rowId, paths);
+    return true;
+  }
+
+  function rowIdAt(element: Element | null): string | null {
+    const rowElement = element?.closest<HTMLElement>("[data-tier-row-id]");
+    const rowId = rowElement?.dataset.tierRowId;
+    return rowElement && root?.contains(rowElement) && rowId && rows.some((row) => row.id === rowId) ? rowId : null;
+  }
+
+  function imageCardWidth(image: ImageRef): string {
+    const contentHeight = 54;
+    return `${Math.max(72, contentHeight * image.naturalWidth / image.naturalHeight + 2)}px`;
+  }
+
   function beginEditCard(row: TierRow, card: TierCard, event: MouseEvent): void {
     event.stopPropagation();
     selectedCard = { rowId: row.id, cardId: card.id };
@@ -334,6 +416,7 @@
   }
 
   function handlePointerDragMove(event: PointerEvent): void {
+    hoveredRowId = rowIdAt(event.target instanceof Element ? event.target : null);
     const drag = activePointerDrag;
     if (!drag || drag.pointerId !== event.pointerId) return;
     event.stopPropagation();
@@ -650,6 +733,7 @@
   aria-label={`Tierlist ${note.name}`}
   bind:this={root}
   onpointermove={handlePointerDragMove} onpointerup={handlePointerDragUp}
+  onpointerleave={() => { hoveredRowId = null; }}
   onpointercancel={handlePointerDragCancel} onlostpointercapture={handleLostPointerCapture}
 >
   {#each displayRows as row (row.id)}
@@ -728,7 +812,7 @@
         {#each row.displayCards as entry (entry.id)}
           <div class="tier-card-wrap" animate:flip={{ duration: preferences.reduceAnimations ? 0 : 140 }}
             data-tier-card-id={entry.card?.id} data-tier-card-slot={entry.card ? undefined : ""}
-            style:width={entry.card ? undefined : `${$contentDragPreview?.width ?? 92}px`}
+            style:width={entry.card?.kind === "image" ? imageCardWidth(entry.card.image) : entry.card ? undefined : `${$contentDragPreview?.width ?? 92}px`}
             style:min-height={entry.card ? undefined : `${Math.max(56, $contentDragPreview?.height ?? 56)}px`}>
           {#if entry.card}
           {@const card = entry.card}
@@ -752,10 +836,11 @@
             {:else}
               <button
                 class="tier-card"
+                class:image-card={preview.kind === "image"}
                 class:selected={selectedCard?.cardId === card.id}
                 class:missing={preview.kind === "note" && preview.missing}
                 type="button"
-                aria-label={preview.kind === "text" ? `Text card: ${preview.text || "empty"}` : `Node preview: ${preview.name}`}
+                aria-label={preview.kind === "text" ? `Text card: ${preview.text || "empty"}` : preview.kind === "image" ? `Image card: ${preview.name}` : `Node preview: ${preview.name}`}
                 aria-pressed={selectedCard?.cardId === card.id}
                 onfocus={() => { selectedCard = { rowId: row.id, cardId: card.id }; }}
                 onclick={() => { selectedCard = { rowId: row.id, cardId: card.id }; }}
@@ -765,6 +850,8 @@
               >
                 {#if preview.kind === "text"}
                   <span>{preview.text || "Double-click to edit"}</span>
+                {:else if preview.kind === "image"}
+                  <AttachmentImage image={preview.image} alt={preview.name} class="tier-card-image" style="display:block;width:100%;height:54px;object-fit:contain;" />
                 {:else}
                   <strong>{preview.name}</strong>
                   {#if !preview.missing}
@@ -793,6 +880,15 @@
           {:else}<span class="tier-card-slot" aria-hidden="true"></span>{/if}
           </div>
         {/each}
+        <button
+          class="tier-add-image"
+          type="button"
+          data-selection-ignore
+          aria-label={`Add image to ${row.name} tier`}
+          onclick={(event) => { event.stopPropagation(); void addImageFromPicker(row.id); }}
+          onpointerdown={(event) => event.stopPropagation()}
+          ondblclick={(event) => event.stopPropagation()}
+        >Add image…</button>
         {#if row.displayCards.length === 0 && !hintsDismissed}
           <span class="tier-empty-hint" data-tier-hint>Double-click to add a text card or drop a node here</span>
         {/if}
@@ -986,10 +1082,14 @@
   .tier-card:hover { border-color: #747981; }
   .tier-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px #f5cd4d50; }
   .tier-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .tier-card.image-card { box-sizing: border-box; height: 56px; min-height: 56px; max-height: 56px; padding: 0; }
+  :global(.tier-card-image) { max-width: none; border-radius: 3px; }
   .tier-card.missing { border-style: dashed; color: #aaa; background: #242529; }
   .tier-card strong { overflow: hidden; color: #f0e4c9; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
   .tier-card.missing strong { display: -webkit-box; font-size: 9px; text-overflow: clip; white-space: normal; line-clamp: 2; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
   .tier-card span { display: -webkit-box; overflow: hidden; color: #bfc1c6; font-size: 10px; line-height: 1.25; white-space: pre-line; line-clamp: 3; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+  .tier-add-image { min-height: 56px; align-self: flex-start; padding: 6px 9px; border: 1px dashed #4a4e55; border-radius: 4px; color: #aeb2ba; background: #25272b; font: inherit; font-size: 10px; white-space: nowrap; cursor: pointer; }
+  .tier-add-image:hover, .tier-add-image:focus-visible { border-color: var(--accent); color: #f2d277; background: #2c2a22; }
   .tier-card-editor { box-sizing: border-box; width: 100%; min-height: 56px; max-height: 80px; resize: vertical; padding: 7px 15px 6px 7px; border: 0; outline: 0; overflow: auto; color: #dedfe2; background: transparent; font: inherit; font-size: 10px; user-select: text; }
   .tier-card-delete { position: absolute; z-index: 1; top: 2px; right: 2px; display: grid; width: 14px; height: 14px; place-items: center; padding: 0; border: 0; border-radius: 3px; color: #92959c; background: #292c31; font-size: 14px; line-height: 1; cursor: pointer; opacity: 0; }
   .tier-card-wrap:hover .tier-card-delete, .tier-card-wrap:focus-within .tier-card-delete { opacity: 1; }

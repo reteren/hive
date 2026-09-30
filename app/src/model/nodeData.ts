@@ -11,7 +11,7 @@ export type NodeScope =
   | { kind: "beacon"; id: string };
 
 /** A card in a Tierlist row: free text, or a live read-only preview of a board node (H28/H29). */
-import type { ImageRef } from "../attachments/types";
+import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
 
 export type TierCard =
   | { id: string; kind: "text"; text: string }
@@ -63,6 +63,13 @@ export function calculatorKey(name: string): string {
 }
 
 const HEX = /^#[0-9a-f]{6}$/i;
+const TIER_IMAGE_EXTENSIONS: Record<(typeof IMAGE_MIME_TYPES)[number], readonly string[]> = {
+  "image/png": ["png"],
+  "image/jpeg": ["jpg", "jpeg"],
+  "image/gif": ["gif"],
+  "image/webp": ["webp"],
+  "image/bmp": ["bmp"],
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -70,6 +77,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function nonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
+}
+
+function parseTierImageRef(value: unknown): ImageRef | null {
+  if (!isRecord(value) || !nonEmptyString(value.file) || !/^[0-9a-f]{64}\.[a-z0-9]{1,8}$/.test(value.file)) return null;
+  const mime = IMAGE_MIME_TYPES.find((candidate) => candidate === value.mime);
+  const extension = value.file.slice(value.file.lastIndexOf(".") + 1);
+  if (!mime || !TIER_IMAGE_EXTENSIONS[mime].includes(extension)) return null;
+  if (typeof value.size !== "number" || !Number.isSafeInteger(value.size) || value.size < 1) return null;
+  if (typeof value.naturalWidth !== "number" || !Number.isSafeInteger(value.naturalWidth) || value.naturalWidth < 1) return null;
+  if (typeof value.naturalHeight !== "number" || !Number.isSafeInteger(value.naturalHeight) || value.naturalHeight < 1) return null;
+  if (value.name !== undefined && typeof value.name !== "string") return null;
+  return {
+    file: value.file,
+    mime,
+    size: value.size,
+    naturalWidth: value.naturalWidth,
+    naturalHeight: value.naturalHeight,
+    ...(typeof value.name === "string" ? { name: value.name } : {}),
+  };
 }
 
 export function parseScope(value: unknown): NodeScope | null {
@@ -90,6 +116,10 @@ export function parseTiers(value: unknown): TierRow[] | null {
       if (!isRecord(card) || !nonEmptyString(card.id)) continue;
       if (card.kind === "text" && typeof card.text === "string") cards.push({ id: card.id, kind: "text", text: card.text });
       else if (card.kind === "note" && nonEmptyString(card.noteId)) cards.push({ id: card.id, kind: "note", noteId: card.noteId });
+      else if (card.kind === "image") {
+        const image = parseTierImageRef(card.image);
+        if (image) cards.push({ id: card.id, kind: "image", image });
+      }
     }
     rows.push({
       id: row.id,

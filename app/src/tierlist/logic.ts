@@ -1,6 +1,7 @@
 import { newId, type Note } from "../model/note";
 import type { TierCard, TierRow } from "../model/nodeData";
 import type { Zone } from "../model/zone";
+import type { ImageRef } from "../attachments/types";
 
 export const DEFAULT_TIERS = [
   { name: "S", color: "#FF4B5C" },
@@ -18,6 +19,7 @@ export type TierRowDeleteChoice = "move-below" | "delete-cards" | "cancel";
 
 export type TierCardPreview =
   | { kind: "text"; text: string }
+  | { kind: "image"; image: ImageRef; name: string }
   | { kind: "note"; name: string; lines: string[]; missing: false }
   | { kind: "note"; name: "content missing"; lines: []; missing: true };
 
@@ -267,8 +269,7 @@ export function updateTierCardText(rows: readonly TierRow[], rowId: string, card
 
 export function tierCardPreview(card: TierCard, notes: Readonly<Record<string, Note>>, zones: Readonly<Record<string, Zone>> = {}): TierCardPreview {
   if (card.kind === "text") return { kind: "text", text: card.text };
-  // R9.2 placeholder until the Tierlist image card lands (d20 TIER).
-  if (card.kind === "image") return { kind: "text", text: card.image.name ?? "Image" };
+  if (card.kind === "image") return { kind: "image", image: card.image, name: card.image.name ?? "Image" };
   const source = notes[card.noteId];
   if (!source) {
     const zone = zones[card.noteId];
