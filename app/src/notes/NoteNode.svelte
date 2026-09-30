@@ -27,8 +27,6 @@
   import { zoneOf } from "../zones/membership.svelte";
   import { isDimmed } from "../beacons/focus.svelte";
   import { listStatisticsWidth, widthWithListStatistics } from "../stats/listStatsLayout";
-  import { overview } from "../overview/overview.svelte";
-  import { overviewFontSize, overviewLabelFor, overviewTextFits } from "../overview/overviewLogic";
   import ComboHost from "../combo/ComboHost.svelte";
 import { comboPullout } from "../combo/gestures.svelte";
 import { activeDropTarget } from "../selection/dropTargets";
@@ -44,11 +42,6 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
   let customMarkFrameColors = $derived(effectiveCustomMarkFrameColors(note.id));
   let customMarkGradient = $derived(customMarkGradientFor(customMarkFrameColors));
   let scale = $derived(normalizeNoteScale(note.scale));
-  let overviewLabel = $derived(overviewLabelFor(note.type, note.name));
-  let overviewWidthPx = $derived(widthWithListStatistics(note) * PX_PER_UNIT);
-  let overviewHeightPx = $derived((note.height ?? measuredHeights[note.id] ?? MIN_NOTE_HEIGHT) * PX_PER_UNIT);
-  let overviewTextVisible = $derived(overviewTextFits(overviewWidthPx, overviewHeightPx, camera.zoom, scale));
-  let overviewLabelFontSize = $derived(overviewFontSize(overviewLabel.kind, overviewLabel.title, overviewWidthPx, overviewHeightPx));
   let activeComboDropPlan = $derived(isComboDropPlan($activeDropTarget?.payload) ? $activeDropTarget.payload : null);
   let comboDropTarget = $derived(
     $activeDropTarget?.targetId === note.id && highlightsComboTextHost(activeComboDropPlan, note.id),
@@ -149,7 +142,6 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
   data-note-scale={scale === 1 ? undefined : scale}
   data-header-hidden={note.headerHidden ? "true" : undefined}
   data-dimmed={isDimmed(note.id)}
-  data-alt-overview={overview.active ? "true" : undefined}
   data-editing={editing.noteId === note.id ? "true" : "false"}
   data-kind={note.type}
   data-task={note.task ? (note.task.done ? "done" : "open") : undefined}
@@ -274,12 +266,6 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
     <div class="note-frame-edge note-frame-edge-right" data-note-header aria-hidden="true"></div>
     <div class="note-frame-edge note-frame-edge-bottom" data-note-header aria-hidden="true"></div>
   </div>
-  {#if overview.active && overviewTextVisible}
-    <div class="overview-label" data-overview-node-label aria-hidden="true" style:font-size={`${overviewLabelFontSize}px`}>
-      <span class="overview-kind">{overviewLabel.kind}</span>
-      {#if overviewLabel.title}<span class="overview-title">{overviewLabel.title}</span>{/if}
-    </div>
-  {/if}
 </article>
 
 <style>
@@ -297,43 +283,6 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
     box-shadow: 0 3px 12px rgb(0 0 0 / 28%);
     pointer-events: auto;
     user-select: text;
-  }
-
-  .note-card[data-alt-overview="true"] {
-    border: 1px solid #4a4a4a;
-    border-radius: 1px;
-    background: #353535;
-    box-shadow: none;
-    color: #f1f1f1;
-  }
-
-  .note-card[data-alt-overview="true"] > :not(.overview-label) {
-    visibility: hidden;
-  }
-
-  .overview-label {
-    position: absolute;
-    z-index: 5;
-    inset: 2px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    color: #f4f4f4;
-    font-weight: 600;
-    line-height: 1.1;
-    text-align: center;
-    user-select: none;
-    pointer-events: none;
-  }
-
-  .overview-kind,
-  .overview-title {
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .note-header {

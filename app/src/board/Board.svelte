@@ -13,6 +13,7 @@
   import MeMarker from "./MeMarker.svelte";
   import NotesLayer from "../notes/NotesLayer.svelte";
   import OverviewZoneLabels from "../overview/OverviewZoneLabels.svelte";
+  import OverviewNodes from "../overview/OverviewNodes.svelte";
   import SelectionLayer from "../selection/SelectionLayer.svelte";
   import CreateMenu from "../notes/CreateMenu.svelte";
   import { editing } from "../notes/editing.svelte";
@@ -120,6 +121,7 @@
   <MeMarker />
   <BeaconsLayer />
   <NotesLayer />
+  <OverviewNodes />
   <OverviewZoneLabels />
   <SelectionLayer />
   <CreateMenu />

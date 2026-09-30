@@ -92,11 +92,8 @@
       }
 
       if (activationFrame !== 0) cancelAnimationFrame(activationFrame);
-      activationFrame = requestAnimationFrame(() => {
-        activationFrame = 0;
-        if (!altHeld || pressedPointers.size !== 0 || !isIdle()) return;
-        setOverviewActive(true);
-      });
+      // Switch immediately (no extra frame): the checks above already passed on this very key-down.
+      setOverviewActive(true);
     }
 
     function onKeyUp(event: KeyboardEvent): void {
