@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import tierlistBodySource from "../src/tierlist/TierlistBody.svelte?raw";
 import type { ImageRef } from "../src/attachments/types";
 import { addImageTierCards, moveTierlistCard, rowsForTierlist } from "../src/tierlist/actions.svelte";
 import { clear as clearHistory, execute, history, redo, undo } from "../src/history/history.svelte";
@@ -7,6 +8,7 @@ import { board, replaceBoard } from "../src/model/board.svelte";
 import type { Note } from "../src/model/note";
 import { parseTiers } from "../src/model/nodeData";
 import { createDefaultTierRows, tierCardPreview } from "../src/tierlist/logic";
+import { addTierlistImagesFromPicker } from "../src/tierlist/imagePicker";
 
 function imageRef(hash = "a", name = "portrait.png"): ImageRef {
   return {
@@ -129,5 +131,25 @@ describe("Tierlist image cards", () => {
     undo();
     expect(rowsForTierlist("tierlist")[0].cards).toEqual([{ id: cardId, kind: "image", image }]);
     expect(board.notes.list.listItems).toEqual([]);
+  });
+});
+
+describe("Tierlist image entry point", () => {
+  it("removes inline Add image tiles and connects the row menu to the picker", () => {
+    expect(tierlistBodySource).not.toContain('class="tier-add-image"');
+    expect(tierlistBodySource).not.toContain(".tier-add-image {");
+    expect(tierlistBodySource).toContain('data-tier-add-image');
+    expect(tierlistBodySource).toContain('class="tier-menu-add-image"');
+    expect(tierlistBodySource).toContain("void addImageFromPicker(row.id)");
+  });
+
+  it("calls the picker from the row menu flow and imports its paths into that row", async () => {
+    const pickFiles = vi.fn(async () => ["one.png", "two.gif"]);
+    const importPaths = vi.fn(async () => {});
+
+    await addTierlistImagesFromPicker("row-a", pickFiles, importPaths);
+
+    expect(pickFiles).toHaveBeenCalledOnce();
+    expect(importPaths).toHaveBeenCalledWith("row-a", ["one.png", "two.gif"]);
   });
 });

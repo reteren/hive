@@ -16,6 +16,7 @@
   import { activeDropTarget, registerDropTarget, type DropTargetMatch } from "../selection/dropTargets";
   import AttachmentImage from "../attachments/AttachmentImage.svelte";
   import { registerImagePasteHandler } from "../attachments/pasteDispatch";
+  import { addTierlistImagesFromPicker } from "./imagePicker";
   import {
     importImageFile,
     importImagePath,
@@ -267,8 +268,8 @@
   }
 
   async function addImageFromPicker(rowId: string): Promise<void> {
-    const paths = await pickImageFiles();
-    if (paths.length > 0) await importImagePathsIntoRow(rowId, paths);
+    contextRowId = null;
+    await addTierlistImagesFromPicker(rowId, pickImageFiles, importImagePathsIntoRow);
   }
 
   async function importImagePathsIntoRow(rowId: string, paths: string[]): Promise<void> {
@@ -795,6 +796,9 @@
                 ></button>
               {/each}
             </div>
+            <button class="tier-menu-add-image" data-tier-add-image type="button" role="menuitem" onclick={() => { void addImageFromPicker(row.id); }}>
+              Add image…
+            </button>
             <button class="tier-menu-delete" type="button" role="menuitem" onclick={() => requestDeleteRow(row)}>Delete row</button>
           </div>
         {/if}
@@ -880,15 +884,6 @@
           {:else}<span class="tier-card-slot" aria-hidden="true"></span>{/if}
           </div>
         {/each}
-        <button
-          class="tier-add-image"
-          type="button"
-          data-selection-ignore
-          aria-label={`Add image to ${row.name} tier`}
-          onclick={(event) => { event.stopPropagation(); void addImageFromPicker(row.id); }}
-          onpointerdown={(event) => event.stopPropagation()}
-          ondblclick={(event) => event.stopPropagation()}
-        >Add image…</button>
         {#if row.displayCards.length === 0 && !hintsDismissed}
           <span class="tier-empty-hint" data-tier-hint>Double-click to add a text card or drop a node here</span>
         {/if}
@@ -1004,6 +999,8 @@
   .tier-swatch { width: 19px; height: 19px; padding: 0; border: 1px solid #ffffff50; border-radius: 50%; background: var(--swatch); cursor: pointer; }
   .tier-swatch.current { outline: 2px solid var(--accent); outline-offset: 1px; }
   .tier-menu-delete { padding: 5px 6px; border: 1px solid #51545a; border-radius: 3px; color: #f0dada; background: #39282b; text-align: left; cursor: pointer; }
+  .tier-menu-add-image { padding: 5px 6px; border: 1px solid #51545a; border-radius: 3px; color: #e2e2e4; background: #2b2d32; text-align: left; cursor: pointer; }
+  .tier-menu-add-image:hover, .tier-menu-add-image:focus-visible { border-color: var(--accent); color: #f2d277; }
 
   .tier-row-cards {
     position: relative;
@@ -1088,8 +1085,6 @@
   .tier-card strong { overflow: hidden; color: #f0e4c9; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
   .tier-card.missing strong { display: -webkit-box; font-size: 9px; text-overflow: clip; white-space: normal; line-clamp: 2; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
   .tier-card span { display: -webkit-box; overflow: hidden; color: #bfc1c6; font-size: 10px; line-height: 1.25; white-space: pre-line; line-clamp: 3; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
-  .tier-add-image { min-height: 56px; align-self: flex-start; padding: 6px 9px; border: 1px dashed #4a4e55; border-radius: 4px; color: #aeb2ba; background: #25272b; font: inherit; font-size: 10px; white-space: nowrap; cursor: pointer; }
-  .tier-add-image:hover, .tier-add-image:focus-visible { border-color: var(--accent); color: #f2d277; background: #2c2a22; }
   .tier-card-editor { box-sizing: border-box; width: 100%; min-height: 56px; max-height: 80px; resize: vertical; padding: 7px 15px 6px 7px; border: 0; outline: 0; overflow: auto; color: #dedfe2; background: transparent; font: inherit; font-size: 10px; user-select: text; }
   .tier-card-delete { position: absolute; z-index: 1; top: 2px; right: 2px; display: grid; width: 14px; height: 14px; place-items: center; padding: 0; border: 0; border-radius: 3px; color: #92959c; background: #292c31; font-size: 14px; line-height: 1; cursor: pointer; opacity: 0; }
   .tier-card-wrap:hover .tier-card-delete, .tier-card-wrap:focus-within .tier-card-delete { opacity: 1; }
