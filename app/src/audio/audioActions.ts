@@ -14,7 +14,7 @@ import {
 } from "../attachments/service";
 import { AUDIO_MIME_TYPES, IMAGE_MIME_TYPES } from "../attachments/types";
 import { createAudioNotes } from "../notes/noteCommands";
-import { beginAudioRecording } from "./recording.svelte";
+import { createDictaphoneNote } from "./recording.svelte";
 
 const AUDIO_EXTENSIONS = ["mp3", "wav", "ogg", "oga", "flac", "m4a", "m4b", "mka", "weba"];
 const AUDIO_EXTENSION_BY_MIME: Record<(typeof AUDIO_MIME_TYPES)[number], string> = {
@@ -66,7 +66,8 @@ export function registerAudioDropHandler(): () => void {
 }
 
 export function startAudioRecordingAt(center: Point): boolean {
-  return beginAudioRecording(center);
+  createDictaphoneNote(center);
+  return true;
 }
 
 export async function importAudioClipboardItems(items: readonly ClipboardItem[]): Promise<File[]> {

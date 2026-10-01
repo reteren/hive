@@ -1,150 +1,158 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import type { Note } from "../model/note";
-  import { attachmentUrl } from "../attachments/service";
   import NoteBody from "../editor/NoteBody.svelte";
-  import { audioRecording, cancelAudioRecording, stopAudioRecording } from "./recording.svelte";
+  import { registerHoverPlayback } from "../media-ui/hoverPlayback";
+  import { MediaIcon, MediaTime } from "../media-ui";
+  import AudioPlayerRow from "./AudioPlayerRow.svelte";
+  import {
+    audioRecording,
+    beginAudioRecording,
+    deleteAudioRecording,
+    registerAudioRecordingDropHandler,
+    renameAudioRecording,
+    stopAudioRecording,
+  } from "./recording.svelte";
 
   let { note }: { note: Note } = $props();
-  let player = $state<HTMLAudioElement | null>(null);
-  let playing = $state(false);
-  let currentTime = $state(0);
-  let duration = $state(0);
-  let volume = $state(1);
-  let source = $derived(note.media ? attachmentUrl(note.media.file) : "");
-  let isRecording = $derived(audioRecording.noteId === note.id &&
+  let root = $state<HTMLDivElement | null>(null);
+  let hoveredPlayer: HTMLAudioElement | null = null;
+  let isDictaphone = $derived(Array.isArray(note.recordings));
+  let isCurrentCapture = $derived(audioRecording.noteId === note.id);
+  let phase = $derived(isCurrentCapture ? audioRecording.phase : "idle");
+  let isRecording = $derived(phase === "recording");
+  let isBusy = $derived(phase === "requesting" || phase === "saving");
+  let isActiveElsewhere = $derived(audioRecording.noteId !== null && audioRecording.noteId !== note.id &&
     (audioRecording.phase === "requesting" || audioRecording.phase === "recording" || audioRecording.phase === "saving"));
-  let isSavedRecording = $derived(audioRecording.noteId === note.id && audioRecording.phase === "ready");
 
-  async function togglePlayback(): Promise<void> {
-    if (!player) return;
-    if (player.paused) {
-      try {
-        await player.play();
-      } catch {
-        playing = false;
-      }
-    } else {
-      player.pause();
-    }
+  onMount(() => {
+    if (!root) return;
+    const unregisterHover = registerHoverPlayback(root, toggleHoveredPlayback);
+    const unregisterDrop = isDictaphone ? registerAudioRecordingDropHandler() : () => undefined;
+    return () => {
+      unregisterHover();
+      unregisterDrop();
+    };
+  });
+
+  function toggleHoveredPlayback(): void {
+    if (!root) return;
+    const players = Array.from(root.querySelectorAll<HTMLAudioElement>("audio"));
+    const active = players.find((player) => !player.paused) ?? hoveredPlayer ?? players[0];
+    if (!active) return;
+    if (active.paused) void active.play().catch(() => undefined);
+    else active.pause();
   }
 
-  function seek(event: Event): void {
-    if (!(event.currentTarget instanceof HTMLInputElement) || !player) return;
-    player.currentTime = event.currentTarget.valueAsNumber;
-    currentTime = player.currentTime;
+  function trackHoveredPlayer(event: PointerEvent): void {
+    if (!(event.target instanceof Element)) return;
+    hoveredPlayer = event.target.closest("[data-audio-player-row]")?.querySelector("audio") ?? null;
   }
 
-  function changeVolume(event: Event): void {
-    if (!(event.currentTarget instanceof HTMLInputElement) || !player) return;
-    volume = event.currentTarget.valueAsNumber;
-    player.volume = volume;
+  function toggleRecording(): void {
+    if (isRecording) stopAudioRecording(note.id);
+    else if (!isBusy && !isActiveElsewhere) beginAudioRecording(note.id);
   }
 
-  function syncTime(): void {
-    if (!player) return;
-    currentTime = player.currentTime;
-    if (Number.isFinite(player.duration)) duration = player.duration;
-    else duration = note.media?.duration ?? 0;
+  function renameRecording(recordingId: string, name: string): void {
+    renameAudioRecording(note.id, recordingId, name);
   }
 
-  function formatTime(value: number): string {
-    const seconds = Math.max(0, Math.floor(Number.isFinite(value) ? value : 0));
-    const minutes = Math.floor(seconds / 60);
-    const remainder = seconds % 60;
-    const hours = Math.floor(minutes / 60);
-    return hours > 0
-      ? `${hours}:${String(minutes % 60).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`
-      : `${minutes}:${String(remainder).padStart(2, "0")}`;
+  function deleteRecording(recordingId: string): void {
+    deleteAudioRecording(note.id, recordingId);
   }
 </script>
 
-<div class="audio-node" data-audio-node>
-  {#if isRecording}
-    <div class="recording-panel" data-audio-recording role="status" aria-live="polite">
-      <div class="recording-title">
-        <span class="recording-dot" aria-hidden="true"></span>
-        <span>{audioRecording.phase === "requesting" ? "Requesting microphone…" : audioRecording.phase === "saving" ? "Saving…" : "Recording…"}</span>
-        {#if audioRecording.phase === "recording"}<time>{formatTime(audioRecording.elapsedSeconds)}</time>{/if}
-      </div>
-      {#if audioRecording.phase === "recording"}
-        <div class="level-track" role="meter" aria-label="Microphone level" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(audioRecording.level * 100)}>
-          <span style:width={`${Math.round(audioRecording.level * 100)}%`}></span>
+<div class="audio-node" bind:this={root} data-audio-node={note.id} role="group" aria-label={`${note.name} audio node`} onpointermove={trackHoveredPlayer} onpointerleave={() => (hoveredPlayer = null)} ondblclick={(event) => event.stopPropagation()}>
+  {#if isDictaphone}
+    <section class="dictaphone" aria-label="Audio recorder">
+      <div class="recorder-display" class:is-recording={isRecording} data-audio-recording={note.id}>
+        <div class="level-wave" class:active={isRecording} role="meter" aria-label="Microphone level" aria-valuemin="0" aria-valuemax="100" aria-valuenow={isRecording ? Math.round(audioRecording.level * 100) : 0}>
+          {#each Array.from({ length: 36 }, (_, index) => index) as index (index)}
+            {@const height = isRecording
+              ? Math.max(6, Math.round((0.1 + audioRecording.level * (0.2 + Math.abs(Math.sin(index * 1.7)) * 0.8)) * 100))
+              : 6 + Math.round(Math.abs(Math.sin(index * 0.58)) * 8)}
+            <span style:height={`${height}%`}></span>
+          {/each}
         </div>
+        <div class="recorder-status">
+          <span class="status-label" class:recording-label={isRecording}>
+            {#if phase === "requesting"}Connecting to microphone
+            {:else if phase === "recording"}Recording
+            {:else if phase === "saving"}Saving recording
+            {:else if phase === "error" && isCurrentCapture}Recording stopped
+            {:else}Ready to record{/if}
+          </span>
+          <MediaTime seconds={audioRecording.noteId === note.id ? audioRecording.elapsedSeconds : 0} />
+        </div>
+      </div>
+
+      <button
+        class="record-button"
+        class:stop={isRecording}
+        type="button"
+        aria-label={isRecording ? "Stop and save recording" : "Start recording"}
+        aria-pressed={isRecording}
+        title={isRecording ? "Stop and save" : "Record"}
+        disabled={isBusy || isActiveElsewhere}
+        data-selection-ignore
+        onclick={toggleRecording}
+      >
+        <MediaIcon name={isRecording ? "stop" : "record"} size={isRecording ? 22 : 27} />
+      </button>
+
+      {#if phase === "error" && isCurrentCapture && audioRecording.error}
+        <p class="recorder-error" role="alert">{audioRecording.error}</p>
       {/if}
-      <div class="recording-actions">
-        {#if audioRecording.phase === "recording"}
-          <button type="button" class="stop-button" data-selection-ignore onclick={stopAudioRecording}>Stop and save</button>
-        {/if}
-        {#if audioRecording.phase === "requesting" || audioRecording.phase === "recording"}
-          <button type="button" data-selection-ignore onclick={cancelAudioRecording}>Cancel</button>
-        {/if}
-      </div>
-    </div>
-  {:else if note.media?.kind === "audio" && source}
-    <div class="audio-player" data-audio-player data-selection-ignore>
-      <audio
-        bind:this={player}
-        src={source}
-        preload="metadata"
-        onloadedmetadata={syncTime}
-        ontimeupdate={syncTime}
-        onplay={() => (playing = true)}
-        onpause={() => (playing = false)}
-        onended={() => (playing = false)}
-        aria-label={`Audio player for ${note.name}`}
-      ></audio>
-      <div class="transport">
-        <button type="button" class="play-button" aria-label={playing ? "Pause audio" : "Play audio"} data-selection-ignore onclick={() => void togglePlayback()}>
-          {#if playing}
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5h2v9H5zM9 3.5h2v9H9z" /></svg>
-          {:else}
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.2 12 8l-7 4.8z" /></svg>
-          {/if}
-        </button>
-        <span class="timecode">{formatTime(currentTime)}</span>
-        <input
-          class="seek-control"
-          type="range"
-          min="0"
-          max={Math.max(duration, 0.1)}
-          step="0.1"
-          value={Math.min(currentTime, duration)}
-          aria-label="Seek audio"
-          oninput={seek}
-        />
-        <span class="timecode">{formatTime(duration)}</span>
-      </div>
-      <label class="volume-control">
-        <span>Volume</span>
-        <input type="range" min="0" max="1" step="0.01" value={volume} aria-label="Volume" oninput={changeVolume} />
-      </label>
-      {#if isSavedRecording}<div class="saved-status" role="status">Stopped — saved</div>{/if}
-    </div>
+    </section>
+
+    {#if (note.recordings?.length ?? 0) > 0}
+      <section class="recording-list" aria-label="Recordings">
+        {#each note.recordings ?? [] as recording (recording.id)}
+          <AudioPlayerRow
+            recordingId={recording.id}
+            media={recording.media}
+            name={recording.name}
+            draggable
+            onrename={(name) => renameRecording(recording.id, name)}
+            ondelete={() => deleteRecording(recording.id)}
+          />
+        {/each}
+      </section>
+    {:else}
+      <p class="empty-recordings">Your recordings will appear here.</p>
+    {/if}
+  {:else if note.media?.kind === "audio"}
+    <AudioPlayerRow media={note.media} name={note.name} />
   {:else}
     <div class="audio-error" role="status">Audio file is missing or unavailable.</div>
   {/if}
 
-  <div class="audio-caption"><NoteBody {note} /></div>
+  {#if note.text.trim()}
+    <div class="audio-caption"><NoteBody {note} /></div>
+  {/if}
 </div>
 
 <style>
-  .audio-node { display: flex; min-width: 0; flex-direction: column; gap: 8px; }
-  .audio-player, .recording-panel { display: flex; min-width: 0; flex-direction: column; gap: 8px; padding: 9px; border: 1px solid #494949; border-radius: 4px; background: #222; }
-  .transport { display: grid; min-width: 0; grid-template-columns: 28px auto minmax(24px, 1fr) auto; align-items: center; gap: 7px; }
-  .play-button { display: grid; width: 28px; height: 28px; place-items: center; padding: 0; border: 1px solid #555; border-radius: 50%; color: var(--text); background: #343434; cursor: pointer; }
-  .play-button svg { width: 15px; height: 15px; fill: currentColor; }
-  .timecode { color: #bcbcbc; font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .seek-control, .volume-control input { min-width: 0; width: 100%; accent-color: #d85045; }
-  .volume-control { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; gap: 8px; color: #aaa; font-size: 10px; }
-  .saved-status { color: #a7d4a4; font-size: 10px; }
-  .recording-title { display: flex; align-items: center; gap: 7px; color: #f1d4d1; font-size: 12px; }
-  .recording-title time { margin-left: auto; font-variant-numeric: tabular-nums; }
-  .recording-dot { width: 9px; height: 9px; border-radius: 50%; background: #e24136; box-shadow: 0 0 0 4px #e2413624; }
-  .level-track { height: 8px; overflow: hidden; border-radius: 999px; background: #393939; }
-  .level-track span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #57bb73, #e7c94c 76%, #df5a49); transition: width 80ms linear; }
-  .recording-actions { display: flex; justify-content: flex-end; gap: 6px; }
-  .recording-actions button { min-height: 26px; padding: 3px 9px; border: 1px solid #555; border-radius: 3px; color: var(--text); background: #343434; cursor: pointer; }
-  .recording-actions .stop-button { min-width: 132px; min-height: 34px; border-color: #e05a50; background: #a9362e; font-size: 12px; font-weight: 700; }
+  .audio-node { display: flex; min-width: 0; flex-direction: column; gap: 8px; color: #d8d8d8; }
+  .dictaphone { display: grid; grid-template-columns: minmax(0, 1fr) 56px; align-items: center; gap: 12px; min-height: 94px; padding: 11px; border: 1px solid #414141; border-radius: 4px; background: #282828; }
+  .recorder-display { display: flex; min-width: 0; flex-direction: column; gap: 9px; }
+  .level-wave { display: flex; height: 42px; align-items: center; justify-content: space-between; gap: 2px; overflow: hidden; }
+  .level-wave span { display: block; width: 2px; min-width: 1px; max-height: 100%; border-radius: 2px; background: #6d6d6d; transition: height 90ms linear, background-color 100ms ease; }
+  .level-wave.active span { background: linear-gradient(to top, #c63831, #f26c57); }
+  .recorder-status { display: flex; align-items: center; gap: 8px; }
+  .status-label { color: #929292; font-size: 11px; }
+  .recording-label { color: #e89188; }
+  .record-button { display: grid; width: 52px; height: 52px; place-items: center; padding: 0; border: 1px solid #ef6559; border-radius: 50%; color: white; background: #c83e35; box-shadow: inset 0 0 0 4px #d7564b, 0 2px 8px #0005; cursor: pointer; transition: border-radius 140ms ease, transform 140ms ease, background-color 140ms ease; }
+  .record-button:hover:not(:disabled) { transform: scale(1.04); background: #dc4b40; }
+  .record-button.stop { border-radius: 9px; background: #a9362e; box-shadow: inset 0 0 0 3px #c24b42; }
+  .record-button:disabled { opacity: 0.56; cursor: wait; }
+  .recorder-error { grid-column: 1 / -1; margin: 0; color: #e8a39d; font-size: 11px; }
+  .recording-list { display: flex; flex-direction: column; gap: 5px; }
+  .empty-recordings { margin: 0; color: #888; font-size: 10px; text-align: center; }
   .audio-error { padding: 8px; color: #e1aaa6; font-size: 11px; }
   .audio-caption { min-width: 0; }
+  :global(html[data-reduce-motion="true"]) .record-button,
+  :global(html[data-reduce-motion="true"]) .level-wave span { transition: none; }
+  @media (prefers-reduced-motion: reduce) { .record-button, .level-wave span { transition: none; } }
 </style>
