@@ -1,6 +1,6 @@
 # hive — состояние (обновлено 28.09.2026)
 
-**Актуально (01.10):** дебаг 16 (7 п.) закрыт, установщик **1.4.0** ждёт проверки: Alt-подписи растут с объектом; GIF — режим в настройках (всегда/наведение/выделение) + ПКМ Stop/Play gif (src/attachments/gifPlayback.svelte.ts, GifView); у картинок нет header, отражение через flipX/flipY, S-скейл без лимитов, Ctrl+V у курсора; Tierlist без плиток Add image (ПКМ по метке ряда, `data-own-context-menu`). Спека d21_tasks.md, run `run_4aaf1e95c31e`, smoke d16smoke2.mjs. Терминалы агентов пересоздались 01.10 (новые handles). R9 поставка 1 — 1.3.9 (d20). Дебаг 15 п.1 (каретка) — ждём шаги.
+**Актуально (01.10, 1.4.1):** дебаг 17 закрыт — меню image/GIF урезаны (Copy link to image/gif, Archive, Stop/Play gif), во всех ПКМ-меню Scale S / Grab G / Delete (src/commands/menuShortcut.ts), Grab зоны включает режим перемещения зон, Alt пишет GIF, Tierlist показывает картинки для note-карт на image-ноды (d22, smoke d17smoke3.mjs). Ранее — **1.4.0**: дебаг 16 (7 п.) закрыт, установщик **1.4.0** ждёт проверки: Alt-подписи растут с объектом; GIF — режим в настройках (всегда/наведение/выделение) + ПКМ Stop/Play gif (src/attachments/gifPlayback.svelte.ts, GifView); у картинок нет header, отражение через flipX/flipY, S-скейл без лимитов, Ctrl+V у курсора; Tierlist без плиток Add image (ПКМ по метке ряда, `data-own-context-menu`). Спека d21_tasks.md, run `run_4aaf1e95c31e`, smoke d16smoke2.mjs. Терминалы агентов пересоздались 01.10 (новые handles). R9 поставка 1 — 1.3.9 (d20). Дебаг 15 п.1 (каретка) — ждём шаги.
 
 ---
 
