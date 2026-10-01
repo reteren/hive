@@ -1,4 +1,19 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+
+/**
+ * Tauri 2 creates the window before the setup hook registers backend state, so a very fast first
+ * call can arrive before `app.manage(...)` ran ("state not managed for field ..."). Retry briefly.
+ */
+async function invokeWhenStateReady<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await invoke<T>(command, args);
+    } catch (error) {
+      if (attempt >= 50 || !/state not managed/i.test(String(error))) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+}
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { registerCloseFlush } from "../lifecycle/closeFlush";
@@ -130,7 +145,7 @@ async function initialize(): Promise<void> {
   }
 
   try {
-    const loaded = await invoke<ProjectLoad>("initialize_project");
+    const loaded = await invokeWhenStateReady<ProjectLoad>("initialize_project");
     applyProject(loaded);
   } catch (error) {
     project.error = errorMessage(error);
