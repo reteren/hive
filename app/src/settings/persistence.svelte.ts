@@ -6,7 +6,7 @@ import { history as undoHistory, setHistoryLimit } from "../history/history.svel
 import { brushState, setBrushSize } from "../zones/brushState.svelte";
 import { getCommandKeyOverrides, setCommandKeyOverrides } from "../commands/registry.svelte";
 import { applyReduceMotionPreference } from "./motion";
-import { preferences, setFitWidthToText, setReduceAnimations, setTransferHintsShown } from "./preferences.svelte";
+import { preferences, setFitWidthToText, setRecordInBackground, setReduceAnimations, setTransferHintsShown } from "./preferences.svelte";
 import { backupSettings, setBackupInterval } from "../backup/backupSettings.svelte";
 import { quickInputShortcut, setQuickInputShortcutValue } from "./quickInputShortcut.svelte";
 import { setTimeCounters, timeCounters } from "../time/runtime.svelte";
@@ -136,6 +136,7 @@ function currentSettings(): ViewSettings {
     transferHintsShown: preferences.transferHintsShown,
     fitWidthToText: preferences.fitWidthToText,
     gifPlayback: gifPlayback.mode,
+    recordInBackground: preferences.recordInBackground,
     backupIntervalMinutes: backupSettings.interval,
     quickInputShortcut: quickInputShortcut.value,
     skipCompletedTimerConfirmation: timeEnablePreference.skipCompletedTimerConfirmation,
@@ -161,6 +162,7 @@ function applySettings(settings: ViewSettings): void {
   setTransferHintsShown(settings.transferHintsShown);
   setFitWidthToText(settings.fitWidthToText);
   setGifPlaybackMode(settings.gifPlayback);
+  setRecordInBackground(settings.recordInBackground);
   setBackupInterval(settings.backupIntervalMinutes);
   setQuickInputShortcutValue(settings.quickInputShortcut);
   timeEnablePreference.skipCompletedTimerConfirmation = settings.skipCompletedTimerConfirmation ?? false;

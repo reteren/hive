@@ -20,6 +20,7 @@ describe("view settings serialization", () => {
       transferHintsShown: 3,
       fitWidthToText: false,
       gifPlayback: "selected" as const,
+      recordInBackground: true,
       backupIntervalMinutes: 15 as const,
       quickInputShortcut: "Ctrl+Shift+Space",
       skipCompletedTimerConfirmation: false,
@@ -92,6 +93,7 @@ describe("view settings serialization", () => {
       transferHintsShown: 0,
       fitWidthToText: true,
       gifPlayback: "always",
+      recordInBackground: false,
       backupIntervalMinutes: 30,
       quickInputShortcut: DEFAULT_VIEW_SETTINGS.quickInputShortcut,
       skipCompletedTimerConfirmation: false,
@@ -100,6 +102,7 @@ describe("view settings serialization", () => {
 
   it("defaults text fitting on and validates the persisted beta setting", () => {
     expect(DEFAULT_VIEW_SETTINGS.fitWidthToText).toBe(true);
+    expect(DEFAULT_VIEW_SETTINGS.recordInBackground).toBe(false);
     expect(parseViewSettings('{"fitWidthToText":false}', DEFAULT_VIEW_SETTINGS).fitWidthToText).toBe(false);
     expect(parseViewSettings('{"fitWidthToText":"yes"}', DEFAULT_VIEW_SETTINGS).fitWidthToText).toBe(true);
   });

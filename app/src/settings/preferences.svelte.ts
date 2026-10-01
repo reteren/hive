@@ -4,6 +4,7 @@ export const preferences = $state({
   reduceAnimations: systemPrefersReducedMotion(),
   transferHintsShown: 0,
   fitWidthToText: true,
+  recordInBackground: false,
 });
 
 export function setTransferHintsShown(count: number): void {
@@ -21,6 +22,10 @@ export function setReduceAnimations(enabled: boolean): void {
 
 export function setFitWidthToText(enabled: boolean): void {
   preferences.fitWidthToText = enabled;
+}
+
+export function setRecordInBackground(enabled: boolean): void {
+  preferences.recordInBackground = enabled;
 }
 
 applyReduceMotionPreference(preferences.reduceAnimations);

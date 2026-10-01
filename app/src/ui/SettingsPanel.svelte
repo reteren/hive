@@ -12,7 +12,7 @@
   import { estimateJsonSize, formatStorageSize } from "../export/storage";
   import { exportCurrentProject, importProjectFromZip, refreshStorageStats } from "../export/actions";
   import { exportState } from "../export/exportState.svelte";
-  import { preferences, setFitWidthToText, setReduceAnimations } from "../settings/preferences.svelte";
+  import { preferences, setFitWidthToText, setRecordInBackground, setReduceAnimations } from "../settings/preferences.svelte";
   import { gifPlayback, setGifPlaybackMode } from "../attachments/gifPlayback.svelte";
   import { closeSettingsPanel, settingsPanel } from "../settings/settingsPanel.svelte";
   import QuickInputShortcutSetting from "../settings/QuickInputShortcutSetting.svelte";
@@ -116,6 +116,17 @@
                 { value: "selected", label: "When selected" },
               ]} onchange={setGifPlaybackMode} />
             </span>
+          </label>
+          <label class="setting-row">
+            <span class="setting-copy">
+              <span>Record in background</span>
+              <span class="setting-description">Keep an active audio recording when the window loses focus.</span>
+            </span>
+            <input
+              type="checkbox"
+              checked={preferences.recordInBackground}
+              onchange={(event) => setRecordInBackground(event.currentTarget.checked)}
+            />
           </label>
           <label class="setting-row">
             <span class="setting-copy">

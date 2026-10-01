@@ -8,7 +8,7 @@ import type { BackupInterval } from "../backup/backupSettings.svelte";
 import { DEFAULT_QUICK_INPUT_SHORTCUT, normalizeQuickInputShortcut } from "../quickInput/shortcutModel";
 import { normalizeGifPlaybackMode, type GifPlaybackMode } from "../attachments/gifPlayback.svelte";
 
-export const VIEW_SETTINGS_VERSION = 12;
+export const VIEW_SETTINGS_VERSION = 13;
 
 export interface CameraSettings {
   minZoom: number;
@@ -47,6 +47,7 @@ export interface ViewSettings {
   transferHintsShown: number;
   fitWidthToText: boolean;
   gifPlayback: GifPlaybackMode;
+  recordInBackground: boolean;
   backupIntervalMinutes: BackupInterval;
   quickInputShortcut: string;
   skipCompletedTimerConfirmation?: boolean;
@@ -76,6 +77,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
   transferHintsShown: 0,
   fitWidthToText: true,
   gifPlayback: "always",
+  recordInBackground: false,
   backupIntervalMinutes: 30,
   quickInputShortcut: DEFAULT_QUICK_INPUT_SHORTCUT,
   skipCompletedTimerConfirmation: false,
@@ -138,6 +140,7 @@ export function parseViewSettings(serialized: string | null | undefined, default
     transferHintsShown: hintCountOrDefault(parsed.transferHintsShown, defaults.transferHintsShown),
     fitWidthToText: booleanOrDefault(parsed.fitWidthToText, defaults.fitWidthToText),
     gifPlayback: normalizeGifPlaybackMode(parsed.gifPlayback, defaults.gifPlayback),
+    recordInBackground: booleanOrDefault(parsed.recordInBackground, defaults.recordInBackground),
     backupIntervalMinutes: backupIntervalOrDefault(parsed.backupIntervalMinutes, defaults.backupIntervalMinutes),
     quickInputShortcut: normalizeQuickInputShortcut(parsed.quickInputShortcut) ?? defaults.quickInputShortcut,
     skipCompletedTimerConfirmation: booleanOrDefault(parsed.skipCompletedTimerConfirmation, defaults.skipCompletedTimerConfirmation ?? false),
@@ -168,6 +171,7 @@ export function serializeViewSettings(settings: ViewSettings): string {
     transferHintsShown: hintCountOrDefault(settings.transferHintsShown, 0),
     fitWidthToText: settings.fitWidthToText,
     gifPlayback: settings.gifPlayback,
+    recordInBackground: settings.recordInBackground,
     backupIntervalMinutes: backupIntervalOrDefault(settings.backupIntervalMinutes, 30),
     quickInputShortcut: normalizeQuickInputShortcut(settings.quickInputShortcut) ?? DEFAULT_QUICK_INPUT_SHORTCUT,
     skipCompletedTimerConfirmation: settings.skipCompletedTimerConfirmation === true,
@@ -238,6 +242,7 @@ function cloneViewSettings(settings: ViewSettings): ViewSettings {
     transferHintsShown: settings.transferHintsShown,
     fitWidthToText: settings.fitWidthToText,
     gifPlayback: settings.gifPlayback,
+    recordInBackground: settings.recordInBackground,
     backupIntervalMinutes: settings.backupIntervalMinutes,
     quickInputShortcut: settings.quickInputShortcut,
     skipCompletedTimerConfirmation: settings.skipCompletedTimerConfirmation ?? false,
