@@ -69,7 +69,16 @@ export async function importImageFile(file: File): Promise<ImportResult> {
         name: name ?? null,
         mime,
       });
-      return { ok: true, image: { ...stored, ...natural } };
+      return {
+        ok: true,
+        image: {
+          file: stored.file,
+          mime: stored.mime,
+          size: stored.size,
+          ...(stored.name ? { name: stored.name } : {}),
+          ...natural,
+        },
+      };
     }
 
     const hash = await sha256(bytes);
@@ -95,7 +104,16 @@ export async function importImagePath(path: string): Promise<ImportResult> {
     const directory = await invoke<string>("attachment_directory");
     const source = convertFileSrc(joinPath(directory, stored.file));
     const natural = await readNaturalSizeFromUrl(source);
-    return { ok: true, image: { ...stored, ...natural } };
+    return {
+      ok: true,
+      image: {
+        file: stored.file,
+        mime: stored.mime,
+        size: stored.size,
+        ...(stored.name ? { name: stored.name } : {}),
+        ...natural,
+      },
+    };
   } catch (error) {
     return { ok: false, error: errorMessage(error) };
   }
@@ -400,7 +418,7 @@ function detectMediaDescriptor(
   }
 
   if (isEbml(bytes)) {
-    if (hintedKind === "audio" || extension === "mka") {
+    if (hintedKind === "audio" || extension === "mka" || extension === "weba") {
       return { kind: "audio", mime: "audio/webm", extension: "webm" };
     }
     return { kind: "video", mime: "video/webm", extension: "webm" };
@@ -486,7 +504,7 @@ function mediaKindForName(name: string, mime: string): MediaKind | null {
   const extension = extensionFromName(name);
   if (extension === "pdf") return "pdf";
   if (textExtension(name)) return "text";
-  if (["mp3", "wav", "ogg", "oga", "flac", "m4a", "m4b", "mka"].includes(extension)) return "audio";
+  if (["mp3", "wav", "ogg", "oga", "flac", "m4a", "m4b", "mka", "weba"].includes(extension)) return "audio";
   if (["mp4", "mov", "mkv", "webm"].includes(extension)) return "video";
   return null;
 }

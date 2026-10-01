@@ -161,6 +161,8 @@ pub fn run() {
             attachments::attachment_import_bytes,
             attachments::attachment_import_path,
             attachments::attachment_directory,
+            attachments::attachment_write_text,
+            attachments::attachment_export,
             set_quit_requested,
             configure_quick_input_shortcut,
             quick_input_shortcut::log_overview,

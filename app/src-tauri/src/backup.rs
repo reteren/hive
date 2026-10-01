@@ -1225,6 +1225,52 @@ mod tests {
     }
 
     #[test]
+    fn attachment_pool_and_restore_accept_pdf_and_video_files() {
+        let root = project("media-pool");
+        let attachments = root.join("attachments");
+        fs::create_dir_all(&attachments).expect("create attachments folder");
+        let pdf_bytes = b"%PDF-1.7 media test";
+        let video_bytes = b"\0\0\0\x18ftypisomvideo test";
+        let pdf = format!("{}.pdf", crate::attachments::sha256_hex(pdf_bytes));
+        let video = format!("{}.mp4", crate::attachments::sha256_hex(video_bytes));
+        fs::write(attachments.join(&pdf), pdf_bytes).expect("write PDF");
+        fs::write(attachments.join(&video), video_bytes).expect("write video");
+        let mut board: serde_json::Value =
+            serde_json::from_slice(&fs::read(root.join("board.json")).expect("read board"))
+                .expect("parse board");
+        board["notes"][0]["pdfMedia"] = serde_json::json!({"file": pdf, "mime": "application/pdf", "size": pdf_bytes.len(), "kind": "pdf"});
+        board["notes"][0]["videoMedia"] = serde_json::json!({"file": video, "mime": "video/mp4", "size": video_bytes.len(), "kind": "video"});
+        fs::write(root.join("board.json"), serde_json::to_vec(&board).expect("encode board"))
+            .expect("write board references");
+        let healthy = check_project_health_at(&root);
+        assert!(!healthy.findings.iter().any(|finding| finding.starts_with("Missing attachment")));
+
+        let snapshot = create_backup_at(&root).expect("snapshot media attachments");
+        let pool = root.join(".hive/backups/attachments-pool");
+        let manifest = fs::read_to_string(root.join(".hive/backups").join(&snapshot.id).join("attachments.json"))
+            .expect("read media manifest");
+        assert!(manifest.contains(&pdf));
+        assert!(manifest.contains(&video));
+        assert_eq!(fs::read(pool.join(&pdf)).expect("read pooled PDF"), pdf_bytes);
+        assert_eq!(fs::read(pool.join(&video)).expect("read pooled video"), video_bytes);
+
+        fs::remove_file(attachments.join(&pdf)).expect("remove live PDF");
+        fs::remove_file(attachments.join(&video)).expect("remove live video");
+        let missing = check_project_health_at(&root);
+        assert!(missing.findings.contains(&format!("Missing attachment {pdf}")));
+        assert!(missing.findings.contains(&format!("Missing attachment {video}")));
+        restore_snapshot_at(&root, &root.join(".hive/backups").join(&snapshot.id))
+            .expect("restore media snapshot");
+        assert_eq!(fs::read(attachments.join(pdf)).expect("restore PDF"), pdf_bytes);
+        assert_eq!(fs::read(attachments.join(video)).expect("restore video"), video_bytes);
+        assert!(!check_project_health_at(&root)
+            .findings
+            .iter()
+            .any(|finding| finding.starts_with("Missing attachment")));
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
     fn restores_a_legacy_snapshot_with_embedded_attachments() {
         let root = project("legacy-restore");
         let snapshots = root.join(".hive/backups");
