@@ -55,11 +55,13 @@ export function overviewTextFits(
     widthPx * zoom * scale >= 42 && heightPx * zoom * scale >= 24;
 }
 
-/** Font size in the node's untransformed local pixels; board zoom scales it with the node. */
+/** Font size in the node's untransformed local pixels, proportional to the node; board zoom scales it with the node. */
 export function overviewFontSize(kind: string, title: string | null, widthPx: number, heightPx: number): number {
   const longestLine = Math.max(kind.length, title?.length ?? 0, 1);
   const lines = title ? 2 : 1;
-  return Math.max(0, Math.min(14, widthPx / (longestLine * 0.62), heightPx / (lines * 1.35)));
+  // No fixed cap (debug 16): the label grows with the object, filling most of its box, so a huge
+  // Map shows a huge name in the overview.
+  return Math.max(0, 0.85 * Math.min(widthPx / (longestLine * 0.62), heightPx / (lines * 1.35)));
 }
 
 /** "Zone · 3" for a default name ("Zone 3"), "Zone" for a bare default, "Zone · Kitchen" otherwise. */

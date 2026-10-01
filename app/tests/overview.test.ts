@@ -65,3 +65,12 @@ describe("overview zone label", () => {
     expect(overviewZoneLabel("Zone 3 plan")).toBe("Zone · Zone 3 plan");
   });
 });
+
+it("scales the overview label with the object size instead of capping it (debug 16)", async () => {
+  const { overviewFontSize: size } = await import("../src/overview/overviewLogic");
+  const small = size("Map", null, 300, 200);
+  const huge = size("Map", null, 3000, 2000);
+  expect(huge).toBeGreaterThan(14);
+  expect(huge / small).toBeCloseTo(10, 5);
+  expect(size("Map", "Kitchen", 400, 300)).toBeLessThanOrEqual(400 / (7 * 0.62));
+});
