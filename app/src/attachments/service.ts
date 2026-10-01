@@ -1,10 +1,23 @@
 import { convertFileSrc, invoke, isTauri } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { project } from "../project/project.svelte";
 import { showLinkStatus } from "../links-in-text/contextMenu.svelte";
-import { IMAGE_MIME_TYPES, type ImageRef } from "./types";
+import {
+  AUDIO_MIME_TYPES,
+  IMAGE_MIME_TYPES,
+  MEDIA_LIMIT_BYTES,
+  PDF_MIME_TYPES,
+  TEXT_FORMAT_LANGUAGES,
+  VIDEO_MIME_TYPES,
+  type AttachmentRef,
+  type ImageRef,
+  type MediaKind,
+  type MediaRef,
+  type TextFormatExtension,
+} from "./types";
 
 export type ImportResult = { ok: true; image: ImageRef } | { ok: false; error: string };
+export type MediaImportResult = { ok: true; media: MediaRef } | { ok: false; error: string };
 
 export type FileDropHandler = (
   paths: string[],
@@ -24,9 +37,10 @@ const EXTENSION_BY_MIME: Record<(typeof IMAGE_MIME_TYPES)[number], string> = {
 
 interface StoredAttachment {
   file: string;
-  mime: (typeof IMAGE_MIME_TYPES)[number];
+  mime: string;
   size: number;
   name?: string;
+  kind?: MediaKind | "image";
 }
 
 const browserAttachments = new Map<string, string>();
@@ -85,6 +99,116 @@ export async function importImagePath(path: string): Promise<ImportResult> {
   } catch (error) {
     return { ok: false, error: errorMessage(error) };
   }
+}
+
+/** Import PDF, supported text, audio, or video from a native file path. */
+export async function importMediaPath(path: string): Promise<MediaImportResult> {
+  if (!isTauri()) return { ok: false, error: "Importing a file path is available in the desktop app." };
+  try {
+    const kindHint = mediaKindForPath(path);
+    const stored = await invoke<StoredAttachment>("attachment_import_path", { path, kindHint });
+    const kind = stored.kind ?? kindHint;
+    if (!kind || kind === "image") return { ok: false, error: "The selected file is not a supported media file." };
+    return { ok: true, media: await makeMediaRef(stored, kind) };
+  } catch (error) {
+    return { ok: false, error: errorMessage(error) };
+  }
+}
+
+/** Import supported non-image media from a browser File or clipboard file. */
+export async function importMediaFile(file: File): Promise<MediaImportResult> {
+  try {
+    if (!file || typeof file.arrayBuffer !== "function") return { ok: false, error: "The file could not be read." };
+    const hintedKind = mediaKindForFile(file);
+    if (hintedKind && file.size > MEDIA_LIMIT_BYTES[hintedKind]) {
+      return { ok: false, error: mediaLimitError(hintedKind) };
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    return await importMediaBytes(bytes, file.name, file.type);
+  } catch (error) {
+    return { ok: false, error: errorMessage(error) };
+  }
+}
+
+/** Store the recorder output as an immutable audio attachment. */
+export async function importRecording(bytes: Uint8Array, mime: string, name: string): Promise<MediaImportResult> {
+  return importMediaBytes(bytes, name, mime, "audio");
+}
+
+/** Save a Format node's edited text as a new immutable project attachment. */
+export async function saveTextAttachment(text: string, previous: MediaRef): Promise<MediaImportResult> {
+  if (previous.kind !== "text") return { ok: false, error: "Only text attachments can be saved as text." };
+  const extension = textExtension(previous.file) ?? textExtension(previous.name ?? "");
+  if (!extension) return { ok: false, error: "The text file extension is not supported." };
+
+  const bytes = new TextEncoder().encode(text);
+  if (bytes.byteLength > MEDIA_LIMIT_BYTES.text) return { ok: false, error: "Text file exceeds the 200 MB limit." };
+
+  try {
+    const name = previous.name ?? `Copy.${extension}`;
+    if (isTauri()) {
+      const stored = await invoke<StoredAttachment>("attachment_write_text", {
+        text,
+        extension,
+        name,
+      });
+      return { ok: true, media: await makeMediaRef(stored, "text") };
+    }
+
+    return { ok: true, media: await browserMediaAttachment(bytes, name, "text", textMime(extension), extension) };
+  } catch (error) {
+    return { ok: false, error: errorMessage(error) };
+  }
+}
+
+/** Export an immutable attachment through the system save dialog. */
+export async function exportAttachmentAs(ref: AttachmentRef, suggestedName: string): Promise<boolean> {
+  if (!/^[0-9a-f]{64}\.[a-z0-9]{1,8}$/.test(ref.file)) {
+    reportImportError("The attachment reference is invalid.");
+    return false;
+  }
+  try {
+    if (!isTauri()) {
+      const url = attachmentUrl(ref.file);
+      if (!url || typeof document === "undefined") {
+        reportImportError("This attachment is not available in the browser preview.");
+        return false;
+      }
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = safeSuggestedName(suggestedName, ref.file);
+      anchor.click();
+      return true;
+    }
+
+    const filename = safeSuggestedName(suggestedName, ref.file);
+    const extension = filename.split(".").at(-1) ?? "";
+    const destination = await save({
+      title: "Export attachment",
+      defaultPath: filename,
+      filters: extension ? [{ name: "Attachment", extensions: [extension] }] : undefined,
+    });
+    if (!destination) return false;
+    await invoke("attachment_export", { file: ref.file, destination });
+    return true;
+  } catch (error) {
+    reportImportError(errorMessage(error));
+    return false;
+  }
+}
+
+/** Synchronous extension/MIME hint for file-drop routing. Contents are verified by the importer. */
+export function mediaKindForPath(path: string): MediaKind | null {
+  return mediaKindForName(path, "");
+}
+
+/** Synchronous extension/MIME hint for file-drop routing. Contents are verified by the importer. */
+export function mediaKindForFile(file: File): MediaKind | null {
+  const type = file.type.toLowerCase();
+  if (AUDIO_MIME_TYPES.includes(type as (typeof AUDIO_MIME_TYPES)[number])) return "audio";
+  if (VIDEO_MIME_TYPES.includes(type as (typeof VIDEO_MIME_TYPES)[number])) return "video";
+  if (PDF_MIME_TYPES.includes(type as (typeof PDF_MIME_TYPES)[number])) return "pdf";
+  return mediaKindForName(file.name, type);
 }
 
 /** Open the desktop image picker; cancellation is an empty list. */
@@ -198,6 +322,237 @@ function readNaturalSizeFromUrl(url: string): Promise<{ naturalWidth: number; na
 async function sha256(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes.slice().buffer as ArrayBuffer);
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+interface MediaDescriptor {
+  kind: MediaKind | "image";
+  mime: string;
+  extension: string;
+}
+
+async function importMediaBytes(
+  bytes: Uint8Array,
+  name: string,
+  mimeHint: string,
+  kindHint?: MediaKind,
+): Promise<MediaImportResult> {
+  const descriptor = detectMediaDescriptor(bytes, name, mimeHint, kindHint);
+  if (!descriptor || descriptor.kind === "image") {
+    return { ok: false, error: unsupportedMediaType(name) };
+  }
+  if (bytes.byteLength > MEDIA_LIMIT_BYTES[descriptor.kind]) {
+    return { ok: false, error: `${descriptor.kind === "audio" || descriptor.kind === "video" ? "Media" : "File"} exceeds the ${descriptor.kind === "audio" || descriptor.kind === "video" ? "2 GB" : "200 MB"} limit.` };
+  }
+  if (descriptor.kind === "text" && !isValidUtf8(bytes)) {
+    return { ok: false, error: "Text files must be valid UTF-8." };
+  }
+
+  try {
+    const safeName = name.trim() || `Attachment.${descriptor.extension}`;
+    if (isTauri()) {
+      const stored = await invoke<StoredAttachment>("attachment_import_bytes", {
+        bytes: Array.from(bytes),
+        name: safeName,
+        mime: mimeHint || descriptor.mime,
+        kindHint: descriptor.kind,
+      });
+      const kind = stored.kind && stored.kind !== "image" ? stored.kind : descriptor.kind;
+      return { ok: true, media: await makeMediaRef(stored, kind) };
+    }
+
+    return {
+      ok: true,
+      media: await browserMediaAttachment(bytes, safeName, descriptor.kind, descriptor.mime, descriptor.extension),
+    };
+  } catch (error) {
+    return { ok: false, error: errorMessage(error) };
+  }
+}
+
+function detectMediaDescriptor(
+  bytes: Uint8Array,
+  name: string,
+  mimeHint: string,
+  kindHint?: MediaKind,
+): MediaDescriptor | undefined {
+  const imageMime = detectImageMime(bytes);
+  if (imageMime) return imageDescriptor(imageMime);
+  if (startsWithAscii(bytes, "%PDF-")) return { kind: "pdf", mime: "application/pdf", extension: "pdf" };
+
+  if (bytes.length >= 12 && startsWithAscii(bytes, "RIFF") && startsWithAscii(bytes.subarray(8), "WAVE")) {
+    return { kind: "audio", mime: "audio/wav", extension: "wav" };
+  }
+  if (startsWithAscii(bytes, "OggS")) return { kind: "audio", mime: "audio/ogg", extension: "ogg" };
+  if (startsWithAscii(bytes, "fLaC")) return { kind: "audio", mime: "audio/flac", extension: "flac" };
+  if (startsWithAscii(bytes, "ID3") || isMp3FrameSync(bytes)) {
+    return { kind: "audio", mime: "audio/mpeg", extension: "mp3" };
+  }
+
+  const extension = extensionFromName(name);
+  const hintedKind = kindHint ?? kindFromMime(mimeHint) ?? mediaKindForName(name, "");
+  if (hasMp4Ftyp(bytes)) {
+    const brand = ascii(bytes, 8, 4);
+    const audioBrand = ["M4A ", "M4B ", "M4P ", "F4A ", "F4B ", "mp4a"].includes(brand);
+    if (audioBrand || hintedKind === "audio" || extension === "m4a" || extension === "m4b") {
+      return { kind: "audio", mime: "audio/mp4", extension: extension === "m4b" ? "m4b" : "m4a" };
+    }
+    return { kind: "video", mime: "video/mp4", extension: "mp4" };
+  }
+
+  if (isEbml(bytes)) {
+    if (hintedKind === "audio" || extension === "mka") {
+      return { kind: "audio", mime: "audio/webm", extension: "webm" };
+    }
+    return { kind: "video", mime: "video/webm", extension: "webm" };
+  }
+
+  const supportedExtension = textExtension(name);
+  if (supportedExtension) {
+    return { kind: "text", mime: textMime(supportedExtension), extension: supportedExtension };
+  }
+  return undefined;
+}
+
+function imageDescriptor(mime: (typeof IMAGE_MIME_TYPES)[number]): MediaDescriptor {
+  const extension: Record<(typeof IMAGE_MIME_TYPES)[number], string> = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/gif": "gif",
+    "image/webp": "webp",
+    "image/bmp": "bmp",
+  };
+  return { kind: "image", mime, extension: extension[mime] };
+}
+
+async function browserMediaAttachment(
+  bytes: Uint8Array,
+  name: string,
+  kind: MediaKind,
+  mime: string,
+  extension: string,
+): Promise<MediaRef> {
+  const file = `${await sha256(bytes)}.${extension}`;
+  if (!browserAttachments.has(file)) {
+    browserAttachments.set(file, URL.createObjectURL(new Blob([bytes.slice().buffer as ArrayBuffer], { type: mime })));
+  }
+  return { file, mime, size: bytes.byteLength, name, kind };
+}
+
+async function makeMediaRef(stored: StoredAttachment, kind: MediaKind): Promise<MediaRef> {
+  const media: MediaRef = {
+    file: stored.file,
+    mime: stored.mime,
+    size: stored.size,
+    ...(stored.name ? { name: stored.name } : {}),
+    kind,
+  };
+  if (kind !== "audio" && kind !== "video") return media;
+  const metadata = await readMediaMetadata(attachmentUrl(stored.file), kind);
+  return { ...media, ...metadata };
+}
+
+function readMediaMetadata(url: string, kind: "audio" | "video"): Promise<Pick<MediaRef, "duration" | "naturalWidth" | "naturalHeight">> {
+  if (!url || typeof document === "undefined" || typeof window === "undefined") return Promise.resolve({});
+  return new Promise((resolve) => {
+    const element = document.createElement(kind);
+    const finish = () => {
+      const metadata = {
+        ...(Number.isFinite(element.duration) && element.duration > 0 ? { duration: element.duration } : {}),
+        ...(kind === "video" && (element as HTMLVideoElement).videoWidth > 0 && (element as HTMLVideoElement).videoHeight > 0
+          ? { naturalWidth: (element as HTMLVideoElement).videoWidth, naturalHeight: (element as HTMLVideoElement).videoHeight }
+          : {}),
+      };
+      element.removeAttribute("src");
+      element.load();
+      resolve(metadata);
+    };
+    const timeout = window.setTimeout(finish, 4_000);
+    element.preload = "metadata";
+    element.onloadedmetadata = () => {
+      window.clearTimeout(timeout);
+      finish();
+    };
+    element.onerror = () => {
+      window.clearTimeout(timeout);
+      finish();
+    };
+    element.src = url;
+  });
+}
+
+function mediaKindForName(name: string, mime: string): MediaKind | null {
+  const hinted = kindFromMime(mime);
+  if (hinted) return hinted;
+  const extension = extensionFromName(name);
+  if (extension === "pdf") return "pdf";
+  if (textExtension(name)) return "text";
+  if (["mp3", "wav", "ogg", "oga", "flac", "m4a", "m4b", "mka"].includes(extension)) return "audio";
+  if (["mp4", "mov", "mkv", "webm"].includes(extension)) return "video";
+  return null;
+}
+
+function kindFromMime(mime: string): MediaKind | null {
+  const normalized = mime.toLowerCase().split(";", 1)[0].trim();
+  if (PDF_MIME_TYPES.includes(normalized as (typeof PDF_MIME_TYPES)[number])) return "pdf";
+  if (AUDIO_MIME_TYPES.includes(normalized as (typeof AUDIO_MIME_TYPES)[number])) return "audio";
+  if (VIDEO_MIME_TYPES.includes(normalized as (typeof VIDEO_MIME_TYPES)[number])) return "video";
+  return null;
+}
+
+function textExtension(name: string): TextFormatExtension | null {
+  const extension = extensionFromName(name) as TextFormatExtension;
+  return Object.prototype.hasOwnProperty.call(TEXT_FORMAT_LANGUAGES, extension) ? extension : null;
+}
+
+function extensionFromName(name: string): string {
+  return name.split(/[./\\]/).at(-1)?.toLowerCase() ?? "";
+}
+
+function textMime(extension: TextFormatExtension): string {
+  return extension === "json" ? "application/json" : "text/plain";
+}
+
+function isValidUtf8(bytes: Uint8Array): boolean {
+  try {
+    new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function startsWithAscii(bytes: Uint8Array, signature: string): boolean {
+  if (bytes.length < signature.length) return false;
+  for (let index = 0; index < signature.length; index++) {
+    if (bytes[index] !== signature.charCodeAt(index)) return false;
+  }
+  return true;
+}
+
+function hasMp4Ftyp(bytes: Uint8Array): boolean {
+  return bytes.length >= 12 && startsWithAscii(bytes.subarray(4), "ftyp");
+}
+
+function isEbml(bytes: Uint8Array): boolean {
+  return bytes.length >= 4 && bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3;
+}
+
+function isMp3FrameSync(bytes: Uint8Array): boolean {
+  return bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0;
+}
+
+function unsupportedMediaType(name: string): string {
+  const extension = extensionFromName(name) || "unknown";
+  return `Unsupported file type: ${extension}. Supported: PDF, text formats, MP3, WAV, OGG, FLAC, M4A, MP4, WebM`;
+}
+
+function mediaLimitError(kind: MediaKind): string {
+  return `${kind === "audio" || kind === "video" ? "Media" : "File"} exceeds the ${kind === "audio" || kind === "video" ? "2 GB" : "200 MB"} limit.`;
+}
+
+function safeSuggestedName(name: string, fallback: string): string {
+  const leaf = name.split(/[\\/]/).at(-1)?.replace(/[\u0000-\u001f<>:"|?*]/g, "_").trim();
+  return leaf || fallback;
 }
 
 function joinPath(directory: string, child: string): string {
