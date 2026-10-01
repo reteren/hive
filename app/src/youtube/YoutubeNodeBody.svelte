@@ -19,7 +19,8 @@
   let playerUnavailable = $state(false);
   let playerResponded = $state(false);
   let thumbnailFailed = $state(false);
-  let requestedVideoId = $state<string | null>(null);
+  // Plain (non-reactive) guard: writing a $state here re-ran the effect and its cleanup aborted the oEmbed request.
+  let requestedVideoId: string | null = null;
   let youtube = $derived(note.type === "youtube" ? note.youtube : undefined);
   let title = $derived(youtube?.title || youtube?.videoId || "YouTube video");
   let thumbnail = $derived(youtube ? youtubeThumbnailUrl(youtube.videoId) : "");
