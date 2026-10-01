@@ -74,3 +74,10 @@ it("scales the overview label with the object size instead of capping it (debug 
   expect(huge / small).toBeCloseTo(10, 5);
   expect(size("Map", "Kitchen", 400, 300)).toBeLessThanOrEqual(400 / (7 * 0.62));
 });
+
+it("labels GIF images as GIF in the overview (debug 17)", async () => {
+  const { overviewLabelFor: label } = await import("../src/overview/overviewLogic");
+  expect(label("image", "rebuffer video", { gif: true })).toEqual({ kind: "GIF", title: "rebuffer video" });
+  expect(label("image", "Image 2", { gif: true })).toEqual({ kind: "GIF", title: "2" });
+  expect(label("image", "Image 2")).toEqual({ kind: "Image", title: "2" });
+});

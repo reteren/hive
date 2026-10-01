@@ -35,10 +35,11 @@ export interface OverviewLabel {
 }
 
 /** Turn default names into their kind and number, while preserving user titles. */
-export function overviewLabelFor(kind: NoteKind, name: string): OverviewLabel {
-  const label = KIND_LABELS[kind];
+export function overviewLabelFor(kind: NoteKind, name: string, options: { gif?: boolean } = {}): OverviewLabel {
+  // Debug 17: an animated image is labelled "GIF", not "Image".
+  const label = kind === "image" && options.gif ? "GIF" : KIND_LABELS[kind];
   const trimmed = name.trim();
-  const defaultName = [label, ...(kind === "note" ? ["Note"] : [])]
+  const defaultName = [label, ...(kind === "note" ? ["Note"] : []), ...(kind === "image" ? ["Image"] : [])]
     .map((base) => new RegExp(`^${escapeRegExp(base)}(?:\\s+(\\d+))?$`, "i").exec(trimmed))
     .find((match) => match !== null);
   return { kind: label, title: defaultName ? defaultName[1] ?? null : trimmed || null };

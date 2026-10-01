@@ -34,7 +34,7 @@
       const bounds = noteBounds(note);
       const w = bounds.width * PX_PER_UNIT;
       const h = bounds.height * PX_PER_UNIT;
-      const label = overviewLabelFor(note.type, note.name);
+      const label = overviewLabelFor(note.type, note.name, { gif: note.image?.mime === "image/gif" });
       return [{
         id, beacon: false, x: bounds.x * PX_PER_UNIT, y: bounds.y * PX_PER_UNIT, w, h,
         kind: label.kind, title: label.title, color: "",
