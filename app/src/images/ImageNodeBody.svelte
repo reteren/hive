@@ -3,7 +3,7 @@
   import type { ImageRef } from "../attachments/types";
   import { attachmentUrl } from "../attachments/service";
 
-  let { image, selected, name }: { image?: ImageRef; selected: boolean; name: string } = $props();
+  let { image, selected, name, flipX, flipY }: { image?: ImageRef; selected: boolean; name: string; flipX?: true; flipY?: true } = $props();
   let canvasElement = $state<HTMLCanvasElement | null>(null);
   let loading = $state(true);
   let failed = $state(false);
@@ -40,34 +40,40 @@
 
 <div class="image-node-body" role="group" aria-label={name} ondragstart={(event) => event.preventDefault()}>
   {#if image && (!isGif || failed || !url)}
-    <AttachmentImage
-      {image}
-      alt={name}
-      class="image-node-picture"
-      style="width:100%;height:100%;object-fit:fill;pointer-events:none;user-select:none"
-    />
-  {:else if image && isGif}
-    {#if url}
-      <canvas bind:this={canvasElement} class="image-node-picture" aria-hidden="true" hidden={!stillReady || selected}></canvas>
-      <img
-        class="image-node-picture"
-        src={url}
-        alt={name}
-        draggable="false"
-        hidden={failed || !selected && stillReady}
-        onload={handleLoad}
-        onerror={handleError}
-      />
-      {#if loading && !failed}
-        <div class="image-node-state">Loading image…</div>
-      {/if}
-    {:else}
+    <div class="image-node-picture-viewport" style:transform={`scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`}>
       <AttachmentImage
         {image}
         alt={name}
         class="image-node-picture"
         style="width:100%;height:100%;object-fit:fill;pointer-events:none;user-select:none"
       />
+    </div>
+  {:else if image && isGif}
+    {#if url}
+      <div class="image-node-picture-viewport" style:transform={`scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`}>
+        <canvas bind:this={canvasElement} class="image-node-picture" aria-hidden="true" hidden={!stillReady || selected}></canvas>
+        <img
+          class="image-node-picture"
+          src={url}
+          alt={name}
+          draggable="false"
+          hidden={failed || !selected && stillReady}
+          onload={handleLoad}
+          onerror={handleError}
+        />
+      </div>
+      {#if loading && !failed}
+        <div class="image-node-state">Loading image…</div>
+      {/if}
+    {:else}
+      <div class="image-node-picture-viewport" style:transform={`scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`}>
+        <AttachmentImage
+          {image}
+          alt={name}
+          class="image-node-picture"
+          style="width:100%;height:100%;object-fit:fill;pointer-events:none;user-select:none"
+        />
+      </div>
     {/if}
   {:else}
     <div class="image-node-state image-node-error" role="status">File missing: {image?.name || image?.file || name || "Image"}</div>
@@ -84,6 +90,12 @@
     overflow: hidden;
     border-radius: inherit;
     background: #1c1c1c;
+  }
+
+  .image-node-picture-viewport {
+    position: absolute;
+    inset: 0;
+    transform-origin: center;
   }
 
   :global(.image-node-picture) {

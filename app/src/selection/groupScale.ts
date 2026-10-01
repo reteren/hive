@@ -96,34 +96,60 @@ export function scaleGroupFrames(
   const axes = resizeEdgeAxes(edge);
   let scaleX = clampScale(scales.x, minimumWidthScale(frames, moduleIds, beaconIds));
   let scaleY = clampScale(scales.y, minimumHeightScale(frames, moduleIds, beaconIds));
+  const imageFrames = frames.filter((frame) => frame.type === "image");
+  let imageScaleX = clampSignedImageScale(scales.x, minimumWidthScale(imageFrames, new Set(), new Set()));
+  let imageScaleY = clampSignedImageScale(scales.y, minimumHeightScale(imageFrames, new Set(), new Set()));
 
   if (axes.horizontal !== null && axes.vertical !== null && preserveAspect) {
     // The axis with the larger proportional scale change drives the uniform factor.
     const xDominates = Math.abs(scales.x - 1) >= Math.abs(scales.y - 1);
     const uniformMinimum = Math.max(minimumWidthScale(frames, moduleIds, beaconIds), minimumHeightScale(frames, moduleIds, beaconIds));
-    const uniform = clampScale(xDominates ? scales.x : scales.y, uniformMinimum);
+    const requested = xDominates ? scales.x : scales.y;
+    const uniform = clampScale(requested, uniformMinimum);
     scaleX = uniform;
     scaleY = uniform;
+    const imageUniformMinimum = Math.max(
+      minimumWidthScale(imageFrames, new Set(), new Set()),
+      minimumHeightScale(imageFrames, new Set(), new Set()),
+    );
+    imageScaleX = imageScaleY = clampSignedImageScale(requested, imageUniformMinimum);
   }
 
-  return frames.map((frame) => ({
-    ...frame,
-    x: axes.horizontal === "left"
-      ? bounds.x + bounds.width - (bounds.x + bounds.width - frame.x) * scaleX
-      : bounds.x + (frame.x - bounds.x) * scaleX,
-    y: axes.vertical === "top"
-      ? bounds.y + bounds.height - (bounds.y + bounds.height - frame.y) * scaleY
-      : bounds.y + (frame.y - bounds.y) * scaleY,
-    width: moduleIds.has(frame.id) || preservesGroupDimensions(frame, beaconIds)
-      ? frame.width
-      : Math.max(minimumWidthForFrame(frame), Math.min(frame.maxWidth ?? maximumWidthForKind(frame.type), frame.width * scaleX)),
-    height: preservesGroupDimensions(frame, beaconIds) ? frame.height : moduleIds.has(frame.id)
-      ? clampModuleHeight(((frame.height ?? MIN_NOTE_HEIGHT) * scaleY) / normalizeNoteScale(frame.scale), frame.type) * normalizeNoteScale(frame.scale)
-      : frame.height === null ? null : Math.max(
-        minimumHeightForKind(frame.type) * normalizeNoteScale(frame.scale),
-        Math.min(frame.maxHeight ?? Infinity, frame.height * scaleY),
-      ),
-  }));
+  return frames.map((frame) => {
+    if (frame.type === "image") {
+      const width = Math.max(4 * normalizeNoteScale(frame.scale), frame.width * Math.abs(imageScaleX));
+      const height = Math.max(4 * normalizeNoteScale(frame.scale), (frame.height ?? width) * Math.abs(imageScaleY));
+      const x = scaleImageAxisPosition(frame.x, frame.width, bounds.x, bounds.width, axes.horizontal, imageScaleX);
+      const y = scaleImageAxisPosition(frame.y, frame.height ?? width, bounds.y, bounds.height, axes.vertical, imageScaleY);
+      return {
+        ...frame,
+        x,
+        y,
+        width,
+        height,
+        flipX: toggleImageFlip(frame.flipX, axes.horizontal !== null && imageScaleX < 0),
+        flipY: toggleImageFlip(frame.flipY, axes.vertical !== null && imageScaleY < 0),
+      };
+    }
+    return {
+      ...frame,
+      x: axes.horizontal === "left"
+        ? bounds.x + bounds.width - (bounds.x + bounds.width - frame.x) * scaleX
+        : bounds.x + (frame.x - bounds.x) * scaleX,
+      y: axes.vertical === "top"
+        ? bounds.y + bounds.height - (bounds.y + bounds.height - frame.y) * scaleY
+        : bounds.y + (frame.y - bounds.y) * scaleY,
+      width: moduleIds.has(frame.id) || preservesGroupDimensions(frame, beaconIds)
+        ? frame.width
+        : Math.max(minimumWidthForFrame(frame), Math.min(frame.maxWidth ?? maximumWidthForKind(frame.type), frame.width * scaleX)),
+      height: preservesGroupDimensions(frame, beaconIds) ? frame.height : moduleIds.has(frame.id)
+        ? clampModuleHeight(((frame.height ?? MIN_NOTE_HEIGHT) * scaleY) / normalizeNoteScale(frame.scale), frame.type) * normalizeNoteScale(frame.scale)
+        : frame.height === null ? null : Math.max(
+          minimumHeightForKind(frame.type) * normalizeNoteScale(frame.scale),
+          Math.min(frame.maxHeight ?? Infinity, frame.height * scaleY),
+        ),
+    };
+  });
 }
 
 export function cancelGroupScaleGesture(gesture: GroupScaleGesture): NoteFrame[] {
@@ -180,6 +206,7 @@ function minimumWidthScale(frames: readonly NoteFrame[], moduleIds: ReadonlySet<
 
 function minimumWidthForFrame(frame: NoteFrame): number {
   const scale = normalizeNoteScale(frame.scale);
+  if (frame.type === "image") return 4 * scale;
   const minimum = minimumWidthForKind(frame.type) * scale;
   const textMinimum = preferences.fitWidthToText
     ? minimumTextWidthForNote(frame.id, (frame.maxWidth ?? maximumNoteWidthForKind(frame.type)) / scale) * scale
@@ -202,6 +229,30 @@ function clampScale(scale: number, minimum: number): number {
   return Math.max(minimum, Math.max(0, scale));
 }
 
+function clampSignedImageScale(scale: number, minimum: number): number {
+  return Math.sign(scale || 1) * Math.max(minimum, Math.abs(scale));
+}
+
+function scaleImageAxisPosition(
+  position: number,
+  dimension: number,
+  boundsPosition: number,
+  boundsDimension: number,
+  handle: "left" | "right" | "top" | "bottom" | null,
+  scale: number,
+): number {
+  if (handle === null) return position;
+  const anchor = handle === "left" || handle === "top"
+    ? boundsPosition + boundsDimension
+    : boundsPosition;
+  const nearEdge = scale < 0 ? position + dimension : position;
+  return anchor + (nearEdge - anchor) * scale;
+}
+
+function toggleImageFlip(current: true | undefined, crossed: boolean): true | undefined {
+  return (current === true) !== crossed ? true : undefined;
+}
+
 function framesEqual(first: readonly NoteFrame[], second: readonly NoteFrame[]): boolean {
   return first.length === second.length && first.every((frame, index) => {
     const other = second[index];
@@ -212,6 +263,8 @@ function framesEqual(first: readonly NoteFrame[], second: readonly NoteFrame[]):
       frame.width === other.width &&
       frame.height === other.height &&
       normalizeNoteScale(frame.scale) === normalizeNoteScale(other.scale)
+      && frame.flipX === other.flipX
+      && frame.flipY === other.flipY
     );
   });
 }

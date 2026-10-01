@@ -39,7 +39,7 @@ registerNoteMenuItem({
   id: "notes.toggleHeader",
   label: (noteId) => board.notes[noteId]?.headerHidden ? "Show header" : "Hide header",
   run: toggleNoteHeader,
-  visible: (noteId) => Boolean(board.notes[noteId] && board.notes[noteId].type !== "beacon"),
+  visible: (noteId) => Boolean(board.notes[noteId] && board.notes[noteId].type !== "beacon" && board.notes[noteId].type !== "image"),
   order: 90,
 });
 

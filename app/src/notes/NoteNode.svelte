@@ -168,7 +168,7 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
   {#if memberZone}
     <div class="zone-marker" data-zone-marker title={memberZone.name} aria-label={`Zone: ${memberZone.name}`} style:--zone-color={memberZone.color}></div>
   {/if}
-  {#if !note.headerHidden}
+  {#if note.type !== "image" && !note.headerHidden}
     <header
       class="note-header"
       data-note-header
@@ -210,7 +210,7 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
         </span>
       {/if}
     </header>
-  {:else}
+  {:else if note.type !== "image"}
     <header class="note-header hidden-note-header" data-note-header data-hidden-note-header aria-hidden="true" ondblclick={startRename}>
       <TaskCheckbox {note} />
       <span class="note-name">{note.name}</span>
@@ -264,7 +264,7 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
       {:else if note.type === "calendar"}
         <CalendarNodeBody />
       {:else if note.type === "image"}
-        <ImageNodeBody image={note.image} selected={selection.ids.includes(note.id)} name={note.name} />
+        <ImageNodeBody image={note.image} selected={selection.ids.includes(note.id)} name={note.name} flipX={note.flipX} flipY={note.flipY} />
       {:else}
         <NoteBody {note} />
       {/if}

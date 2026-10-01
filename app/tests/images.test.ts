@@ -3,13 +3,16 @@ import type { ImageRef } from "../src/attachments/types";
 import { sanitizeArchiveEntries, copyArchiveEntry } from "../src/archive/serialization";
 import { serializeNotes, parseNotesPayload } from "../src/clipboard/payload";
 import { replaceBoard, board } from "../src/model/board.svelte";
+import { noteMenuItems } from "../src/notes/noteMenu";
 import type { Note } from "../src/model/note";
 import { parseProjectIndex, mergeLoadedNotes, serializeProjectIndex } from "../src/project/index";
 import { createImageNotes } from "../src/notes/noteCommands";
 import { history, clear as clearHistory, undo, redo } from "../src/history/history.svelte";
 import { initialImageSize, imageFirstOrder, imageNodeName, parseImageRef } from "../src/images/imageLogic";
-import { runImageImportBatch } from "../src/images/imageActions";
+import { imagePasteOrigin, runImageImportBatch } from "../src/images/imageActions";
 import { resizeNote, resizeRuleForKind, minimumHeightForKind, minimumWidthForKind } from "../src/selection/resize";
+import { createScaleModeGesture, normalizeScaleModeAtCommit, updateScaleModeGesture } from "../src/selection/gestures";
+import { scaleGroupFrames } from "../src/selection/groupScale";
 import { sanitizeTrashEntries } from "../src/trash/serialization";
 
 const imageRef: ImageRef = {
@@ -33,6 +36,8 @@ function imageNote(id = "image-1"): Note {
     height: 20,
     headerHidden: true,
     image: { ...imageRef },
+    flipX: true,
+    flipY: true,
   };
 }
 
@@ -52,6 +57,12 @@ describe("board images", () => {
     expect(imageNodeName(imageRef.name)).toBe("Board image");
     expect(imageNodeName(".png")).toBe("Image");
     expect(imageNodeName()).toBe("Image");
+  });
+
+  it("does not offer a header toggle for image nodes", () => {
+    const image = imageNote();
+    replaceBoard([image]);
+    expect(noteMenuItems(image.id).some((item) => item.id === "notes.toggleHeader")).toBe(false);
   });
 
   it("renders image ids first while preserving image and non-image order", () => {
@@ -113,6 +124,8 @@ describe("board images", () => {
     const note = imageNote();
     const project = parseProjectIndex(serializeProjectIndex([note]));
     expect(project.notes[0]?.image).toEqual(imageRef);
+    expect(project.notes[0]?.flipX).toBe(true);
+    expect(project.notes[0]?.flipY).toBe(true);
     const loaded = mergeLoadedNotes(project, [{
       id: note.id,
       name: note.name,
@@ -124,11 +137,15 @@ describe("board images", () => {
       height: note.height,
     }]);
     expect(loaded[0]?.image).toEqual(imageRef);
+    expect(loaded[0]?.flipX).toBe(true);
+    expect(loaded[0]?.flipY).toBe(true);
     expect(loaded[0]?.height).toBe(20);
 
     const archive = sanitizeArchiveEntries([{ id: "archive-1", archivedAt: 1, note, links: [] }]);
     expect(archive.warnings).toEqual([]);
     expect(archive.entries[0]?.note.image).toEqual(imageRef);
+    expect(archive.entries[0]?.note.flipX).toBe(true);
+    expect(archive.entries[0]?.note.flipY).toBe(true);
     expect(archive.entries[0]?.note.headerHidden).toBe(true);
     const copiedArchive = copyArchiveEntry(archive.entries[0]!);
     expect(copiedArchive.note.image).toEqual(imageRef);
@@ -137,10 +154,14 @@ describe("board images", () => {
     const trash = sanitizeTrashEntries([{ id: "trash-1", deletedAt: 2, notes: [note], zones: [], links: [] }]);
     expect(trash.warnings).toEqual([]);
     expect(trash.entries[0]?.notes[0]?.image).toEqual(imageRef);
+    expect(trash.entries[0]?.notes[0]?.flipX).toBe(true);
+    expect(trash.entries[0]?.notes[0]?.flipY).toBe(true);
     expect(trash.entries[0]?.notes[0]?.headerHidden).toBe(true);
 
     const clipboard = parseNotesPayload(serializeNotes([note]));
     expect(clipboard?.nodes[0]?.image).toEqual(imageRef);
+    expect(clipboard?.nodes[0]?.flipX).toBe(true);
+    expect(clipboard?.nodes[0]?.flipY).toBe(true);
     expect(clipboard?.nodes[0]?.headerHidden).toBe(true);
   });
 
@@ -181,7 +202,7 @@ describe("board images", () => {
       { id: "image", type: "image", x: 0, y: 0, width: 20, height: 10, maxWidth: 80 },
       10,
       "bottom-right",
-      { x: -100, y: -100 },
+      { x: -18, y: -9 },
       false,
       10,
       false,
@@ -191,5 +212,52 @@ describe("board images", () => {
     expect(resized.width).toBe(8);
     expect(resized.height).toBe(4);
     expect(resized.width / resized.height!).toBe(2);
+  });
+
+  it("mirrors image resize handles across the opposite edge, including Ctrl aspect resize", () => {
+    const initial = { id: "image", type: "image" as const, x: 10, y: 20, width: 20, height: 10 };
+    const right = resizeNote(initial, 10, "right", { x: -30, y: 0 }, false, 10);
+    expect(right).toMatchObject({ x: 0, y: 20, width: 10, height: 10, flipX: true });
+
+    const bottom = resizeNote(initial, 10, "bottom", { x: 0, y: -15 }, false, 10);
+    expect(bottom).toMatchObject({ x: 10, y: 15, width: 20, height: 5, flipY: true });
+
+    const ctrl = resizeNote(initial, 10, "bottom-right", { x: -30, y: -15 }, false, 10, false, {}, true);
+    expect(ctrl).toMatchObject({ width: 10, height: 5, flipX: true, flipY: true });
+    expect(ctrl.width / ctrl.height!).toBe(2);
+  });
+
+  it("lets image S and group scale pass through zero and grow without a maximum", () => {
+    const imageFrame = { id: "image", type: "image" as const, x: 0, y: 0, width: 20, height: 10, maxWidth: 40, maxHeight: 15 };
+    const gesture = createScaleModeGesture([imageFrame], { x: 10, y: 5 }, { x: 20, y: 5 });
+    const large = updateScaleModeGesture(gesture, { x: 110, y: 5 });
+    expect(large.after[0]).toMatchObject({ width: 200, height: 100 });
+    expect(normalizeScaleModeAtCommit(large)[0]).toMatchObject({ width: 200, height: 100, scale: undefined });
+
+    const flipped = updateScaleModeGesture(gesture, { x: 0, y: 5 });
+    expect(flipped.after[0]).toMatchObject({ flipX: true, flipY: true, width: 20, height: 10 });
+    const atFloor = updateScaleModeGesture(gesture, { x: 10, y: 5 });
+    expect(atFloor.after[0]).toMatchObject({ width: 8, height: 4 });
+
+    const bounds = { x: 0, y: 0, width: 20, height: 10 };
+    const hugeGroup = scaleGroupFrames([imageFrame], bounds, "right", { x: 200, y: 0 }, false, 10);
+    expect(hugeGroup[0]?.width).toBe(220);
+    const flippedGroup = scaleGroupFrames([imageFrame], bounds, "right", { x: -25, y: 0 }, false, 10);
+    expect(flippedGroup[0]).toMatchObject({ x: -5, width: 5, flipX: true });
+    const floorGroup = scaleGroupFrames([imageFrame], bounds, "right", { x: -19.5, y: 0 }, false, 10);
+    expect(floorGroup[0]?.width).toBe(4);
+
+    const regular = scaleGroupFrames([
+      { id: "note", type: "note", x: 0, y: 0, width: 20, height: 20, maxWidth: 40 },
+    ], bounds, "right", { x: 200, y: 0 }, false, 10);
+    expect(regular[0]?.width).toBe(40);
+  });
+
+  it("places pasted images at the pointer or at the viewport centre when the pointer is absent", () => {
+    const pointer = { x: 14, y: -8 };
+    const fallback = { x: 100, y: 200 };
+    expect(imagePasteOrigin(pointer, fallback)).toEqual(pointer);
+    expect(imagePasteOrigin(null, fallback)).toEqual(fallback);
+    expect(imagePasteOrigin(null, fallback)).not.toBe(fallback);
   });
 });

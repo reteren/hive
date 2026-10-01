@@ -47,6 +47,8 @@ export interface NoteFrame {
   maxWidth?: number;
   maxHeight?: number;
   statisticsExtensionWidth?: number;
+  flipX?: true;
+  flipY?: true;
 }
 
 export interface MoveGesture {
@@ -60,8 +62,11 @@ export interface ScaleModeGesture {
   before: NoteFrame[];
   after: NoteFrame[];
   pivot: Point;
+  startWorld: Point;
   startDistance: number;
+  startDirection: Point;
   factor: number;
+  imageFactor: number;
 }
 
 export type ScaleModeExitAction = "cancel" | "confirm" | "ignore";
@@ -107,35 +112,70 @@ export function createScaleModeGesture(
     : 0.001;
   const distance = Math.hypot(startWorld.x - pivot.x, startWorld.y - pivot.y);
   const startDistance = Math.max(distance, minimum);
+  const startDirection = distance > 0
+    ? { x: (startWorld.x - pivot.x) / distance, y: (startWorld.y - pivot.y) / distance }
+    : { x: 1, y: 0 };
   return {
     before,
     after: before.map(copyFrame),
     pivot: { ...pivot },
+    startWorld: { ...startWorld },
     startDistance,
+    startDirection,
     factor: 1,
+    imageFactor: 1,
   };
 }
 
 /** Scale note transforms from the original pointer distance, avoiding frame-to-frame drift. */
 export function updateScaleModeGesture(gesture: ScaleModeGesture, cursorWorld: Point): ScaleModeGesture {
   const distance = Math.hypot(cursorWorld.x - gesture.pivot.x, cursorWorld.y - gesture.pivot.y);
-  const raw = Number.isFinite(distance) ? distance / gesture.startDistance : gesture.factor;
-  // Clamp the factor itself (not only each node's size): once any node reaches 100 % or the maximum,
-  // further mouse movement changes nothing — positions no longer keep scaling and "slide".
-  const minFactor = Math.max(...gesture.before.map((frame) => 1 / normalizeNoteScale(frame.scale)));
-  const maxFactor = Math.min(...gesture.before.map((frame) => MAX_NOTE_SCALE / normalizeNoteScale(frame.scale)));
-  const factor = Math.min(maxFactor, Math.max(minFactor, raw));
+  const rawPositive = Number.isFinite(distance) ? distance / gesture.startDistance : Math.abs(gesture.factor);
+  const rawImageFactor = 1 + (
+    (cursorWorld.x - gesture.pivot.x) * gesture.startDirection.x +
+    (cursorWorld.y - gesture.pivot.y) * gesture.startDirection.y -
+    (gesture.startWorld.x - gesture.pivot.x) * gesture.startDirection.x -
+    (gesture.startWorld.y - gesture.pivot.y) * gesture.startDirection.y
+  ) / gesture.startDistance;
+  // Images can scale without a maximum and pass through zero; other kinds keep their scale range.
+  const regularFrames = gesture.before.filter((frame) => frame.type !== "image");
+  const minFactor = regularFrames.length > 0
+    ? Math.max(...regularFrames.map((frame) => 1 / normalizeNoteScale(frame.scale)))
+    : 1;
+  const maxFactor = regularFrames.length > 0
+    ? Math.min(...regularFrames.map((frame) => MAX_NOTE_SCALE / normalizeNoteScale(frame.scale)))
+    : Number.POSITIVE_INFINITY;
+  const factor = regularFrames.length > 0
+    ? Math.min(maxFactor, Math.max(minFactor, rawPositive))
+    : rawPositive;
+  const minImageFactor = Math.max(0, ...gesture.before.flatMap((frame) => frame.type === "image"
+    ? [Math.max(4 / Math.max(0.001, frame.width), 4 / Math.max(0.001, frame.height ?? frame.width))]
+    : []));
+  const imageFactor = Math.sign(rawImageFactor || 1) * Math.max(minImageFactor, Math.abs(rawImageFactor));
   return {
     ...gesture,
     factor,
-    after: scaleModeFrames(gesture.before, gesture.pivot, factor),
+    imageFactor,
+    after: scaleModeFrames(gesture.before, gesture.pivot, factor, imageFactor),
   };
 }
 
 /** Quantize scale once when radial scaling is confirmed, preserving exact base dimensions. */
 export function normalizeScaleModeAtCommit(gesture: ScaleModeGesture): NoteFrame[] {
   const factor = Math.round(gesture.factor * 1000) / 1000;
-  return gesture.before.map((before) => {
+  return gesture.before.map((before, index) => {
+    if (before.type === "image") {
+      const frame = gesture.after[index] ?? before;
+      return {
+        ...frame,
+        scale: undefined,
+        baseWidth: frame.width,
+        baseHeight: frame.height,
+        baseStatisticsExtensionWidth: 0,
+        statisticsExtensionWidth: undefined,
+        scaleGesture: false,
+      };
+    }
     const initialScale = normalizeNoteScale(before.scale);
     const unroundedScale = Math.min(MAX_NOTE_SCALE, Math.max(1, initialScale * factor));
     const roundedScale = Math.round(unroundedScale * 1000) / 1000;
@@ -192,8 +232,34 @@ export function geometryHistoryCommand(
   };
 }
 
-function scaleModeFrames(frames: readonly NoteFrame[], pivot: Point, factor: number): NoteFrame[] {
+function scaleModeFrames(frames: readonly NoteFrame[], pivot: Point, factor: number, imageFactor: number): NoteFrame[] {
   return frames.map((frame) => {
+    if (frame.type === "image") {
+      const magnitude = Math.max(
+        Math.max(4 / Math.max(0.001, frame.width), 4 / Math.max(0.001, frame.height ?? frame.width)),
+        Math.abs(imageFactor),
+      );
+      const signedFactor = imageFactor < 0 ? -magnitude : magnitude;
+      const width = frame.width * magnitude;
+      const height = frame.height === null ? null : frame.height * magnitude;
+      const transformedLeft = pivot.x + (frame.x - pivot.x) * signedFactor;
+      const transformedRight = pivot.x + (frame.x + frame.width - pivot.x) * signedFactor;
+      const transformedTop = pivot.y + (frame.y - pivot.y) * signedFactor;
+      const transformedBottom = pivot.y + (frame.y + (frame.height ?? frame.width) - pivot.y) * signedFactor;
+      return {
+        ...frame,
+        x: Math.min(transformedLeft, transformedRight),
+        y: Math.min(transformedTop, transformedBottom),
+        width,
+        height,
+        scale: undefined,
+        baseWidth: width,
+        baseHeight: height,
+        flipX: toggleImageFlip(frame.flipX, imageFactor < 0),
+        flipY: toggleImageFlip(frame.flipY, imageFactor < 0),
+        scaleGesture: false,
+      };
+    }
     const initialScale = normalizeNoteScale(frame.scale);
     const scale = Math.min(MAX_NOTE_SCALE, Math.max(1, initialScale * factor));
     const ratio = scale / initialScale;
@@ -426,8 +492,14 @@ function sameFrame(first: NoteFrame, second: NoteFrame): boolean {
     first.y === second.y &&
     first.width === second.width &&
     first.height === second.height &&
-    normalizeNoteScale(first.scale) === normalizeNoteScale(second.scale)
+    normalizeNoteScale(first.scale) === normalizeNoteScale(second.scale) &&
+    first.flipX === second.flipX &&
+    first.flipY === second.flipY
   );
+}
+
+function toggleImageFlip(current: true | undefined, crossed: boolean): true | undefined {
+  return (current === true) !== crossed ? true : undefined;
 }
 
 function copyFrame(frame: NoteFrame): NoteFrame {

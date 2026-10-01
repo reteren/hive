@@ -66,6 +66,8 @@ export interface IndexedNote {
   smoothLines?: boolean;
   smoothLineAnchors?: NonNullable<Note["smoothLineAnchors"]>;
   image?: ImageRef;
+  flipX?: true;
+  flipY?: true;
   [key: string]: unknown;
 }
 
@@ -230,6 +232,8 @@ export function serializeProjectIndex(
       ...(note.customMarkFrame ? { customMarkFrame: true } : {}),
       ...(note.listStats ? { listStats: true } : {}),
       image: note.image ? { ...note.image } : undefined,
+      flipX: note.type === "image" && note.flipX === true ? true as const : undefined,
+      flipY: note.type === "image" && note.flipY === true ? true as const : undefined,
       headerHidden: note.headerHidden === true ? true : undefined,
       smoothLines: note.smoothLines === true ? true : undefined,
       smoothLineAnchors: note.smoothLines === true ? copySmoothLineAnchorSnapshot(note.smoothLineAnchors) : undefined,
@@ -303,6 +307,8 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       ...(entry.customMarkFrame ? { customMarkFrame: true } : {}),
       ...(entry.listStats ? { listStats: true } : {}),
       ...(entry.image ? { image: { ...entry.image } } : {}),
+      ...(entry.type === "image" && entry.flipX === true ? { flipX: true } : {}),
+      ...(entry.type === "image" && entry.flipY === true ? { flipY: true } : {}),
       ...(entry.headerHidden ? { headerHidden: true } : {}),
       ...(entry.smoothLines ? { smoothLines: true } : {}),
       ...(entry.smoothLines && entry.smoothLineAnchors
@@ -527,6 +533,8 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
       purposes: purposes.values,
       moods: moods.values,
       image: image ?? undefined,
+      flipX: type === "image" && value.flipX === true ? true : undefined,
+      flipY: type === "image" && value.flipY === true ? true : undefined,
       color: type === "beacon" ? color ?? beaconPaletteColor(0) : color,
       zoneId,
       scope: parseScope(value.scope) ?? undefined,

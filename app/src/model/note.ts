@@ -139,6 +139,10 @@ export interface Note {
   scope?: NodeScope;
   /** Board image (kind "image", R9.2): the picture file and its intrinsic size. */
   image?: ImageRef;
+  /** Mirror an image horizontally when its resize handle crosses the opposite edge. */
+  flipX?: true;
+  /** Mirror an image vertically when its resize handle crosses the opposite edge. */
+  flipY?: true;
   /** Tierlist (R5.7): rows and their cards. */
   tiers?: TierRow[];
   /** List (R7.3): ordered items, each a link to a board object or a missing target. */

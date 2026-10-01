@@ -1,4 +1,4 @@
-import { camera, viewport } from "../board/camera.svelte";
+import { camera, pointer, viewport } from "../board/camera.svelte";
 import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
 import {
   clipboardImageFiles,
@@ -84,7 +84,7 @@ export function imageDropHandler(paths: string[], target: Element | null, client
 /** Board fallback (priority 0) for image paste; Tierlist rows and the text editor take precedence. */
 export function registerImagePasteToBoard(): () => void {
   return registerImagePasteHandler(0, (files) => {
-    void importImageFiles(files, viewportCenter());
+    void importImageFiles(files, imagePasteOrigin(pointer.world, viewportCenter()));
     return true;
   });
 }
@@ -105,4 +105,9 @@ export function handleBoardImagePaste(event: ClipboardEvent): void {
 
 export function viewportCenter(): Point {
   return { x: camera.x, y: camera.y };
+}
+
+/** Place pasted images under the last in-board pointer, otherwise at the viewport centre. */
+export function imagePasteOrigin(pointerWorld: Point | null, fallback: Point): Point {
+  return pointerWorld ? { ...pointerWorld } : { ...fallback };
 }

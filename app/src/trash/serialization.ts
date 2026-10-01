@@ -130,7 +130,8 @@ function parseTrashNote(value: unknown): Note | null {
     value.zoneId !== undefined && value.zoneId !== null && typeof value.zoneId !== "string" ||
     value.createdAt !== undefined && !finite(value.createdAt) ||
     value.image !== undefined && !image || value.type === "image" && (!image || !finite(value.height) || value.height <= 0) ||
-    value.headerHidden !== undefined && typeof value.headerHidden !== "boolean") return null;
+    value.headerHidden !== undefined && typeof value.headerHidden !== "boolean" ||
+    value.flipX !== undefined && value.flipX !== true || value.flipY !== undefined && value.flipY !== true) return null;
   const scope = value.scope === undefined ? undefined : parseScope(value.scope);
   const tiers = value.tiers === undefined ? undefined : parseTiers(value.tiers);
   if (scope === null || tiers === null) return null;
@@ -153,6 +154,8 @@ function parseTrashNote(value: unknown): Note | null {
     ...(value.type === "message" ? { message: message ?? defaultMessageData() } : message ? { message } : {}),
     ...(embedSections ? { embedSections } : {}),
     ...(image ? { image } : {}),
+    ...(value.type === "image" && value.flipX === true ? { flipX: true } : {}),
+    ...(value.type === "image" && value.flipY === true ? { flipY: true } : {}),
     ...(value.headerHidden === true ? { headerHidden: true } : {}),
     ...(value.importance ? { importance: value.importance as Note["importance"] } : {}),
     ...(value.purposes ? { purposes: value.purposes as Note["purposes"] } : {}),

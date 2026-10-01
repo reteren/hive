@@ -121,6 +121,8 @@ export interface ResizedGeometry {
   y: number;
   width: number;
   height: number | null;
+  flipX?: true;
+  flipY?: true;
 }
 
 export interface ResizeLimits {
@@ -220,11 +222,13 @@ export function resizeNote(
         : MIN_NOTE_WIDTH * scale),
     );
 
-  if (initial.type === "image" && preserveImageAspectRatio) {
-    return resizeImagePreservingAspect(
+  if (initial.type === "image") {
+    const verticalHandle = axes.vertical === "top" ? "left" : axes.vertical === "bottom" ? "right" : null;
+    return resizeImage(
       initial,
       visualHeight,
-      edge,
+      axes.horizontal,
+      verticalHandle,
       delta,
       snap,
       step,
@@ -232,6 +236,7 @@ export function resizeNote(
       minimumHeight,
       maxWidth,
       maxHeight,
+      preserveImageAspectRatio,
     );
   }
 
@@ -276,10 +281,11 @@ export function resizeNote(
   return { x, y, width, height };
 }
 
-function resizeImagePreservingAspect(
+function resizeImage(
   initial: NoteFrame,
   visualHeight: number,
-  edge: ResizeEdge,
+  horizontalHandle: "left" | "right" | null,
+  verticalHandle: "left" | "right" | null,
   delta: Point,
   snap: boolean,
   step: number,
@@ -287,50 +293,96 @@ function resizeImagePreservingAspect(
   minimumHeight: number,
   maxWidth: number,
   maxHeight: number,
+  preserveAspect: boolean,
 ): ResizedGeometry {
-  const axes = resizeEdgeAxes(edge);
   const initialWidth = Math.max(0.001, initial.width);
   const initialHeight = Math.max(0.001, initial.height ?? visualHeight);
-  let scaleX = 1;
-  let scaleY = 1;
+  const scaleX = imageAxisScale(initial.x, initialWidth, horizontalHandle, delta.x, snap, step, "x");
+  const scaleY = imageAxisScale(initial.y, initialHeight, verticalHandle, delta.y, snap, step, "y");
+  const corner = horizontalHandle !== null && verticalHandle !== null;
+  let width: number;
+  let height: number;
+  let crossedX = false;
+  let crossedY = false;
 
-  if (axes.horizontal === "right") {
-    const right = initial.x + initialWidth + delta.x;
-    const snappedRight = snap ? snapToGrid({ x: right, y: 0 }, step).x : right;
-    scaleX = (snappedRight - initial.x) / initialWidth;
-  } else if (axes.horizontal === "left") {
-    const left = initial.x + delta.x;
-    scaleX = (initial.x + initialWidth - (snap ? snapToGrid({ x: left, y: 0 }, step).x : left)) / initialWidth;
+  if (preserveAspect) {
+    const requestedScale = corner
+      ? Math.abs(scaleX - 1) >= Math.abs(scaleY - 1) ? scaleX : scaleY
+      : horizontalHandle !== null ? scaleX : scaleY;
+    const minimumFactor = Math.max(minimumWidth / initialWidth, minimumHeight / initialHeight);
+    const maximumFactor = Math.max(minimumFactor, Math.min(maxWidth / initialWidth, maxHeight / initialHeight));
+    const factor = Math.min(maximumFactor, Math.max(minimumFactor, Math.abs(requestedScale)));
+    width = initialWidth * factor;
+    height = initialHeight * factor;
+    crossedX = horizontalHandle !== null && scaleX < 0;
+    crossedY = verticalHandle !== null && scaleY < 0;
+  } else {
+    const xResult = resizeImageAxis(initialWidth, horizontalHandle, scaleX, minimumWidth, maxWidth);
+    const yResult = resizeImageAxis(initialHeight, verticalHandle, scaleY, minimumHeight, maxHeight);
+    width = xResult.dimension;
+    height = yResult.dimension;
+    crossedX = xResult.crossed;
+    crossedY = yResult.crossed;
   }
-  if (axes.vertical === "bottom") {
-    const bottom = initial.y + initialHeight + delta.y;
-    const snappedBottom = snap ? snapToGrid({ x: 0, y: bottom }, step).y : bottom;
-    scaleY = (snappedBottom - initial.y) / initialHeight;
-  } else if (axes.vertical === "top") {
-    const top = initial.y + delta.y;
-    scaleY = (initial.y + initialHeight - (snap ? snapToGrid({ x: 0, y: top }, step).y : top)) / initialHeight;
-  }
-
-  const corner = axes.horizontal !== null && axes.vertical !== null;
-  const requestedFactor = corner
-    ? Math.abs(scaleX - 1) >= Math.abs(scaleY - 1) ? scaleX : scaleY
-    : axes.horizontal !== null ? scaleX : scaleY;
-  const minimumFactor = Math.max(minimumWidth / initialWidth, minimumHeight / initialHeight);
-  const maximumFactor = Math.max(minimumFactor, Math.min(maxWidth / initialWidth, maxHeight / initialHeight));
-  const factor = Math.min(maximumFactor, Math.max(minimumFactor, requestedFactor));
-  const width = initialWidth * factor;
-  const height = initialHeight * factor;
 
   return {
-    x: axes.horizontal === "left"
-      ? initial.x + initialWidth - width
-      : axes.horizontal === null ? initial.x - (width - initialWidth) / 2 : initial.x,
-    y: axes.vertical === "top"
-      ? initial.y + initialHeight - height
-      : axes.vertical === null ? initial.y - (height - initialHeight) / 2 : initial.y,
+    x: imageAxisPosition(initial.x, initialWidth, horizontalHandle, width, crossedX),
+    y: imageAxisPosition(initial.y, initialHeight, verticalHandle, height, crossedY),
     width,
     height,
+    flipX: toggleImageFlip(initial.flipX, crossedX),
+    flipY: toggleImageFlip(initial.flipY, crossedY),
   };
+}
+
+function imageAxisScale(
+  position: number,
+  dimension: number,
+  handle: "left" | "right" | null,
+  delta: number,
+  snap: boolean,
+  step: number,
+  axis: "x" | "y",
+): number {
+  if (handle === null) return 1;
+  const rawHandle = handle === "left" ? position + delta : position + dimension + delta;
+  const snappedHandle = !snap ? rawHandle : axis === "x"
+    ? snapToGrid({ x: rawHandle, y: 0 }, step).x
+    : snapToGrid({ x: 0, y: rawHandle }, step).y;
+  const oppositeEdge = handle === "left" ? position + dimension : position;
+  return (handle === "left" ? oppositeEdge - snappedHandle : snappedHandle - oppositeEdge) / dimension;
+}
+
+function resizeImageAxis(
+  dimension: number,
+  handle: "left" | "right" | null,
+  signedScale: number,
+  minimum: number,
+  maximum: number,
+): { dimension: number; crossed: boolean } {
+  if (handle === null) return { dimension, crossed: false };
+  const crossed = signedScale < 0;
+  return {
+    dimension: Math.max(minimum, Math.min(maximum, dimension * Math.abs(signedScale))),
+    crossed,
+  };
+}
+
+function imageAxisPosition(
+  position: number,
+  dimension: number,
+  handle: "left" | "right" | null,
+  resizedDimension: number,
+  crossed: boolean,
+): number {
+  if (handle === null) return position - (resizedDimension - dimension) / 2;
+  const oppositeEdge = handle === "left" ? position + dimension : position;
+  if (handle === "left") return crossed ? oppositeEdge : oppositeEdge - resizedDimension;
+  return crossed ? oppositeEdge - resizedDimension : oppositeEdge;
+}
+
+function toggleImageFlip(current: true | undefined, crossed: boolean): true | undefined {
+  return (current === true) !== crossed ? true : undefined;
 }
 
 function minimumShrinkHeight(initial: NoteFrame, autoHeight: number): number {

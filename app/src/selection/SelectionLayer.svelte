@@ -1183,6 +1183,8 @@ type PendingBoardMove =
       minHeight: minimumHeightForKind(note.type) * scale,
       maxHeight,
       scale,
+      ...(note.flipX === true ? { flipX: true as const } : {}),
+      ...(note.flipY === true ? { flipY: true as const } : {}),
       baseWidth: note.width,
       baseHeight: note.height,
       baseStatisticsExtensionWidth: listStatisticsWidth(note),
@@ -1941,6 +1943,8 @@ type PendingBoardMove =
       updateNote(frame.id, {
         ...geometryFromListStatisticsFrame(note, baseFrame),
         scale: scale > 1 ? scale : undefined,
+        flipX: note.type === "image" && frame.flipX === true ? true : undefined,
+        flipY: note.type === "image" && frame.flipY === true ? true : undefined,
       });
     }
   }

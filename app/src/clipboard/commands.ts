@@ -258,7 +258,7 @@ function selectIds(ids: readonly string[], zoneIds: readonly string[] = []): voi
 
 type CopySource = Omit<Pick<Note,
   "type" | "name" | "text" | "x" | "y" | "width" | "height" | "createdAt" |
-  "task" | "taskMemory" | "importance" | "purposes" | "embedSections" | "headerHidden" | "image"
+  "task" | "taskMemory" | "importance" | "purposes" | "embedSections" | "headerHidden" | "image" | "flipX" | "flipY"
 >, "time" | "message"> & {
   time?: Note["time"] | null;
   message?: Note["message"] | null;
@@ -324,6 +324,8 @@ function createCopies(
       ...(note.embedSections ? { embedSections: { ...note.embedSections } } : {}),
       ...(note.headerHidden ? { headerHidden: true } : {}),
       ...(note.image ? { image: { ...note.image } } : {}),
+      ...(note.flipX === true ? { flipX: true as const } : {}),
+      ...(note.flipY === true ? { flipY: true as const } : {}),
       importance: note.importance ?? null,
       purposes: [...new Set(note.purposes ?? [])],
       ...(note.type === "beacon" ? { color: note.color ?? beaconPaletteColor(0) } : note.color ? { color: note.color } : {}),
@@ -582,7 +584,8 @@ function sameNotes(first: readonly Note[], second: readonly Note[]): boolean {
     return other && note.id === other.id && note.name === other.name && note.text === other.text &&
       note.type === other.type && note.x === other.x && note.y === other.y && note.width === other.width &&
       note.height === other.height && note.createdAt === other.createdAt &&
-      note.headerHidden === other.headerHidden && JSON.stringify(note.image ?? null) === JSON.stringify(other.image ?? null) &&
+      note.headerHidden === other.headerHidden && note.flipX === other.flipX && note.flipY === other.flipY &&
+      JSON.stringify(note.image ?? null) === JSON.stringify(other.image ?? null) &&
       JSON.stringify(note.task ?? null) === JSON.stringify(other.task ?? null) &&
       JSON.stringify(note.taskMemory ?? null) === JSON.stringify(other.taskMemory ?? null) &&
       note.importance === other.importance &&
