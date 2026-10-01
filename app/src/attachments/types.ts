@@ -42,3 +42,55 @@ export const IMAGE_MIME_TYPES = ["image/png", "image/jpeg", "image/gif", "image/
  */
 export const INLINE_IMAGE_DEFAULT_WIDTH_PERCENT = 50;
 export const INLINE_IMAGE_PATTERN = /!\[([^\]\n]*)\]\(att:([0-9a-f]{64}\.[a-z0-9]{1,8})\)(?:\{w=(\d{1,3})\})?/g;
+
+/**
+ * R9.3–R9.6 media contract (coordinator-owned, 01.10). User defaults (not objected):
+ * - Format/text files are edited as a COPY inside the project. Attachments stay immutable: every
+ *   save writes the new text as a new content-addressed file and points the node at it (one Undo
+ *   step), so Undo/backups keep working. "Save as…" exports the current text to a file the user picks.
+ * - Size limits: images, PDF and text 200 MB; audio and video 2 GB, copied by streaming (never
+ *   loaded whole into memory).
+ * - Supported types are the verified lists below, not "all formats".
+ */
+export type MediaKind = "pdf" | "text" | "audio" | "video";
+
+export const PDF_MIME_TYPES = ["application/pdf"] as const;
+export const AUDIO_MIME_TYPES = ["audio/mpeg", "audio/wav", "audio/ogg", "audio/webm", "audio/mp4", "audio/flac"] as const;
+export const VIDEO_MIME_TYPES = ["video/mp4", "video/webm"] as const;
+/** Text formats the Format node opens and edits; the key is the file extension (lowercase). */
+export const TEXT_FORMAT_LANGUAGES = {
+  txt: "plain", md: "markdown", json: "json", py: "python", js: "javascript", ts: "typescript",
+  css: "css", html: "html", xml: "xml", yaml: "yaml", yml: "yaml", toml: "toml", csv: "csv",
+  ini: "ini", sql: "sql", sh: "shell", ps1: "powershell", rs: "rust", c: "c", cpp: "cpp", h: "c",
+  cs: "csharp", java: "java", go: "go", lua: "lua", log: "plain",
+} as const;
+export type TextFormatExtension = keyof typeof TEXT_FORMAT_LANGUAGES;
+
+export const MEDIA_LIMIT_BYTES: Record<MediaKind | "image", number> = {
+  image: 200 * 1024 * 1024,
+  pdf: 200 * 1024 * 1024,
+  text: 200 * 1024 * 1024,
+  audio: 2 * 1024 * 1024 * 1024,
+  video: 2 * 1024 * 1024 * 1024,
+};
+
+/** A non-image attachment on a node ("pdf", "format", "audio", "video" kinds). */
+export interface MediaRef extends AttachmentRef {
+  kind: MediaKind;
+  /** Duration in seconds for audio/video, read on import when the webview can decode it. */
+  duration?: number;
+  /** Intrinsic video size, for the initial node aspect ratio. */
+  naturalWidth?: number;
+  naturalHeight?: number;
+}
+
+/** YouTube node data (R9.6). Only the id is authoritative; title/author come from oEmbed when online. */
+export interface YouTubeRef {
+  videoId: string;
+  /** The URL the user pasted, kept for "Open source". */
+  url: string;
+  title?: string;
+  author?: string;
+  /** Start offset in seconds parsed from t=/start=. */
+  start?: number;
+}

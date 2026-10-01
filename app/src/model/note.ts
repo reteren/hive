@@ -2,7 +2,7 @@ import type { CustomMark, ListItem, NodeScope, RandomPick, SourceData, TierRow }
 import type { LinkAnchor } from "./link";
 import type { MessageNodeData, TimeNodeData } from "../time/types";
 import type { EmbedSectionState } from "../combo/data";
-import type { ImageRef } from "../attachments/types";
+import type { ImageRef, MediaRef, YouTubeRef } from "../attachments/types";
 
 /**
  * "note" — ordinary text node; "pro"/"con" — the green/red plus/minus mini-nodes (R3.5);
@@ -19,7 +19,7 @@ export type NoteKind =
   | "inbox" | "list" | "source" | "glossary" | "map" | "random"
   | "markas"
   | "time" | "message" | "calendar"
-  | "image";
+  | "image" | "pdf" | "format" | "audio" | "video" | "youtube";
 
 /** R5 kinds, in create-menu order. */
 export const R5_KINDS = ["goal", "progress", "calculator", "tierlist", "stats"] as const;
@@ -34,10 +34,10 @@ export const R7_KINDS = ["inbox", "list", "source", "glossary", "map", "random",
 export const R8_KINDS = ["time", "message", "calendar"] as const;
 
 /** R9 media objects (contract in src/attachments/types.ts). "image" lies below all other nodes. */
-export const R9_KINDS = ["image"] as const;
+export const R9_KINDS = ["image", "pdf", "format", "audio", "video", "youtube"] as const;
 
 /** Default R5 node widths (u), shared by creation and resize limits. */
-export const R5_BASE_WIDTHS = { goal: 30, progress: 30, calculator: 40, tierlist: 60, stats: 30, archive: 40, trash: 40, inbox: 30, list: 30, source: 34, glossary: 40, map: 40, random: 30, markas: 30, time: 30, message: 30, calendar: 36, image: 30 } as const;
+export const R5_BASE_WIDTHS = { goal: 30, progress: 30, calculator: 40, tierlist: 60, stats: 30, archive: 40, trash: 40, inbox: 30, list: 30, source: 34, glossary: 40, map: 40, random: 30, markas: 30, time: 30, message: 30, calendar: 36, image: 30, pdf: 40, format: 50, audio: 34, video: 48, youtube: 48 } as const;
 
 /** Importance levels (R3.3): white / yellow / red / purple / rainbow. */
 export const IMPORTANCE_LEVELS = ["basic", "medium", "important", "immediately", "absolute"] as const;
@@ -139,6 +139,10 @@ export interface Note {
   scope?: NodeScope;
   /** Board image (kind "image", R9.2): the picture file and its intrinsic size. */
   image?: ImageRef;
+  /** R9.3–R9.5 file of a "pdf" / "format" / "audio" / "video" node (see src/attachments/types.ts). */
+  media?: MediaRef;
+  /** R9.6 YouTube node. */
+  youtube?: YouTubeRef;
   /** Mirror an image horizontally when its resize handle crosses the opposite edge. */
   flipX?: true;
   /** Mirror an image vertically when its resize handle crosses the opposite edge. */

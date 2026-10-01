@@ -27,6 +27,11 @@ const KIND_LABELS: Record<NoteKind, string> = {
   message: "Message",
   calendar: "Calendar",
   image: "Image",
+  pdf: "PDF",
+  format: "Format",
+  audio: "Audio",
+  video: "Video",
+  youtube: "YouTube",
 };
 
 export interface OverviewLabel {
