@@ -12,12 +12,13 @@
   import { importImagePaths } from "../images/imageActions";
   import { pickFormatFiles } from "../formats/formatActions";
   import { chooseAudioFile, importAudioFileFromBrowser, startAudioRecordingAt } from "../audio/audioActions";
-  import { importVideoPaths, pickVideoFiles } from "../video/import";
+  import { importVideoFiles, importVideoPaths, pickVideoFiles } from "../video/import";
   import { createYouTubeNote } from "../youtube/actions.svelte";
   import { parseYouTubeUrl } from "../youtube/logic";
 
   let menuElement = $state<HTMLElement | null>(null);
   let audioFileInput = $state<HTMLInputElement | null>(null);
+  let videoFileInput = $state<HTMLInputElement | null>(null);
   let youtubeInputOpen = $state(false);
   let youtubeUrlDraft = $state("");
   let youtubeInputError = $state("");
@@ -157,9 +158,24 @@
   }
 
   async function createVideoFromMenu(): Promise<void> {
+    if (!isTauri()) {
+      videoFileInput?.click();
+      return;
+    }
     const paths = await pickVideoFiles();
     if (paths.length === 0) return;
     const created = await importVideoPaths(paths, creationMenu.origin);
+    if (created.length === 0) return;
+    switchToSelectToolAfterCreation();
+    if (!creationMenu.pinned) closeCreationMenu();
+  }
+
+  async function handleVideoFileInput(event: Event): Promise<void> {
+    if (!(event.currentTarget instanceof HTMLInputElement)) return;
+    const files = [...(event.currentTarget.files ?? [])];
+    event.currentTarget.value = "";
+    if (files.length === 0) return;
+    const created = await importVideoFiles(files, creationMenu.origin);
     if (created.length === 0) return;
     switchToSelectToolAfterCreation();
     if (!creationMenu.pinned) closeCreationMenu();
@@ -342,6 +358,16 @@
           <span>YouTube link…</span>
         </button>
       {/if}
+      <input
+        bind:this={videoFileInput}
+        hidden
+        type="file"
+        accept="video/mp4,video/webm,.mp4,.webm"
+        multiple
+        tabindex="-1"
+        aria-label="Choose video files"
+        onchange={handleVideoFileInput}
+      />
       <input
         bind:this={audioFileInput}
         class="hidden-file-input"
