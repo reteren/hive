@@ -37,7 +37,7 @@ import { MODULE_NOTE_HEIGHT, MODULE_NOTE_WIDTH } from "../modules/moduleLogic";
 import { beaconPaletteColor } from "../beacons/beaconPalette";
 import { restartTimeNode } from "../time/runtime.svelte";
 import { defaultAtTimeSchedule } from "../time/uiSchedule";
-import type { ImageRef } from "../attachments/types";
+import type { ImageRef, MediaRef } from "../attachments/types";
 import { imageNodeName, initialImageSize } from "../images/imageLogic";
 import { openPdfExternally, registerFormatDropHandler } from "../formats/formatActions";
 
@@ -141,6 +141,51 @@ export function createImageNotes(images: readonly ImageRef[], center: Point): st
   execute({
     label: "Import images",
     target: `${notes.length} ${notes.length === 1 ? "image" : "images"}`,
+    do: () => {
+      notes.forEach((note, index) => addNote(note, startIndex + index));
+      clearSelection();
+      if (ids[0]) selectOnly(ids[0]);
+      for (const id of ids.slice(1)) includeSelected(id);
+    },
+    undo: () => {
+      for (const id of [...ids].reverse()) removeNote(id);
+      restoreSelectionSnapshot(previousSelection);
+    },
+  });
+  return ids;
+}
+
+/** Add imported audio files as independent nodes in one undoable import action. */
+export function createAudioNotes(files: readonly MediaRef[], center: Point): string[] {
+  const audioFiles = files.filter((media) => media.kind === "audio");
+  if (audioFiles.length === 0) return [];
+  const occupiedNames = Object.values(board.notes).map((note) => note.name);
+  const width = R5_BASE_WIDTHS.audio;
+  const notes = audioFiles.map((media, index): Note => {
+    const baseName = media.name?.replace(/\.[^.\\/]+$/, "") || "Audio";
+    const name = uniqueName(baseName, occupiedNames);
+    occupiedNames.push(name);
+    const cascade = index * 2.2;
+    return {
+      id: newId(),
+      type: "audio",
+      name,
+      text: "",
+      x: center.x + cascade - width / 2,
+      y: center.y + cascade - 8,
+      width,
+      height: null,
+      createdAt: Date.now(),
+      media: { ...media },
+    };
+  });
+  const ids = notes.map((note) => note.id);
+  const startIndex = board.order.length;
+  const previousSelection = captureSelectionSnapshot();
+
+  execute({
+    label: "Import audio",
+    target: `${notes.length} ${notes.length === 1 ? "audio file" : "audio files"}`,
     do: () => {
       notes.forEach((note, index) => addNote(note, startIndex + index));
       clearSelection();

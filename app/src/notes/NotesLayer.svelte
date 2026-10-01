@@ -17,6 +17,7 @@
   import { boardPopupStyle, dismissBoardPopup, fitBoardPopupAnchor } from "../ui/boardAnchor";
   import { imageFirstOrder } from "../images/imageLogic";
   import { handleBoardImagePaste, registerImageDropHandler, registerImagePasteToBoard } from "../images/imageActions";
+  import { handleBoardAudioPaste, registerAudioDropHandler, registerAudioPasteHandler } from "../audio/audioActions";
   import {
     closeGifContextMenu,
     gifPlayback,
@@ -36,8 +37,11 @@
     const boardElement = document.querySelector<HTMLElement>(".board");
     if (!boardElement) return;
     const unregisterImageDrop = registerImageDropHandler();
+    const unregisterAudioDrop = registerAudioDropHandler();
     const unregisterImagePaste = registerImagePasteToBoard();
+    const unregisterAudioPaste = registerAudioPasteHandler();
     window.addEventListener("paste", handleBoardImagePaste, true);
+    window.addEventListener("paste", handleBoardAudioPaste, true);
 
     function onContextMenu(event: MouseEvent): void {
       const target = event.target instanceof Element ? event.target : null;
@@ -140,8 +144,11 @@
     window.addEventListener("click", onWindowClick, true);
     return () => {
       unregisterImageDrop();
+      unregisterAudioDrop();
       unregisterImagePaste();
+      unregisterAudioPaste();
       window.removeEventListener("paste", handleBoardImagePaste, true);
+      window.removeEventListener("paste", handleBoardAudioPaste, true);
       boardElement.removeEventListener("contextmenu", onContextMenu, true);
       window.removeEventListener("click", onWindowClick, true);
     };

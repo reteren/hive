@@ -17,7 +17,7 @@
   import AttachmentImage from "../attachments/AttachmentImage.svelte";
   import GifView from "../attachments/GifView.svelte";
   import { selection } from "../selection/selection.svelte";
-  import { registerImagePasteHandler } from "../attachments/pasteDispatch";
+import { dispatchImagePaste, registerImagePasteHandler } from "../attachments/pasteDispatch";
   import { addTierlistImagesFromPicker } from "./imagePicker";
   import {
     importImageFile,
@@ -27,7 +27,7 @@
     reportImportError,
     type ImportResult,
   } from "../attachments/service";
-  import type { ImageRef } from "../attachments/types";
+import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
   import {
     addImageTierCards,
     addNoteTierCard,
@@ -145,10 +145,14 @@
   onMount(() => {
     const unregisterFileDrop = registerFileDropHandler(30, handleTierlistFileDrop);
     const unregisterImagePaste = registerImagePasteHandler(30, (files) => {
+      const imageFiles = files.filter((file) => IMAGE_MIME_TYPES.includes(file.type as (typeof IMAGE_MIME_TYPES)[number]));
+      if (imageFiles.length === 0) return false;
       const activeElement = document.activeElement instanceof Element ? document.activeElement : null;
       const rowId = rowIdAt(activeElement) ?? hoveredRowId;
       if (!rowId) return false;
-      void importImageFilesIntoRow(rowId, files);
+      void importImageFilesIntoRow(rowId, imageFiles);
+      const otherFiles = files.filter((file) => !IMAGE_MIME_TYPES.includes(file.type as (typeof IMAGE_MIME_TYPES)[number]));
+      if (otherFiles.length > 0) dispatchImagePaste(otherFiles);
       return true;
     });
     return () => {
