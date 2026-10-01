@@ -144,7 +144,7 @@
   .level-track span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #57bb73, #e7c94c 76%, #df5a49); transition: width 80ms linear; }
   .recording-actions { display: flex; justify-content: flex-end; gap: 6px; }
   .recording-actions button { min-height: 26px; padding: 3px 9px; border: 1px solid #555; border-radius: 3px; color: var(--text); background: #343434; cursor: pointer; }
-  .recording-actions .stop-button { border-color: #bd453b; background: #8f3029; }
+  .recording-actions .stop-button { min-width: 132px; min-height: 34px; border-color: #e05a50; background: #a9362e; font-size: 12px; font-weight: 700; }
   .audio-error { padding: 8px; color: #e1aaa6; font-size: 11px; }
   .audio-caption { min-width: 0; }
 </style>
