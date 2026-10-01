@@ -6,6 +6,7 @@ import {
   youtubeEmbedErrorReason,
   youtubeEmbedUrl,
   youtubeOEmbedUrl,
+  youtubePlayerCommand,
   youtubeThumbnailUrl,
 } from "../src/youtube/logic";
 
@@ -39,7 +40,8 @@ describe("YouTube URL parsing", () => {
 describe("YouTube embeds and persisted data", () => {
   it("constructs privacy-enhanced URLs with autoplay, origin and start time", () => {
     expect(youtubeEmbedUrl({ videoId: "abcdefghijk", start: 90 }, "tauri://localhost"))
-      .toBe("https://www.youtube-nocookie.com/embed/abcdefghijk?autoplay=1&enablejsapi=1&start=90&origin=tauri%3A%2F%2Flocalhost");
+      .toBe("https://www.youtube-nocookie.com/embed/abcdefghijk?autoplay=1&controls=0&enablejsapi=1&start=90&origin=tauri%3A%2F%2Flocalhost");
+    expect(new URL(youtubeEmbedUrl({ videoId: "abcdefghijk" }, "", true)).searchParams.get("controls")).toBe("1");
     expect(youtubeThumbnailUrl("abcdefghijk")).toBe("https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg");
     expect(new URL(youtubeOEmbedUrl("https://youtu.be/abcdefghijk")).searchParams.get("format")).toBe("json");
   });
@@ -57,14 +59,21 @@ describe("YouTube embeds and persisted data", () => {
 
   it("parses player postMessage responses and explains embed errors", () => {
     expect(parseYouTubePlayerMessage(JSON.stringify({ event: "onStateChange", info: 1 })))
-      .toEqual({ kind: "response" });
+      .toEqual({ kind: "response", playerState: 1 });
     expect(parseYouTubePlayerMessage({ event: "infoDelivery", info: { currentTime: 12 } }))
-      .toEqual({ kind: "response" });
+      .toEqual({ kind: "response", currentTime: 12 });
     expect(parseYouTubePlayerMessage({ event: "onError", info: 153 }))
       .toEqual({ kind: "error", reason: "YouTube could not identify this app." });
     expect(parseYouTubePlayerMessage({ event: "onError", info: 101 }))
       .toEqual({ kind: "error", reason: "The video owner does not allow playback on other websites." });
     expect(parseYouTubePlayerMessage("not json")).toBeNull();
     expect(parseYouTubePlayerMessage({ event: "unrelated" })).toBeNull();
+  });
+
+  it("parses playback snapshots and encodes iframe commands", () => {
+    expect(parseYouTubePlayerMessage({ event: "infoDelivery", info: { currentTime: 12.5, duration: 100, volume: 120, muted: false, playerState: 1 } }))
+      .toEqual({ kind: "response", currentTime: 12.5, duration: 100, volume: 100, muted: false, playerState: 1 });
+    expect(youtubePlayerCommand("seekTo", [42, true])).toBe('{"event":"command","func":"seekTo","args":[42,true]}');
+    expect(youtubePlayerCommand("playVideo")).toBe('{"event":"command","func":"playVideo","args":[]}');
   });
 });

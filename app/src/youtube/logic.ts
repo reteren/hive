@@ -80,8 +80,8 @@ export function youtubeOEmbedUrl(videoUrl: string): string {
   return `https://www.youtube.com/oembed?${query.toString()}`;
 }
 
-export function youtubeEmbedUrl(ref: Pick<YouTubeRef, "videoId" | "start">, origin: string): string {
-  const query = new URLSearchParams({ autoplay: "1", enablejsapi: "1" });
+export function youtubeEmbedUrl(ref: Pick<YouTubeRef, "videoId" | "start">, origin: string, nativeControls = false): string {
+  const query = new URLSearchParams({ autoplay: "1", controls: nativeControls ? "1" : "0", enablejsapi: "1" });
   if (typeof ref.start === "number" && Number.isFinite(ref.start) && ref.start > 0) {
     query.set("start", String(Math.floor(ref.start)));
   }
@@ -101,7 +101,19 @@ export function youtubeEmbedErrorReason(value: unknown): string | null {
   return `YouTube player error ${code}.`;
 }
 
-export type YouTubePlayerMessage = { kind: "error"; reason: string } | { kind: "response" };
+export interface YouTubePlayerInfo {
+  currentTime?: number;
+  duration?: number;
+  volume?: number;
+  muted?: boolean;
+  playerState?: number;
+}
+
+export type YouTubePlayerMessage = { kind: "error"; reason: string } | ({ kind: "response" } & Partial<YouTubePlayerInfo>);
+
+export function youtubePlayerCommand(func: "playVideo" | "pauseVideo" | "seekTo" | "setVolume" | "mute" | "unMute", args: readonly unknown[] = []): string {
+  return JSON.stringify({ event: "command", func, args });
+}
 
 /** Parse the small subset of cross-window player messages used by the board. */
 export function parseYouTubePlayerMessage(value: unknown): YouTubePlayerMessage | null {
@@ -120,8 +132,36 @@ export function parseYouTubePlayerMessage(value: unknown): YouTubePlayerMessage 
       reason: youtubeEmbedErrorReason(message.info) ?? "The embedded player returned an unknown error.",
     };
   }
-  if (message.event === "onStateChange" || message.event === "infoDelivery") return { kind: "response" };
+  if (message.event === "onStateChange") {
+    return typeof message.info === "number" && Number.isInteger(message.info)
+      ? { kind: "response", playerState: message.info }
+      : { kind: "response" };
+  }
+  if (message.event === "onReady") return { kind: "response" };
+  if (message.event === "infoDelivery") {
+    return { kind: "response", ...parsePlayerInfo(message.info) };
+  }
   return null;
+}
+
+function parsePlayerInfo(value: unknown): { currentTime?: number; duration?: number; volume?: number; muted?: boolean; playerState?: number } {
+  if (!isRecord(value)) return {};
+  const currentTime = finiteNonNegative(value.currentTime);
+  const duration = finiteNonNegative(value.duration);
+  const volume = typeof value.volume === "number" && Number.isFinite(value.volume) ? Math.min(100, Math.max(0, value.volume)) : undefined;
+  const playerState = typeof value.playerState === "number" && Number.isInteger(value.playerState) ? value.playerState : undefined;
+  const muted = typeof value.muted === "boolean" ? value.muted : undefined;
+  return {
+    ...(currentTime === undefined ? {} : { currentTime }),
+    ...(duration === undefined ? {} : { duration }),
+    ...(volume === undefined ? {} : { volume }),
+    ...(muted === undefined ? {} : { muted }),
+    ...(playerState === undefined ? {} : { playerState }),
+  };
+}
+
+function finiteNonNegative(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
 function parseStartTime(value: string): number | null {
