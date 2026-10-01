@@ -15,7 +15,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
 
 export type TierCard =
   | { id: string; kind: "text"; text: string }
-  | { id: string; kind: "note"; noteId: string }
+  | { id: string; kind: "note"; noteId: string; stopped?: true }
   /** R9.2: a picture card; the file lives in attachments/ (see src/attachments/types.ts). */
   | { id: string; kind: "image"; image: ImageRef; stopped?: true };
 
@@ -115,7 +115,9 @@ export function parseTiers(value: unknown): TierRow[] | null {
     for (const card of Array.isArray(row.cards) ? row.cards : []) {
       if (!isRecord(card) || !nonEmptyString(card.id)) continue;
       if (card.kind === "text" && typeof card.text === "string") cards.push({ id: card.id, kind: "text", text: card.text });
-      else if (card.kind === "note" && nonEmptyString(card.noteId)) cards.push({ id: card.id, kind: "note", noteId: card.noteId });
+      else if (card.kind === "note" && nonEmptyString(card.noteId)) {
+        cards.push({ id: card.id, kind: "note", noteId: card.noteId, ...(card.stopped === true ? { stopped: true } : {}) });
+      }
       else if (card.kind === "image") {
         const image = parseTierImageRef(card.image);
         if (image) cards.push({ id: card.id, kind: "image", image, ...(card.stopped === true ? { stopped: true } : {}) });

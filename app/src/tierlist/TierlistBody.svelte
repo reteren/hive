@@ -323,6 +323,17 @@
     return `${Math.max(72, contentHeight * image.naturalWidth / image.naturalHeight + 2)}px`;
   }
 
+  function cardImageWidth(card: TierCard): string | undefined {
+    const preview = cardPreview(card);
+    return preview.kind === "image" ? imageCardWidth(preview.image) : undefined;
+  }
+
+  function imagePreviewStyle(preview: Extract<ReturnType<typeof cardPreview>, { kind: "image" }>): string {
+    const scaleX = preview.flipX ? -1 : 1;
+    const scaleY = preview.flipY ? -1 : 1;
+    return `width:100%;height:54px;object-fit:contain;transform:scale(${scaleX},${scaleY});transform-origin:center;`;
+  }
+
   function beginEditCard(row: TierRow, card: TierCard, event: MouseEvent): void {
     event.stopPropagation();
     selectedCard = { rowId: row.id, cardId: card.id };
@@ -819,7 +830,7 @@
         {#each row.displayCards as entry (entry.id)}
           <div class="tier-card-wrap" animate:flip={{ duration: preferences.reduceAnimations ? 0 : 140 }}
             data-tier-card-id={entry.card?.id} data-tier-card-slot={entry.card ? undefined : ""}
-            style:width={entry.card?.kind === "image" ? imageCardWidth(entry.card.image) : entry.card ? undefined : `${$contentDragPreview?.width ?? 92}px`}
+            style:width={entry.card ? cardImageWidth(entry.card) : `${$contentDragPreview?.width ?? 92}px`}
             style:min-height={entry.card ? undefined : `${Math.max(56, $contentDragPreview?.height ?? 56)}px`}>
           {#if entry.card}
           {@const card = entry.card}
@@ -865,10 +876,10 @@
                     hoverWhenSelected={true}
                     alt={preview.name}
                     class="tier-card-image"
-                    style="display:block;width:100%;height:54px;object-fit:contain;"
+                    style={imagePreviewStyle(preview)}
                   />
                 {:else if preview.kind === "image"}
-                  <AttachmentImage image={preview.image} alt={preview.name} class="tier-card-image" style="display:block;width:100%;height:54px;object-fit:contain;" />
+                  <AttachmentImage image={preview.image} alt={preview.name} class="tier-card-image" style={imagePreviewStyle(preview)} />
                 {:else}
                   <strong>{preview.name}</strong>
                   {#if !preview.missing}

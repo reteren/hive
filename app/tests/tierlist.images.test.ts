@@ -9,6 +9,7 @@ import type { Note } from "../src/model/note";
 import { parseTiers } from "../src/model/nodeData";
 import { createDefaultTierRows, tierCardPreview } from "../src/tierlist/logic";
 import { addTierlistImagesFromPicker } from "../src/tierlist/imagePicker";
+import { isGifStopped, setGifStopped } from "../src/attachments/gifPlayback.svelte";
 
 function imageRef(hash = "a", name = "portrait.png"): ImageRef {
   return {
@@ -61,6 +62,8 @@ describe("Tierlist image cards", () => {
       name: "S",
       color: "#ff4b5c",
       cards: [
+        { id: "stopped-note", kind: "note", noteId: "board-image", stopped: true },
+        { id: "invalid-stop-flag", kind: "note", noteId: "board-image", stopped: "true" },
         { id: "valid", kind: "image", image },
         { id: "bad-file", kind: "image", image: { ...image, file: "../outside.png" } },
         { id: "bad-mime", kind: "image", image: { ...image, mime: "image/svg+xml" } },
@@ -70,7 +73,11 @@ describe("Tierlist image cards", () => {
       ],
     }]);
 
-    expect(parsed?.[0].cards).toEqual([{ id: "valid", kind: "image", image }]);
+    expect(parsed?.[0].cards).toEqual([
+      { id: "stopped-note", kind: "note", noteId: "board-image", stopped: true },
+      { id: "invalid-stop-flag", kind: "note", noteId: "board-image" },
+      { id: "valid", kind: "image", image },
+    ]);
     expect(parseTiers(JSON.parse(JSON.stringify(parsed)))?.[0].cards).toEqual(parsed?.[0].cards);
   });
 
@@ -108,6 +115,68 @@ describe("Tierlist image cards", () => {
     });
   });
 
+  it("previews a linked board image with its image data and mirror flags", () => {
+    const image = imageRef("e", "diagram.png");
+    const source: Note = {
+      id: "board-image",
+      type: "image",
+      name: "Board image",
+      text: "",
+      x: 40,
+      y: 20,
+      width: 32,
+      height: 24,
+      image,
+      flipX: true,
+      flipY: true,
+    };
+
+    expect(tierCardPreview({ id: "linked-image", kind: "note", noteId: source.id }, { [source.id]: source })).toEqual({
+      kind: "image",
+      image,
+      name: "Board image",
+      flipX: true,
+      flipY: true,
+    });
+  });
+
+  it("keeps a deleted image target as the existing missing-content preview", () => {
+    expect(tierCardPreview({ id: "deleted", kind: "note", noteId: "gone" }, {})).toEqual({
+      kind: "note",
+      name: "content missing",
+      lines: [],
+      missing: true,
+    });
+  });
+
+  it("stores Stop/Play state on a Tierlist card that links to a board GIF", () => {
+    const tierlist = createTierlist();
+    const row = tierlist.tiers![0];
+    row.cards.push({ id: "linked-gif", kind: "note", noteId: "board-gif" });
+    const source: Note = {
+      id: "board-gif",
+      type: "image",
+      name: "Loop",
+      text: "",
+      x: 0,
+      y: 0,
+      width: 32,
+      height: 24,
+      image: { ...imageRef("f", "loop.gif"), mime: "image/gif" },
+    };
+    replaceBoard([tierlist, source]);
+    clearHistory();
+    const target = { kind: "tierlist" as const, noteId: tierlist.id, rowId: row.id, cardId: "linked-gif" };
+
+    expect(isGifStopped(target)).toBe(false);
+    setGifStopped(target, true);
+    expect(isGifStopped(target)).toBe(true);
+    expect(board.notes.tierlist.tiers?.[0].cards[0]).toMatchObject({ kind: "note", stopped: true });
+    expect(history.entries).toHaveLength(0);
+    setGifStopped(target, false);
+    expect(isGifStopped(target)).toBe(false);
+  });
+
   it("moves an image card to a List under its original name and supports Undo", () => {
     replaceBoard([createTierlist(), list]);
     clearHistory();
@@ -141,6 +210,16 @@ describe("Tierlist image entry point", () => {
     expect(tierlistBodySource).toContain('data-tier-add-image');
     expect(tierlistBodySource).toContain('class="tier-menu-add-image"');
     expect(tierlistBodySource).toContain("void addImageFromPicker(row.id)");
+  });
+
+  it("renders linked image targets with image sizing, flip styles, and Tierlist GIF controls", () => {
+    expect(tierlistBodySource).toContain("cardImageWidth(entry.card)");
+    expect(tierlistBodySource).toContain('preview.kind === "image" && preview.image.mime === "image/gif"');
+    expect(tierlistBodySource).toContain('target={{ kind: "tierlist", noteId: note.id, rowId: row.id, cardId: card.id }}');
+    expect(tierlistBodySource).toContain("hoverWhenSelected={true}");
+    expect(tierlistBodySource).toContain("<AttachmentImage image={preview.image}");
+    expect(tierlistBodySource).toContain("imagePreviewStyle(preview)");
+    expect(tierlistBodySource).not.toContain("display:block;width:100%;height:54px;object-fit:contain;");
   });
 
   it("calls the picker from the row menu flow and imports its paths into that row", async () => {

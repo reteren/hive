@@ -54,7 +54,7 @@ export function isGifStopped(target: GifPlaybackTarget): boolean {
       return gifPlayback.inlineStopped[inlineGifKey(target.noteId, target.position)] === true;
     case "tierlist": {
       const card = findTierCard(target);
-      return card?.kind === "image" && card.stopped === true;
+      return (card?.kind === "image" || card?.kind === "note") && card.stopped === true;
     }
   }
 }
@@ -78,7 +78,7 @@ export function setGifStopped(target: GifPlaybackTarget, stopped: boolean): void
     }
     case "tierlist": {
       const card = findTierCard(target);
-      if (card?.kind === "image") {
+      if (card?.kind === "image" || card?.kind === "note") {
         if (stopped) card.stopped = true;
         else delete card.stopped;
       }

@@ -19,7 +19,7 @@ export type TierRowDeleteChoice = "move-below" | "delete-cards" | "cancel";
 
 export type TierCardPreview =
   | { kind: "text"; text: string }
-  | { kind: "image"; image: ImageRef; name: string }
+  | { kind: "image"; image: ImageRef; name: string; flipX?: true; flipY?: true }
   | { kind: "note"; name: string; lines: string[]; missing: false }
   | { kind: "note"; name: "content missing"; lines: []; missing: true };
 
@@ -275,6 +275,15 @@ export function tierCardPreview(card: TierCard, notes: Readonly<Record<string, N
     const zone = zones[card.noteId];
     return zone ? { kind: "note", name: zone.name, lines: ["Zone"], missing: false }
       : { kind: "note", name: "content missing", lines: [], missing: true };
+  }
+  if (source.type === "image" && source.image) {
+    return {
+      kind: "image",
+      image: source.image,
+      name: source.name || source.image.name || "Image",
+      ...(source.flipX === true ? { flipX: true as const } : {}),
+      ...(source.flipY === true ? { flipY: true as const } : {}),
+    };
   }
   const lines = source.text.split(/\r?\n/).filter((line) => line.trim()).slice(0, 3);
   return { kind: "note", name: source.name, lines, missing: false };
