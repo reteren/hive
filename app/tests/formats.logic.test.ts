@@ -5,7 +5,7 @@ import { board, replaceBoard } from "../src/model/board.svelte";
 import { minimumHeightForKind, minimumWidthForKind } from "../src/selection/resize";
 import { createFormatNotes } from "../src/formats/formatCreation";
 import { clearAllFormatDrafts, formatDraft, setFormatDraft } from "../src/formats/formatDrafts";
-import { formatLanguageForExtension, formatNodeKind, hasUnsavedFormatChanges, isFormatMediaKind, parseMediaRef } from "../src/formats/formatLogic";
+import { formatLanguageForExtension, formatNodeKind, hasUnsavedFormatChanges, isFormatMediaKind, parseMediaRef, pdfFrameMetrics } from "../src/formats/formatLogic";
 import { saveFormatText } from "../src/formats/formatActions";
 import { parseNotesPayload, serializeNotes } from "../src/clipboard/payload";
 import { sanitizeArchiveEntries } from "../src/archive/serialization";
@@ -58,6 +58,19 @@ describe("PDF and Format nodes", () => {
     expect(parseMediaRef({ ...pdfRef, mime: "text/plain" })).toBeNull();
     expect(minimumWidthForKind("pdf")).toBe(30);
     expect(minimumHeightForKind("pdf")).toBe(30);
+  });
+
+  it.each([
+    [0.5, 1, 200, 130, 2],
+    [1, 1, 400, 260, 1],
+    [2, 1, 800, 520, 0.5],
+    [0.5, 2, 400, 260, 1],
+    [2, 1.5, 1200, 780, 1 / 3],
+    [2, 4, 3200, 2080, 1 / 8],
+  ])("keeps the PDF frame geometry while rasterizing at zoom %s and note scale %s", (zoom, noteScale, width, height, inverseScale) => {
+    expect(pdfFrameMetrics(400, 260, zoom, noteScale)).toEqual({
+      width, height, scale: zoom * noteScale, inverseScale,
+    });
   });
 
   it("creates the PDF and Format nodes at the picker point in a single undo step", () => {

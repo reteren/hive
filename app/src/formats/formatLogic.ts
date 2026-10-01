@@ -40,6 +40,41 @@ export function hasUnsavedFormatChanges(draft: string, saved: string): boolean {
   return draft !== saved;
 }
 
+export interface PdfFrameMetrics {
+  /** CSS dimensions used to rasterize the PDF before the board scale is undone. */
+  width: number;
+  height: number;
+  /** The combined camera zoom and per-note/group scale. */
+  scale: number;
+  /** Applied to the frame so its final board-space size remains unchanged. */
+  inverseScale: number;
+}
+
+/**
+ * Rasterize a PDF frame at its on-screen CSS resolution, then counter-scale it
+ * inside the note. This keeps its final geometry unchanged through camera zoom
+ * and note/group scaling while giving the embedded viewer a larger viewport.
+ */
+export function pdfFrameMetrics(
+  width: number,
+  height: number,
+  zoom: number,
+  noteScale: number,
+): PdfFrameMetrics {
+  const safeWidth = Number.isFinite(width) ? Math.max(0, width) : 0;
+  const safeHeight = Number.isFinite(height) ? Math.max(0, height) : 0;
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  const safeNoteScale = Number.isFinite(noteScale) && noteScale > 0 ? noteScale : 1;
+  const scale = safeZoom * safeNoteScale;
+
+  return {
+    width: safeWidth * scale,
+    height: safeHeight * scale,
+    scale,
+    inverseScale: 1 / scale,
+  };
+}
+
 /** Validate media references at persistence boundaries before they reach the board model. */
 export function parseMediaRef(value: unknown): MediaRef | null {
   if (!isRecord(value) || typeof value.file !== "string" || typeof value.mime !== "string" ||
