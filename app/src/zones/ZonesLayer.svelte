@@ -26,7 +26,6 @@
   let menu = $state<Menu | null>(null);
   let draftName = $state("");
   let renameInput = $state<HTMLInputElement>();
-  const moveKeys = $derived(getCommand("select.move")?.keys.map(formatKey).join(", ") ?? "");
   const pathCache = new WeakMap<Zone, { parts: Zone["parts"]; holes: Zone["holes"]; value: string }>();
   const nameEdgeCache = new WeakMap<Zone, { parts: Zone["parts"]; value: ReturnType<typeof zoneNameEdge> }>();
 
@@ -83,21 +82,6 @@
     if (!menu) return;
     menu.rename = true;
     void tick().then(() => { renameInput?.focus(); renameInput?.select(); });
-  }
-
-  function startMoveFromMenu(event: MouseEvent): void {
-    if (!menu) return;
-    const id = menu.id;
-    const point = screenToWorld(camera, viewport, local(event.clientX, event.clientY));
-    menu = null;
-    runZoneMenuAction(id, "grab", point);
-  }
-
-  function startResizeFromMenu(): void {
-    if (!menu) return;
-    const id = menu.id;
-    menu = null;
-    runZoneMenuAction(id, "scale");
   }
 
   function startUniversalZoneAction(action: "scale" | "grab" | "delete", event?: MouseEvent): void {
@@ -246,8 +230,6 @@
           else if (event.code === "Escape") { event.preventDefault(); menu = null; }
         }} onblur={commitRename} />
       {:else}
-        <button type="button" role="menuitem" data-zone-move-menu onclick={startMoveFromMenu}>Move zone{moveKeys ? ` (${moveKeys})` : ""}</button>
-        <button type="button" role="menuitem" data-zone-resize-menu onclick={startResizeFromMenu}>Resize</button>
         <button type="button" role="menuitem" onclick={startRename}>Rename</button>
         <div class="zone-colours" aria-label="Zone colour">
           <span>Colour</span>
@@ -255,7 +237,6 @@
             <button type="button" class="colour" style:background={color} aria-label={`Set zone colour ${color}`} onclick={() => { if (menu) recolorZone(menu.id, color); menu = null; }}></button>
           {/each}
         </div>
-        <button type="button" role="menuitem" onclick={() => { if (menu) deleteZone(menu.id); menu = null; }}>Delete zone</button>
         <div class="zone-menu-divider" role="separator"></div>
         <button class="zone-menu-command" type="button" role="menuitem" onclick={() => startUniversalZoneAction("scale")}>
           <span>Scale</span><span class="zone-menu-shortcut">{menuShortcutLabel("select.scale")}</span>
