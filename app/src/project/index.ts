@@ -33,6 +33,7 @@ import { copyEmbedSections, copyTimeForHost, parseEmbedSections } from "../combo
 import type { ImageRef, MediaRef, YouTubeRef } from "../attachments/types";
 import { parseImageRef } from "../images/imageLogic";
 import { parseMediaRef } from "../formats/formatLogic";
+import { copyAudioRecordings, parseAudioRecordings } from "../audio/recordingData";
 import { parseYouTubeRef } from "../youtube/logic";
 
 export interface IndexedNote {
@@ -69,6 +70,7 @@ export interface IndexedNote {
   smoothLineAnchors?: NonNullable<Note["smoothLineAnchors"]>;
   image?: ImageRef;
   media?: MediaRef;
+  recordings?: Note["recordings"];
   youtube?: YouTubeRef;
   flipX?: true;
   flipY?: true;
@@ -238,6 +240,7 @@ export function serializeProjectIndex(
       ...(note.listStats ? { listStats: true } : {}),
       image: note.image ? { ...note.image } : undefined,
       media: note.media ? { ...note.media } : undefined,
+      recordings: note.type === "audio" ? copyAudioRecordings(note.recordings) : undefined,
       youtube: note.youtube ? { ...note.youtube } : undefined,
       gifStopped: note.gifStopped === true ? true as const : undefined,
       flipX: note.type === "image" && note.flipX === true ? true as const : undefined,
@@ -316,6 +319,7 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       ...(entry.listStats ? { listStats: true } : {}),
       ...(entry.image ? { image: { ...entry.image } } : {}),
       ...(entry.media ? { media: { ...entry.media } } : {}),
+      ...(entry.recordings ? { recordings: copyAudioRecordings(entry.recordings) } : {}),
       ...(entry.youtube ? { youtube: { ...entry.youtube } } : {}),
       ...(entry.type === "image" && entry.gifStopped === true ? { gifStopped: true } : {}),
       ...(entry.type === "image" && entry.flipX === true ? { flipX: true } : {}),
@@ -441,6 +445,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
   const type = parseNoteKind(value.type);
   const image = value.image === undefined ? undefined : parseImageRef(value.image);
   const media = value.media === undefined ? undefined : parseMediaRef(value.media);
+  const recordings = value.recordings === undefined ? undefined : parseAudioRecordings(value.recordings);
   const youtube = value.youtube === undefined ? undefined : parseYouTubeRef(value.youtube);
   const gifStopped = value.gifStopped === true ? true : undefined;
   const file = typeof value.file === "string" && value.file.length > 0
@@ -466,6 +471,9 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
   }
   if (value.media !== undefined && !media || type === "pdf" && media?.kind !== "pdf" || type === "format" && media?.kind !== "text" || type === "audio" && media?.kind !== "audio" || type === "video" && media?.kind !== "video") {
     warnings.push(`Invalid or missing file data for note ${id}; the file placeholder will be shown.`);
+  }
+  if (value.recordings !== undefined && (type !== "audio" || !recordings)) {
+    warnings.push(`Invalid audio recordings for note ${id}; the recording list was cleared.`);
   }
   if (value.youtube !== undefined && !youtube || type === "youtube" && !youtube) {
     warnings.push(`Invalid or missing YouTube data for note ${id}; the link placeholder will be shown.`);
@@ -557,6 +565,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
       moods: moods.values,
       image: image ?? undefined,
       media: media ?? undefined,
+      recordings: type === "audio" && recordings ? copyAudioRecordings(recordings) : undefined,
       youtube: youtube ?? undefined,
       gifStopped: type === "image" ? gifStopped : undefined,
       flipX: type === "image" && value.flipX === true ? true : undefined,

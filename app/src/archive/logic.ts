@@ -7,6 +7,7 @@ import { estimatedCreationHeight } from "../notes/creationPosition";
 import { uniqueName } from "../notes/naming";
 import { copyTierRows } from "../tierlist/logic";
 import { copyTimeForHost } from "../combo/data";
+import { copyAudioRecordings } from "../audio/recordingData";
 
 export type RestorePlacement = "old" | "centre";
 
@@ -32,6 +33,7 @@ export function copyArchivedNote(note: Note): Note {
     ...(note.message ? { message: { ...note.message } } : {}),
     ...(note.time ? { time: copyTimeForHost(note.type, note.time) } : {}),
     ...(note.embedSections ? { embedSections: { ...note.embedSections } } : {}),
+    ...(note.recordings ? { recordings: copyAudioRecordings(note.recordings) } : {}),
     ...(note.purposes ? { purposes: [...note.purposes] } : {}),
     ...(note.moods ? { moods: [...note.moods] } : {}),
     ...(note.smoothLineAnchors ? { smoothLineAnchors: copySmoothLineAnchorSnapshot(note.smoothLineAnchors) } : {}),

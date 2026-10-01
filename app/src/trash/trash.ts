@@ -5,6 +5,7 @@ import type { Note } from "../model/note";
 import type { TrashEntry } from "../model/retention.svelte";
 import type { Zone } from "../model/zone";
 import { copyTimeForHost } from "../combo/data";
+import { copyAudioRecordings } from "../audio/recordingData";
 
 export interface TrashRename {
   noteId: string;
@@ -115,6 +116,7 @@ export function copyTrashNote(note: Note): Note {
     ...(note.message ? { message: { ...note.message } } : {}),
     ...(note.time ? { time: copyTimeForHost(note.type, note.time) } : {}),
     ...(note.embedSections ? { embedSections: { ...note.embedSections } } : {}),
+    ...(note.recordings ? { recordings: copyAudioRecordings(note.recordings) } : {}),
     ...(note.purposes ? { purposes: [...note.purposes] } : {}),
     ...(note.moods ? { moods: [...note.moods] } : {}),
     ...(note.smoothLineAnchors ? { smoothLineAnchors: copySmoothLineAnchorSnapshot(note.smoothLineAnchors) } : {}),

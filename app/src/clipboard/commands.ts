@@ -37,6 +37,7 @@ import { createYouTubeNote } from "../youtube/actions.svelte";
 import { parseYouTubeUrl } from "../youtube/logic";
 import { importClipboardItems } from "../images/imageActions";
 import { importAudioClipboardItems } from "../audio/audioActions";
+import { copyAudioRecordings } from "../audio/recordingData";
 import { dispatchImagePaste } from "../attachments/pasteDispatch";
 import {
   creationObstacleForNote,
@@ -271,7 +272,7 @@ function selectIds(ids: readonly string[], zoneIds: readonly string[] = []): voi
 
 type CopySource = Omit<Pick<Note,
   "type" | "name" | "text" | "x" | "y" | "width" | "height" | "createdAt" |
-  "task" | "taskMemory" | "importance" | "purposes" | "embedSections" | "headerHidden" | "image" | "media" | "youtube" | "flipX" | "flipY" | "gifStopped"
+  "task" | "taskMemory" | "importance" | "purposes" | "embedSections" | "headerHidden" | "image" | "media" | "recordings" | "youtube" | "flipX" | "flipY" | "gifStopped"
 >, "time" | "message"> & {
   time?: Note["time"] | null;
   message?: Note["message"] | null;
@@ -338,6 +339,7 @@ function createCopies(
       ...(note.headerHidden ? { headerHidden: true } : {}),
       ...(note.image ? { image: { ...note.image } } : {}),
       ...(note.media ? { media: { ...note.media } } : {}),
+      ...(note.recordings ? { recordings: copyAudioRecordings(note.recordings) } : {}),
       ...(note.youtube ? { youtube: { ...note.youtube } } : {}),
       ...(note.flipX === true ? { flipX: true as const } : {}),
       ...(note.flipY === true ? { flipY: true as const } : {}),

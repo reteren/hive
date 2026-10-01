@@ -141,6 +141,8 @@ export interface Note {
   image?: ImageRef;
   /** R9.3–R9.5 file of a "pdf" / "format" / "audio" / "video" node (see src/attachments/types.ts). */
   media?: MediaRef;
+  /** Dictaphone recordings stored as independent immutable audio attachments. */
+  recordings?: { id: string; name: string; media: MediaRef }[];
   /** R9.6 YouTube node. */
   youtube?: YouTubeRef;
   /** Mirror an image horizontally when its resize handle crosses the opposite edge. */

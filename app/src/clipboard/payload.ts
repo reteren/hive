@@ -25,6 +25,7 @@ import { copyEmbedSections, copyTimeForHost, parseEmbedSections } from "../combo
 import type { ImageRef, MediaRef, YouTubeRef } from "../attachments/types";
 import { parseImageRef } from "../images/imageLogic";
 import { parseMediaRef } from "../formats/formatLogic";
+import { copyAudioRecordings, parseAudioRecordings } from "../audio/recordingData";
 import { parseYouTubeRef } from "../youtube/logic";
 
 export const HIVE_CLIPBOARD_MARKER = "hive/nodes";
@@ -57,6 +58,7 @@ export interface ClipboardNode {
   headerHidden?: boolean;
   image?: ImageRef;
   media?: MediaRef;
+  recordings?: Note["recordings"];
   youtube?: YouTubeRef;
   flipX?: true;
   flipY?: true;
@@ -105,7 +107,7 @@ export function serializeNotes(
     marker: HIVE_CLIPBOARD_MARKER,
     version: HIVE_CLIPBOARD_VERSION,
     nodes: notes.map(({
-      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, time, message, embedSections, importance, purposes, moods, color, zoneId, headerHidden, image, media, youtube, flipX, flipY, gifStopped,
+      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, time, message, embedSections, importance, purposes, moods, color, zoneId, headerHidden, image, media, recordings, youtube, flipX, flipY, gifStopped,
     }) => ({
       sourceId: id,
       type,
@@ -129,6 +131,7 @@ export function serializeNotes(
       ...(headerHidden ? { headerHidden: true } : {}),
       ...(image ? { image: { ...image } } : {}),
       ...(media ? { media: { ...media } } : {}),
+      ...(type === "audio" && recordings ? { recordings: copyAudioRecordings(recordings) } : {}),
       ...(youtube ? { youtube: { ...youtube } } : {}),
       ...(type === "image" && flipX === true ? { flipX: true } : {}),
       ...(type === "image" && flipY === true ? { flipY: true } : {}),
@@ -382,9 +385,11 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
   if (value.zoneId !== undefined && value.zoneId !== null && zoneId === null) return null;
   const image = value.image === undefined ? null : parseImageRef(value.image);
   const media = value.media === undefined ? null : parseMediaRef(value.media);
+  const recordings = value.recordings === undefined ? undefined : parseAudioRecordings(value.recordings);
   const youtube = value.youtube === undefined ? null : parseYouTubeRef(value.youtube) ?? null;
   if (value.image !== undefined && !image || value.type === "image" && (!image || !finite(value.height) || value.height <= 0) ||
     value.media !== undefined && !media || value.type === "pdf" && media?.kind !== "pdf" || value.type === "format" && media?.kind !== "text" || value.type === "audio" && media?.kind !== "audio" || value.type === "video" && media?.kind !== "video" ||
+    value.recordings !== undefined && (value.type !== "audio" || !recordings) ||
     value.youtube !== undefined && !youtube || value.type === "youtube" && !youtube ||
     value.headerHidden !== undefined && typeof value.headerHidden !== "boolean" ||
     value.flipX !== undefined && value.flipX !== true || value.flipY !== undefined && value.flipY !== true ||
@@ -413,6 +418,7 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     ...(value.headerHidden === true ? { headerHidden: true } : {}),
     ...(image ? { image } : {}),
     ...(media ? { media } : {}),
+    ...(recordings ? { recordings: copyAudioRecordings(recordings) } : {}),
     ...(youtube ? { youtube } : {}),
     ...(value.type === "image" && value.flipX === true ? { flipX: true } : {}),
     ...(value.type === "image" && value.flipY === true ? { flipY: true } : {}),
