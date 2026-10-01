@@ -68,7 +68,7 @@
 
 </script>
 
-<div bind:this={root} class="combo-host" data-selection-ignore>
+<div bind:this={root} class="combo-host" class:combo-host-empty={!isDropTarget && sections.length === 0} data-selection-ignore>
   {#if isDropTarget}
     <div class="combo-drop-hint" role="status">{dropHint}</div>
   {/if}
@@ -116,6 +116,8 @@
   /* The divider line and the title row (with the collapse arrow at its end) follow the node width;
      only the section controls keep their fixed width (user, debug 15). */
   .combo-host { display: flex; flex: 0 0 auto; flex-direction: column; align-items: stretch; gap: 0; min-width: 0; width: 100%; margin-top: auto; }
+  /* An empty host must not take the row: in module nodes (Importance etc.) the body sits beside it and was squeezed to 0 width. */
+  .combo-host.combo-host-empty { display: none; }
   .combo-section { box-sizing: border-box; flex: 0 0 auto; align-self: stretch; min-width: 0; max-width: none; border-top: 1px solid #4b4d52; user-select: none; }
   .combo-section.drop-target { border-color: var(--accent); }
   .combo-section-title {
