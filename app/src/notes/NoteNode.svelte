@@ -20,6 +20,7 @@
   import ImageNodeBody from "../images/ImageNodeBody.svelte";
   import PdfNodeBody from "../formats/PdfNodeBody.svelte";
   import FormatNodeBody from "../formats/FormatNodeBody.svelte";
+  import AudioNodeBody from "../audio/AudioNodeBody.svelte";
   import VideoNodeBody from "../video/VideoNodeBody.svelte";
   import YoutubeNodeBody from "../youtube/YoutubeNodeBody.svelte";
   import "../video/init";
@@ -275,6 +276,8 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
         <PdfNodeBody {note} />
       {:else if note.type === "format"}
         <FormatNodeBody {note} />
+      {:else if note.type === "audio"}
+        <AudioNodeBody {note} />
       {:else if note.type === "video"}
         <VideoNodeBody {note} />
       {:else if note.type === "youtube"}

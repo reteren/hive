@@ -15,7 +15,7 @@ import { copyArchivedLink, copyArchivedNote } from "./logic";
 const ARCHIVABLE_KINDS = new Set<NoteKind>([
   "note", "pro", "con", "importance", "purpose", "mood",
   "goal", "progress", "calculator", "tierlist", "stats",
-  "inbox", "list", "source", "glossary", "map", "random", "markas", "time", "message", "calendar", "image", "pdf", "format", "video", "youtube",
+  "inbox", "list", "source", "glossary", "map", "random", "markas", "time", "message", "calendar", "image", "pdf", "format", "audio", "video", "youtube",
 ]);
 const LINK_SHAPES = new Set<Link["shape"]>(["base", "orthogonal", "zigzag", "wave"]);
 
@@ -101,7 +101,7 @@ function parseArchivedNote(value: unknown): Note | null {
   const youtube = value.youtube === undefined ? null : parseYouTubeRef(value.youtube) ?? null;
   if (task === false || taskMemory === false) return null;
   if (value.image !== undefined && !image || value.type === "image" && (!image || !finite(value.height) || value.height <= 0) ||
-    value.media !== undefined && !media || value.type === "pdf" && media?.kind !== "pdf" || value.type === "format" && media?.kind !== "text" || value.type === "video" && media?.kind !== "video" ||
+    value.media !== undefined && !media || value.type === "pdf" && media?.kind !== "pdf" || value.type === "format" && media?.kind !== "text" || value.type === "audio" && media?.kind !== "audio" || value.type === "video" && media?.kind !== "video" ||
     value.youtube !== undefined && !youtube || value.type === "youtube" && !youtube ||
     value.headerHidden !== undefined && typeof value.headerHidden !== "boolean" ||
     value.flipX !== undefined && value.flipX !== true || value.flipY !== undefined && value.flipY !== true ||

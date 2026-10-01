@@ -464,7 +464,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
   if (value.image !== undefined && !image || type === "image" && !image) {
     warnings.push(`Invalid or missing image data for note ${id}; the image placeholder will be shown.`);
   }
-  if (value.media !== undefined && !media || type === "pdf" && media?.kind !== "pdf" || type === "format" && media?.kind !== "text" || type === "video" && media?.kind !== "video") {
+  if (value.media !== undefined && !media || type === "pdf" && media?.kind !== "pdf" || type === "format" && media?.kind !== "text" || type === "audio" && media?.kind !== "audio" || type === "video" && media?.kind !== "video") {
     warnings.push(`Invalid or missing file data for note ${id}; the file placeholder will be shown.`);
   }
   if (value.youtube !== undefined && !youtube || type === "youtube" && !youtube) {
@@ -595,7 +595,7 @@ function parseNoteKind(value: unknown): NoteKind | null {
   return value === "note" || value === "pro" || value === "con" ||
     value === "importance" || value === "purpose" || value === "mood" || value === "beacon" ||
     value === "goal" || value === "progress" || value === "calculator" || value === "tierlist" || value === "stats" ||
-    value === "archive" || value === "trash" || value === "image" || value === "pdf" || value === "format" || value === "video" || value === "youtube" ||
+    value === "archive" || value === "trash" || value === "image" || value === "pdf" || value === "format" || value === "audio" || value === "video" || value === "youtube" ||
     value === "inbox" || value === "list" || value === "source" || value === "glossary" || value === "map" || value === "random" || value === "markas" || value === "time" || value === "message" || value === "calendar"
     ? value
     : null;

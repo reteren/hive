@@ -36,6 +36,7 @@ import { copyTimeForHost } from "../combo/data";
 import { createYouTubeNote } from "../youtube/actions.svelte";
 import { parseYouTubeUrl } from "../youtube/logic";
 import { importClipboardItems } from "../images/imageActions";
+import { importAudioClipboardItems } from "../audio/audioActions";
 import { dispatchImagePaste } from "../attachments/pasteDispatch";
 import {
   creationObstacleForNote,
@@ -557,7 +558,9 @@ async function readClipboard(): Promise<ClipboardSource> {
     try {
       const items = await clipboard.read();
       const imageFiles = await importClipboardItems(items);
-      if (imageFiles.length > 0) return { kind: "images", files: imageFiles };
+      const audioFiles = await importAudioClipboardItems(items);
+      const mediaFiles = [...imageFiles, ...audioFiles];
+      if (mediaFiles.length > 0) return { kind: "images", files: mediaFiles };
       for (const item of items) {
         const customType = item.types.find((type) => MIME_FORMATS.includes(type as typeof MIME_FORMATS[number]));
         if (customType) {

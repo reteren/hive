@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isTauri } from "@tauri-apps/api/core";
   import { camera, viewport } from "../board/camera.svelte";
   import { createNote, createNoteKind } from "./noteCommands";
   import { R5_KINDS, R6_KINDS, R7_KINDS } from "../model/note";
@@ -10,11 +11,13 @@
   import { pickImageFiles, reportImportError } from "../attachments/service";
   import { importImagePaths } from "../images/imageActions";
   import { pickFormatFiles } from "../formats/formatActions";
+  import { chooseAudioFile, importAudioFileFromBrowser, startAudioRecordingAt } from "../audio/audioActions";
   import { importVideoPaths, pickVideoFiles } from "../video/import";
   import { createYouTubeNote } from "../youtube/actions.svelte";
   import { parseYouTubeUrl } from "../youtube/logic";
 
   let menuElement = $state<HTMLElement | null>(null);
+  let audioFileInput = $state<HTMLInputElement | null>(null);
   let youtubeInputOpen = $state(false);
   let youtubeUrlDraft = $state("");
   let youtubeInputError = $state("");
@@ -121,6 +124,34 @@
   async function createFormatFromMenu(): Promise<void> {
     const center = { ...creationMenu.origin };
     if (!(await pickFormatFiles("text", center))) return;
+    switchToSelectToolAfterCreation();
+    if (!creationMenu.pinned) closeCreationMenu();
+  }
+
+  async function createAudioFromMenu(): Promise<void> {
+    if (!isTauri()) {
+      audioFileInput?.click();
+      return;
+    }
+    const created = await chooseAudioFile(creationMenu.origin);
+    if (!created) return;
+    switchToSelectToolAfterCreation();
+    if (!creationMenu.pinned) closeCreationMenu();
+  }
+
+  async function handleAudioFileInput(event: Event): Promise<void> {
+    if (!(event.currentTarget instanceof HTMLInputElement)) return;
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+    const created = await importAudioFileFromBrowser(file, creationMenu.origin);
+    if (!created) return;
+    switchToSelectToolAfterCreation();
+    if (!creationMenu.pinned) closeCreationMenu();
+  }
+
+  function createRecordingFromMenu(): void {
+    if (!startAudioRecordingAt(creationMenu.origin)) return;
     switchToSelectToolAfterCreation();
     if (!creationMenu.pinned) closeCreationMenu();
   }
@@ -276,6 +307,14 @@
         <span class="r5-icon format-icon" aria-hidden="true"></span>
         <span>File…</span>
       </button>
+      <button class="create-item" type="button" data-create-kind="audio" onclick={() => void createAudioFromMenu()}>
+        <span class="r5-icon audio-icon" aria-hidden="true"></span>
+        <span>Audio file…</span>
+      </button>
+      <button class="create-item" type="button" data-create-kind="record-audio" onclick={createRecordingFromMenu}>
+        <span class="r5-icon record-audio-icon" aria-hidden="true"></span>
+        <span>Record audio</span>
+      </button>
       <button class="create-item" type="button" data-create-kind="video" onclick={() => void createVideoFromMenu()}>
         <span class="r5-icon video-icon" aria-hidden="true"></span>
         <span>Video file…</span>
@@ -303,6 +342,15 @@
           <span>YouTube link…</span>
         </button>
       {/if}
+      <input
+        bind:this={audioFileInput}
+        class="hidden-file-input"
+        type="file"
+        accept="audio/mpeg,audio/wav,audio/ogg,audio/webm,audio/mp4,audio/flac,.mp3,.wav,.ogg,.oga,.webm,.weba,.m4a,.m4b,.mka,.flac"
+        tabindex="-1"
+        aria-label="Choose an audio file"
+        onchange={handleAudioFileInput}
+      />
     </div>
   </aside>
 {/if}
@@ -507,6 +555,11 @@
   .image-icon { position: relative; border-radius: 2px; }
   .image-icon::before { position: absolute; inset: 2px; border: 1px solid currentColor; border-radius: 1px; content: ""; }
   .image-icon::after { position: absolute; right: 3px; bottom: 3px; left: 3px; height: 5px; background: linear-gradient(140deg, transparent 0 27%, currentColor 29% 39%, transparent 41%), linear-gradient(40deg, transparent 0 41%, currentColor 43% 56%, transparent 58%); content: ""; }
+  .audio-icon { position: relative; border-radius: 50%; }
+  .audio-icon::before { position: absolute; inset: 3px; border: 1px solid currentColor; border-radius: 50%; content: ""; }
+  .audio-icon::after { position: absolute; top: 2px; bottom: 2px; left: 6px; width: 2px; border-left: 1px solid currentColor; border-right: 1px solid currentColor; content: ""; }
+  .record-audio-icon { border-radius: 50%; background: #d4473f; box-shadow: inset 0 0 0 4px #242424; }
+  .hidden-file-input { display: none; }
   .video-icon { position: relative; }
   .video-icon::after { position: absolute; top: 2px; left: 4px; border-top: 3px solid transparent; border-bottom: 3px solid transparent; border-left: 4px solid currentColor; content: ""; }
   .youtube-icon { border-color: #d05a5a; border-radius: 3px; }

@@ -348,7 +348,7 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     (value.type !== "note" && value.type !== "pro" && value.type !== "con" &&
       value.type !== "importance" && value.type !== "purpose" && value.type !== "mood" && value.type !== "beacon" &&
       value.type !== "goal" && value.type !== "progress" && value.type !== "calculator" &&
-      value.type !== "tierlist" && value.type !== "stats" && value.type !== "time" && value.type !== "message" && value.type !== "calendar" && value.type !== "image" && value.type !== "pdf" && value.type !== "format" && value.type !== "video" && value.type !== "youtube") ||
+      value.type !== "tierlist" && value.type !== "stats" && value.type !== "time" && value.type !== "message" && value.type !== "calendar" && value.type !== "image" && value.type !== "pdf" && value.type !== "format" && value.type !== "audio" && value.type !== "video" && value.type !== "youtube") ||
     typeof value.name !== "string" || typeof value.text !== "string" ||
     !finite(value.x) || !finite(value.y) || !finite(value.width) || value.width <= 0 ||
     !(value.height === null || (finite(value.height) && value.height > 0)) ||
@@ -384,7 +384,7 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
   const media = value.media === undefined ? null : parseMediaRef(value.media);
   const youtube = value.youtube === undefined ? null : parseYouTubeRef(value.youtube) ?? null;
   if (value.image !== undefined && !image || value.type === "image" && (!image || !finite(value.height) || value.height <= 0) ||
-    value.media !== undefined && !media || value.type === "pdf" && media?.kind !== "pdf" || value.type === "format" && media?.kind !== "text" || value.type === "video" && media?.kind !== "video" ||
+    value.media !== undefined && !media || value.type === "pdf" && media?.kind !== "pdf" || value.type === "format" && media?.kind !== "text" || value.type === "audio" && media?.kind !== "audio" || value.type === "video" && media?.kind !== "video" ||
     value.youtube !== undefined && !youtube || value.type === "youtube" && !youtube ||
     value.headerHidden !== undefined && typeof value.headerHidden !== "boolean" ||
     value.flipX !== undefined && value.flipX !== true || value.flipY !== undefined && value.flipY !== true ||

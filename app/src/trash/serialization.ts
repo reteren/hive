@@ -16,7 +16,7 @@ import { copyTrashEntry } from "./trash";
 const NOTE_KINDS = new Set<NoteKind>([
   "note", "pro", "con", "importance", "purpose", "mood", "beacon",
   "goal", "progress", "calculator", "tierlist", "stats", "archive", "trash",
-  "inbox", "list", "source", "glossary", "map", "random", "markas", "time", "message", "calendar", "image", "pdf", "format", "video", "youtube",
+  "inbox", "list", "source", "glossary", "map", "random", "markas", "time", "message", "calendar", "image", "pdf", "format", "audio", "video", "youtube",
 ]);
 const LINK_SHAPES = new Set<Link["shape"]>(["base", "orthogonal", "zigzag", "wave"]);
 const MAX_ENTRIES = 10_000;
@@ -134,7 +134,7 @@ function parseTrashNote(value: unknown): Note | null {
     value.zoneId !== undefined && value.zoneId !== null && typeof value.zoneId !== "string" ||
     value.createdAt !== undefined && !finite(value.createdAt) ||
     value.image !== undefined && !image || value.type === "image" && (!image || !finite(value.height) || value.height <= 0) ||
-    value.media !== undefined && !media || value.type === "pdf" && media?.kind !== "pdf" || value.type === "format" && media?.kind !== "text" || value.type === "video" && media?.kind !== "video" ||
+    value.media !== undefined && !media || value.type === "pdf" && media?.kind !== "pdf" || value.type === "format" && media?.kind !== "text" || value.type === "audio" && media?.kind !== "audio" || value.type === "video" && media?.kind !== "video" ||
     value.youtube !== undefined && !youtube || value.type === "youtube" && !youtube ||
     value.headerHidden !== undefined && typeof value.headerHidden !== "boolean" ||
     value.flipX !== undefined && value.flipX !== true || value.flipY !== undefined && value.flipY !== true ||
