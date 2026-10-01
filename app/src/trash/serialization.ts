@@ -136,7 +136,7 @@ function parseTrashNote(value: unknown): Note | null {
     value.zoneId !== undefined && value.zoneId !== null && typeof value.zoneId !== "string" ||
     value.createdAt !== undefined && !finite(value.createdAt) ||
     value.image !== undefined && !image || value.type === "image" && (!image || !finite(value.height) || value.height <= 0) ||
-    value.media !== undefined && !media || value.type === "pdf" && media?.kind !== "pdf" || value.type === "format" && media?.kind !== "text" || value.type === "audio" && media?.kind !== "audio" || value.type === "video" && media?.kind !== "video" ||
+    value.media !== undefined && !media || value.type === "pdf" && media?.kind !== "pdf" || value.type === "format" && media?.kind !== "text" || value.type === "audio" && media?.kind !== "audio" && !recordings || value.type === "video" && media?.kind !== "video" ||
     value.recordings !== undefined && (value.type !== "audio" || !recordings) ||
     value.youtube !== undefined && !youtube || value.type === "youtube" && !youtube ||
     value.headerHidden !== undefined && typeof value.headerHidden !== "boolean" ||

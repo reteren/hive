@@ -469,7 +469,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
   if (value.image !== undefined && !image || type === "image" && !image) {
     warnings.push(`Invalid or missing image data for note ${id}; the image placeholder will be shown.`);
   }
-  if (value.media !== undefined && !media || type === "pdf" && media?.kind !== "pdf" || type === "format" && media?.kind !== "text" || type === "audio" && media?.kind !== "audio" || type === "video" && media?.kind !== "video") {
+  if (value.media !== undefined && !media || type === "pdf" && media?.kind !== "pdf" || type === "format" && media?.kind !== "text" || type === "audio" && media?.kind !== "audio" && !recordings || type === "video" && media?.kind !== "video") {
     warnings.push(`Invalid or missing file data for note ${id}; the file placeholder will be shown.`);
   }
   if (value.recordings !== undefined && (type !== "audio" || !recordings)) {
