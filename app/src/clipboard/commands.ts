@@ -33,6 +33,8 @@ import { linkedTimeStatesForTask } from "../time/taskLink";
 import { restartTimeNode } from "../time/runtime.svelte";
 import { copyTimeNodeData } from "../time/data";
 import { copyTimeForHost } from "../combo/data";
+import { createYouTubeNote } from "../youtube/actions.svelte";
+import { parseYouTubeUrl } from "../youtube/logic";
 import { importClipboardItems } from "../images/imageActions";
 import { dispatchImagePaste } from "../attachments/pasteDispatch";
 import {
@@ -202,6 +204,16 @@ export async function pasteFromClipboard(): Promise<void> {
       return;
     }
 
+    const youtubeUrl = parseYouTubeUrl(source.text);
+    if (youtubeUrl.kind === "youtube") {
+      createYouTubeNote(youtubeUrl.ref, destination ?? fallbackCenter);
+      return;
+    }
+    if (youtubeUrl.kind === "invalid") {
+      showClipboardFeedback(youtubeUrl.error);
+      return;
+    }
+
     const name = uniqueName("Note", Object.values(board.notes).map((note) => note.name));
     const center = destination ?? fallbackCenter;
     const height = estimatedCreationHeight({ type: "note", width: DEFAULT_NOTE_WIDTH, height: null, text: source.text });
@@ -258,7 +270,7 @@ function selectIds(ids: readonly string[], zoneIds: readonly string[] = []): voi
 
 type CopySource = Omit<Pick<Note,
   "type" | "name" | "text" | "x" | "y" | "width" | "height" | "createdAt" |
-  "task" | "taskMemory" | "importance" | "purposes" | "embedSections" | "headerHidden" | "image" | "media" | "flipX" | "flipY" | "gifStopped"
+  "task" | "taskMemory" | "importance" | "purposes" | "embedSections" | "headerHidden" | "image" | "media" | "youtube" | "flipX" | "flipY" | "gifStopped"
 >, "time" | "message"> & {
   time?: Note["time"] | null;
   message?: Note["message"] | null;
@@ -325,6 +337,7 @@ function createCopies(
       ...(note.headerHidden ? { headerHidden: true } : {}),
       ...(note.image ? { image: { ...note.image } } : {}),
       ...(note.media ? { media: { ...note.media } } : {}),
+      ...(note.youtube ? { youtube: { ...note.youtube } } : {}),
       ...(note.flipX === true ? { flipX: true as const } : {}),
       ...(note.flipY === true ? { flipY: true as const } : {}),
       ...(note.gifStopped === true ? { gifStopped: true as const } : {}),
@@ -589,6 +602,7 @@ function sameNotes(first: readonly Note[], second: readonly Note[]): boolean {
       note.headerHidden === other.headerHidden && note.flipX === other.flipX && note.flipY === other.flipY && note.gifStopped === other.gifStopped &&
       JSON.stringify(note.image ?? null) === JSON.stringify(other.image ?? null) &&
       JSON.stringify(note.media ?? null) === JSON.stringify(other.media ?? null) &&
+      JSON.stringify(note.youtube ?? null) === JSON.stringify(other.youtube ?? null) &&
       JSON.stringify(note.task ?? null) === JSON.stringify(other.task ?? null) &&
       JSON.stringify(note.taskMemory ?? null) === JSON.stringify(other.taskMemory ?? null) &&
       note.importance === other.importance &&

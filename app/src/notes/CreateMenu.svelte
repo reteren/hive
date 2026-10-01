@@ -10,8 +10,14 @@
   import { pickImageFiles, reportImportError } from "../attachments/service";
   import { importImagePaths } from "../images/imageActions";
   import { pickFormatFiles } from "../formats/formatActions";
+  import { importVideoPaths, pickVideoFiles } from "../video/import";
+  import { createYouTubeNote } from "../youtube/actions.svelte";
+  import { parseYouTubeUrl } from "../youtube/logic";
 
   let menuElement = $state<HTMLElement | null>(null);
+  let youtubeInputOpen = $state(false);
+  let youtubeUrlDraft = $state("");
+  let youtubeInputError = $state("");
 
   // The menu grew past the height assumed at open time (R7/R8 kinds): measure it once it is on
   // screen and refit, so its bottom items are never outside the window.
@@ -117,6 +123,49 @@
     if (!(await pickFormatFiles("text", center))) return;
     switchToSelectToolAfterCreation();
     if (!creationMenu.pinned) closeCreationMenu();
+  }
+
+  async function createVideoFromMenu(): Promise<void> {
+    const paths = await pickVideoFiles();
+    if (paths.length === 0) return;
+    const created = await importVideoPaths(paths, creationMenu.origin);
+    if (created.length === 0) return;
+    switchToSelectToolAfterCreation();
+    if (!creationMenu.pinned) closeCreationMenu();
+  }
+
+  function openYouTubeInput(): void {
+    youtubeInputOpen = true;
+    youtubeInputError = "";
+  }
+
+  function closeYouTubeInput(): void {
+    youtubeInputOpen = false;
+    youtubeUrlDraft = "";
+    youtubeInputError = "";
+  }
+
+  function handleYouTubeInputKeydown(event: KeyboardEvent): void {
+    event.stopPropagation();
+    if (event.key === "Enter") {
+      event.preventDefault();
+      createYouTubeFromMenu();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      closeYouTubeInput();
+    }
+  }
+
+  function createYouTubeFromMenu(): void {
+    const parsed = parseYouTubeUrl(youtubeUrlDraft);
+    if (parsed.kind !== "youtube") {
+      youtubeInputError = parsed.kind === "invalid" ? parsed.error : "Enter a YouTube video URL.";
+      return;
+    }
+    createYouTubeNote(parsed.ref, creationMenu.origin);
+    switchToSelectToolAfterCreation();
+    if (!creationMenu.pinned) closeCreationMenu();
+    closeYouTubeInput();
   }
 
   function switchToSelectToolAfterCreation(): void {
@@ -227,6 +276,33 @@
         <span class="r5-icon format-icon" aria-hidden="true"></span>
         <span>File…</span>
       </button>
+      <button class="create-item" type="button" data-create-kind="video" onclick={() => void createVideoFromMenu()}>
+        <span class="r5-icon video-icon" aria-hidden="true"></span>
+        <span>Video file…</span>
+      </button>
+      {#if youtubeInputOpen}
+        <div class="youtube-create-input" data-youtube-create>
+          <input
+            bind:value={youtubeUrlDraft}
+            data-youtube-url-input
+            type="url"
+            placeholder="Paste a YouTube URL"
+            aria-label="YouTube video URL"
+            aria-invalid={youtubeInputError ? "true" : undefined}
+            onkeydown={handleYouTubeInputKeydown}
+          />
+          {#if youtubeInputError}<span class="youtube-create-error" role="alert">{youtubeInputError}</span>{/if}
+          <div class="youtube-create-actions">
+            <button type="button" onclick={createYouTubeFromMenu}>Create</button>
+            <button type="button" onclick={closeYouTubeInput}>Cancel</button>
+          </div>
+        </div>
+      {:else}
+        <button class="create-item" type="button" data-create-kind="youtube" onclick={openYouTubeInput}>
+          <span class="r5-icon youtube-icon" aria-hidden="true"></span>
+          <span>YouTube link…</span>
+        </button>
+      {/if}
     </div>
   </aside>
 {/if}
@@ -431,4 +507,13 @@
   .image-icon { position: relative; border-radius: 2px; }
   .image-icon::before { position: absolute; inset: 2px; border: 1px solid currentColor; border-radius: 1px; content: ""; }
   .image-icon::after { position: absolute; right: 3px; bottom: 3px; left: 3px; height: 5px; background: linear-gradient(140deg, transparent 0 27%, currentColor 29% 39%, transparent 41%), linear-gradient(40deg, transparent 0 41%, currentColor 43% 56%, transparent 58%); content: ""; }
+  .video-icon { position: relative; }
+  .video-icon::after { position: absolute; top: 2px; left: 4px; border-top: 3px solid transparent; border-bottom: 3px solid transparent; border-left: 4px solid currentColor; content: ""; }
+  .youtube-icon { border-color: #d05a5a; border-radius: 3px; }
+  .youtube-icon::after { position: absolute; top: 2px; left: 4px; border-top: 3px solid transparent; border-bottom: 3px solid transparent; border-left: 4px solid #d05a5a; content: ""; }
+  .youtube-create-input { display: grid; gap: 5px; padding: 5px; border: 1px solid #484a50; border-radius: 3px; background: #222428; }
+  .youtube-create-input input { box-sizing: border-box; width: 100%; min-width: 0; padding: 5px; border: 1px solid #555860; border-radius: 3px; color: var(--text); background: #18191c; font: inherit; font-size: 10px; }
+  .youtube-create-error { color: #e59a94; font-size: 10px; overflow-wrap: anywhere; }
+  .youtube-create-actions { display: flex; justify-content: flex-end; gap: 4px; }
+  .youtube-create-actions button { padding: 4px 6px; border: 1px solid #4a4d53; border-radius: 3px; color: var(--text); background: #303238; font: inherit; font-size: 10px; cursor: pointer; }
 </style>

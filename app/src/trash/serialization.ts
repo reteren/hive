@@ -10,12 +10,13 @@ import { parseCalendarRule, parseStopwatchData } from "../time/data";
 import { copyTimeForHost, parseEmbedSections } from "../combo/data";
 import { parseImageRef } from "../images/imageLogic";
 import { parseMediaRef } from "../formats/formatLogic";
+import { parseYouTubeRef } from "../youtube/logic";
 import { copyTrashEntry } from "./trash";
 
 const NOTE_KINDS = new Set<NoteKind>([
   "note", "pro", "con", "importance", "purpose", "mood", "beacon",
   "goal", "progress", "calculator", "tierlist", "stats", "archive", "trash",
-  "inbox", "list", "source", "glossary", "map", "random", "markas", "time", "message", "calendar", "image", "pdf", "format",
+  "inbox", "list", "source", "glossary", "map", "random", "markas", "time", "message", "calendar", "image", "pdf", "format", "video", "youtube",
 ]);
 const LINK_SHAPES = new Set<Link["shape"]>(["base", "orthogonal", "zigzag", "wave"]);
 const MAX_ENTRIES = 10_000;
@@ -121,6 +122,7 @@ function parseTrashNote(value: unknown): Note | null {
   const embedSections = parseEmbedSections(value.embedSections);
   const image = value.image === undefined ? null : parseImageRef(value.image);
   const media = value.media === undefined ? null : parseMediaRef(value.media);
+  const youtube = value.youtube === undefined ? null : parseYouTubeRef(value.youtube) ?? null;
   if (task === false || taskMemory === false ||
     value.time !== undefined && !time ||
     value.message !== undefined && !message ||
@@ -132,7 +134,8 @@ function parseTrashNote(value: unknown): Note | null {
     value.zoneId !== undefined && value.zoneId !== null && typeof value.zoneId !== "string" ||
     value.createdAt !== undefined && !finite(value.createdAt) ||
     value.image !== undefined && !image || value.type === "image" && (!image || !finite(value.height) || value.height <= 0) ||
-    value.media !== undefined && !media || value.type === "pdf" && media?.kind !== "pdf" || value.type === "format" && media?.kind !== "text" ||
+    value.media !== undefined && !media || value.type === "pdf" && media?.kind !== "pdf" || value.type === "format" && media?.kind !== "text" || value.type === "video" && media?.kind !== "video" ||
+    value.youtube !== undefined && !youtube || value.type === "youtube" && !youtube ||
     value.headerHidden !== undefined && typeof value.headerHidden !== "boolean" ||
     value.flipX !== undefined && value.flipX !== true || value.flipY !== undefined && value.flipY !== true ||
     value.gifStopped !== undefined && value.gifStopped !== true) return null;
@@ -159,6 +162,7 @@ function parseTrashNote(value: unknown): Note | null {
     ...(embedSections ? { embedSections } : {}),
     ...(image ? { image } : {}),
     ...(media ? { media } : {}),
+    ...(youtube ? { youtube } : {}),
     ...(value.type === "image" && value.flipX === true ? { flipX: true } : {}),
     ...(value.type === "image" && value.flipY === true ? { flipY: true } : {}),
     ...(value.type === "image" && value.gifStopped === true ? { gifStopped: true } : {}),

@@ -30,9 +30,10 @@ import { sanitizeTrashEntries } from "../trash/serialization";
 import type { TimeNodeData, TimeSchedule, TimeRuntime, CountMode, ProjectTimeCounters } from "../time/types";
 import { copyStopwatchData, parseCalendarRule, parseStopwatchData } from "../time/data";
 import { copyEmbedSections, copyTimeForHost, parseEmbedSections } from "../combo/data";
-import type { ImageRef, MediaRef } from "../attachments/types";
+import type { ImageRef, MediaRef, YouTubeRef } from "../attachments/types";
 import { parseImageRef } from "../images/imageLogic";
 import { parseMediaRef } from "../formats/formatLogic";
+import { parseYouTubeRef } from "../youtube/logic";
 
 export interface IndexedNote {
   id: string;
@@ -68,6 +69,7 @@ export interface IndexedNote {
   smoothLineAnchors?: NonNullable<Note["smoothLineAnchors"]>;
   image?: ImageRef;
   media?: MediaRef;
+  youtube?: YouTubeRef;
   flipX?: true;
   flipY?: true;
   gifStopped?: true;
@@ -236,6 +238,7 @@ export function serializeProjectIndex(
       ...(note.listStats ? { listStats: true } : {}),
       image: note.image ? { ...note.image } : undefined,
       media: note.media ? { ...note.media } : undefined,
+      youtube: note.youtube ? { ...note.youtube } : undefined,
       gifStopped: note.gifStopped === true ? true as const : undefined,
       flipX: note.type === "image" && note.flipX === true ? true as const : undefined,
       flipY: note.type === "image" && note.flipY === true ? true as const : undefined,
@@ -313,6 +316,7 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       ...(entry.listStats ? { listStats: true } : {}),
       ...(entry.image ? { image: { ...entry.image } } : {}),
       ...(entry.media ? { media: { ...entry.media } } : {}),
+      ...(entry.youtube ? { youtube: { ...entry.youtube } } : {}),
       ...(entry.type === "image" && entry.gifStopped === true ? { gifStopped: true } : {}),
       ...(entry.type === "image" && entry.flipX === true ? { flipX: true } : {}),
       ...(entry.type === "image" && entry.flipY === true ? { flipY: true } : {}),
@@ -437,6 +441,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
   const type = parseNoteKind(value.type);
   const image = value.image === undefined ? undefined : parseImageRef(value.image);
   const media = value.media === undefined ? undefined : parseMediaRef(value.media);
+  const youtube = value.youtube === undefined ? undefined : parseYouTubeRef(value.youtube);
   const gifStopped = value.gifStopped === true ? true : undefined;
   const file = typeof value.file === "string" && value.file.length > 0
     ? value.file
@@ -459,8 +464,11 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
   if (value.image !== undefined && !image || type === "image" && !image) {
     warnings.push(`Invalid or missing image data for note ${id}; the image placeholder will be shown.`);
   }
-  if (value.media !== undefined && !media || type === "pdf" && media?.kind !== "pdf" || type === "format" && media?.kind !== "text") {
+  if (value.media !== undefined && !media || type === "pdf" && media?.kind !== "pdf" || type === "format" && media?.kind !== "text" || type === "video" && media?.kind !== "video") {
     warnings.push(`Invalid or missing file data for note ${id}; the file placeholder will be shown.`);
+  }
+  if (value.youtube !== undefined && !youtube || type === "youtube" && !youtube) {
+    warnings.push(`Invalid or missing YouTube data for note ${id}; the link placeholder will be shown.`);
   }
   if (value.gifStopped !== undefined && value.gifStopped !== true) {
     warnings.push(`Invalid GIF playback state for note ${id}; it was cleared.`);
@@ -549,6 +557,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
       moods: moods.values,
       image: image ?? undefined,
       media: media ?? undefined,
+      youtube: youtube ?? undefined,
       gifStopped: type === "image" ? gifStopped : undefined,
       flipX: type === "image" && value.flipX === true ? true : undefined,
       flipY: type === "image" && value.flipY === true ? true : undefined,
@@ -586,7 +595,7 @@ function parseNoteKind(value: unknown): NoteKind | null {
   return value === "note" || value === "pro" || value === "con" ||
     value === "importance" || value === "purpose" || value === "mood" || value === "beacon" ||
     value === "goal" || value === "progress" || value === "calculator" || value === "tierlist" || value === "stats" ||
-    value === "archive" || value === "trash" || value === "image" || value === "pdf" || value === "format" ||
+    value === "archive" || value === "trash" || value === "image" || value === "pdf" || value === "format" || value === "video" || value === "youtube" ||
     value === "inbox" || value === "list" || value === "source" || value === "glossary" || value === "map" || value === "random" || value === "markas" || value === "time" || value === "message" || value === "calendar"
     ? value
     : null;

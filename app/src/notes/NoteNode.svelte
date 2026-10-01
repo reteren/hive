@@ -20,6 +20,10 @@
   import ImageNodeBody from "../images/ImageNodeBody.svelte";
   import PdfNodeBody from "../formats/PdfNodeBody.svelte";
   import FormatNodeBody from "../formats/FormatNodeBody.svelte";
+  import VideoNodeBody from "../video/VideoNodeBody.svelte";
+  import YoutubeNodeBody from "../youtube/YoutubeNodeBody.svelte";
+  import "../video/init";
+  import "../youtube/init";
   import { nodeBodyFor } from "./nodeBodies";
   import { effectiveCustomMarkFrameColors, effectiveImportance } from "../modules/moduleActions.svelte";
   import { customMarkGradientFor } from "../markas/markasLogic";
@@ -133,7 +137,7 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
 
   function beginEditingFromDoubleClick(event: MouseEvent): void {
     if (editing.noteId === note.id || !(event.target instanceof Element)) return;
-    if (note.type === "importance" || note.type === "purpose" || note.type === "mood" || note.type === "markas" || note.type === "calendar" || note.type === "image" || note.type === "pdf" || note.type === "format") return;
+    if (note.type === "importance" || note.type === "purpose" || note.type === "mood" || note.type === "markas" || note.type === "calendar" || note.type === "image" || note.type === "pdf" || note.type === "format" || note.type === "video" || note.type === "youtube") return;
     if (event.target.closest(".note-header, [data-text-link], input, button")) return;
     tool.active = "select";
     startNoteEditing(note.id, { x: event.clientX, y: event.clientY });
@@ -271,6 +275,10 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
         <PdfNodeBody {note} />
       {:else if note.type === "format"}
         <FormatNodeBody {note} />
+      {:else if note.type === "video"}
+        <VideoNodeBody {note} />
+      {:else if note.type === "youtube"}
+        <YoutubeNodeBody {note} />
       {:else}
         <NoteBody {note} />
       {/if}

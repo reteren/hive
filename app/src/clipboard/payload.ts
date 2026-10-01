@@ -22,9 +22,10 @@ import type { MessageNodeData, TimeNodeData } from "../time/types";
 import { copyTimeNodeData as cloneTimeNodeData, parseCalendarRule, parseStopwatchData } from "../time/data";
 import { defaultMessageData, parseMessageData } from "../messages/data";
 import { copyEmbedSections, copyTimeForHost, parseEmbedSections } from "../combo/data";
-import type { ImageRef, MediaRef } from "../attachments/types";
+import type { ImageRef, MediaRef, YouTubeRef } from "../attachments/types";
 import { parseImageRef } from "../images/imageLogic";
 import { parseMediaRef } from "../formats/formatLogic";
+import { parseYouTubeRef } from "../youtube/logic";
 
 export const HIVE_CLIPBOARD_MARKER = "hive/nodes";
 export const HIVE_CLIPBOARD_VERSION = 3;
@@ -56,6 +57,7 @@ export interface ClipboardNode {
   headerHidden?: boolean;
   image?: ImageRef;
   media?: MediaRef;
+  youtube?: YouTubeRef;
   flipX?: true;
   flipY?: true;
   gifStopped?: true;
@@ -103,7 +105,7 @@ export function serializeNotes(
     marker: HIVE_CLIPBOARD_MARKER,
     version: HIVE_CLIPBOARD_VERSION,
     nodes: notes.map(({
-      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, time, message, embedSections, importance, purposes, moods, color, zoneId, headerHidden, image, media, flipX, flipY, gifStopped,
+      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, time, message, embedSections, importance, purposes, moods, color, zoneId, headerHidden, image, media, youtube, flipX, flipY, gifStopped,
     }) => ({
       sourceId: id,
       type,
@@ -127,6 +129,7 @@ export function serializeNotes(
       ...(headerHidden ? { headerHidden: true } : {}),
       ...(image ? { image: { ...image } } : {}),
       ...(media ? { media: { ...media } } : {}),
+      ...(youtube ? { youtube: { ...youtube } } : {}),
       ...(type === "image" && flipX === true ? { flipX: true } : {}),
       ...(type === "image" && flipY === true ? { flipY: true } : {}),
       ...(type === "image" && gifStopped === true ? { gifStopped: true } : {}),
@@ -345,7 +348,7 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     (value.type !== "note" && value.type !== "pro" && value.type !== "con" &&
       value.type !== "importance" && value.type !== "purpose" && value.type !== "mood" && value.type !== "beacon" &&
       value.type !== "goal" && value.type !== "progress" && value.type !== "calculator" &&
-      value.type !== "tierlist" && value.type !== "stats" && value.type !== "time" && value.type !== "message" && value.type !== "calendar" && value.type !== "image" && value.type !== "pdf" && value.type !== "format") ||
+      value.type !== "tierlist" && value.type !== "stats" && value.type !== "time" && value.type !== "message" && value.type !== "calendar" && value.type !== "image" && value.type !== "pdf" && value.type !== "format" && value.type !== "video" && value.type !== "youtube") ||
     typeof value.name !== "string" || typeof value.text !== "string" ||
     !finite(value.x) || !finite(value.y) || !finite(value.width) || value.width <= 0 ||
     !(value.height === null || (finite(value.height) && value.height > 0)) ||
@@ -379,8 +382,10 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
   if (value.zoneId !== undefined && value.zoneId !== null && zoneId === null) return null;
   const image = value.image === undefined ? null : parseImageRef(value.image);
   const media = value.media === undefined ? null : parseMediaRef(value.media);
+  const youtube = value.youtube === undefined ? null : parseYouTubeRef(value.youtube) ?? null;
   if (value.image !== undefined && !image || value.type === "image" && (!image || !finite(value.height) || value.height <= 0) ||
-    value.media !== undefined && !media || value.type === "pdf" && media?.kind !== "pdf" || value.type === "format" && media?.kind !== "text" ||
+    value.media !== undefined && !media || value.type === "pdf" && media?.kind !== "pdf" || value.type === "format" && media?.kind !== "text" || value.type === "video" && media?.kind !== "video" ||
+    value.youtube !== undefined && !youtube || value.type === "youtube" && !youtube ||
     value.headerHidden !== undefined && typeof value.headerHidden !== "boolean" ||
     value.flipX !== undefined && value.flipX !== true || value.flipY !== undefined && value.flipY !== true ||
     value.gifStopped !== undefined && value.gifStopped !== true) return null;
@@ -408,6 +413,7 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     ...(value.headerHidden === true ? { headerHidden: true } : {}),
     ...(image ? { image } : {}),
     ...(media ? { media } : {}),
+    ...(youtube ? { youtube } : {}),
     ...(value.type === "image" && value.flipX === true ? { flipX: true } : {}),
     ...(value.type === "image" && value.flipY === true ? { flipY: true } : {}),
     ...(value.type === "image" && value.gifStopped === true ? { gifStopped: true } : {}),

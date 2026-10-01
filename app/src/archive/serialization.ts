@@ -9,12 +9,13 @@ import { parseCalendarRule, parseStopwatchData } from "../time/data";
 import { copyTimeForHost, parseEmbedSections } from "../combo/data";
 import { parseImageRef } from "../images/imageLogic";
 import { parseMediaRef } from "../formats/formatLogic";
+import { parseYouTubeRef } from "../youtube/logic";
 import { copyArchivedLink, copyArchivedNote } from "./logic";
 
 const ARCHIVABLE_KINDS = new Set<NoteKind>([
   "note", "pro", "con", "importance", "purpose", "mood",
   "goal", "progress", "calculator", "tierlist", "stats",
-  "inbox", "list", "source", "glossary", "map", "random", "markas", "time", "message", "calendar", "image", "pdf", "format",
+  "inbox", "list", "source", "glossary", "map", "random", "markas", "time", "message", "calendar", "image", "pdf", "format", "video", "youtube",
 ]);
 const LINK_SHAPES = new Set<Link["shape"]>(["base", "orthogonal", "zigzag", "wave"]);
 
@@ -26,6 +27,7 @@ export function copyArchiveEntry(entry: ArchiveEntry): ArchiveEntry {
       ...copyArchivedNote(entry.note),
       ...(entry.note.image ? { image: { ...entry.note.image } } : {}),
       ...(entry.note.media ? { media: { ...entry.note.media } } : {}),
+      ...(entry.note.youtube ? { youtube: { ...entry.note.youtube } } : {}),
     },
     links: entry.links.map(copyArchivedLink),
     ...(entry.calculatorData ? { calculatorData: parseCalculatorData(entry.calculatorData) ?? undefined } : {}),
@@ -96,9 +98,11 @@ function parseArchivedNote(value: unknown): Note | null {
   const embedSections = parseEmbedSections(value.embedSections);
   const image = value.image === undefined ? null : parseImageRef(value.image);
   const media = value.media === undefined ? null : parseMediaRef(value.media);
+  const youtube = value.youtube === undefined ? null : parseYouTubeRef(value.youtube) ?? null;
   if (task === false || taskMemory === false) return null;
   if (value.image !== undefined && !image || value.type === "image" && (!image || !finite(value.height) || value.height <= 0) ||
-    value.media !== undefined && !media || value.type === "pdf" && media?.kind !== "pdf" || value.type === "format" && media?.kind !== "text" ||
+    value.media !== undefined && !media || value.type === "pdf" && media?.kind !== "pdf" || value.type === "format" && media?.kind !== "text" || value.type === "video" && media?.kind !== "video" ||
+    value.youtube !== undefined && !youtube || value.type === "youtube" && !youtube ||
     value.headerHidden !== undefined && typeof value.headerHidden !== "boolean" ||
     value.flipX !== undefined && value.flipX !== true || value.flipY !== undefined && value.flipY !== true ||
     value.gifStopped !== undefined && value.gifStopped !== true) return null;
@@ -134,6 +138,7 @@ function parseArchivedNote(value: unknown): Note | null {
     ...(embedSections ? { embedSections } : {}),
     ...(image ? { image } : {}),
     ...(media ? { media } : {}),
+    ...(youtube ? { youtube } : {}),
     ...(value.type === "image" && value.flipX === true ? { flipX: true } : {}),
     ...(value.type === "image" && value.flipY === true ? { flipY: true } : {}),
     ...(value.type === "image" && value.gifStopped === true ? { gifStopped: true } : {}),
