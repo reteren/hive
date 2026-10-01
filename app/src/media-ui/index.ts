@@ -1,5 +1,6 @@
 export { default as MediaSlider } from "./MediaSlider.svelte";
 export { default as MediaTime } from "./MediaTime.svelte";
+export { default as MediaIcon } from "./MediaIcon.svelte";
 export { default as PlayIcon } from "./icons/PlayIcon.svelte";
 export { default as PauseIcon } from "./icons/PauseIcon.svelte";
 export { default as VolumeIcon } from "./icons/VolumeIcon.svelte";

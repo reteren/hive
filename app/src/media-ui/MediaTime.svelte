@@ -1,10 +1,10 @@
 <script lang="ts">
   import { formatMediaTime } from "./time";
 
-  let { value = 0, className = "" }: { value?: number; className?: string } = $props();
+  let { seconds }: { seconds: number } = $props();
 </script>
 
-<time class={`media-time ${className}`}>{formatMediaTime(value)}</time>
+<time class="media-time">{formatMediaTime(seconds)}</time>
 
 <style>
   .media-time {

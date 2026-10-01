@@ -6,15 +6,30 @@
     max: number;
     /** The position of the buffered end, in the same units as value. */
     buffered?: number;
-    /** Accessible label for the native range control. */
-    ariaLabel: string;
+    /** Quantization step passed to the native range input. */
+    step?: number | "any";
+    /** Accessible label for the slider. */
+    label: string;
+    orientation?: "horizontal" | "vertical";
     /** Called for pointer drags and keyboard changes. */
-    onChange: (value: number) => void;
-    /** Enables the hover / focus tooltip, typically formatted as media time. */
-    formatTooltip?: (value: number) => string;
+    oninput?: (value: number) => void;
+    /** Called when the user commits a value. */
+    onchange: (value: number) => void;
+    /** Enables a hover / focus tooltip, typically formatted as media time. */
+    tooltip?: (value: number) => string;
   }
 
-  let { value, max, buffered = 0, ariaLabel, onChange, formatTooltip }: Props = $props();
+  let {
+    value,
+    max,
+    buffered = 0,
+    step = "any",
+    label,
+    orientation = "horizontal",
+    oninput,
+    onchange,
+    tooltip,
+  }: Props = $props();
   let hoverRatio = $state<number | null>(null);
   let focused = $state(false);
 
@@ -25,19 +40,32 @@
   const tooltipRatio = $derived(hoverRatio ?? filledPercent / 100);
   const tooltipValue = $derived(sliderValueAtPercent(tooltipRatio * 100, safeMax));
 
+  function valueFromEvent(event: Event): number | null {
+    if (!(event.currentTarget instanceof HTMLInputElement)) return null;
+    return clampSliderValue(event.currentTarget.valueAsNumber, safeMax);
+  }
+
   function updateValue(event: Event): void {
-    if (!(event.currentTarget instanceof HTMLInputElement)) return;
-    const next = clampSliderValue(event.currentTarget.valueAsNumber, safeMax);
-    onChange(next);
+    const next = valueFromEvent(event);
+    if (next === null) return;
+    oninput?.(next);
     if (focused) hoverRatio = safeMax > 0 ? next / safeMax : 0;
+  }
+
+  function commitValue(event: Event): void {
+    const next = valueFromEvent(event);
+    if (next !== null) onchange(next);
   }
 
   function updateHover(event: PointerEvent): void {
     if (!(event.currentTarget instanceof HTMLElement)) return;
     const bounds = event.currentTarget.getBoundingClientRect();
-    if (bounds.width <= 0) return;
-    const ratio = Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width));
-    hoverRatio = ratio;
+    const extent = orientation === "vertical" ? bounds.height : bounds.width;
+    if (extent <= 0) return;
+    const ratio = orientation === "vertical"
+      ? (bounds.bottom - event.clientY) / extent
+      : (event.clientX - bounds.left) / extent;
+    hoverRatio = Math.min(1, Math.max(0, ratio));
   }
 
   function clearHover(): void {
@@ -57,27 +85,28 @@
 
 <div
   class="media-slider"
+  class:vertical={orientation === "vertical"}
   data-media-slider
-  style={`--slider-fill: ${filledPercent}%; --slider-buffer: ${bufferedPercent}%;`}
+  style={`--slider-fill: ${filledPercent}%; --slider-buffer: ${bufferedPercent}%; --tooltip-position: ${tooltipRatio * 100}%;`}
 >
   <input
     type="range"
     min="0"
     max={safeMax}
-    step="any"
+    {step}
     value={currentValue}
-    aria-label={ariaLabel}
-    aria-valuetext={formatTooltip?.(currentValue)}
+    aria-label={label}
+    aria-orientation={orientation}
+    aria-valuetext={tooltip?.(currentValue)}
     oninput={updateValue}
+    onchange={commitValue}
     onpointermove={updateHover}
     onpointerleave={clearHover}
     onfocus={focusSlider}
     onblur={blurSlider}
   />
-  {#if formatTooltip && (hoverRatio !== null || focused)}
-    <span class="slider-tooltip" aria-hidden="true" style:left={`${tooltipRatio * 100}%`}>
-      {formatTooltip(tooltipValue)}
-    </span>
+  {#if tooltip && (hoverRatio !== null || focused)}
+    <span class="slider-tooltip" aria-hidden="true">{tooltip(tooltipValue)}</span>
   {/if}
 </div>
 
@@ -165,6 +194,7 @@
     position: absolute;
     z-index: 3;
     bottom: calc(100% + 5px);
+    left: var(--tooltip-position);
     padding: 3px 5px;
     transform: translateX(-50%);
     border: 1px solid #4a4a4a;
@@ -176,6 +206,50 @@
     line-height: 1.2;
     white-space: nowrap;
     pointer-events: none;
+  }
+
+  .media-slider.vertical {
+    width: 16px;
+    min-width: 16px;
+    height: 100%;
+    min-height: 34px;
+  }
+
+  .media-slider.vertical input {
+    width: 16px;
+    height: 100%;
+    writing-mode: vertical-lr;
+    direction: rtl;
+  }
+
+  .media-slider.vertical input::-webkit-slider-runnable-track {
+    width: 3px;
+    height: auto;
+    background: linear-gradient(
+      to top,
+      var(--accent) 0 var(--slider-fill),
+      #626262 var(--slider-fill) var(--slider-buffer),
+      #414141 var(--slider-buffer) 100%
+    );
+  }
+
+  .media-slider.vertical input::-moz-range-track {
+    width: 3px;
+    height: auto;
+    background: linear-gradient(
+      to top,
+      var(--accent) 0 var(--slider-fill),
+      #626262 var(--slider-fill) var(--slider-buffer),
+      #414141 var(--slider-buffer) 100%
+    );
+  }
+
+  .media-slider.vertical input::-webkit-slider-thumb { margin-top: 0; margin-left: -2.5px; }
+  .media-slider.vertical .slider-tooltip {
+    top: calc(100% - var(--tooltip-position));
+    bottom: auto;
+    left: calc(100% + 5px);
+    transform: translateY(-50%);
   }
 
   :global(html[data-reduce-motion="true"]) .media-slider input::-webkit-slider-thumb,
