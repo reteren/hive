@@ -75,6 +75,8 @@
       // before checking feature surfaces so no node body can leak Chrome's native menu.
       event.preventDefault();
       closeGifContextMenu();
+      // Feature surfaces with their own right-click menu (e.g. a Tierlist row label) handle it themselves.
+      if (target.closest("[data-own-context-menu]")) return;
       if (target.closest("[data-create-menu]")) {
         event.stopPropagation();
         return;

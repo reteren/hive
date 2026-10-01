@@ -21,8 +21,8 @@
         target={{ kind: "board", noteId }}
         hostSelected={selected}
         alt={name}
-        class="image-node-picture"
-        style="width:100%;height:100%;object-fit:fill;pointer-events:none;user-select:none"
+        class="image-node-gif"
+        style="width:100%;height:100%;user-select:none"
         fit="fill"
       />
     </div>
@@ -66,6 +66,14 @@
     image-rendering: auto;
     pointer-events: none;
     user-select: none;
+  }
+
+  /* The GIF surface itself must receive hover and right-click (play mode, Stop/Play gif); only the
+     pictures inside it ignore the pointer. */
+  :global(.image-node-gif) {
+    display: block;
+    width: 100%;
+    height: 100%;
   }
 
   :global(.image-node-picture[hidden]) {

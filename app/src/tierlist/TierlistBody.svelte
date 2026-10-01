@@ -767,6 +767,7 @@
             class="tier-label"
             class:pointer-drag-source={dragDisplay?.kind === "row" && dragDisplay.rowId === row.id}
             data-tier-row-label={row.id}
+            data-own-context-menu
             role="button"
             tabindex="0"
             aria-label={`${row.name} tier. Double-click to rename, right-click for options.`}

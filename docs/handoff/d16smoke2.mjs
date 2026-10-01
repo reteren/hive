@@ -1,0 +1,75 @@
+// Debug 16 smoke (after 1.3.9): overview label size, GIF stop/play via RMB + hover mode, image without header, flip by resize, Ctrl+V at pointer, Tierlist tiles gone + row menu.
+import { writeFileSync } from "node:fs";
+const page = (await fetch(`http://localhost:9334/json/list`).then((r) => r.json())).find((t) => t.type === "page");
+const ws = new WebSocket(page.webSocketDebuggerUrl); let id = 0; const pending = new Map(); const errors = [];
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.method === "Runtime.exceptionThrown") errors.push(m.params.exceptionDetails.exception?.description?.slice(0, 200)); if (pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+await new Promise((r) => (ws.onopen = r));
+const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+await send("Runtime.enable");
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const ev = async (expression) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); return r.result?.result?.value ?? r.result?.exceptionDetails?.exception?.description; };
+const mouse = (type, x, y, button = "none", buttons = 0, modifiers = 0) => send("Input.dispatchMouseEvent", { type, x, y, button, buttons, modifiers, clickCount: type === "mousePressed" || type === "mouseReleased" ? 1 : 0 });
+const pos = (expr) => ev(`(()=>{const e=${expr};if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,w:r.width,h:r.height,l:r.left,t:r.top}})()`);
+const click = async (p, button = "left") => { await mouse("mouseMoved", p.x, p.y); await mouse("mousePressed", p.x, p.y, button, button === "left" ? 1 : 2); await mouse("mouseReleased", p.x, p.y, button, 0); await wait(350); };
+const drag = async (a, dx, dy, modifiers = 0) => { await mouse("mouseMoved", a.x, a.y, "none", 0, modifiers); await mouse("mousePressed", a.x, a.y, "left", 1, modifiers); for (let i = 1; i <= 12; i++) { await mouse("mouseMoved", a.x + dx * i / 12, a.y + dy * i / 12, "left", 1, modifiers); await wait(25); } await mouse("mouseReleased", a.x + dx, a.y + dy, "left", 0, modifiers); await wait(400); };
+const shot = async (n) => writeFileSync(`C:/Users/reteren/AppData/Local/Temp/claude/${n}.png`, Buffer.from((await send("Page.captureScreenshot", { format: "png" })).result.data, "base64"));
+await ev(`window.__png=async(w,h,c)=>{const cv=document.createElement('canvas');cv.width=w;cv.height=h;const x=cv.getContext('2d');x.fillStyle=c;x.fillRect(0,0,w,h);x.fillStyle='#fff';x.fillRect(0,0,w/3,h/3);const b=await new Promise(r=>cv.toBlob(r,'image/png'));return new File([b],'pic.png',{type:'image/png'})};
+ window.__gif=()=>new File([Uint8Array.from(atob('R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=='),c=>c.charCodeAt(0))],'dot.gif',{type:'image/gif'});
+ window.__paste=async(file)=>{const dt=new DataTransfer();dt.items.add(await file);const e=new ClipboardEvent('paste',{clipboardData:dt,bubbles:true,cancelable:true});document.body.dispatchEvent(e);return e.defaultPrevented};1`);
+const model = (expr) => ev(`(async()=>{const b=await import('/src/model/board.svelte.ts');const n=b.board.notes;const imgs=b.board.order.map(i=>n[i]).filter(x=>x.type==='image');return ${expr}})()`);
+
+console.log(await ev(`(async()=>{const b=await import('/src/model/board.svelte.ts');const cam=await import('/src/board/camera.svelte.ts');const h=await import('/src/history/history.svelte.ts');for(const i of [...b.board.order])b.removeNote(i);h.clear();cam.camera.x=0;cam.camera.y=0;cam.camera.zoom=1;
+ const a=await import('/src/images/imageActions.ts');await a.importImageFiles([await __png(300,200,'#3a6ea5')],{x:-25,y:0});await a.importImageFiles([__gif()],{x:25,y:0});return 'setup'})()`));
+await wait(1200);
+const gifNode = `document.querySelector('article[data-kind=image][data-note-id]:last-of-type') && [...document.querySelectorAll('article[data-kind=image]')].find(a=>a.querySelector('[data-gif-file]'))`;
+const gifVis = () => ev(`(()=>{const g=${gifNode};if(!g)return 'no gif';const c=g.querySelector('canvas'),i=g.querySelector('img');const v=(el)=>el&&!el.hidden&&getComputedStyle(el).display!=='none'&&getComputedStyle(el).visibility!=='hidden';return 'img '+(v(i)?'on':'off')+' canvas '+(v(c)?'on':'off')})()`);
+console.log("3 headers on image nodes:", await ev(`[...document.querySelectorAll('article[data-kind=image]')].map(a=>[...a.querySelectorAll('[data-note-header]')].some(h=>getComputedStyle(h).display!=='none')).join(',')`));
+console.log("2 gif (always, unselected):", await gifVis());
+const gp = await pos(gifNode);
+await click(gp, "right");
+console.log("2 RMB menu items:", await ev(`[...document.querySelectorAll('[role=menu] [role=menuitem],[role=menu] button')].map(b=>b.textContent.trim()).filter(Boolean).join(' | ')`));
+const stopBtn = await pos(`[...document.querySelectorAll('[role=menu] button,[role=menuitem]')].find(b=>/Stop gif/.test(b.textContent))`);
+if (stopBtn) await click(stopBtn);
+await wait(300);
+console.log("2 after Stop gif:", await gifVis(), "| model gifStopped:", await model(`imgs.map(x=>x.gifStopped??false).join(',')`));
+await click(gp, "right");
+console.log("2 menu now says:", await ev(`[...document.querySelectorAll('[role=menu] button,[role=menuitem]')].map(b=>b.textContent.trim()).filter(t=>/gif/i.test(t)).join(',')`));
+const playBtn = await pos(`[...document.querySelectorAll('[role=menu] button,[role=menuitem]')].find(b=>/Play gif/.test(b.textContent))`);
+if (playBtn) await click(playBtn);
+console.log("2 after Play gif:", await gifVis());
+await ev(`(async()=>{const g=await import('/src/attachments/gifPlayback.svelte.ts');g.setGifPlaybackMode('hover')})()`);
+await mouse("mouseMoved", 20, 760); await wait(300);
+console.log("2 hover mode, pointer away:", await gifVis());
+await mouse("mouseMoved", gp.x, gp.y); await wait(400);
+console.log("2 hover mode, pointer over:", await gifVis());
+await ev(`(async()=>{const g=await import('/src/attachments/gifPlayback.svelte.ts');g.setGifPlaybackMode('always')})()`);
+// flip: select png image and drag the right handle past its left edge
+await click({ x: 20, y: 760 });
+const png = await pos(`[...document.querySelectorAll('article[data-kind=image]')].find(a=>!a.querySelector('[data-gif-file]'))`);
+await click({ x: png.x, y: png.y });
+const rh = await pos(`document.querySelector('[data-resize-handle="right"]')`);
+if (rh) await drag(rh, -(png.w + 120), 0);
+console.log("4 after drag through left edge:", await model(`imgs.filter(x=>x.image.mime!=='image/gif').map(x=>'flipX='+(x.flipX??false)+' w='+x.width.toFixed(1)).join(',')`));
+const bh = await pos(`document.querySelector('[data-resize-handle="bottom"]')`);
+if (bh) await drag(bh, 0, -(png.h + 80), 2);
+console.log("4 after Ctrl drag through top:", await model(`imgs.filter(x=>x.image.mime!=='image/gif').map(x=>'flipX='+(x.flipX??false)+' flipY='+(x.flipY??false)+' '+x.width.toFixed(1)+'x'+x.height.toFixed(1)).join(',')`));
+await shot("d16-flip");
+// Ctrl+V at pointer
+await click({ x: 20, y: 760 });
+await mouse("mouseMoved", 1000, 200); await wait(200);
+const pw = await ev(`(async()=>{const p=await import('/src/board/pointer.svelte.ts').catch(()=>null);return p?JSON.stringify(p.pointer.world):'?'})()`);
+console.log("6 paste prevented:", await ev(`__paste(__png(100,100,'#a53a3a'))`)); await wait(900);
+console.log("6 pointer world", pw, "| new image centre:", await model(`(()=>{const x=imgs[imgs.length-1];return (x.x+x.width/2).toFixed(1)+','+(x.y+x.height/2).toFixed(1)})()`));
+// Tierlist
+console.log(await ev(`(async()=>{const c=await import('/src/notes/noteCommands.ts');const b=await import('/src/model/board.svelte.ts');const t=c.createNoteKind('tierlist');b.board.notes[t].x=-70;b.board.notes[t].y=-35;window.__tier=t;return 'tier'})()`)); await wait(600);
+console.log("7 add-image tiles:", await ev(`document.querySelectorAll('[data-note-id="'+window.__tier+'"] .tier-add-image').length`));
+await click(await pos(`document.querySelector('[data-note-id="'+window.__tier+'"] [data-tier-row-label]')`), "right");
+console.log("7 row menu:", await ev(`[...document.querySelectorAll('.tier-context-menu button')].map(b=>b.textContent.trim()).join(' | ')`));
+await shot("d16-tier");
+await mouse("mouseMoved", 20, 760);
+// Overview label size on a huge note
+console.log(await ev(`(async()=>{const b=await import('/src/model/board.svelte.ts');const cam=await import('/src/board/camera.svelte.ts');const o=await import('/src/overview/overview.svelte.ts');b.addNote({id:'big',type:'map',name:'Map',text:'',x:-150,y:-100,width:300,height:200,createdAt:Date.now()});b.addNote({id:'small',type:'note',name:'Note 9',text:'',x:200,y:-100,width:20,height:10,createdAt:Date.now()});cam.camera.x=30;cam.camera.y=0;cam.camera.zoom=0.3;o.setOverviewActive(true);await new Promise(r=>setTimeout(r,400));const f=(id)=>{const e=document.querySelector('[data-overview-object="'+id+'"] .overview-text');return e?Math.round(e.getBoundingClientRect().height):0};const r='1 overview label px (screen): big='+f('big')+' small='+f('small');return r})()`));
+await shot("d16-overview");
+await ev(`(async()=>{const o=await import('/src/overview/overview.svelte.ts');o.setOverviewActive(false)})()`);
+console.log("errors:", errors.length ? errors.join(" || ") : "none");
+ws.close();
