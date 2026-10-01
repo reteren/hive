@@ -189,6 +189,8 @@ function requestStop(session: Capture): void {
 async function finishRecording(session: Capture, mime: string): Promise<void> {
   if (capture !== session) return;
   try {
+    // MediaRecorder webm carries no duration header (the player reads Infinity), so keep the measured length.
+    const recordedSeconds = Math.max(0, (performance.now() - (session.startedAt ?? performance.now())) / 1000);
     const blob = new Blob(session.chunks, { type: mime });
     if (blob.size === 0) throw new Error("No audio was recorded.");
     const bytes = new Uint8Array(await blob.arrayBuffer());
@@ -205,7 +207,9 @@ async function finishRecording(session: Capture, mime: string): Promise<void> {
     const recording = {
       id: newId(),
       name: nextRecordingName(before),
-      media: result.media,
+      media: Number.isFinite(result.media.duration) && (result.media.duration ?? 0) > 0
+        ? result.media
+        : { ...result.media, duration: recordedSeconds },
     };
     const after = appendRecording(before, recording);
     execute(recordingListCommand(before, after, (recordings) => {
