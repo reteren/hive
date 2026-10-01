@@ -14,7 +14,9 @@
   import { getCommand } from "../commands/registry.svelte";
   import { formatKey } from "../commands/keys";
   import { hitTestZones } from "../selection/hitTesting";
-  import { activateZoneResizeFromMenu, requestZoneMove, zoneMode } from "./zoneMode.svelte";
+  import { zoneMode } from "./zoneMode.svelte";
+  import { menuShortcutLabel } from "../commands/menuShortcut";
+  import { runZoneMenuAction, selectZoneForMenuAction } from "../commands/objectMenu";
   import { lineInteraction } from "../links/interaction.svelte";
   import OverviewLayer from "../overview/OverviewLayer.svelte";
 
@@ -66,7 +68,7 @@
     draftName = zone.name;
     const world = screenToWorld(camera, viewport, point);
     const zoomAtOpen = camera.zoom;
-    const anchor = fitBoardPopupAnchor(camera, viewport, world, { width: 176, height: 218 });
+    const anchor = fitBoardPopupAnchor(camera, viewport, world, { width: 220, height: 320 });
     menu = {
       id,
       x: anchor.x,
@@ -88,14 +90,28 @@
     const id = menu.id;
     const point = screenToWorld(camera, viewport, local(event.clientX, event.clientY));
     menu = null;
-    requestZoneMove({ zoneId: id, startWorld: point });
+    runZoneMenuAction(id, "grab", point);
   }
 
   function startResizeFromMenu(): void {
     if (!menu) return;
     const id = menu.id;
     menu = null;
-    activateZoneResizeFromMenu(id);
+    runZoneMenuAction(id, "scale");
+  }
+
+  function startUniversalZoneAction(action: "scale" | "grab" | "delete", event?: MouseEvent): void {
+    if (!menu) return;
+    const id = menu.id;
+    const startWorld = action === "grab" && event
+      ? screenToWorld(camera, viewport, local(event.clientX, event.clientY))
+      : undefined;
+    menu = null;
+    if (action === "delete") {
+      if (selectZoneForMenuAction(id)) deleteZone(id);
+    } else {
+      runZoneMenuAction(id, action, startWorld);
+    }
   }
 
   function commitRename(): void {
@@ -240,6 +256,16 @@
           {/each}
         </div>
         <button type="button" role="menuitem" onclick={() => { if (menu) deleteZone(menu.id); menu = null; }}>Delete zone</button>
+        <div class="zone-menu-divider" role="separator"></div>
+        <button class="zone-menu-command" type="button" role="menuitem" onclick={() => startUniversalZoneAction("scale")}>
+          <span>Scale</span><span class="zone-menu-shortcut">{menuShortcutLabel("select.scale")}</span>
+        </button>
+        <button class="zone-menu-command" type="button" role="menuitem" onclick={(event) => startUniversalZoneAction("grab", event)}>
+          <span>Grab</span><span class="zone-menu-shortcut">{menuShortcutLabel("select.move")}</span>
+        </button>
+        <button class="zone-menu-command" type="button" role="menuitem" onclick={() => startUniversalZoneAction("delete")}>
+          <span>Delete</span><span class="zone-menu-shortcut">{menuShortcutLabel("edit.delete")}</span>
+        </button>
       {/if}
     </div>
   {/if}
@@ -251,9 +277,13 @@
   .zone-svg [data-moving="true"] { opacity: 0.7; }
   .zone-name { font-size: 1.15px; font-weight: 650; paint-order: stroke; stroke: #17191d; stroke-width: 0.25px; cursor: text; outline: none; }
   .zone-name:focus-visible { text-decoration: underline; text-decoration-thickness: 0.12px; text-underline-offset: 0.2px; }
-  .zone-menu { position: absolute; z-index: 30; display: flex; width: 176px; flex-direction: column; gap: 3px; padding: 5px; border: 1px solid #4c4c4c; border-radius: 4px; color: var(--text); background: #242424; box-shadow: 0 5px 16px #0008; pointer-events: auto; }
+  .zone-menu { position: absolute; z-index: 30; display: flex; width: 220px; flex-direction: column; gap: 3px; padding: 5px; border: 1px solid #4c4c4c; border-radius: 4px; color: var(--text); background: #242424; box-shadow: 0 5px 16px #0008; pointer-events: auto; }
   .zone-menu > button { min-height: 27px; padding: 4px 7px; border: 0; border-radius: 3px; color: inherit; background: transparent; text-align: left; cursor: pointer; }
   .zone-menu > button:hover { background: #393939; }
+  .zone-menu > .zone-menu-command { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .zone-menu-shortcut { flex: 0 0 auto; color: #8a8a8a; font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .zone-menu-command:hover .zone-menu-shortcut { color: #c4c4c4; }
+  .zone-menu-divider { height: 1px; margin: 2px 7px; background: #474747; }
   .zone-menu input { width: 100%; box-sizing: border-box; padding: 5px; border: 1px solid var(--accent); border-radius: 2px; color: var(--text); background: #202020; }
   .zone-colours { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; }
   .zone-colours span { flex-basis: 100%; color: var(--text-dim); font-size: 10px; }

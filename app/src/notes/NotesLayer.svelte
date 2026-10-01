@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { noteMenuItems, registerNoteMenuItem } from "./noteMenu";
+  import { noteMenuItemsForContext } from "./noteMenu";
   import "../tasks/taskActions.svelte";
   import { onMount } from "svelte";
   import type { Action } from "svelte/action";
@@ -9,7 +9,7 @@
   import { measuredHeights } from "./layout.svelte";
   import { clearTextFitWidthCache, measureAndCacheTextMinimumWidth } from "../editor/textFitWidth";
   import NoteNode from "./NoteNode.svelte";
-  import { copyCursorCoordinates, copyNoteLink } from "./noteCommands";
+  import { copyCursorCoordinates } from "./noteCommands";
   import { closeCreationMenu, creationMenu, markCreationMenuToolbarTrigger } from "./creation.svelte";
   import { closeLinkContextMenu, linkContext } from "../links-in-text/contextMenu.svelte";
   import { formatPointAddress } from "../links-in-text/format";
@@ -21,41 +21,13 @@
     closeGifContextMenu,
     gifPlayback,
     gifTargetFromElement,
-    isGifStopped,
     openGifContextMenu,
-    setGifStopped,
   } from "../attachments/gifPlayback.svelte";
-
-  registerNoteMenuItem({
-    id: "notes.copyLink",
-    label: () => "Copy link to note",
-    run: (noteId) => { void copyNoteLink(noteId); },
-    order: 10,
-  });
-
-  registerNoteMenuItem({
-    id: "attachments.toggleGif",
-    label: (noteId) => {
-      const target = gifPlayback.contextMenu?.target;
-      return target?.noteId === noteId && isGifStopped(target) ? "Play gif" : "Stop gif";
-    },
-    run: (noteId) => {
-      const target = gifPlayback.contextMenu?.target;
-      if (target?.noteId !== noteId) return;
-      setGifStopped(target, !isGifStopped(target));
-      closeGifContextMenu();
-    },
-    visible: (noteId) => gifPlayback.contextMenu?.target.noteId === noteId,
-    order: 11,
-  });
 
   let activeNoteMenuItems = $derived.by(() => {
     const menu = linkContext.menu;
     if (menu?.kind !== "note") return [];
-    const gifTarget = gifPlayback.contextMenu?.target;
-    return gifTarget?.noteId === menu.noteId
-      ? noteMenuItems(menu.noteId).filter((item) => item.id === "attachments.toggleGif")
-      : noteMenuItems(menu.noteId);
+    return noteMenuItemsForContext(menu.noteId, gifPlayback.contextMenu?.target ?? null);
   });
   let contextMenuZoomAtOpen = $state(1);
   let orderedNoteIds = $derived(imageFirstOrder(board.order, board.notes));
@@ -87,14 +59,19 @@
       const rect = boardElement!.getBoundingClientRect();
       const local = { x: event.clientX - rect.left, y: event.clientY - rect.top };
       const point = screenToWorld(camera, viewport, local);
-      const gifTarget = gifTargetFromElement(target);
+      const boardGifTarget = noteId && board.notes[noteId]?.type === "image" && board.notes[noteId]?.image?.mime === "image/gif"
+        ? { kind: "board" as const, noteId }
+        : null;
+      const gifTarget = gifTargetFromElement(target) ?? boardGifTarget;
       if (gifTarget) {
         event.stopPropagation();
         closeLinkContextMenu();
         linkContext.commandNoteId = gifTarget.noteId;
         linkContext.commandPoint = null;
-        const anchor = fitBoardPopupAnchor(camera, viewport, point, { width: 196, height: 44 });
         openGifContextMenu(gifTarget);
+        const menuItems = noteMenuItemsForContext(gifTarget.noteId, gifTarget);
+        const menuHeight = Math.max(44, menuItems.length * 32 + menuItems.filter((item) => item.dividerBefore).length * 7 + 8);
+        const anchor = fitBoardPopupAnchor(camera, viewport, point, { width: 220, height: menuHeight });
         contextMenuZoomAtOpen = camera.zoom;
         linkContext.menu = { kind: "note", noteId: gifTarget.noteId, x: anchor.x, y: anchor.y };
         return;
@@ -102,9 +79,10 @@
       if (noteRoot && noteId) {
         event.preventDefault();
         event.stopPropagation();
-        const menuHeight = Math.max(44, noteMenuItems(noteId).length * 32 + 8);
+        const menuItems = noteMenuItemsForContext(noteId);
+        const menuHeight = Math.max(44, menuItems.length * 32 + menuItems.filter((item) => item.dividerBefore).length * 7 + 8);
         contextMenuZoomAtOpen = camera.zoom;
-        const anchor = fitBoardPopupAnchor(camera, viewport, point, { width: 196, height: menuHeight });
+        const anchor = fitBoardPopupAnchor(camera, viewport, point, { width: 220, height: menuHeight });
         linkContext.menu = {
           kind: "note",
           noteId,
@@ -272,6 +250,10 @@
       {:else}
         {@const noteId = linkContext.menu.noteId}
         {#each activeNoteMenuItems as item (item.id)}
+          {@const shortcut = item.shortcut?.(noteId) ?? ""}
+          {#if item.dividerBefore}
+            <div class="menu-divider" role="separator"></div>
+          {/if}
           <button
             type="button"
             role="menuitem"
@@ -280,7 +262,10 @@
               item.run(noteId);
               closeAllContextMenus();
             }}
-          >{item.label(noteId)}</button>
+          >
+            <span class="menu-item-label">{item.label(noteId)}</span>
+            {#if shortcut}<span class="menu-item-shortcut">{shortcut}</span>{/if}
+          </button>
         {/each}
       {/if}
     </div>
@@ -327,6 +312,10 @@
   }
 
   .link-context-menu button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
     width: 100%;
     min-width: 0;
     min-height: 28px;
@@ -338,6 +327,23 @@
     text-align: left;
     white-space: normal;
     cursor: pointer;
+  }
+
+  .link-context-menu .menu-item-shortcut {
+    flex: 0 0 auto;
+    color: #8a8a8a;
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .link-context-menu button:hover .menu-item-shortcut,
+  .link-context-menu button:focus-visible .menu-item-shortcut { color: #c4c4c4; }
+
+  .link-context-menu .menu-divider {
+    height: 1px;
+    margin: 2px 7px;
+    background: #474747;
   }
 
   .link-context-menu button:hover,

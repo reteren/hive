@@ -345,9 +345,22 @@ registerCommand({
 });
 
 registerNoteMenuItem({
+  id: "notes.copyLink",
+  label: (noteId) => {
+    const note = board.notes[noteId];
+    if (note?.type === "image") return note.image?.mime === "image/gif" ? "Copy link to gif" : "Copy link to image";
+    return "Copy link to note";
+  },
+  run: (noteId) => { void copyNoteLink(noteId); },
+  visible: (noteId) => Boolean(board.notes[noteId]),
+  order: 10,
+});
+
+registerNoteMenuItem({
   id: "notes.addPlus",
   label: () => "Add plus",
   order: 40,
+  visible: (noteId) => Boolean(board.notes[noteId] && board.notes[noteId].type !== "image"),
   run: (noteId) => {
     addMiniNode(noteId, "pro");
     closeLinkContextMenu();
@@ -358,6 +371,7 @@ registerNoteMenuItem({
   id: "notes.addMinus",
   label: () => "Add minus",
   order: 41,
+  visible: (noteId) => Boolean(board.notes[noteId] && board.notes[noteId].type !== "image"),
   run: (noteId) => {
     addMiniNode(noteId, "con");
     closeLinkContextMenu();

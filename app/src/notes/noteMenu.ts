@@ -3,6 +3,15 @@ import { NOTE_HEADER_HEIGHT_UNITS } from "../model/note";
 import { linksOf } from "../model/links.svelte";
 import { execute } from "../history/history.svelte";
 import { toggleSmoothLinesForNote } from "../links/smoothLines";
+import { menuShortcutLabel } from "../commands/menuShortcut";
+import { runNoteMenuCommand } from "../commands/objectMenu";
+import {
+  closeGifContextMenu,
+  gifPlayback,
+  isGifStopped,
+  setGifStopped,
+  type GifPlaybackTarget,
+} from "../attachments/gifPlayback.svelte";
 
 /**
  * Items of the note right-click menu. Features register their entries here instead of editing
@@ -15,16 +24,60 @@ export interface NoteMenuItem {
   run: (noteId: string) => void;
   /** Hide the item for notes it doesn't apply to. */
   visible?: (noteId: string) => boolean;
+  /** Current command binding, displayed separately from the action label. */
+  shortcut?: (noteId: string) => string;
+  /** Add a thin separator before this row. */
+  dividerBefore?: boolean;
   /** Lower comes first. */
   order?: number;
 }
 
 const items = new Map<string, NoteMenuItem>();
+const UNIVERSAL_MENU_IDS = new Set(["object.scale", "object.grab", "object.delete"]);
 
 /** A hidden header is a move handle only; its title can be renamed after it is shown. */
 export function canRenameNoteHeader(headerHidden: boolean | undefined): boolean {
   return headerHidden !== true;
 }
+
+/** Apply the intentionally compact menu allowed for images and GIF surfaces. */
+export function noteMenuItemsForContext(
+  noteId: string,
+  gifTarget: GifPlaybackTarget | null = null,
+): NoteMenuItem[] {
+  const note = board.notes[noteId];
+  const allItems = noteMenuItems(noteId);
+  const target = gifTarget?.noteId === noteId ? gifTarget : null;
+
+  if (note?.type === "image") {
+    const allowed = new Set(["notes.copyLink", "archive.note", ...UNIVERSAL_MENU_IDS]);
+    if (note.image?.mime === "image/gif" && target?.kind === "board") {
+      allowed.add("attachments.toggleGif");
+    }
+    return allItems.filter((item) => allowed.has(item.id));
+  }
+
+  if (target) {
+    return allItems.filter((item) => UNIVERSAL_MENU_IDS.has(item.id) || item.id === "attachments.toggleGif");
+  }
+  return allItems;
+}
+
+registerNoteMenuItem({
+  id: "attachments.toggleGif",
+  label: (noteId) => {
+    const target = gifPlayback.contextMenu?.target;
+    return target?.noteId === noteId && isGifStopped(target) ? "Play gif" : "Stop gif";
+  },
+  run: (noteId) => {
+    const target = gifPlayback.contextMenu?.target;
+    if (target?.noteId !== noteId) return;
+    setGifStopped(target, !isGifStopped(target));
+    closeGifContextMenu();
+  },
+  visible: (noteId) => gifPlayback.contextMenu?.target.noteId === noteId,
+  order: 11,
+});
 
 registerNoteMenuItem({
   id: "links.smoothLines",
@@ -41,6 +94,31 @@ registerNoteMenuItem({
   run: toggleNoteHeader,
   visible: (noteId) => Boolean(board.notes[noteId] && board.notes[noteId].type !== "beacon" && board.notes[noteId].type !== "image"),
   order: 90,
+});
+
+registerNoteMenuItem({
+  id: "object.scale",
+  label: () => "Scale",
+  shortcut: () => menuShortcutLabel("select.scale"),
+  run: (noteId) => runNoteMenuCommand(noteId, "select.scale"),
+  dividerBefore: true,
+  order: 1000,
+});
+
+registerNoteMenuItem({
+  id: "object.grab",
+  label: () => "Grab",
+  shortcut: () => menuShortcutLabel("select.move"),
+  run: (noteId) => runNoteMenuCommand(noteId, "select.move"),
+  order: 1001,
+});
+
+registerNoteMenuItem({
+  id: "object.delete",
+  label: () => "Delete",
+  shortcut: () => menuShortcutLabel("edit.delete"),
+  run: (noteId) => runNoteMenuCommand(noteId, "edit.delete"),
+  order: 1002,
 });
 
 function toggleNoteHeader(noteId: string): void {

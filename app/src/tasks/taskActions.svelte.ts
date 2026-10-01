@@ -97,7 +97,7 @@ registerNoteMenuItem({
   id: "task.toggleFlag",
   label: (noteId) => board.notes[noteId]?.task ? "Unmark as task" : "Mark as task",
   run: toggleTaskFlag,
-  visible: (noteId) => canBeTask(board.notes[noteId]),
+  visible: (noteId) => board.notes[noteId]?.type !== "image" && canBeTask(board.notes[noteId]),
   order: 20,
 });
 
