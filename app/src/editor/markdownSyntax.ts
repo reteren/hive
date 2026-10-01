@@ -65,6 +65,7 @@ export interface InlineImageToken {
 
 export interface InlineImagePreviewEntry extends InlineImageToken {
   marker: string;
+  position: number;
 }
 
 export interface PreparedMarkdownPreview {
@@ -129,9 +130,10 @@ export function prepareMarkdownPreview(text: string): PreparedMarkdownPreview {
   while (text.includes(markerPrefix)) markerPrefix = `x${markerPrefix}`;
   let cursor = 0;
   let prepared = "";
-  const inlineImages = matches.map(({ token }, index) => ({
+  const inlineImages = matches.map(({ from, token }, index) => ({
     ...token,
     marker: `${markerPrefix}${index}token`,
+    position: from,
   }));
   matches.forEach(({ from, to }, index) => {
     const marker = inlineImages[index].marker;

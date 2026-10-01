@@ -112,7 +112,7 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
     drawSelection(),
     highlightColors,
     linkPreview,
-    inlineImagesExtension(breakTextEditGroup),
+    inlineImagesExtension(breakTextEditGroup, note.id),
     spellcheckExtension(() => ({ enabled: spellSettings.enabled, languages: spellSettings.languages })),
     EditorView.atomicRanges.of((view) => view.plugin(linkPreview)?.atomicRanges ?? Decoration.none),
     EditorView.domEventHandlers({

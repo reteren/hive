@@ -264,7 +264,7 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
       {:else if note.type === "calendar"}
         <CalendarNodeBody />
       {:else if note.type === "image"}
-        <ImageNodeBody image={note.image} selected={selection.ids.includes(note.id)} name={note.name} flipX={note.flipX} flipY={note.flipY} />
+        <ImageNodeBody image={note.image} selected={selection.ids.includes(note.id)} name={note.name} noteId={note.id} flipX={note.flipX} flipY={note.flipY} />
       {:else}
         <NoteBody {note} />
       {/if}

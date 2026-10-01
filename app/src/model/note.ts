@@ -143,6 +143,8 @@ export interface Note {
   flipX?: true;
   /** Mirror an image vertically when its resize handle crosses the opposite edge. */
   flipY?: true;
+  /** A user-stopped GIF stays still until explicitly played again. */
+  gifStopped?: true;
   /** Tierlist (R5.7): rows and their cards. */
   tiers?: TierRow[];
   /** List (R7.3): ordered items, each a link to a board object or a missing target. */

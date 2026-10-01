@@ -11,6 +11,7 @@ import { backupSettings, setBackupInterval } from "../backup/backupSettings.svel
 import { quickInputShortcut, setQuickInputShortcutValue } from "./quickInputShortcut.svelte";
 import { setTimeCounters, timeCounters } from "../time/runtime.svelte";
 import { timeEnablePreference } from "../time/enablePreference.svelte";
+import { gifPlayback, setGifPlaybackMode } from "../attachments/gifPlayback.svelte";
 import {
   parseTimeCounters,
   parseViewSettings,
@@ -134,6 +135,7 @@ function currentSettings(): ViewSettings {
     keyOverrides: getCommandKeyOverrides(),
     transferHintsShown: preferences.transferHintsShown,
     fitWidthToText: preferences.fitWidthToText,
+    gifPlayback: gifPlayback.mode,
     backupIntervalMinutes: backupSettings.interval,
     quickInputShortcut: quickInputShortcut.value,
     skipCompletedTimerConfirmation: timeEnablePreference.skipCompletedTimerConfirmation,
@@ -158,6 +160,7 @@ function applySettings(settings: ViewSettings): void {
   setCommandKeyOverrides(settings.keyOverrides);
   setTransferHintsShown(settings.transferHintsShown);
   setFitWidthToText(settings.fitWidthToText);
+  setGifPlaybackMode(settings.gifPlayback);
   setBackupInterval(settings.backupIntervalMinutes);
   setQuickInputShortcutValue(settings.quickInputShortcut);
   timeEnablePreference.skipCompletedTimerConfirmation = settings.skipCompletedTimerConfirmation ?? false;

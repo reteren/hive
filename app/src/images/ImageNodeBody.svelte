@@ -1,45 +1,32 @@
 <script lang="ts">
   import AttachmentImage from "../attachments/AttachmentImage.svelte";
+  import GifView from "../attachments/GifView.svelte";
   import type { ImageRef } from "../attachments/types";
-  import { attachmentUrl } from "../attachments/service";
 
-  let { image, selected, name, flipX, flipY }: { image?: ImageRef; selected: boolean; name: string; flipX?: true; flipY?: true } = $props();
-  let canvasElement = $state<HTMLCanvasElement | null>(null);
-  let loading = $state(true);
-  let failed = $state(false);
-  let stillReady = $state(false);
-  let url = $derived(image ? attachmentUrl(image.file) : "");
-  let isGif = $derived(image?.mime === "image/gif");
-
-  $effect(() => {
-    url;
-    loading = true;
-    failed = !url;
-    stillReady = false;
-  });
-
-  function handleLoad(event: Event): void {
-    const img = event.currentTarget;
-    if (!(img instanceof HTMLImageElement)) return;
-    loading = false;
-    failed = false;
-    if (!isGif || !canvasElement) return;
-    const context = canvasElement.getContext("2d");
-    if (!context || img.naturalWidth <= 0 || img.naturalHeight <= 0) return;
-    canvasElement.width = img.naturalWidth;
-    canvasElement.height = img.naturalHeight;
-    context.drawImage(img, 0, 0);
-    stillReady = true;
-  }
-
-  function handleError(): void {
-    loading = false;
-    failed = true;
-  }
+  let { image, selected, name, noteId, flipX, flipY }: {
+    image?: ImageRef;
+    selected: boolean;
+    name: string;
+    noteId: string;
+    flipX?: true;
+    flipY?: true;
+  } = $props();
 </script>
 
 <div class="image-node-body" role="group" aria-label={name} ondragstart={(event) => event.preventDefault()}>
-  {#if image && (!isGif || failed || !url)}
+  {#if image?.mime === "image/gif"}
+    <div class="image-node-picture-viewport" style:transform={`scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`}>
+      <GifView
+        {image}
+        target={{ kind: "board", noteId }}
+        hostSelected={selected}
+        alt={name}
+        class="image-node-picture"
+        style="width:100%;height:100%;object-fit:fill;pointer-events:none;user-select:none"
+        fit="fill"
+      />
+    </div>
+  {:else if image}
     <div class="image-node-picture-viewport" style:transform={`scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`}>
       <AttachmentImage
         {image}
@@ -48,35 +35,8 @@
         style="width:100%;height:100%;object-fit:fill;pointer-events:none;user-select:none"
       />
     </div>
-  {:else if image && isGif}
-    {#if url}
-      <div class="image-node-picture-viewport" style:transform={`scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`}>
-        <canvas bind:this={canvasElement} class="image-node-picture" aria-hidden="true" hidden={!stillReady || selected}></canvas>
-        <img
-          class="image-node-picture"
-          src={url}
-          alt={name}
-          draggable="false"
-          hidden={failed || !selected && stillReady}
-          onload={handleLoad}
-          onerror={handleError}
-        />
-      </div>
-      {#if loading && !failed}
-        <div class="image-node-state">Loading image…</div>
-      {/if}
-    {:else}
-      <div class="image-node-picture-viewport" style:transform={`scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`}>
-        <AttachmentImage
-          {image}
-          alt={name}
-          class="image-node-picture"
-          style="width:100%;height:100%;object-fit:fill;pointer-events:none;user-select:none"
-        />
-      </div>
-    {/if}
   {:else}
-    <div class="image-node-state image-node-error" role="status">File missing: {image?.name || image?.file || name || "Image"}</div>
+    <div class="image-node-state image-node-error" role="status">File missing: {name || "Image"}</div>
   {/if}
 </div>
 

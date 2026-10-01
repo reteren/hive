@@ -17,7 +17,7 @@ export type TierCard =
   | { id: string; kind: "text"; text: string }
   | { id: string; kind: "note"; noteId: string }
   /** R9.2: a picture card; the file lives in attachments/ (see src/attachments/types.ts). */
-  | { id: string; kind: "image"; image: ImageRef };
+  | { id: string; kind: "image"; image: ImageRef; stopped?: true };
 
 export interface TierRow {
   id: string;
@@ -118,7 +118,7 @@ export function parseTiers(value: unknown): TierRow[] | null {
       else if (card.kind === "note" && nonEmptyString(card.noteId)) cards.push({ id: card.id, kind: "note", noteId: card.noteId });
       else if (card.kind === "image") {
         const image = parseTierImageRef(card.image);
-        if (image) cards.push({ id: card.id, kind: "image", image });
+        if (image) cards.push({ id: card.id, kind: "image", image, ...(card.stopped === true ? { stopped: true } : {}) });
       }
     }
     rows.push({

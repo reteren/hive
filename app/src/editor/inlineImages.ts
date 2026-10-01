@@ -11,12 +11,13 @@ import {
   reportImportError,
 } from "../attachments/service";
 import type { ImageRef } from "../attachments/types";
+import { mountInlineGifDom } from "../attachments/gifDom";
 import { formatInlineImageToken, parseInlineImageToken } from "./markdownSyntax";
 
 export type BreakHistoryGroup = () => void;
 type ParsedInlineImage = NonNullable<ReturnType<typeof parseInlineImageToken>>;
 
-export function inlineImagesExtension(breakHistoryGroup: BreakHistoryGroup): Extension[] {
+export function inlineImagesExtension(breakHistoryGroup: BreakHistoryGroup, noteId: string): Extension[] {
   const plugin = ViewPlugin.fromClass(
     class {
       decorations: DecorationSet;
@@ -24,7 +25,7 @@ export function inlineImagesExtension(breakHistoryGroup: BreakHistoryGroup): Ext
       private readonly unregisterDrop: () => void;
 
       constructor(private readonly view: EditorView) {
-        this.decorations = imageDecorations(view, breakHistoryGroup);
+        this.decorations = imageDecorations(view, breakHistoryGroup, noteId);
         this.unregisterDrop = registerFileDropHandler(20, (paths, target, client) => {
           if (!paths.length || !target || !view.dom.contains(target) || this.destroyed || !view.dom.isConnected) {
             return false;
@@ -38,7 +39,7 @@ export function inlineImagesExtension(breakHistoryGroup: BreakHistoryGroup): Ext
 
       update(update: ViewUpdate): void {
         if (update.docChanged || update.selectionSet || update.viewportChanged) {
-          this.decorations = imageDecorations(update.view, breakHistoryGroup);
+          this.decorations = imageDecorations(update.view, breakHistoryGroup, noteId);
         }
       }
 
@@ -78,6 +79,23 @@ export function inlineImagesExtension(breakHistoryGroup: BreakHistoryGroup): Ext
         maxHeight: "none",
         objectFit: "contain",
         borderRadius: "2px",
+      },
+      ".cm-inline-gif-surface": {
+        position: "relative",
+        display: "block",
+        width: "100%",
+        overflow: "hidden",
+      },
+      ".cm-inline-gif-picture": {
+        display: "block",
+        width: "100%",
+        height: "auto",
+        maxHeight: "none",
+        objectFit: "contain",
+        borderRadius: "2px",
+      },
+      ".cm-inline-gif-picture[hidden]": {
+        display: "none",
       },
       ".cm-inline-image-widget[aria-busy='true']": {
         minHeight: "24px",
@@ -120,7 +138,7 @@ export function inlineImagesExtension(breakHistoryGroup: BreakHistoryGroup): Ext
   ];
 }
 
-function imageDecorations(view: EditorView, breakHistoryGroup: BreakHistoryGroup): DecorationSet {
+function imageDecorations(view: EditorView, breakHistoryGroup: BreakHistoryGroup, noteId: string): DecorationSet {
   const ranges: Array<{ from: number; to: number; value: ReturnType<typeof Decoration.replace> }> = [];
   const state = view.state;
   for (const visible of view.visibleRanges) {
@@ -138,7 +156,7 @@ function imageDecorations(view: EditorView, breakHistoryGroup: BreakHistoryGroup
           from,
           to,
           value: Decoration.replace({
-            widget: new InlineImageWidget(from, to, raw, token, breakHistoryGroup),
+            widget: new InlineImageWidget(from, to, raw, token, breakHistoryGroup, noteId),
             // Block decorations are not allowed from a ViewPlugin (CodeMirror throws "No tile at position");
             // the widget is inline and laid out as a block by its own CSS instead.
             block: false,
@@ -158,18 +176,21 @@ function selectionTouchesToken(state: EditorView["state"], from: number, to: num
 }
 
 class InlineImageWidget extends WidgetType {
+  private gifCleanup: (() => void) | null = null;
+
   constructor(
     private readonly from: number,
     private readonly to: number,
     private readonly raw: string,
     private readonly token: ParsedInlineImage,
     private readonly breakHistoryGroup: BreakHistoryGroup,
+    private readonly noteId: string,
   ) {
     super();
   }
 
   eq(other: InlineImageWidget): boolean {
-    return other.from === this.from && other.to === this.to && other.raw === this.raw;
+    return other.from === this.from && other.to === this.to && other.raw === this.raw && other.noteId === this.noteId;
   }
 
   toDOM(view: EditorView): HTMLElement {
@@ -182,7 +203,15 @@ class InlineImageWidget extends WidgetType {
     wrapper.style.width = `${this.token.widthPercent}%`;
 
     const url = attachmentUrl(this.token.file);
-    if (url) {
+    if (this.token.file.toLowerCase().endsWith(".gif")) {
+      wrapper.setAttribute("aria-busy", "true");
+      this.gifCleanup = mountInlineGifDom(wrapper, {
+        file: this.token.file,
+        alt: this.token.alt,
+        noteId: this.noteId,
+        position: this.from,
+      });
+    } else if (url) {
       const image = view.dom.ownerDocument.createElement("img");
       image.alt = this.token.alt;
       image.loading = "lazy";
@@ -229,6 +258,11 @@ class InlineImageWidget extends WidgetType {
       commitInlineImageResize(view, this.from, this.to, this.raw, this.token, this.token.widthPercent + delta, this.breakHistoryGroup);
     });
     return wrapper;
+  }
+
+  destroy(): void {
+    this.gifCleanup?.();
+    this.gifCleanup = null;
   }
 
   ignoreEvent(): boolean {

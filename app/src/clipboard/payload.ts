@@ -56,6 +56,7 @@ export interface ClipboardNode {
   image?: ImageRef;
   flipX?: true;
   flipY?: true;
+  gifStopped?: true;
 }
 
 export interface ClipboardZone extends Omit<Zone, "id"> {
@@ -100,7 +101,7 @@ export function serializeNotes(
     marker: HIVE_CLIPBOARD_MARKER,
     version: HIVE_CLIPBOARD_VERSION,
     nodes: notes.map(({
-      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, time, message, embedSections, importance, purposes, moods, color, zoneId, headerHidden, image, flipX, flipY,
+      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, time, message, embedSections, importance, purposes, moods, color, zoneId, headerHidden, image, flipX, flipY, gifStopped,
     }) => ({
       sourceId: id,
       type,
@@ -125,6 +126,7 @@ export function serializeNotes(
       ...(image ? { image: { ...image } } : {}),
       ...(type === "image" && flipX === true ? { flipX: true } : {}),
       ...(type === "image" && flipY === true ? { flipY: true } : {}),
+      ...(type === "image" && gifStopped === true ? { gifStopped: true } : {}),
     })),
     links: links.flatMap((link) => noteIds.has(link.from) && noteIds.has(link.to)
       ? [{
@@ -375,7 +377,8 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
   const image = value.image === undefined ? null : parseImageRef(value.image);
   if (value.image !== undefined && !image || value.type === "image" && (!image || !finite(value.height) || value.height <= 0) ||
     value.headerHidden !== undefined && typeof value.headerHidden !== "boolean" ||
-    value.flipX !== undefined && value.flipX !== true || value.flipY !== undefined && value.flipY !== true) return null;
+    value.flipX !== undefined && value.flipX !== true || value.flipY !== undefined && value.flipY !== true ||
+    value.gifStopped !== undefined && value.gifStopped !== true) return null;
 
   return {
     sourceId: value.sourceId,
@@ -401,6 +404,7 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     ...(image ? { image } : {}),
     ...(value.type === "image" && value.flipX === true ? { flipX: true } : {}),
     ...(value.type === "image" && value.flipY === true ? { flipY: true } : {}),
+    ...(value.type === "image" && value.gifStopped === true ? { gifStopped: true } : {}),
   };
 }
 

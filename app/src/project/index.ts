@@ -68,6 +68,7 @@ export interface IndexedNote {
   image?: ImageRef;
   flipX?: true;
   flipY?: true;
+  gifStopped?: true;
   [key: string]: unknown;
 }
 
@@ -232,6 +233,7 @@ export function serializeProjectIndex(
       ...(note.customMarkFrame ? { customMarkFrame: true } : {}),
       ...(note.listStats ? { listStats: true } : {}),
       image: note.image ? { ...note.image } : undefined,
+      gifStopped: note.gifStopped === true ? true as const : undefined,
       flipX: note.type === "image" && note.flipX === true ? true as const : undefined,
       flipY: note.type === "image" && note.flipY === true ? true as const : undefined,
       headerHidden: note.headerHidden === true ? true : undefined,
@@ -307,6 +309,7 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       ...(entry.customMarkFrame ? { customMarkFrame: true } : {}),
       ...(entry.listStats ? { listStats: true } : {}),
       ...(entry.image ? { image: { ...entry.image } } : {}),
+      ...(entry.type === "image" && entry.gifStopped === true ? { gifStopped: true } : {}),
       ...(entry.type === "image" && entry.flipX === true ? { flipX: true } : {}),
       ...(entry.type === "image" && entry.flipY === true ? { flipY: true } : {}),
       ...(entry.headerHidden ? { headerHidden: true } : {}),
@@ -429,6 +432,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
 
   const type = parseNoteKind(value.type);
   const image = value.image === undefined ? undefined : parseImageRef(value.image);
+  const gifStopped = value.gifStopped === true ? true : undefined;
   const file = typeof value.file === "string" && value.file.length > 0
     ? value.file
     : type === "calculator"
@@ -449,6 +453,9 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
   const warnings: string[] = [];
   if (value.image !== undefined && !image || type === "image" && !image) {
     warnings.push(`Invalid or missing image data for note ${id}; the image placeholder will be shown.`);
+  }
+  if (value.gifStopped !== undefined && value.gifStopped !== true) {
+    warnings.push(`Invalid GIF playback state for note ${id}; it was cleared.`);
   }
   if (type === "image" && height === null) {
     height = image ? width * image.naturalHeight / image.naturalWidth : width;
@@ -533,6 +540,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
       purposes: purposes.values,
       moods: moods.values,
       image: image ?? undefined,
+      gifStopped: type === "image" ? gifStopped : undefined,
       flipX: type === "image" && value.flipX === true ? true : undefined,
       flipY: type === "image" && value.flipY === true ? true : undefined,
       color: type === "beacon" ? color ?? beaconPaletteColor(0) : color,

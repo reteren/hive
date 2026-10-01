@@ -15,6 +15,8 @@
   import { screenToWorld, worldToScreen, type Point } from "../board/cameraMath";
   import { activeDropTarget, registerDropTarget, type DropTargetMatch } from "../selection/dropTargets";
   import AttachmentImage from "../attachments/AttachmentImage.svelte";
+  import GifView from "../attachments/GifView.svelte";
+  import { selection } from "../selection/selection.svelte";
   import { registerImagePasteHandler } from "../attachments/pasteDispatch";
   import { addTierlistImagesFromPicker } from "./imagePicker";
   import {
@@ -854,6 +856,16 @@
               >
                 {#if preview.kind === "text"}
                   <span>{preview.text || "Double-click to edit"}</span>
+                {:else if preview.kind === "image" && preview.image.mime === "image/gif"}
+                  <GifView
+                    image={preview.image}
+                    target={{ kind: "tierlist", noteId: note.id, rowId: row.id, cardId: card.id }}
+                    hostSelected={selection.ids.includes(note.id)}
+                    hoverWhenSelected={true}
+                    alt={preview.name}
+                    class="tier-card-image"
+                    style="display:block;width:100%;height:54px;object-fit:contain;"
+                  />
                 {:else if preview.kind === "image"}
                   <AttachmentImage image={preview.image} alt={preview.name} class="tier-card-image" style="display:block;width:100%;height:54px;object-fit:contain;" />
                 {:else}

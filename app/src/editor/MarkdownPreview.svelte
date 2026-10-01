@@ -2,6 +2,7 @@
   import { mount, onMount, unmount } from "svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import AttachmentImage from "../attachments/AttachmentImage.svelte";
+  import GifView from "../attachments/GifView.svelte";
   import type { ImageRef } from "../attachments/types";
   import { board } from "../model/board.svelte";
   import { teleportToObject, teleportToPoint } from "../navigation/navigate";
@@ -9,7 +10,7 @@
   import { createMarkdownFragment, linkedNoteIds } from "./markdown";
   import { prepareMarkdownPreview } from "./markdownSyntax";
 
-  let { text }: { text: string } = $props();
+  let { text, noteId }: { text: string; noteId: string } = $props();
   let container: HTMLDivElement;
   let visible = $state(false);
   let renderedText: string | null = null;
@@ -48,22 +49,37 @@
 
       const image: ImageRef = {
         file: inlineImage.file,
-        mime: "",
+        mime: inlineImage.file.toLowerCase().endsWith(".gif") ? "image/gif" : "",
         size: 0,
         name: inlineImage.alt || undefined,
         naturalWidth: 0,
         naturalHeight: 0,
       };
-      const component = mount(AttachmentImage, {
-        target: host,
-        props: {
-          image,
-          alt: inlineImage.alt,
-          class: "md-inline-image",
-          style: "width:100%;height:auto;max-height:none;object-fit:contain",
-        },
-      });
-      mountedInlineImages.push(component);
+      if (image.mime === "image/gif") {
+        const component = mount(GifView, {
+          target: host,
+          props: {
+            image,
+            target: { kind: "inline", noteId, position: inlineImage.position },
+            hoverWhenSelected: true,
+            alt: inlineImage.alt,
+            class: "md-inline-image",
+            style: "width:100%;height:auto;max-height:none;object-fit:contain",
+          },
+        });
+        mountedInlineImages.push(component);
+      } else {
+        const component = mount(AttachmentImage, {
+          target: host,
+          props: {
+            image,
+            alt: inlineImage.alt,
+            class: "md-inline-image",
+            style: "width:100%;height:auto;max-height:none;object-fit:contain",
+          },
+        });
+        mountedInlineImages.push(component);
+      }
     }
   }
 

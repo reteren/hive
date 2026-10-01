@@ -13,6 +13,7 @@
   import { exportCurrentProject, importProjectFromZip, refreshStorageStats } from "../export/actions";
   import { exportState } from "../export/exportState.svelte";
   import { preferences, setFitWidthToText, setReduceAnimations } from "../settings/preferences.svelte";
+  import { gifPlayback, setGifPlaybackMode } from "../attachments/gifPlayback.svelte";
   import { closeSettingsPanel, settingsPanel } from "../settings/settingsPanel.svelte";
   import QuickInputShortcutSetting from "../settings/QuickInputShortcutSetting.svelte";
   import ExportStatus from "../export/ExportStatus.svelte";
@@ -102,6 +103,19 @@
               checked={preferences.reduceAnimations}
               onchange={(event) => setReduceAnimations(event.currentTarget.checked)}
             />
+          </label>
+          <label class="setting-row">
+            <span class="setting-copy">
+              <span>GIF playback</span>
+              <span class="setting-description">Stopped GIFs stay still until you choose Play gif.</span>
+            </span>
+            <span class="gif-playback-select">
+              <Select id="settings-gif-playback" ariaLabel="GIF playback" value={gifPlayback.mode} options={[
+                { value: "always", label: "Always" },
+                { value: "hover", label: "On hover" },
+                { value: "selected", label: "When selected" },
+              ]} onchange={setGifPlaybackMode} />
+            </span>
           </label>
           <label class="setting-row">
             <span class="setting-copy">
@@ -397,6 +411,12 @@
     display: block;
     width: 75px;
     flex: 0 0 75px;
+  }
+
+  .gif-playback-select {
+    display: block;
+    width: 126px;
+    flex: 0 0 126px;
   }
 
   .storage-error {

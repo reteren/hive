@@ -6,8 +6,9 @@ import { BRUSH_MIN, normalizeBrushSize } from "../zones/brush";
 import { systemPrefersReducedMotion } from "./motion";
 import type { BackupInterval } from "../backup/backupSettings.svelte";
 import { DEFAULT_QUICK_INPUT_SHORTCUT, normalizeQuickInputShortcut } from "../quickInput/shortcutModel";
+import { normalizeGifPlaybackMode, type GifPlaybackMode } from "../attachments/gifPlayback.svelte";
 
-export const VIEW_SETTINGS_VERSION = 11;
+export const VIEW_SETTINGS_VERSION = 12;
 
 export interface CameraSettings {
   minZoom: number;
@@ -45,6 +46,7 @@ export interface ViewSettings {
   keyOverrides: KeyBindingOverrides;
   transferHintsShown: number;
   fitWidthToText: boolean;
+  gifPlayback: GifPlaybackMode;
   backupIntervalMinutes: BackupInterval;
   quickInputShortcut: string;
   skipCompletedTimerConfirmation?: boolean;
@@ -73,6 +75,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
   keyOverrides: {},
   transferHintsShown: 0,
   fitWidthToText: true,
+  gifPlayback: "always",
   backupIntervalMinutes: 30,
   quickInputShortcut: DEFAULT_QUICK_INPUT_SHORTCUT,
   skipCompletedTimerConfirmation: false,
@@ -134,6 +137,7 @@ export function parseViewSettings(serialized: string | null | undefined, default
     keyOverrides: sanitizeKeyOverrides(parsed.keyOverrides),
     transferHintsShown: hintCountOrDefault(parsed.transferHintsShown, defaults.transferHintsShown),
     fitWidthToText: booleanOrDefault(parsed.fitWidthToText, defaults.fitWidthToText),
+    gifPlayback: normalizeGifPlaybackMode(parsed.gifPlayback, defaults.gifPlayback),
     backupIntervalMinutes: backupIntervalOrDefault(parsed.backupIntervalMinutes, defaults.backupIntervalMinutes),
     quickInputShortcut: normalizeQuickInputShortcut(parsed.quickInputShortcut) ?? defaults.quickInputShortcut,
     skipCompletedTimerConfirmation: booleanOrDefault(parsed.skipCompletedTimerConfirmation, defaults.skipCompletedTimerConfirmation ?? false),
@@ -163,6 +167,7 @@ export function serializeViewSettings(settings: ViewSettings): string {
     keyOverrides: sanitizeKeyOverrides(settings.keyOverrides),
     transferHintsShown: hintCountOrDefault(settings.transferHintsShown, 0),
     fitWidthToText: settings.fitWidthToText,
+    gifPlayback: settings.gifPlayback,
     backupIntervalMinutes: backupIntervalOrDefault(settings.backupIntervalMinutes, 30),
     quickInputShortcut: normalizeQuickInputShortcut(settings.quickInputShortcut) ?? DEFAULT_QUICK_INPUT_SHORTCUT,
     skipCompletedTimerConfirmation: settings.skipCompletedTimerConfirmation === true,
@@ -232,6 +237,7 @@ function cloneViewSettings(settings: ViewSettings): ViewSettings {
     keyOverrides: sanitizeKeyOverrides(settings.keyOverrides),
     transferHintsShown: settings.transferHintsShown,
     fitWidthToText: settings.fitWidthToText,
+    gifPlayback: settings.gifPlayback,
     backupIntervalMinutes: settings.backupIntervalMinutes,
     quickInputShortcut: settings.quickInputShortcut,
     skipCompletedTimerConfirmation: settings.skipCompletedTimerConfirmation ?? false,

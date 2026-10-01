@@ -131,7 +131,8 @@ function parseTrashNote(value: unknown): Note | null {
     value.createdAt !== undefined && !finite(value.createdAt) ||
     value.image !== undefined && !image || value.type === "image" && (!image || !finite(value.height) || value.height <= 0) ||
     value.headerHidden !== undefined && typeof value.headerHidden !== "boolean" ||
-    value.flipX !== undefined && value.flipX !== true || value.flipY !== undefined && value.flipY !== true) return null;
+    value.flipX !== undefined && value.flipX !== true || value.flipY !== undefined && value.flipY !== true ||
+    value.gifStopped !== undefined && value.gifStopped !== true) return null;
   const scope = value.scope === undefined ? undefined : parseScope(value.scope);
   const tiers = value.tiers === undefined ? undefined : parseTiers(value.tiers);
   if (scope === null || tiers === null) return null;
@@ -156,6 +157,7 @@ function parseTrashNote(value: unknown): Note | null {
     ...(image ? { image } : {}),
     ...(value.type === "image" && value.flipX === true ? { flipX: true } : {}),
     ...(value.type === "image" && value.flipY === true ? { flipY: true } : {}),
+    ...(value.type === "image" && value.gifStopped === true ? { gifStopped: true } : {}),
     ...(value.headerHidden === true ? { headerHidden: true } : {}),
     ...(value.importance ? { importance: value.importance as Note["importance"] } : {}),
     ...(value.purposes ? { purposes: value.purposes as Note["purposes"] } : {}),

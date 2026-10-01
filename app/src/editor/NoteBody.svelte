@@ -1,6 +1,7 @@
 <!-- Note body: static Markdown text, and the live editor while the note is being edited (R1.3). -->
 <script lang="ts">
   import { editing } from "../notes/editing.svelte";
+  import { selection } from "../selection/selection.svelte";
   import type { Note } from "../model/note";
   import EditorHost from "./EditorHost.svelte";
   import MarkdownPreview from "./MarkdownPreview.svelte";
@@ -20,19 +21,20 @@
 </script>
 
 {#if editing.noteId === note.id}
-  <div class="note-body" class:fixed-height={note.height !== null}>
+  <div class="note-body" class:fixed-height={note.height !== null} data-gif-host-selected={selection.ids.includes(note.id) ? "true" : "false"}>
     <EditorHost {note} />
   </div>
 {:else}
   <div
     class="note-body"
     class:fixed-height={note.height !== null}
+    data-gif-host-selected={selection.ids.includes(note.id) ? "true" : "false"}
     role="button"
     tabindex="0"
     aria-label={`Edit text for ${note.name}`}
     onkeydown={beginEditingFromKeyboard}
   >
-    <MarkdownPreview text={note.text} />
+    <MarkdownPreview text={note.text} noteId={note.id} />
   </div>
 {/if}
 

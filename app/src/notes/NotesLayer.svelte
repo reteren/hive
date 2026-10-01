@@ -17,6 +17,14 @@
   import { boardPopupStyle, dismissBoardPopup, fitBoardPopupAnchor } from "../ui/boardAnchor";
   import { imageFirstOrder } from "../images/imageLogic";
   import { handleBoardImagePaste, registerImageDropHandler, registerImagePasteToBoard } from "../images/imageActions";
+  import {
+    closeGifContextMenu,
+    gifPlayback,
+    gifTargetFromElement,
+    isGifStopped,
+    openGifContextMenu,
+    setGifStopped,
+  } from "../attachments/gifPlayback.svelte";
 
   registerNoteMenuItem({
     id: "notes.copyLink",
@@ -25,9 +33,29 @@
     order: 10,
   });
 
+  registerNoteMenuItem({
+    id: "attachments.toggleGif",
+    label: (noteId) => {
+      const target = gifPlayback.contextMenu?.target;
+      return target?.noteId === noteId && isGifStopped(target) ? "Play gif" : "Stop gif";
+    },
+    run: (noteId) => {
+      const target = gifPlayback.contextMenu?.target;
+      if (target?.noteId !== noteId) return;
+      setGifStopped(target, !isGifStopped(target));
+      closeGifContextMenu();
+    },
+    visible: (noteId) => gifPlayback.contextMenu?.target.noteId === noteId,
+    order: 11,
+  });
+
   let activeNoteMenuItems = $derived.by(() => {
     const menu = linkContext.menu;
-    return menu?.kind === "note" ? noteMenuItems(menu.noteId) : [];
+    if (menu?.kind !== "note") return [];
+    const gifTarget = gifPlayback.contextMenu?.target;
+    return gifTarget?.noteId === menu.noteId
+      ? noteMenuItems(menu.noteId).filter((item) => item.id === "attachments.toggleGif")
+      : noteMenuItems(menu.noteId);
   });
   let contextMenuZoomAtOpen = $state(1);
   let orderedNoteIds = $derived(imageFirstOrder(board.order, board.notes));
@@ -46,6 +74,7 @@
       // The board owns context menus for notes and blank space. Suppress the browser menu
       // before checking feature surfaces so no node body can leak Chrome's native menu.
       event.preventDefault();
+      closeGifContextMenu();
       if (target.closest("[data-create-menu]")) {
         event.stopPropagation();
         return;
@@ -56,6 +85,18 @@
       const rect = boardElement!.getBoundingClientRect();
       const local = { x: event.clientX - rect.left, y: event.clientY - rect.top };
       const point = screenToWorld(camera, viewport, local);
+      const gifTarget = gifTargetFromElement(target);
+      if (gifTarget) {
+        event.stopPropagation();
+        closeLinkContextMenu();
+        linkContext.commandNoteId = gifTarget.noteId;
+        linkContext.commandPoint = null;
+        const anchor = fitBoardPopupAnchor(camera, viewport, point, { width: 196, height: 44 });
+        openGifContextMenu(gifTarget);
+        contextMenuZoomAtOpen = camera.zoom;
+        linkContext.menu = { kind: "note", noteId: gifTarget.noteId, x: anchor.x, y: anchor.y };
+        return;
+      }
       if (noteRoot && noteId) {
         event.preventDefault();
         event.stopPropagation();
@@ -89,6 +130,8 @@
 
     function onWindowClick(event: MouseEvent): void {
       const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest("[data-link-context-menu]")) return;
+      closeGifContextMenu();
       if (target?.closest('button.command-button[aria-label^="New note"]')) {
         markCreationMenuToolbarTrigger();
         linkContext.commandNoteId = null;
@@ -96,7 +139,6 @@
         closeLinkContextMenu();
         return;
       }
-      if (target?.closest("[data-link-context-menu]")) return;
       if (target?.closest("[data-create-menu]")) {
         linkContext.commandNoteId = null;
         linkContext.commandPoint = null;
@@ -127,6 +169,11 @@
 
   function coordinateLabel(point: { x: number; y: number }): string {
     return formatPointAddress(point).replace("hive://point/", "");
+  }
+
+  function closeAllContextMenus(): void {
+    closeLinkContextMenu();
+    closeGifContextMenu();
   }
 
   const observeAutoHeight: Action<HTMLElement, string> = (element, initialId) => {
@@ -206,7 +253,7 @@
       tabindex="-1"
       aria-label={linkContext.menu.kind === "board" ? "Board actions" : "Note actions"}
       style={boardPopupStyle(camera, viewport, { x: linkContext.menu.x, y: linkContext.menu.y }, contextMenuZoomAtOpen)}
-      use:dismissBoardPopup={{ close: closeLinkContextMenu }}
+      use:dismissBoardPopup={{ close: closeAllContextMenus }}
       oncontextmenu={(event) => event.preventDefault()}
     >
       {#if linkContext.menu.kind === "board"}
@@ -229,7 +276,7 @@
             onclick={(event) => {
               event.stopPropagation();
               item.run(noteId);
-              closeLinkContextMenu();
+              closeAllContextMenus();
             }}
           >{item.label(noteId)}</button>
         {/each}
