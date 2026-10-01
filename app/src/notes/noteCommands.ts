@@ -39,10 +39,13 @@ import { restartTimeNode } from "../time/runtime.svelte";
 import { defaultAtTimeSchedule } from "../time/uiSchedule";
 import type { ImageRef } from "../attachments/types";
 import { imageNodeName, initialImageSize } from "../images/imageLogic";
+import { openPdfExternally, registerFormatDropHandler } from "../formats/formatActions";
 
 export const DEFAULT_MINI_NOTE_WIDTH = 18;
 
 type MiniNoteKind = Extract<NoteKind, "pro" | "con">;
+
+registerFormatDropHandler();
 
 export function toggleCreationMenu(): void {
   if (creationMenu.open) {
@@ -354,6 +357,14 @@ registerNoteMenuItem({
   run: (noteId) => { void copyNoteLink(noteId); },
   visible: (noteId) => Boolean(board.notes[noteId]),
   order: 10,
+});
+
+registerNoteMenuItem({
+  id: "formats.openExternally",
+  label: () => "Open externally",
+  run: (noteId) => { void openPdfExternally(noteId); },
+  visible: (noteId) => board.notes[noteId]?.type === "pdf",
+  order: 30,
 });
 
 registerNoteMenuItem({

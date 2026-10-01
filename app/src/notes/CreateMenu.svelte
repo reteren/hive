@@ -9,6 +9,7 @@
   import { clearSelectedLink } from "../links/selection.svelte";
   import { pickImageFiles, reportImportError } from "../attachments/service";
   import { importImagePaths } from "../images/imageActions";
+  import { pickFormatFiles } from "../formats/formatActions";
 
   let menuElement = $state<HTMLElement | null>(null);
 
@@ -100,6 +101,20 @@
     if (paths.length === 0) return;
     const created = await importImagePaths(paths, { x: camera.x, y: camera.y });
     if (!created) return;
+    switchToSelectToolAfterCreation();
+    if (!creationMenu.pinned) closeCreationMenu();
+  }
+
+  async function createPdfFromMenu(): Promise<void> {
+    const center = { ...creationMenu.origin };
+    if (!(await pickFormatFiles("pdf", center))) return;
+    switchToSelectToolAfterCreation();
+    if (!creationMenu.pinned) closeCreationMenu();
+  }
+
+  async function createFormatFromMenu(): Promise<void> {
+    const center = { ...creationMenu.origin };
+    if (!(await pickFormatFiles("text", center))) return;
     switchToSelectToolAfterCreation();
     if (!creationMenu.pinned) closeCreationMenu();
   }
@@ -203,6 +218,14 @@
       <button class="create-item" type="button" data-create-kind="image" onclick={createImagesFromMenu}>
         <span class="r5-icon image-icon" aria-hidden="true"></span>
         <span>Image…</span>
+      </button>
+      <button class="create-item" type="button" data-create-kind="pdf" onclick={createPdfFromMenu}>
+        <span class="r5-icon pdf-icon" aria-hidden="true"></span>
+        <span>PDF…</span>
+      </button>
+      <button class="create-item" type="button" data-create-kind="format" onclick={createFormatFromMenu}>
+        <span class="r5-icon format-icon" aria-hidden="true"></span>
+        <span>File…</span>
       </button>
     </div>
   </aside>

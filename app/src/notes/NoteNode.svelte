@@ -18,6 +18,8 @@
   import MoodNodeBody from "../moods/MoodNodeBody.svelte";
   import CalendarNodeBody from "../calendar/CalendarNodeBody.svelte";
   import ImageNodeBody from "../images/ImageNodeBody.svelte";
+  import PdfNodeBody from "../formats/PdfNodeBody.svelte";
+  import FormatNodeBody from "../formats/FormatNodeBody.svelte";
   import { nodeBodyFor } from "./nodeBodies";
   import { effectiveCustomMarkFrameColors, effectiveImportance } from "../modules/moduleActions.svelte";
   import { customMarkGradientFor } from "../markas/markasLogic";
@@ -131,7 +133,7 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
 
   function beginEditingFromDoubleClick(event: MouseEvent): void {
     if (editing.noteId === note.id || !(event.target instanceof Element)) return;
-    if (note.type === "importance" || note.type === "purpose" || note.type === "mood" || note.type === "markas" || note.type === "calendar" || note.type === "image") return;
+    if (note.type === "importance" || note.type === "purpose" || note.type === "mood" || note.type === "markas" || note.type === "calendar" || note.type === "image" || note.type === "pdf" || note.type === "format") return;
     if (event.target.closest(".note-header, [data-text-link], input, button")) return;
     tool.active = "select";
     startNoteEditing(note.id, { x: event.clientX, y: event.clientY });
@@ -265,6 +267,10 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
         <CalendarNodeBody />
       {:else if note.type === "image"}
         <ImageNodeBody image={note.image} selected={selection.ids.includes(note.id)} name={note.name} noteId={note.id} flipX={note.flipX} flipY={note.flipY} />
+      {:else if note.type === "pdf"}
+        <PdfNodeBody {note} />
+      {:else if note.type === "format"}
+        <FormatNodeBody {note} />
       {:else}
         <NoteBody {note} />
       {/if}
