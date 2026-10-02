@@ -162,6 +162,8 @@ export interface SourceData {
   url: string | null;
   filePath: string | null;
   description: string;
+  /** An unsupported OS file drop links to its original path without a replacement picker. */
+  locked?: true;
 }
 
 /** R7.7 Random Choice: which list item was picked, from which List node, and when. */
@@ -184,6 +186,7 @@ export function parseSource(value: unknown): SourceData | null {
     url: nonEmptyString(value.url) ? value.url : null,
     filePath: nonEmptyString(value.filePath) ? value.filePath : null,
     description: typeof value.description === "string" ? value.description : "",
+    ...(value.locked === true ? { locked: true as const } : {}),
   };
 }
 

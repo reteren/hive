@@ -7,6 +7,7 @@ mod quick_input_shortcut;
 mod settings;
 mod source;
 mod spellcheck;
+mod text_import;
 mod watcher;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -192,6 +193,7 @@ pub fn run() {
             export::project_storage_stats,
             source::source_path_exists,
             source::source_open_path,
+            text_import::read_dropped_text,
             spellcheck::spellcheck_languages,
             spellcheck::spellcheck_check,
             spellcheck::spellcheck_suggest,
