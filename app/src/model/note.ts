@@ -147,7 +147,7 @@ export interface Note {
   recordings?: { id: string; name: string; media: MediaRef }[];
   /** R9.6 YouTube node. */
   youtube?: YouTubeRef;
-  /** Hide the outer frame on YouTube nodes, leaving the player surface. */
+  /** Hide the outer frame on video and YouTube nodes, leaving the player surface. */
   frameHidden?: true;
   /** Mirror an image horizontally when its resize handle crosses the opposite edge. */
   flipX?: true;
