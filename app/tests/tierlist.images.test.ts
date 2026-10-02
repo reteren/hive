@@ -213,7 +213,7 @@ describe("Tierlist image entry point", () => {
   });
 
   it("renders linked image targets with image sizing, flip styles, and Tierlist GIF controls", () => {
-    expect(tierlistBodySource).toContain("cardImageWidth(entry.card)");
+    expect(tierlistBodySource).toContain("cardWidth(entry.card)");
     expect(tierlistBodySource).toContain('preview.kind === "image" && preview.image.mime === "image/gif"');
     expect(tierlistBodySource).toContain('target={{ kind: "tierlist", noteId: note.id, rowId: row.id, cardId: card.id }}');
     expect(tierlistBodySource).toContain("hoverWhenSelected={true}");

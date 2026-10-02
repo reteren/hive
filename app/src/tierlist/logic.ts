@@ -2,6 +2,7 @@ import { newId, type Note } from "../model/note";
 import type { TierCard, TierRow } from "../model/nodeData";
 import type { Zone } from "../model/zone";
 import type { ImageRef } from "../attachments/types";
+import { youtubeThumbnailUrl } from "../youtube/logic";
 
 export const DEFAULT_TIERS = [
   { name: "S", color: "#FF4B5C" },
@@ -20,6 +21,9 @@ export type TierRowDeleteChoice = "move-below" | "delete-cards" | "cancel";
 export type TierCardPreview =
   | { kind: "text"; text: string }
   | { kind: "image"; image: ImageRef; name: string; flipX?: true; flipY?: true }
+  | { kind: "video"; file: string; duration?: number; naturalWidth?: number; naturalHeight?: number; name: string; lines: string[] }
+  | { kind: "audio"; file: string; name: string; lines: string[] }
+  | { kind: "youtube"; thumbnail: string; name: string; lines: string[] }
   | { kind: "note"; name: string; lines: string[]; missing: false }
   | { kind: "note"; name: "content missing"; lines: []; missing: true };
 
@@ -286,6 +290,23 @@ export function tierCardPreview(card: TierCard, notes: Readonly<Record<string, N
     };
   }
   const lines = source.text.split(/\r?\n/).filter((line) => line.trim()).slice(0, 3);
+  if (source.type === "video" && source.media?.kind === "video") {
+    return {
+      kind: "video",
+      file: source.media.file,
+      ...(source.media.duration === undefined ? {} : { duration: source.media.duration }),
+      ...(source.media.naturalWidth === undefined ? {} : { naturalWidth: source.media.naturalWidth }),
+      ...(source.media.naturalHeight === undefined ? {} : { naturalHeight: source.media.naturalHeight }),
+      name: source.name,
+      lines,
+    };
+  }
+  if (source.type === "audio" && source.media?.kind === "audio") {
+    return { kind: "audio", file: source.media.file, name: source.name, lines };
+  }
+  if (source.type === "youtube" && source.youtube) {
+    return { kind: "youtube", thumbnail: youtubeThumbnailUrl(source.youtube.videoId), name: source.youtube.title || source.name, lines };
+  }
   return { kind: "note", name: source.name, lines, missing: false };
 }
 

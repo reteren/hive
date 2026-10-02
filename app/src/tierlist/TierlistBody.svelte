@@ -16,7 +16,10 @@
   import { activeDropTarget, registerDropTarget, type DropTargetMatch } from "../selection/dropTargets";
   import AttachmentImage from "../attachments/AttachmentImage.svelte";
   import GifView from "../attachments/GifView.svelte";
+  import { attachmentUrl } from "../attachments/service";
   import { selection } from "../selection/selection.svelte";
+  import { tierlistAudioPlayback, toggleTierlistAudio, stopTierlistAudioFor } from "./audioPlayback.svelte";
+  import TierlistVideoFrame from "./TierlistVideoFrame.svelte";
 import { dispatchImagePaste, registerImagePasteHandler } from "../attachments/pasteDispatch";
   import { addTierlistImagesFromPicker } from "./imagePicker";
   import {
@@ -121,6 +124,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
   let cardInsertionIndicatorRoot: HTMLElement | null = null;
   let cardDropTargetArea: HTMLElement | null = null;
   let hoveredRowId: string | null = null;
+  let failedYouTubeCardId = $state<string | null>(null);
 
   const rowColors = ["#FF4B5C", "#FFB347", "#FFE66D", "#C3FF68", "#7DFFB3", "#5CD8FF", "#9F8BFF", DEFAULT_NEW_TIER_COLOR];
 
@@ -135,6 +139,8 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
       return addNoteTierCard(note.id, rowId, sourceNoteId);
     },
   }));
+
+  onMount(() => () => stopTierlistAudioFor(note.id));
 
   onMount(() => registerContentDropTarget((point, source) => {
     if (tierlistRootAt(point) !== root) return null;
@@ -327,9 +333,26 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
     return `${Math.max(72, contentHeight * image.naturalWidth / image.naturalHeight + 2)}px`;
   }
 
-  function cardImageWidth(card: TierCard): string | undefined {
+  function cardWidth(card: TierCard): string | undefined {
     const preview = cardPreview(card);
-    return preview.kind === "image" ? imageCardWidth(preview.image) : undefined;
+    if (preview.kind === "image") return imageCardWidth(preview.image);
+    if (preview.kind === "video") return mediaPreviewWidth(preview.naturalWidth, preview.naturalHeight);
+    if (preview.kind === "youtube") return "112px";
+    if (preview.kind === "audio") return "132px";
+    return undefined;
+  }
+
+  function mediaPreviewWidth(width: number | undefined, height: number | undefined): string {
+    const ratio = width && height && width > 0 && height > 0 ? width / height : 16 / 9;
+    return `${Math.max(72, Math.min(240, 54 * ratio + 2))}px`;
+  }
+
+  function activateCard(rowId: string, card: TierCard, preview: ReturnType<typeof cardPreview>): void {
+    selectedCard = { rowId, cardId: card.id };
+    if (preview.kind === "audio") {
+      const url = attachmentUrl(preview.file);
+      if (url) void toggleTierlistAudio(`${note.id}:${card.id}`, url);
+    }
   }
 
   function imagePreviewStyle(preview: Extract<ReturnType<typeof cardPreview>, { kind: "image" }>): string {
@@ -834,11 +857,14 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
         {#each row.displayCards as entry (entry.id)}
           <div class="tier-card-wrap" animate:flip={{ duration: preferences.reduceAnimations ? 0 : 140 }}
             data-tier-card-id={entry.card?.id} data-tier-card-slot={entry.card ? undefined : ""}
-            style:width={entry.card ? cardImageWidth(entry.card) : `${$contentDragPreview?.width ?? 92}px`}
+            style:width={entry.card ? cardWidth(entry.card) : `${$contentDragPreview?.width ?? 92}px`}
             style:min-height={entry.card ? undefined : `${Math.max(56, $contentDragPreview?.height ?? 56)}px`}>
           {#if entry.card}
           {@const card = entry.card}
           {@const preview = cardPreview(card)}
+          {@const mediaUrl = preview.kind === "video" || preview.kind === "audio" ? attachmentUrl(preview.file) : ""}
+          {@const audioKey = `${note.id}:${card.id}`}
+          {@const audioUnavailable = preview.kind === "audio" && tierlistAudioPlayback.unavailableKey === audioKey}
           <div
             class="tier-card-content"
             data-tier-card-kind={card.kind}
@@ -858,14 +884,18 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
             {:else}
               <button
                 class="tier-card"
-                class:image-card={preview.kind === "image"}
+                class:image-card={preview.kind === "image" || preview.kind === "video"}
+                class:youtube-card={preview.kind === "youtube" && failedYouTubeCardId !== card.id}
+                class:tier-audio-card={preview.kind === "audio" && Boolean(mediaUrl) && !audioUnavailable}
                 class:selected={selectedCard?.cardId === card.id}
                 class:missing={preview.kind === "note" && preview.missing}
                 type="button"
-                aria-label={preview.kind === "text" ? `Text card: ${preview.text || "empty"}` : preview.kind === "image" ? `Image card: ${preview.name}` : `Node preview: ${preview.name}`}
-                aria-pressed={selectedCard?.cardId === card.id}
+                aria-label={preview.kind === "text" ? `Text card: ${preview.text || "empty"}` : preview.kind === "image" ? `Image card: ${preview.name}` : preview.kind === "audio" && Boolean(mediaUrl) && !audioUnavailable ? `${tierlistAudioPlayback.key === audioKey && tierlistAudioPlayback.playing ? "Pause" : "Play"} audio: ${preview.name}` : preview.kind === "video" && mediaUrl ? `Video preview: ${preview.name}` : preview.kind === "youtube" && failedYouTubeCardId !== card.id ? `YouTube preview: ${preview.name}` : `Node preview: ${preview.name}`}
+                aria-pressed={preview.kind === "audio" && Boolean(mediaUrl) && !audioUnavailable
+                  ? tierlistAudioPlayback.key === audioKey && tierlistAudioPlayback.playing
+                  : selectedCard?.cardId === card.id}
                 onfocus={() => { selectedCard = { rowId: row.id, cardId: card.id }; }}
-                onclick={() => { selectedCard = { rowId: row.id, cardId: card.id }; }}
+                onclick={() => activateCard(row.id, card, preview)}
                 onpointerdown={(event) => beginCardPointerDrag(row, card, event)}
                 ondblclick={(event) => beginEditCard(row, card, event)}
                 onkeydown={(event) => handleCardKeydown(row.id, card.id, event)}
@@ -884,10 +914,28 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
                   />
                 {:else if preview.kind === "image"}
                   <AttachmentImage image={preview.image} alt={preview.name} class="tier-card-image" style={imagePreviewStyle(preview)} />
+                {:else if preview.kind === "video" && mediaUrl}
+                  <TierlistVideoFrame file={preview.file} url={mediaUrl} duration={preview.duration} name={preview.name} lines={preview.lines} />
+                {:else if preview.kind === "youtube" && failedYouTubeCardId !== card.id}
+                  <div class="tier-youtube-preview">
+                    <img class="tier-youtube-thumbnail" src={preview.thumbnail} alt="" onerror={() => { failedYouTubeCardId = card.id; }} />
+                    <strong>{preview.name}</strong>
+                  </div>
+                {:else if preview.kind === "audio" && mediaUrl && !audioUnavailable}
+                  {@const audioPlaying = tierlistAudioPlayback.key === audioKey && tierlistAudioPlayback.playing}
+                  <div class="tier-audio-preview">
+                    <div class="tier-audio-play-button" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width="18" height="18" focusable="false">
+                        {#if audioPlaying}<path d="M7 5h4v14H7zM15 5h4v14h-4z" fill="currentColor" />
+                        {:else}<path d="M8 5.5v13l10-6.5z" fill="currentColor" />{/if}
+                      </svg>
+                    </div>
+                    <strong>{preview.name}</strong>
+                  </div>
                 {:else}
                   <strong>{preview.name}</strong>
-                  {#if !preview.missing}
-                    <span>{preview.lines.join("\n") || "No text"}</span>
+                  {#if preview.kind !== "note" || !preview.missing}
+                    <span>{"lines" in preview ? preview.lines.join("\n") || "No text" : "No text"}</span>
                   {/if}
                 {/if}
               </button>
@@ -1109,6 +1157,13 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
   .tier-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .tier-card.image-card { box-sizing: border-box; height: 56px; min-height: 56px; max-height: 56px; padding: 0; }
   :global(.tier-card-image) { max-width: none; border-radius: 3px; }
+  .tier-card.youtube-card { box-sizing: border-box; height: 72px; min-height: 72px; max-height: 72px; gap: 2px; padding: 3px 15px 3px 3px; }
+  .tier-youtube-preview { display: flex; min-height: 0; width: 100%; flex-direction: column; gap: 2px; overflow: hidden; }
+  .tier-youtube-thumbnail { display: block; width: 100%; height: 48px; flex: 0 0 48px; object-fit: cover; border-radius: 3px; }
+  .tier-card.tier-audio-card { box-sizing: border-box; height: 56px; min-height: 56px; max-height: 56px; flex-direction: row; align-items: center; gap: 8px; padding: 5px 16px 5px 7px; }
+  .tier-audio-preview { display: flex; min-width: 0; align-items: center; gap: 8px; }
+  .tier-audio-play-button { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; border: 1px solid #686d76; border-radius: 50%; color: #f5f5f6; background: #373b42; }
+  .tier-card.tier-audio-card:hover .tier-audio-play-button { border-color: #9096a0; background: #414650; }
   .tier-card.missing { border-style: dashed; color: #aaa; background: #242529; }
   .tier-card strong { overflow: hidden; color: #f0e4c9; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
   .tier-card.missing strong { display: -webkit-box; font-size: 9px; text-overflow: clip; white-space: normal; line-clamp: 2; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }

@@ -337,7 +337,7 @@ function createCopies(
       ...(note.message ? { message: { ...note.message } } : {}),
       ...(note.embedSections ? { embedSections: { ...note.embedSections } } : {}),
       ...(note.headerHidden ? { headerHidden: true } : {}),
-      ...(note.type === "youtube" && note.frameHidden === true ? { frameHidden: true as const } : {}),
+      ...((note.type === "youtube" || note.type === "video") && note.frameHidden === true ? { frameHidden: true as const } : {}),
       ...(note.image ? { image: { ...note.image } } : {}),
       ...(note.media ? { media: { ...note.media } } : {}),
       ...(note.pdfZoom !== undefined ? { pdfZoom: note.pdfZoom } : {}),
