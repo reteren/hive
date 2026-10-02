@@ -5,6 +5,12 @@ import type { Note } from "../src/model/note";
 import { canRenameNoteHeader, noteMenuItems } from "../src/notes/noteMenu";
 import { notePressIntent } from "../src/selection/noteMoveIntent";
 
+const noteNodeSource = Object.values(import.meta.glob<string>("../src/notes/NoteNode.svelte", {
+  eager: true,
+  query: "?raw",
+  import: "default",
+}))[0] ?? "";
+
 function note(height: number | null = 20): Note {
   return { id: "note-1", type: "note", name: "Header test", text: "Body", x: 0, y: 0, width: 30, height };
 }
@@ -36,6 +42,12 @@ describe("note header visibility", () => {
     headerMenuItem().run("note-1");
 
     expect(canRenameNoteHeader(board.notes["note-1"]?.headerHidden)).toBe(false);
+    expect(notePressIntent("header", "note-1", null)).toBe("move-candidate");
+  });
+
+  it("keeps an invisible pointer-active drag strip above the body without covering it", () => {
+    expect(noteNodeSource).toContain("data-header-drag-strip");
+    expect(noteNodeSource).toMatch(/\.hidden-note-header\s*\{[\s\S]*?bottom:\s*100%;[\s\S]*?opacity:\s*0;[\s\S]*?pointer-events:\s*auto;/);
     expect(notePressIntent("header", "note-1", null)).toBe("move-candidate");
   });
 

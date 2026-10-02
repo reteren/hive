@@ -50,6 +50,31 @@ export interface PdfFrameMetrics {
   inverseScale: number;
 }
 
+export const PDF_ZOOM_MIN = 50;
+export const PDF_ZOOM_MAX = 300;
+export const PDF_ZOOM_STEP = 10;
+export const PDF_ZOOM_DEFAULT = 100;
+
+/** An absent zoom means the viewer should fit the document to the node width. */
+export function normalizePdfZoom(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  const clamped = Math.min(PDF_ZOOM_MAX, Math.max(PDF_ZOOM_MIN, value));
+  return Math.round(clamped / PDF_ZOOM_STEP) * PDF_ZOOM_STEP;
+}
+
+export function stepPdfZoom(value: unknown, direction: -1 | 1): number {
+  const current = normalizePdfZoom(value) ?? PDF_ZOOM_DEFAULT;
+  return normalizePdfZoom(current + direction * PDF_ZOOM_STEP) ?? PDF_ZOOM_DEFAULT;
+}
+
+/** Keep this fragment independent of board zoom; only the PDF controls change it. */
+export function pdfViewerSource(source: string, zoom: unknown): string {
+  const base = source.split("#", 1)[0] ?? "";
+  if (!base) return "";
+  const normalized = normalizePdfZoom(zoom);
+  return `${base}#zoom=${normalized ?? "page-width"}`;
+}
+
 /**
  * Rasterize a PDF frame at its on-screen CSS resolution, then counter-scale it
  * inside the note. This keeps its final geometry unchanged through camera zoom

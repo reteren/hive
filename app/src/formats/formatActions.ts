@@ -16,7 +16,7 @@ import { execute } from "../history/history.svelte";
 import { board, updateNote } from "../model/board.svelte";
 import { TEXT_FORMAT_LANGUAGES } from "../attachments/types";
 import { createFormatNotes } from "./formatCreation";
-import { isFormatMediaKind } from "./formatLogic";
+import { isFormatMediaKind, normalizePdfZoom } from "./formatLogic";
 
 export type FormatPickerKind = "pdf" | "text";
 export type FormatSaveResult = { ok: true; previous: MediaRef; media: MediaRef } | { ok: false; error: string };
@@ -114,6 +114,23 @@ export async function saveFormatText(
     undo: () => updateNote(noteId, { media: previous }),
   });
   return { ok: true, previous, media: next };
+}
+
+/** Change the embedded viewer zoom as one undoable note setting. Undefined restores fit-width mode. */
+export function setPdfZoom(noteId: string, requestedZoom: number | undefined): void {
+  const note = board.notes[noteId];
+  if (note?.type !== "pdf") return;
+  const next = requestedZoom === undefined ? undefined : normalizePdfZoom(requestedZoom);
+  if (requestedZoom !== undefined && next === undefined) return;
+  const previous = normalizePdfZoom(note.pdfZoom);
+  if (previous === next) return;
+
+  execute({
+    label: next === undefined ? "Fit PDF to width" : "Set PDF zoom",
+    target: note.name,
+    do: () => updateNote(noteId, { pdfZoom: next }),
+    undo: () => updateNote(noteId, { pdfZoom: previous }),
+  });
 }
 
 export async function openPdfExternally(noteId: string): Promise<void> {

@@ -5,8 +5,18 @@ import { board, replaceBoard } from "../src/model/board.svelte";
 import { minimumHeightForKind, minimumWidthForKind } from "../src/selection/resize";
 import { createFormatNotes } from "../src/formats/formatCreation";
 import { clearAllFormatDrafts, formatDraft, setFormatDraft } from "../src/formats/formatDrafts";
-import { formatLanguageForExtension, formatNodeKind, hasUnsavedFormatChanges, isFormatMediaKind, parseMediaRef, pdfFrameMetrics } from "../src/formats/formatLogic";
-import { saveFormatText } from "../src/formats/formatActions";
+import {
+  formatLanguageForExtension,
+  formatNodeKind,
+  hasUnsavedFormatChanges,
+  isFormatMediaKind,
+  normalizePdfZoom,
+  parseMediaRef,
+  pdfFrameMetrics,
+  pdfViewerSource,
+  stepPdfZoom,
+} from "../src/formats/formatLogic";
+import { saveFormatText, setPdfZoom } from "../src/formats/formatActions";
 import { parseNotesPayload, serializeNotes } from "../src/clipboard/payload";
 import { sanitizeArchiveEntries } from "../src/archive/serialization";
 import { sanitizeTrashEntries } from "../src/trash/serialization";
@@ -73,6 +83,26 @@ describe("PDF and Format nodes", () => {
     });
   });
 
+  it("clamps PDF zoom to ten-percent steps and keeps the viewer zoom independent of board zoom", () => {
+    expect(normalizePdfZoom(44)).toBe(50);
+    expect(normalizePdfZoom(55)).toBe(60);
+    expect(normalizePdfZoom(304)).toBe(300);
+    expect(normalizePdfZoom(Number.NaN)).toBeUndefined();
+    expect(stepPdfZoom(undefined, 1)).toBe(110);
+    expect(stepPdfZoom(undefined, -1)).toBe(90);
+    expect(stepPdfZoom(300, 1)).toBe(300);
+    expect(stepPdfZoom(50, -1)).toBe(50);
+    expect(pdfViewerSource("asset://localhost/file.pdf#page=3", 150)).toBe("asset://localhost/file.pdf#zoom=150");
+    expect(pdfViewerSource("asset://localhost/file.pdf", undefined)).toBe("asset://localhost/file.pdf#zoom=page-width");
+
+    for (const [cameraZoom, noteScale] of [[0.5, 1], [1, 1], [2, 1.5]] as const) {
+      const frame = pdfFrameMetrics(400, 260, cameraZoom, noteScale);
+      expect(frame.width * frame.inverseScale).toBeCloseTo(400);
+      expect(frame.height * frame.inverseScale).toBeCloseTo(260);
+      expect(pdfViewerSource("asset://localhost/file.pdf", 150)).toBe("asset://localhost/file.pdf#zoom=150");
+    }
+  });
+
   it("creates the PDF and Format nodes at the picker point in a single undo step", () => {
     const ids = createFormatNotes([pdfRef, textRef], { x: 100, y: 80 });
     expect(ids).toHaveLength(2);
@@ -81,6 +111,17 @@ describe("PDF and Format nodes", () => {
     expect(history.entries).toHaveLength(1);
     undo();
     expect(ids.every((id) => !board.notes[id])).toBe(true);
+  });
+
+  it("changes PDF zoom as one undoable setting and restores fit-width mode", () => {
+    const pdf = mediaNote("pdf", pdfRef, "pdf-zoom");
+    replaceBoard([pdf]);
+
+    setPdfZoom(pdf.id, 165);
+    expect(board.notes[pdf.id]?.pdfZoom).toBe(170);
+    expect(history.entries).toHaveLength(1);
+    undo();
+    expect(board.notes[pdf.id]?.pdfZoom).toBeUndefined();
   });
 
   it("saves edited text by replacing one reference with one undoable model change", async () => {
@@ -107,18 +148,37 @@ describe("PDF and Format nodes", () => {
   });
 
   it("round-trips media through project, archive, trash and clipboard serializers", () => {
-    const pdf = mediaNote("pdf", pdfRef, "pdf-serialize");
+    const pdf = { ...mediaNote("pdf", pdfRef, "pdf-serialize"), pdfZoom: 170 };
     const format = mediaNote("format", textRef, "format-serialize");
     expect(parseProjectIndex(serializeProjectIndex([pdf, format])).notes.map((note) => note.media)).toEqual([pdfRef, textRef]);
+    expect(parseProjectIndex(serializeProjectIndex([pdf, format])).notes.map((note) => note.pdfZoom)).toEqual([170, undefined]);
     expect(sanitizeArchiveEntries([
       { id: "archive-pdf", archivedAt: 11, note: pdf, links: [] },
       { id: "archive-format", archivedAt: 12, note: format, links: [] },
     ]).entries.map((entry) => entry.note.media)).toEqual([pdfRef, textRef]);
+    expect(sanitizeArchiveEntries([
+      { id: "archive-pdf", archivedAt: 11, note: pdf, links: [] },
+      { id: "archive-format", archivedAt: 12, note: format, links: [] },
+    ]).entries.map((entry) => entry.note.pdfZoom)).toEqual([170, undefined]);
     expect(sanitizeTrashEntries([
       { id: "trash-pdf", deletedAt: 11, notes: [pdf], zones: [], links: [] },
       { id: "trash-format", deletedAt: 12, notes: [format], zones: [], links: [] },
     ]).entries.map((entry) => entry.notes[0]?.media)).toEqual([pdfRef, textRef]);
+    expect(sanitizeTrashEntries([
+      { id: "trash-pdf", deletedAt: 11, notes: [pdf], zones: [], links: [] },
+      { id: "trash-format", deletedAt: 12, notes: [format], zones: [], links: [] },
+    ]).entries.map((entry) => entry.notes[0]?.pdfZoom)).toEqual([170, undefined]);
     expect(parseNotesPayload(serializeNotes([pdf, format]))?.nodes.map((node) => node.media)).toEqual([pdfRef, textRef]);
+    expect(parseNotesPayload(serializeNotes([pdf, format]))?.nodes.map((node) => node.pdfZoom)).toEqual([170, undefined]);
+  });
+
+  it("clamps a persisted PDF zoom before it reaches the model", () => {
+    const indexed = JSON.parse(serializeProjectIndex([{ ...mediaNote("pdf", pdfRef, "pdf-clamp"), pdfZoom: 300 }])) as {
+      notes: { pdfZoom?: number }[];
+    };
+    if (!indexed.notes[0]) throw new Error("Serialized PDF note is missing.");
+    indexed.notes[0].pdfZoom = 305;
+    expect(parseProjectIndex(JSON.stringify(indexed)).notes[0]?.pdfZoom).toBe(300);
   });
 
   it("does not expose an execution action for imported code files", () => {
