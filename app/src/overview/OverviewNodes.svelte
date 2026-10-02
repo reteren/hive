@@ -6,7 +6,7 @@
   import { BEACON_PALETTE } from "../beacons/beaconPalette";
   import { noteBounds } from "../notes/layout.svelte";
   import { overview } from "./overview.svelte";
-  import { overviewFontSize, overviewLabelFor, overviewTextFits } from "./overviewLogic";
+  import { overviewFontSize, overviewLabelFor, overviewNameFor, overviewTextFits } from "./overviewLogic";
 
   // The whole Alt overview is ONE lightweight layer of plain boxes computed from the model. The real
   // notes/beacons layers are hidden with a single body attribute, so pressing Alt no longer makes
@@ -34,7 +34,7 @@
       const bounds = noteBounds(note);
       const w = bounds.width * PX_PER_UNIT;
       const h = bounds.height * PX_PER_UNIT;
-      const label = overviewLabelFor(note.type, note.name, { gif: note.image?.mime === "image/gif" });
+      const label = overviewLabelFor(note.type, overviewNameFor(note), { gif: note.image?.mime === "image/gif" });
       return [{
         id, beacon: false, x: bounds.x * PX_PER_UNIT, y: bounds.y * PX_PER_UNIT, w, h,
         kind: label.kind, title: label.title, color: "",

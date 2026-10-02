@@ -81,3 +81,13 @@ it("labels GIF images as GIF in the overview (debug 17)", async () => {
   expect(label("image", "Image 2", { gif: true })).toEqual({ kind: "GIF", title: "2" });
   expect(label("image", "Image 2")).toEqual({ kind: "Image", title: "2" });
 });
+
+it("shows the YouTube title instead of the id or link in the overview (debug 19)", async () => {
+  const { overviewNameFor } = await import("../src/overview/overviewLogic");
+  const youtube = { videoId: "dQw4w9WgXcQ", url: "https://youtu.be/dQw4w9WgXcQ", title: "Never Gonna Give You Up" };
+  expect(overviewNameFor({ type: "youtube", name: "dQw4w9WgXcQ", youtube })).toBe("Never Gonna Give You Up");
+  expect(overviewNameFor({ type: "youtube", name: "dQw4w9WgXcQ 2", youtube })).toBe("Never Gonna Give You Up");
+  expect(overviewNameFor({ type: "youtube", name: "https://youtu.be/dQw4w9WgXcQ", youtube })).toBe("Never Gonna Give You Up");
+  expect(overviewNameFor({ type: "youtube", name: "My favourite", youtube })).toBe("My favourite");
+  expect(overviewNameFor({ type: "youtube", name: "dQw4w9WgXcQ", youtube: { ...youtube, title: undefined } })).toBe("dQw4w9WgXcQ");
+});

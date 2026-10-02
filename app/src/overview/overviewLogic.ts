@@ -1,4 +1,4 @@
-import type { NoteKind } from "../model/note";
+import type { Note, NoteKind } from "../model/note";
 import { PX_PER_UNIT } from "../board/cameraMath";
 
 const KIND_LABELS: Record<NoteKind, string> = {
@@ -37,6 +37,20 @@ const KIND_LABELS: Record<NoteKind, string> = {
 export interface OverviewLabel {
   kind: string;
   title: string | null;
+}
+
+/**
+ * Debug 19: a YouTube node whose name is still its video id or pasted link shows the video title
+ * (from oEmbed) in the overview; a name the user typed wins.
+ */
+export function overviewNameFor(note: Pick<Note, "type" | "name" | "youtube">): string {
+  const youtube = note.type === "youtube" ? note.youtube : undefined;
+  const title = youtube?.title?.trim();
+  if (!youtube || !title) return note.name;
+  const name = note.name.trim();
+  const generated = name === youtube.videoId || name === youtube.url || /^https?:\/\//i.test(name) ||
+    new RegExp(`^${escapeRegExp(youtube.videoId)}(?: \\d+)?$`).test(name);
+  return generated ? title : note.name;
 }
 
 /** Turn default names into their kind and number, while preserving user titles. */
