@@ -64,5 +64,5 @@ function commitSourceEdit(
 function sameSource(left: SourceData | undefined, right: SourceData | undefined): boolean {
   const a = normalizeSource(left);
   const b = normalizeSource(right);
-  return a.url === b.url && a.filePath === b.filePath && a.description === b.description;
+  return a.url === b.url && a.filePath === b.filePath && a.description === b.description && a.locked === b.locked;
 }

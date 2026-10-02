@@ -14,8 +14,9 @@ export function createFormatEditor(
   text: string,
   onChange: (text: string) => void,
   onSave: () => void,
+  highlight = true,
 ): EditorView {
-  const language = formatLanguageForExtension(extension);
+  const language = highlight ? formatLanguageForExtension(extension) : "plain";
   const languageSupport = language === "markdown" ? markdown()
     : language === "javascript" ? javascript({ typescript: extension.toLowerCase() === "ts" })
       : language === "css" ? css()

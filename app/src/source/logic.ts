@@ -7,7 +7,7 @@ export const EMPTY_SOURCE: Readonly<SourceData> = {
   description: "",
 };
 
-export type SourceField = keyof SourceData;
+export type SourceField = Exclude<keyof SourceData, "locked">;
 export type SourceEditField = SourceField | "resource";
 export type SourceTextEditKind = "typing" | "backspace" | "forward-delete" | "atomic";
 
@@ -99,7 +99,13 @@ export function normalizeSource(source?: SourceData): SourceData {
     url: source?.url || null,
     filePath: source?.filePath || null,
     description: source?.description ?? "",
+    ...(source?.locked ? { locked: true as const } : {}),
   };
+}
+
+/** Files dropped as unsupported formats keep their original path and hide the replacement picker. */
+export function sourceHasPicker(source?: SourceData): boolean {
+  return source?.locked !== true;
 }
 
 export function validateSourceUrl(rawUrl: string): UrlValidation {
@@ -255,5 +261,5 @@ function cloneSource(source: SourceData | undefined): SourceData | undefined {
 function sameSource(left: SourceData | undefined, right: SourceData | undefined): boolean {
   const a = normalizeSource(left);
   const b = normalizeSource(right);
-  return a.url === b.url && a.filePath === b.filePath && a.description === b.description;
+  return a.url === b.url && a.filePath === b.filePath && a.description === b.description && a.locked === b.locked;
 }

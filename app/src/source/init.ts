@@ -2,6 +2,7 @@ import { board } from "../model/board.svelte";
 import { registerNodeBody } from "../notes/nodeBodies";
 import { initializeFileDropDispatch } from "../attachments/dropDispatch";
 import { registerFileDropHandler } from "../attachments/service";
+import { registerBoardFileDropHandler } from "../formats/boardFileDrop";
 import SourceNodeBody from "./SourceNodeBody.svelte";
 import { setSourceResourceValue } from "./actions.svelte";
 import { invalidateSourceFileAvailability } from "./fileAvailability.svelte";
@@ -15,6 +16,7 @@ export function initializeSourceDropHandling(): void {
   if (dropListenerStarted) return;
   dropListenerStarted = true;
   initializeFileDropDispatch();
+  registerBoardFileDropHandler();
   registerFileDropHandler(50, (paths, target) => {
     const noteId = sourceDropTargetId(target);
     if (!noteId || board.notes[noteId]?.type !== "source") return false;

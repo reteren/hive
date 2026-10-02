@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
-  import { exportAttachmentAs, attachmentUrl, reportImportError, saveTextAttachment } from "../attachments/service";
+  import { exportAttachmentAs, attachmentUrl, reportImportError } from "../attachments/service";
   import type { MediaRef } from "../attachments/types";
   import { board } from "../model/board.svelte";
   import type { Note } from "../model/note";
@@ -9,6 +9,7 @@
   import { clearFormatDraft, formatDraft, setFormatDraft } from "./formatDrafts";
   import { saveFormatText } from "./formatActions";
   import { hasUnsavedFormatChanges, mediaExtension } from "./formatLogic";
+  import { decodeFormatText, encodeFormatText, shouldHighlightFormatText, type FormatTextEncoding } from "./textEncoding";
   import type { EditorView } from "@codemirror/view";
 
   let { note }: { note: Note } = $props();
@@ -16,6 +17,7 @@
   let view: EditorView | null = null;
   let loadedFile = "";
   let savedText = "";
+  let textEncoding: FormatTextEncoding = { bom: false, lineEnding: "\n" };
   let errorMessage = $state("");
   let dirty = $state(false);
   let saving = $state(false);
@@ -49,8 +51,10 @@
       if (!source) throw new Error(`File missing: ${currentMedia.name || note.name}`);
       const response = await fetch(source);
       if (!response.ok) throw new Error(`File missing: ${currentMedia.name || note.name}`);
-      const loadedText = await response.text();
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const { text: loadedText, encoding } = decodeFormatText(bytes);
       if (request !== generation) return;
+      textEncoding = encoding;
       const draft = formatDraft(note.id, currentMedia, projectPath);
       savedText = loadedText;
       const initialText = draft ?? loadedText;
@@ -67,6 +71,7 @@
           dirty = hasUnsavedFormatChanges(text, savedText);
         },
         () => { void saveCurrentDraft(); },
+        shouldHighlightFormatText(bytes.length),
       );
     } catch (error) {
       if (request === generation) errorMessage = error instanceof Error ? error.message : String(error);
@@ -80,7 +85,7 @@
     saving = true;
     errorMessage = "";
     try {
-      const result = await saveFormatText(note.id, text);
+      const result = await saveFormatText(note.id, encodeFormatText(text, textEncoding));
       if (!result.ok) {
         errorMessage = result.error;
         reportImportError(result.error);

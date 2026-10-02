@@ -220,6 +220,18 @@ export function mediaKindForPath(path: string): MediaKind | null {
   return mediaKindForName(path, "");
 }
 
+export type BoardDropKind = "image" | "pdf" | "audio" | "video" | "markdown" | "format" | "source";
+
+/** Empty-board OS drops route by extension; target-specific consumers run before this fallback. */
+export function boardDropKindForPath(path: string): BoardDropKind {
+  const extension = extensionFromName(path);
+  if (["png", "jpg", "jpeg", "gif", "webp", "bmp"].includes(extension)) return "image";
+  const mediaKind = mediaKindForPath(path);
+  if (mediaKind === "pdf" || mediaKind === "audio" || mediaKind === "video") return mediaKind;
+  if (extension === "md") return "markdown";
+  return mediaKind === "text" ? "format" : "source";
+}
+
 /** Synchronous extension/MIME hint for file-drop routing. Contents are verified by the importer. */
 export function mediaKindForFile(file: File): MediaKind | null {
   const type = file.type.toLowerCase();

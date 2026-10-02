@@ -9,6 +9,7 @@
   import {
     emptySource,
     parseSourceValue,
+    sourceHasPicker,
     validateSourceUrl,
     type SourceEditMeta,
     type SourceEditField,
@@ -239,9 +240,11 @@
     <button type="button" class="source-action" data-source-open disabled={openDisabled} title={parsedValue.kind === "path" ? parsedValue.value : undefined} onclick={openResource} onkeydown={stopBoardHotkeys}>
       {opening ? "Opening…" : "Open"}
     </button>
-    <button type="button" class="source-action" data-source-choose-file disabled={choosingFile} onclick={chooseFile} onkeydown={stopBoardHotkeys}>
-      {choosingFile ? "Choosing…" : "Choose file…"}
-    </button>
+    {#if sourceHasPicker(source)}
+      <button type="button" class="source-action" data-source-choose-file disabled={choosingFile} onclick={chooseFile} onkeydown={stopBoardHotkeys}>
+        {choosingFile ? "Choosing…" : "Choose file…"}
+      </button>
+    {/if}
   </div>
 
   <label class="source-field source-description-field">
