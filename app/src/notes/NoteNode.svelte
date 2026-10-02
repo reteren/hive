@@ -218,7 +218,7 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
       {/if}
     </header>
   {:else if note.type !== "image"}
-    <header class="note-header hidden-note-header" data-note-header data-hidden-note-header aria-hidden="true" ondblclick={startRename}>
+    <header class="note-header hidden-note-header" data-note-header data-hidden-note-header data-header-drag-strip aria-hidden="true" ondblclick={startRename}>
       <TaskCheckbox {note} />
       <span class="note-name">{note.name}</span>
       {#if note.type === "time"}
@@ -350,8 +350,7 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
     background: #48402d;
   }
 
-  /* Hidden header on hover: the real header, half transparent, floating ABOVE the node top edge
-     (as in the user's sketch), so it never covers the node content and the body does not move. */
+  /* Hidden header stays as a hit target just above the node without covering its body. */
   .hidden-note-header {
     position: absolute;
     z-index: 2;
@@ -361,7 +360,7 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
     width: calc(100% + 2px);
     border-radius: 5px 5px 0 0;
     opacity: 0;
-    pointer-events: none;
+    pointer-events: auto;
   }
 
   .note-card[data-header-hidden="true"] {
@@ -370,7 +369,6 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
 
   .note-card[data-header-hidden="true"]:hover > .hidden-note-header {
     opacity: 0.5;
-    pointer-events: auto;
   }
 
   .note-card[data-header-hidden="true"] > .zone-marker {
