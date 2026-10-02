@@ -62,12 +62,14 @@ export function parseYouTubeRef(value: unknown): YouTubeRef | undefined {
   const title = nonEmptyString(value.title);
   const author = nonEmptyString(value.author);
   const start = value.start === undefined ? parsed.ref.start : value.start;
+  if (value.loop !== undefined && value.loop !== true) return undefined;
   return {
     videoId: parsed.ref.videoId,
     url: value.url,
     ...(title ? { title } : {}),
     ...(author ? { author } : {}),
     ...(start === undefined ? {} : { start }),
+    ...(value.loop === true ? { loop: true } : {}),
   };
 }
 

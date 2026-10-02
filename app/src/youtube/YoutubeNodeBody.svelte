@@ -4,8 +4,10 @@
   import { board, updateNote } from "../model/board.svelte";
   import type { Note } from "../model/note";
   import { showLinkStatus } from "../links-in-text/contextMenu.svelte";
+  import { registerHoverPlayback } from "../media-ui/hoverPlayback";
   import VideoControls from "../video/VideoControls.svelte";
   import { createControlsAutoHide } from "../video/controlsAutoHide";
+  import { youtubeCaptureAction, youtubeLoopRestart, suppressYoutubeContextMenu } from "./interaction";
   import {
     parseYouTubePlayerMessage,
     youtubeEmbedUrl,
@@ -17,6 +19,7 @@
   let { note }: { note: Note } = $props();
   let frame = $state<HTMLIFrameElement | null>(null);
   let frameWrap = $state<HTMLElement | null>(null);
+  let playerSurface = $state<HTMLElement | null>(null);
   let embedActive = $state(false);
   let playing = $state(false);
   let playerState = $state(-1);
@@ -33,6 +36,8 @@
   let controlsVisible = $state(true);
   // Plain guard prevents updating metadata from restarting and aborting its own request.
   let requestedVideoId: string | null = null;
+  let captureGesture: { pointerId: number; start: { x: number; y: number }; moved: boolean } | null = null;
+  let loopRestartPending = false;
   let youtube = $derived(note.type === "youtube" ? note.youtube : undefined);
   let title = $derived(youtube?.title || youtube?.videoId || "YouTube video");
   let thumbnail = $derived(youtube ? youtubeThumbnailUrl(youtube.videoId) : "");
@@ -127,10 +132,30 @@
       if (message.playerState !== undefined) {
         playerState = message.playerState;
         playing = playerState === 1;
+        if (playerState !== 0) loopRestartPending = false;
+        const restartAt = youtubeLoopRestart(playerState, youtube?.loop, youtube?.start);
+        if (restartAt !== null && !loopRestartPending) {
+          loopRestartPending = true;
+          currentTime = restartAt;
+          playing = true;
+          postCommand("seekTo", [restartAt, true]);
+          postCommand("playVideo");
+        }
       }
     };
     window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
+    const unregisterHoverPlayback = playerSurface ? registerHoverPlayback(playerSurface, togglePlayback) : undefined;
+    window.addEventListener("pointermove", onCapturePointerMove, true);
+    window.addEventListener("pointerup", onCapturePointerUp, true);
+    window.addEventListener("pointercancel", onCapturePointerCancel, true);
+    return () => {
+      window.removeEventListener("message", onMessage);
+      window.removeEventListener("pointermove", onCapturePointerMove, true);
+      window.removeEventListener("pointerup", onCapturePointerUp, true);
+      window.removeEventListener("pointercancel", onCapturePointerCancel, true);
+      unregisterHoverPlayback?.();
+      captureGesture = null;
+    };
   });
 
   onDestroy(() => controlsAutoHide.dispose());
@@ -142,6 +167,7 @@
     nativeFallback = false;
     playing = false;
     playerState = -1;
+    loopRestartPending = false;
     currentTime = youtube?.start ?? 0;
     seekDraft = null;
     controlsVisible = true;
@@ -154,8 +180,46 @@
   }
 
   function togglePlayback(): void {
+    if (!embedActive) {
+      startPlayback();
+      return;
+    }
     if (nativeFallback) return;
     postCommand(playing ? "pauseVideo" : "playVideo");
+  }
+
+  function onYoutubeCapturePointerDown(event: PointerEvent): void {
+    if (event.button !== 0 || event.isPrimary === false) return;
+    captureGesture = {
+      pointerId: event.pointerId,
+      start: { x: event.clientX, y: event.clientY },
+      moved: false,
+    };
+  }
+
+  function onCapturePointerMove(event: PointerEvent): void {
+    const gesture = captureGesture;
+    if (!gesture || gesture.pointerId !== event.pointerId || gesture.moved) return;
+    if (youtubeCaptureAction(gesture.start, { x: event.clientX, y: event.clientY }) === "move") {
+      gesture.moved = true;
+    }
+  }
+
+  function onCapturePointerUp(event: PointerEvent): void {
+    const gesture = captureGesture;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    captureGesture = null;
+    if (!gesture.moved) togglePlayback();
+  }
+
+  function onCapturePointerCancel(event: PointerEvent): void {
+    if (captureGesture?.pointerId === event.pointerId) captureGesture = null;
+  }
+
+  function onCaptureKeydown(event: KeyboardEvent): void {
+    if (event.code !== "Enter" || event.repeat) return;
+    event.preventDefault();
+    togglePlayback();
   }
 
   function previewSeek(value: number): void {
@@ -225,7 +289,12 @@
   }
 </script>
 
-<section class="youtube-node-body" data-youtube-node={note.id}>
+<section
+  bind:this={playerSurface}
+  class="youtube-node-body"
+  data-youtube-node={note.id}
+  data-frame-hidden={note.frameHidden === true ? "true" : undefined}
+>
   {#if !youtube}
     <div class="youtube-error" role="status">YouTube link missing.</div>
   {:else if embedError}
@@ -261,6 +330,19 @@
         onerror={() => { embedError = "The YouTube player could not be loaded."; }}
       ></iframe>
       {#if !nativeFallback}
+        <div
+          class="youtube-capture"
+          data-youtube-capture
+          data-note-header
+          role="button"
+          tabindex="0"
+          aria-label={`Play or pause ${title}`}
+          onpointerdown={onYoutubeCapturePointerDown}
+          onkeydown={onCaptureKeydown}
+          oncontextmenu={suppressYoutubeContextMenu}
+        ></div>
+      {/if}
+      {#if !nativeFallback}
         <VideoControls
           playing={playing}
           visible={controlsVisible || !playing}
@@ -278,30 +360,62 @@
       {/if}
     </div>
   {:else}
-    <button class="youtube-preview" type="button" data-selection-ignore aria-label={`Play ${title}`} onclick={startPlayback}>
+    <div
+      class="youtube-preview"
+      data-youtube-capture
+      data-note-header
+      role="button"
+      tabindex="0"
+      aria-label={`Play ${title}`}
+      onpointerdown={onYoutubeCapturePointerDown}
+      onkeydown={onCaptureKeydown}
+      oncontextmenu={suppressYoutubeContextMenu}
+    >
       <span class="youtube-thumbnail" data-youtube-thumbnail>
         {#if !thumbnailFailed}
-          <img src={thumbnail} alt="" onerror={() => { thumbnailFailed = true; }} />
+          <img src={thumbnail} alt="" draggable="false" onerror={() => { thumbnailFailed = true; }} />
         {/if}
         <span class="youtube-play" aria-hidden="true">▶</span>
       </span>
-      <span class="youtube-title">{title}</span>
-      {#if youtube.author}<span class="youtube-author">{youtube.author}</span>{/if}
-    </button>
+      {#if !note.frameHidden}<span class="youtube-title">{title}</span>{/if}
+      {#if youtube.author && !note.frameHidden}<span class="youtube-author">{youtube.author}</span>{/if}
+    </div>
   {/if}
 </section>
 
 <style>
-  .youtube-node-body { display: block; min-width: 0; }
-  .youtube-preview { display: flex; width: 100%; flex-direction: column; gap: 5px; padding: 0; overflow: hidden; border: 0; color: #dedfe2; background: transparent; text-align: left; cursor: pointer; }
+  .youtube-node-body { display: block; min-width: 0; user-select: none; -webkit-user-select: none; }
+  .youtube-preview { position: relative; display: flex; width: 100%; flex-direction: column; gap: 5px; padding: 0; overflow: hidden; border: 0; color: #dedfe2; background: transparent; text-align: left; cursor: pointer; }
   .youtube-thumbnail { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; background: #282828; }
-  .youtube-thumbnail img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .youtube-thumbnail img { display: block; width: 100%; height: 100%; object-fit: cover; user-select: none; -webkit-user-drag: none; }
   .youtube-play { position: absolute; inset: 50% auto auto 50%; display: grid; width: 34px; height: 25px; place-items: center; border-radius: 6px; color: white; background: #d22d32; transform: translate(-50%, -50%); font-size: 13px; }
   .youtube-title { display: -webkit-box; overflow: hidden; font-size: 11px; font-weight: 650; line-clamp: 2; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
   .youtube-author { overflow: hidden; color: #989ba2; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
   .youtube-player-wrap { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; background: #282828; }
   iframe { display: block; width: 100%; height: 100%; border: 0; background: #282828; }
+  .youtube-capture { position: absolute; z-index: 1; inset: 0; background: transparent; cursor: pointer; }
   .youtube-error { display: flex; min-height: 72px; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 10px; color: #d6d6d7; background: #282828; font-size: 11px; text-align: center; overflow-wrap: anywhere; }
   .youtube-error button { padding: 5px 8px; border: 1px solid #555962; border-radius: 3px; color: #f1d16d; background: #2f2f2f; cursor: pointer; }
-  .youtube-preview:focus-visible, .youtube-error button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .youtube-preview:focus-visible, .youtube-capture:focus-visible, .youtube-error button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .youtube-player-wrap :global(.player-button:hover), .youtube-player-wrap :global(.player-button:focus-visible) { color: #fff; }
+
+  :global(.note-card:has(.youtube-node-body[data-frame-hidden="true"])) {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  :global(.note-card:has(.youtube-node-body[data-frame-hidden="true"]) > .hidden-note-header) { display: none; }
+  :global(.note-card:has(.youtube-node-body[data-frame-hidden="true"]) > .note-frame) {
+    display: block;
+    min-height: 0;
+    flex: 1 1 auto;
+    background: transparent;
+  }
+  :global(.note-card:has(.youtube-node-body[data-frame-hidden="true"]) .note-frame-edge) { display: none; }
+  :global(.note-card:has(.youtube-node-body[data-frame-hidden="true"]) .note-content) {
+    min-height: 0;
+    padding: 0;
+    background: transparent;
+  }
 </style>

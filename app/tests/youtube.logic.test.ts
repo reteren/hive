@@ -49,6 +49,9 @@ describe("YouTube embeds and persisted data", () => {
   it("validates persisted URLs and maps player errors to explanations", () => {
     expect(parseYouTubeRef({ videoId: "abcdefghijk", url: "https://youtu.be/abcdefghijk", title: "Title" }))
       .toEqual({ videoId: "abcdefghijk", url: "https://youtu.be/abcdefghijk", title: "Title" });
+    expect(parseYouTubeRef({ videoId: "abcdefghijk", url: "https://youtu.be/abcdefghijk", loop: true }))
+      .toEqual({ videoId: "abcdefghijk", url: "https://youtu.be/abcdefghijk", loop: true });
+    expect(parseYouTubeRef({ videoId: "abcdefghijk", url: "https://youtu.be/abcdefghijk", loop: false })).toBeUndefined();
     expect(parseYouTubeRef({ videoId: "lmnopqrstuv", url: "https://youtu.be/abcdefghijk" })).toBeUndefined();
     expect(youtubeEmbedErrorReason(101)).toBe("The video owner does not allow playback on other websites.");
     expect(youtubeEmbedErrorReason(150)).toBe("The video owner does not allow playback on other websites.");
