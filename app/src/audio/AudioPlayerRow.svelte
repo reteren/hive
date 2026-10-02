@@ -1,23 +1,28 @@
 <script lang="ts">
-  import { tick } from "svelte";
+  import { onDestroy, tick } from "svelte";
   import type { MediaRef } from "../attachments/types";
   import { attachmentUrl, exportAttachmentAs } from "../attachments/service";
   import { MediaIcon, MediaSlider, MediaTime } from "../media-ui";
-  import { AUDIO_RECORDING_DRAG_TYPE } from "./recording.svelte";
+  import { dropAudioRecordingOnBoard } from "./recording.svelte";
   import { formatMediaTime } from "../media-ui/time";
-  import { serializeRecordingDrag } from "./recordingLogic";
-  import type { AudioRecording } from "./recordingData";
+  import {
+    beginRecordingDrag,
+    finishRecordingDrag,
+    moveRecordingDrag,
+    type RecordingDragGesture,
+  } from "./recordingLogic";
 
   interface Props {
     media: MediaRef;
     name: string;
     recordingId?: string;
+    sourceNoteId?: string;
     draggable?: boolean;
     onrename?: (name: string) => void;
     ondelete?: () => void;
   }
 
-  let { media, name, recordingId, draggable = false, onrename, ondelete }: Props = $props();
+  let { media, name, recordingId, sourceNoteId, draggable = false, onrename, ondelete }: Props = $props();
   let audio = $state<HTMLAudioElement | null>(null);
   let playing = $state(false);
   let currentTime = $state(0);
@@ -29,6 +34,8 @@
   let editing = $state(false);
   let draftName = $state("");
   let renameInput = $state<HTMLInputElement | null>(null);
+  let dragGesture = $state<RecordingDragGesture | null>(null);
+  let dragGhostElement: HTMLDivElement | null = null;
   let source = $derived(attachmentUrl(media.file));
   let safeDuration = $derived(Number.isFinite(duration) && duration > 0 ? duration : mediaDuration);
 
@@ -113,16 +120,78 @@
     }
   }
 
-  function handleDragStart(event: DragEvent): void {
-    if (!draggable || !event.dataTransfer) {
-      event.preventDefault();
-      return;
-    }
-    const recording: AudioRecording = { id: recordingId ?? media.file, name, media };
-    event.dataTransfer.effectAllowed = "copy";
-    event.dataTransfer.setData(AUDIO_RECORDING_DRAG_TYPE, serializeRecordingDrag(recording));
-    event.dataTransfer.setData("text/plain", name);
+  function handlePointerDown(event: PointerEvent): void {
+    event.stopPropagation();
+    if (!draggable || !recordingId || !sourceNoteId || editing || event.button !== 0) return;
+    if (event.target instanceof Element && event.target.closest(".file-actions, .transport, input")) return;
+
+    dragGesture = beginRecordingDrag(event);
+    window.addEventListener("pointermove", handleWindowPointerMove, true);
+    window.addEventListener("pointerup", handleWindowPointerUp, true);
+    window.addEventListener("pointercancel", handleWindowPointerCancel, true);
+    window.addEventListener("blur", cancelRecordingDrag, true);
   }
+
+  function handleWindowPointerMove(event: PointerEvent): void {
+    if (!dragGesture || event.pointerId !== dragGesture.pointerId) return;
+    const next = moveRecordingDrag(dragGesture, event);
+    dragGesture = next;
+    if (!next.active) return;
+    event.preventDefault();
+    event.stopPropagation();
+    updateDragGhost(event.clientX, event.clientY);
+  }
+
+  function handleWindowPointerUp(event: PointerEvent): void {
+    const gesture = dragGesture;
+    if (!gesture || event.pointerId !== gesture.pointerId) return;
+
+    const boardTarget = document.elementFromPoint(event.clientX, event.clientY);
+    const action = finishRecordingDrag(gesture, event, {
+      overBoard: boardTarget?.closest(".board") !== null && boardTarget !== null,
+      overNode: boardTarget?.closest("[data-note-id], [data-audio-node]") !== null && boardTarget !== null,
+    });
+    if (moveRecordingDrag(gesture, event).active) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    if (action && sourceNoteId && recordingId) {
+      dropAudioRecordingOnBoard(sourceNoteId, recordingId, event.clientX, event.clientY, action === "copy");
+    }
+    clearRecordingDrag();
+  }
+
+  function handleWindowPointerCancel(event: PointerEvent): void {
+    if (dragGesture?.pointerId === event.pointerId) clearRecordingDrag();
+  }
+
+  function cancelRecordingDrag(): void {
+    clearRecordingDrag();
+  }
+
+  function updateDragGhost(x: number, y: number): void {
+    if (!dragGhostElement) {
+      dragGhostElement = document.createElement("div");
+      dragGhostElement.dataset.recordingDragGhost = "";
+      dragGhostElement.setAttribute("aria-hidden", "true");
+      dragGhostElement.textContent = name;
+      dragGhostElement.style.cssText = "position:fixed;left:0;top:0;z-index:10000;max-width:240px;overflow:hidden;padding:5px 8px;border:1px solid #666;border-radius:4px;color:#eee;background:#252525;box-shadow:0 4px 14px #0008;font-size:11px;text-overflow:ellipsis;white-space:nowrap;pointer-events:none;user-select:none";
+      document.body.append(dragGhostElement);
+    }
+    dragGhostElement.style.transform = `translate3d(${x + 12}px, ${y + 12}px, 0)`;
+  }
+
+  function clearRecordingDrag(): void {
+    window.removeEventListener("pointermove", handleWindowPointerMove, true);
+    window.removeEventListener("pointerup", handleWindowPointerUp, true);
+    window.removeEventListener("pointercancel", handleWindowPointerCancel, true);
+    window.removeEventListener("blur", cancelRecordingDrag, true);
+    dragGesture = null;
+    dragGhostElement?.remove();
+    dragGhostElement = null;
+  }
+
+  onDestroy(clearRecordingDrag);
 
   function exportFile(): void {
     const extension = media.name?.split(".").at(-1) ?? media.file.split(".").at(-1) ?? "webm";
@@ -140,12 +209,11 @@
   class="audio-row"
   class:recording-row={draggable}
   data-audio-player-row
+  data-recording-drag-source={draggable ? recordingId : undefined}
   data-selection-ignore
   role="group"
   aria-label={`${name} audio controls`}
-  draggable={draggable}
-  ondragstart={handleDragStart}
-  onpointerdown={(event) => event.stopPropagation()}
+  onpointerdown={handlePointerDown}
 >
   <div class="file-heading">
     {#if editing}

@@ -9,7 +9,6 @@
     audioRecording,
     beginAudioRecording,
     deleteAudioRecording,
-    registerAudioRecordingDropHandler,
     renameAudioRecording,
     stopAudioRecording,
   } from "./recording.svelte";
@@ -28,10 +27,8 @@
   onMount(() => {
     if (!root) return;
     const unregisterHover = registerHoverPlayback(root, toggleHoveredPlayback);
-    const unregisterDrop = isDictaphone ? registerAudioRecordingDropHandler() : () => undefined;
     return () => {
       unregisterHover();
-      unregisterDrop();
     };
   });
 
@@ -111,6 +108,7 @@
         {#each note.recordings ?? [] as recording (recording.id)}
           <AudioPlayerRow
             recordingId={recording.id}
+            sourceNoteId={note.id}
             media={recording.media}
             name={recording.name}
             draggable
@@ -135,21 +133,21 @@
 
 <style>
   .audio-node { display: flex; min-width: 0; flex-direction: column; gap: 8px; color: #d8d8d8; }
-  .dictaphone { display: grid; grid-template-columns: minmax(0, 1fr) 56px; align-items: center; gap: 12px; min-height: 94px; padding: 11px; border: 1px solid #414141; border-radius: 4px; background: #282828; }
+  .dictaphone { display: grid; grid-template-columns: minmax(0, 1fr) 56px; align-items: center; gap: 12px; min-height: 94px; padding: 11px; border: 1px solid #414141; border-radius: 4px; background: #282828; user-select: none; }
   .recorder-display { display: flex; min-width: 0; flex-direction: column; gap: 9px; }
   .level-wave { display: flex; height: 42px; align-items: center; justify-content: space-between; gap: 2px; overflow: hidden; }
-  .level-wave span { display: block; width: 2px; min-width: 1px; max-height: 100%; border-radius: 2px; background: #6d6d6d; transition: height 90ms linear, background-color 100ms ease; }
-  .level-wave.active span { background: linear-gradient(to top, #c63831, #f26c57); }
+  .level-wave span { display: block; width: 2px; min-width: 1px; max-height: 100%; border-radius: 2px; background: rgba(255, 255, 255, .85); transition: height 90ms linear, background-color 100ms ease; }
   .recorder-status { display: flex; align-items: center; gap: 8px; }
   .status-label { color: #929292; font-size: 11px; }
-  .recording-label { color: #e89188; }
+  .recording-label { color: #fff; }
   .record-button { display: grid; width: 52px; height: 52px; place-items: center; padding: 0; border: 1px solid #ef6559; border-radius: 50%; color: white; background: #c83e35; box-shadow: inset 0 0 0 4px #d7564b, 0 2px 8px #0005; cursor: pointer; transition: border-radius 140ms ease, transform 140ms ease, background-color 140ms ease; }
   .record-button:hover:not(:disabled) { transform: scale(1.04); background: #dc4b40; }
   .record-button.stop { border-radius: 9px; background: #a9362e; box-shadow: inset 0 0 0 3px #c24b42; }
   .record-button:disabled { opacity: 0.56; cursor: wait; }
   .recorder-error { grid-column: 1 / -1; margin: 0; color: #e8a39d; font-size: 11px; }
-  .recording-list { display: flex; flex-direction: column; gap: 5px; }
-  .empty-recordings { margin: 0; color: #888; font-size: 10px; text-align: center; }
+  .recording-list { display: flex; flex-direction: column; gap: 5px; user-select: none; }
+  .recording-list :global(.recording-name-input) { user-select: text; }
+  .empty-recordings { margin: 0; color: #888; font-size: 10px; text-align: center; user-select: none; }
   .audio-error { padding: 8px; color: #e1aaa6; font-size: 11px; }
   .audio-caption { min-width: 0; }
   :global(html[data-reduce-motion="true"]) .record-button,

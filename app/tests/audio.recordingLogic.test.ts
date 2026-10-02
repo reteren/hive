@@ -3,14 +3,16 @@ import { HistoryStack } from "../src/history/historyStack";
 import type { MediaRef } from "../src/attachments/types";
 import {
   appendRecording,
+  beginRecordingDrag,
   deleteRecording,
   droppedAudioNote,
   droppedAudioNoteCommand,
+  finishRecordingDrag,
+  moveRecordingDrag,
   nextRecordingName,
-  parseRecordingDrag,
+  pulledOutRecordingCommand,
   recordingListCommand,
   renameRecording,
-  serializeRecordingDrag,
   transitionRecording,
 } from "../src/audio/recordingLogic";
 import type { AudioRecording } from "../src/audio/recordingData";
@@ -67,11 +69,50 @@ describe("dictaphone state and list operations", () => {
     expect(list[1]?.name).toBe("Intro take");
   });
 
-  it("drags a recording into a standalone audio node with one undoable add", () => {
+  it("starts a pointer drag past the threshold and only accepts empty board drops", () => {
+    const down = { pointerId: 4, clientX: 10, clientY: 20 };
+    let gesture = beginRecordingDrag(down);
+    gesture = moveRecordingDrag(gesture, { ...down, clientX: 13, clientY: 20 });
+    expect(gesture.active).toBe(false);
+    gesture = moveRecordingDrag(gesture, { ...down, clientX: 16, clientY: 20 });
+    expect(gesture.active).toBe(true);
+
+    const up = { ...down, clientX: 300, clientY: 240 };
+    expect(finishRecordingDrag(gesture, up, { overBoard: true, overNode: true })).toBeNull();
+    expect(finishRecordingDrag(gesture, up, { overBoard: false, overNode: false })).toBeNull();
+    expect(finishRecordingDrag(gesture, { ...up, ctrlKey: true }, { overBoard: true, overNode: false })).toBe("copy");
+    expect(finishRecordingDrag(gesture, up, { overBoard: true, overNode: false })).toBe("move");
+    expect(finishRecordingDrag(beginRecordingDrag(down), { ...down, clientX: 12 }, { overBoard: true, overNode: false })).toBeNull();
+  });
+
+  it("copies a row on Ctrl-drop without removing the source recording", () => {
+    const source = recording("copy", "Voice memo");
+    const gesture = moveRecordingDrag(beginRecordingDrag({ pointerId: 5, clientX: 0, clientY: 0 }), {
+      pointerId: 5,
+      clientX: 10,
+      clientY: 0,
+    });
+    const action = finishRecordingDrag(gesture, { pointerId: 5, clientX: 100, clientY: 80, ctrlKey: true }, {
+      overBoard: true,
+      overNode: false,
+    });
+    expect(action).toBe("copy");
+
+    const note = droppedAudioNote(source, { x: 50, y: 30 }, ["Voice memo"], "copy-audio");
+    const rows = [source];
+    const notes = new Map<string, typeof note>();
+    const history = new HistoryStack();
+    history.execute(droppedAudioNoteCommand(note, (added) => notes.set(added.id, added), (id) => notes.delete(id)));
+    expect(rows).toEqual([source]);
+    expect(notes.get(note.id)).toEqual(note);
+    history.undo();
+    expect(rows).toEqual([source]);
+    expect(notes.has(note.id)).toBe(false);
+  });
+
+  it("moves a recording into a standalone audio node and restores both sides in one Undo", () => {
     const source = recording("d", "Field notes");
-    const payload = parseRecordingDrag(serializeRecordingDrag(source));
-    expect(payload).toEqual(source);
-    const note = droppedAudioNote(payload!, { x: 50, y: 30 }, ["Field notes"], "drop-audio");
+    const note = droppedAudioNote(source, { x: 50, y: 30 }, ["Field notes"], "drop-audio");
     expect(note).toMatchObject({
       id: "drop-audio",
       type: "audio",
@@ -80,16 +121,27 @@ describe("dictaphone state and list operations", () => {
       y: 22,
       media: source.media,
     });
-    expect(parseRecordingDrag("not json")).toBeNull();
-
+    let recordings = [source];
+    let selected = "dictaphone";
     const notes = new Map<string, typeof note>();
     const history = new HistoryStack();
-    history.execute(droppedAudioNoteCommand(note, (added) => notes.set(added.id, added), (id) => notes.delete(id)));
+    history.execute(pulledOutRecordingCommand(note, recordings, [], {
+      applyRecordings: (next) => { recordings = next; },
+      addNote: (added) => notes.set(added.id, added),
+      removeNote: (id) => { notes.delete(id); },
+      selectCreated: () => { selected = note.id; },
+      restoreSelection: () => { selected = "dictaphone"; },
+    }));
     expect(notes.get(note.id)).toEqual(note);
+    expect(recordings).toEqual([]);
+    expect(selected).toBe(note.id);
     expect(history.entries).toHaveLength(1);
     history.undo();
     expect(notes.has(note.id)).toBe(false);
+    expect(recordings).toEqual([source]);
+    expect(selected).toBe("dictaphone");
     history.redo();
     expect(notes.get(note.id)).toEqual(note);
+    expect(recordings).toEqual([]);
   });
 });

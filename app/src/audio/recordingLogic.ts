@@ -1,9 +1,56 @@
 import type { HistoryCommand } from "../history/historyStack";
 import { newId, R5_BASE_WIDTHS, type Note } from "../model/note";
 import { uniqueName } from "../notes/naming";
-import { copyAudioRecordings, parseAudioRecordings, type AudioRecording } from "./recordingData";
+import { copyAudioRecordings, type AudioRecording } from "./recordingData";
 
 export type RecordingPhase = "idle" | "requesting" | "recording" | "saving" | "error";
+
+export const RECORDING_DRAG_THRESHOLD = 6;
+
+export interface RecordingPointerSample {
+  pointerId: number;
+  clientX: number;
+  clientY: number;
+  ctrlKey?: boolean;
+}
+
+export interface RecordingDragGesture {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  active: boolean;
+}
+
+export type RecordingDropAction = "move" | "copy" | null;
+
+export function beginRecordingDrag(event: RecordingPointerSample): RecordingDragGesture {
+  return {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    active: false,
+  };
+}
+
+export function moveRecordingDrag(
+  gesture: RecordingDragGesture,
+  event: RecordingPointerSample,
+): RecordingDragGesture {
+  if (event.pointerId !== gesture.pointerId || gesture.active) return gesture;
+  const distance = Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY);
+  return distance >= RECORDING_DRAG_THRESHOLD ? { ...gesture, active: true } : gesture;
+}
+
+export function finishRecordingDrag(
+  gesture: RecordingDragGesture,
+  event: RecordingPointerSample,
+  target: { overBoard: boolean; overNode: boolean },
+): RecordingDropAction {
+  if (event.pointerId !== gesture.pointerId) return null;
+  const finalGesture = moveRecordingDrag(gesture, event);
+  if (!finalGesture.active || !target.overBoard || target.overNode) return null;
+  return event.ctrlKey ? "copy" : "move";
+}
 
 export type RecordingEvent =
   | { type: "request" }
@@ -92,22 +139,6 @@ export function recordingListCommand(
   };
 }
 
-export function serializeRecordingDrag(recording: AudioRecording): string {
-  return JSON.stringify({
-    id: recording.id,
-    name: recording.name,
-    media: { ...recording.media },
-  });
-}
-
-export function parseRecordingDrag(value: string): AudioRecording | null {
-  try {
-    return parseAudioRecordings([JSON.parse(value)])?.[0] ?? null;
-  } catch {
-    return null;
-  }
-}
-
 export function droppedAudioNote(
   recording: AudioRecording,
   center: { x: number; y: number },
@@ -139,5 +170,36 @@ export function droppedAudioNoteCommand(
     target: note.name,
     do: () => add(note),
     undo: () => remove(note.id),
+  };
+}
+
+/** One Undo entry for pulling a dictaphone recording onto the board. */
+export function pulledOutRecordingCommand(
+  note: Note,
+  before: readonly AudioRecording[],
+  after: readonly AudioRecording[],
+  effects: {
+    applyRecordings(recordings: AudioRecording[]): void;
+    addNote(note: Note): void;
+    removeNote(id: string): void;
+    selectCreated(): void;
+    restoreSelection(): void;
+  },
+): HistoryCommand {
+  const previous = copyAudioRecordings([...before]) ?? [];
+  const next = copyAudioRecordings([...after]) ?? [];
+  return {
+    label: "Move recording to board",
+    target: note.name,
+    do: () => {
+      effects.addNote(note);
+      effects.applyRecordings(copyAudioRecordings(next) ?? []);
+      effects.selectCreated();
+    },
+    undo: () => {
+      effects.removeNote(note.id);
+      effects.applyRecordings(copyAudioRecordings(previous) ?? []);
+      effects.restoreSelection();
+    },
   };
 }

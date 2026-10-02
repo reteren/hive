@@ -15,14 +15,12 @@ import {
   droppedAudioNote,
   droppedAudioNoteCommand,
   nextRecordingName,
-  parseRecordingDrag,
+  pulledOutRecordingCommand,
   recordingListCommand,
   renameRecording,
   transitionRecording,
   type RecordingPhase,
 } from "./recordingLogic";
-
-export const AUDIO_RECORDING_DRAG_TYPE = "application/x-hive-audio-recording";
 
 export const audioRecording = $state({
   noteId: null as string | null,
@@ -46,7 +44,6 @@ interface Capture {
 }
 
 let capture: Capture | null = null;
-let dropListenerCount = 0;
 
 export function createDictaphoneNote(center: Point): string {
   const width = R5_BASE_WIDTHS.audio;
@@ -171,6 +168,61 @@ export function deleteAudioRecording(noteId: string, recordingId: string): boole
   return true;
 }
 
+export function dropAudioRecordingOnBoard(
+  noteId: string,
+  recordingId: string,
+  clientX: number,
+  clientY: number,
+  copy: boolean,
+): boolean {
+  const source = board.notes[noteId];
+  if (!source || source.type !== "audio" || !Array.isArray(source.recordings)) return false;
+  const target = document.elementFromPoint(clientX, clientY);
+  if (!target?.closest(".board") || target.closest("[data-note-id], [data-audio-node]")) return false;
+  const boardElement = document.querySelector<HTMLElement>(".board");
+  if (!boardElement) return false;
+
+  const before = copyAudioRecordings(source.recordings) ?? [];
+  const recording = before.find((item) => item.id === recordingId);
+  if (!recording) return false;
+  const removed = deleteRecording(before, recordingId);
+  if (!removed) return false;
+
+  const bounds = boardElement.getBoundingClientRect();
+  const center = screenToWorld(camera, viewport, {
+    x: clientX - bounds.left,
+    y: clientY - bounds.top,
+  });
+  const note = droppedAudioNote(recording, center, Object.values(board.notes).map((item) => item.name));
+  const index = board.order.length;
+  const previousSelection = captureSelectionSnapshot();
+  const selectCreated = (): void => {
+    clearSelection();
+    clearSelectedLink();
+    selectOnly(note.id);
+  };
+  const restoreSelection = (): void => restoreSelectionSnapshot(previousSelection);
+
+  if (copy) {
+    execute(droppedAudioNoteCommand(note, (created) => {
+      addNote(created, index);
+      selectCreated();
+    }, (id) => {
+      removeNote(id);
+      restoreSelection();
+    }));
+  } else {
+    execute(pulledOutRecordingCommand(note, before, removed.recordings, {
+      applyRecordings: (recordings) => updateNote(noteId, { recordings: copyAudioRecordings(recordings) ?? [] }),
+      addNote: (created) => addNote(created, index),
+      removeNote,
+      selectCreated,
+      restoreSelection,
+    }));
+  }
+  return true;
+}
+
 function handleWindowBlur(): void {
   const session = capture;
   if (!session || audioRecording.phase !== "recording") return;
@@ -281,61 +333,4 @@ function cleanup(session: Capture): void {
 
 function stopTracks(stream: MediaStream): void {
   for (const track of stream.getTracks()) track.stop();
-}
-
-/** Install one shared board drop listener for all mounted dictaphone nodes. */
-export function registerAudioRecordingDropHandler(): () => void {
-  dropListenerCount += 1;
-  if (dropListenerCount === 1) {
-    document.addEventListener("dragover", handleRecordingDragOver, true);
-    document.addEventListener("drop", handleRecordingDrop, true);
-  }
-  return () => {
-    dropListenerCount = Math.max(0, dropListenerCount - 1);
-    if (dropListenerCount === 0) {
-      document.removeEventListener("dragover", handleRecordingDragOver, true);
-      document.removeEventListener("drop", handleRecordingDrop, true);
-    }
-  };
-}
-
-function hasRecordingDrag(event: DragEvent): boolean {
-  return Array.from(event.dataTransfer?.types ?? []).includes(AUDIO_RECORDING_DRAG_TYPE);
-}
-
-function isBoardEvent(event: DragEvent): boolean {
-  return event.target instanceof Element && event.target.closest(".board") !== null;
-}
-
-function handleRecordingDragOver(event: DragEvent): void {
-  if (!hasRecordingDrag(event) || !isBoardEvent(event)) return;
-  event.preventDefault();
-  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
-}
-
-function handleRecordingDrop(event: DragEvent): void {
-  if (!hasRecordingDrag(event) || !isBoardEvent(event) || !event.dataTransfer) return;
-  const recording = parseRecordingDrag(event.dataTransfer.getData(AUDIO_RECORDING_DRAG_TYPE));
-  if (!recording) return;
-  const boardElement = document.querySelector<HTMLElement>(".board");
-  if (!boardElement) return;
-  event.preventDefault();
-  event.stopPropagation();
-  const bounds = boardElement.getBoundingClientRect();
-  const center = screenToWorld(camera, viewport, {
-    x: event.clientX - bounds.left,
-    y: event.clientY - bounds.top,
-  });
-  const note = droppedAudioNote(recording, center, Object.values(board.notes).map((item) => item.name));
-  const index = board.order.length;
-  const previousSelection = captureSelectionSnapshot();
-  execute(droppedAudioNoteCommand(note, (created) => {
-      addNote(created, index);
-      clearSelection();
-      clearSelectedLink();
-      selectOnly(created.id);
-    }, (id) => {
-      removeNote(id);
-      restoreSelectionSnapshot(previousSelection);
-    }));
 }
