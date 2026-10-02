@@ -312,6 +312,9 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
   .note-header {
     display: flex;
     min-height: var(--note-header-height);
+    /* Debug 20.7: node names (e.g. audio files) are labels, not selectable text; rename uses its own input. */
+    user-select: none;
+    -webkit-user-select: none;
     align-items: center;
     padding: 0 8px;
     color: #e6e6e6;
