@@ -4,18 +4,23 @@ import type { MediaRef } from "../src/attachments/types";
 import {
   appendRecording,
   beginRecordingDrag,
+  canDropAudioNodeOnDictaphone,
   deleteRecording,
+  dictaphoneDropCommand,
   droppedAudioNote,
   droppedAudioNoteCommand,
   finishRecordingDrag,
   moveRecordingDrag,
   nextRecordingName,
   pulledOutRecordingCommand,
+  recordingFromAudioNode,
   recordingListCommand,
   renameRecording,
   transitionRecording,
 } from "../src/audio/recordingLogic";
 import type { AudioRecording } from "../src/audio/recordingData";
+import type { Note } from "../src/model/note";
+import { clearDropTargetPreview, dropOnTarget, registerDropTarget } from "../src/selection/dropTargets";
 
 function recording(id: string, name: string): AudioRecording {
   const media: MediaRef = {
@@ -143,5 +148,88 @@ describe("dictaphone state and list operations", () => {
     history.redo();
     expect(notes.get(note.id)).toEqual(note);
     expect(recordings).toEqual([]);
+  });
+
+  it("moves or Ctrl-copies a standalone audio node into a dictaphone with one Undo", () => {
+    const source = droppedAudioNote(recording("file", "Voice memo"), { x: 0, y: 0 }, [], "audio-node");
+    const dictaphone: Note = {
+      id: "dictaphone",
+      type: "audio",
+      name: "Recorder",
+      text: "",
+      x: 0,
+      y: 0,
+      width: 260,
+      height: null,
+      createdAt: 1,
+      recordings: [recording("existing", "Earlier take")],
+    };
+    const transferred = recordingFromAudioNode(source, "transferred");
+    expect(canDropAudioNodeOnDictaphone(source, dictaphone)).toBe(true);
+    expect(transferred).toMatchObject({ id: "transferred", name: source.name, media: source.media });
+    expect(transferred).not.toBeNull();
+
+    const before = dictaphone.recordings ?? [];
+    let rows = before;
+    let sourceOnBoard = true;
+    let selected = source.id;
+    const effects = {
+      applyRecordings: (next: AudioRecording[]) => { rows = next; },
+      removeSource: () => { sourceOnBoard = false; },
+      restoreSource: () => { sourceOnBoard = true; },
+      selectDictaphone: () => { selected = dictaphone.id; },
+      restoreSelection: () => { selected = source.id; },
+    };
+
+    const moveHistory = new HistoryStack();
+    moveHistory.execute(dictaphoneDropCommand(source, before, transferred!, false, effects));
+    expect(rows.map((item) => item.name)).toEqual(["Earlier take", "Voice memo"]);
+    expect(sourceOnBoard).toBe(false);
+    expect(selected).toBe(dictaphone.id);
+    expect(moveHistory.entries).toHaveLength(1);
+    moveHistory.undo();
+    expect(rows).toEqual(before);
+    expect(sourceOnBoard).toBe(true);
+    expect(selected).toBe(source.id);
+
+    const copyHistory = new HistoryStack();
+    copyHistory.execute(dictaphoneDropCommand(source, before, transferred!, true, effects));
+    expect(rows.map((item) => item.name)).toEqual(["Earlier take", "Voice memo"]);
+    expect(sourceOnBoard).toBe(true);
+    copyHistory.undo();
+    expect(rows).toEqual(before);
+    expect(sourceOnBoard).toBe(true);
+  });
+
+  it("ignores non-audio nodes and standalone audio targets", () => {
+    const source = droppedAudioNote(recording("source", "Voice memo"), { x: 0, y: 0 }, [], "audio-node");
+    const nonAudio: Note = { ...source, type: "image", media: undefined };
+    const dictaphone: Note = {
+      id: "dictaphone", type: "audio", name: "Recorder", text: "", x: 0, y: 0,
+      width: 260, height: null, createdAt: 1, recordings: [],
+    };
+    const standaloneTarget = droppedAudioNote(recording("target", "Other audio"), { x: 0, y: 0 }, [], "target-audio");
+    expect(canDropAudioNodeOnDictaphone(nonAudio, dictaphone)).toBe(false);
+    expect(recordingFromAudioNode(nonAudio)).toBeNull();
+    expect(canDropAudioNodeOnDictaphone(source, standaloneTarget)).toBe(false);
+  });
+
+  it("passes the Ctrl modifier from board pointer-up to the drop target", () => {
+    let ctrlKey = false;
+    const unregister = registerDropTarget({
+      ownerId: "audio-test-target",
+      accepts: () => ({ ownerId: "audio-test-target", targetId: "dictaphone" }),
+      drop: (_ids, _match, modifiers) => {
+        ctrlKey = modifiers?.ctrlKey ?? false;
+        return { label: "Drop audio", do: () => {}, undo: () => {} };
+      },
+    });
+    try {
+      expect(dropOnTarget(["audio-node"], { x: 0, y: 0 }, { ctrlKey: true })?.label).toBe("Drop audio");
+      expect(ctrlKey).toBe(true);
+    } finally {
+      unregister();
+      clearDropTargetPreview();
+    }
   });
 });

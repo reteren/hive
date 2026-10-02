@@ -121,6 +121,49 @@ export function deleteRecording(
   };
 }
 
+export function canDropAudioNodeOnDictaphone(source: Note | undefined, target: Note | undefined): boolean {
+  return Boolean(source && target && source.id !== target.id && source.type === "audio" &&
+    source.media?.kind === "audio" && !Array.isArray(source.recordings) &&
+    target.type === "audio" && Array.isArray(target.recordings));
+}
+
+export function recordingFromAudioNode(source: Note | undefined, id = newId()): AudioRecording | null {
+  if (!source || source.type !== "audio" || source.media?.kind !== "audio" || Array.isArray(source.recordings)) return null;
+  return { id, name: source.name, media: { ...source.media } };
+}
+
+/** A single reversible command for moving or copying a standalone audio node into a dictaphone. */
+export function dictaphoneDropCommand(
+  source: Note,
+  before: readonly AudioRecording[],
+  recording: AudioRecording,
+  copy: boolean,
+  effects: {
+    applyRecordings(recordings: AudioRecording[]): void;
+    removeSource(): void;
+    restoreSource(): void;
+    selectDictaphone(): void;
+    restoreSelection(): void;
+  },
+): HistoryCommand {
+  const previous = copyAudioRecordings([...before]) ?? [];
+  const next = appendRecording(previous, recording);
+  return {
+    label: copy ? "Copy audio into dictaphone" : "Move audio into dictaphone",
+    target: source.name,
+    do: () => {
+      effects.applyRecordings(copyAudioRecordings(next) ?? []);
+      if (!copy) effects.removeSource();
+      effects.selectDictaphone();
+    },
+    undo: () => {
+      if (!copy) effects.restoreSource();
+      effects.applyRecordings(copyAudioRecordings(previous) ?? []);
+      effects.restoreSelection();
+    },
+  };
+}
+
 /** A one-row Undo command for append, rename or delete operations. */
 export function recordingListCommand(
   before: readonly AudioRecording[],

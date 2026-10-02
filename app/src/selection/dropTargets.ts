@@ -9,10 +9,15 @@ export interface DropTargetMatch {
   payload?: unknown;
 }
 
+export interface DropTargetModifiers {
+  ctrlKey: boolean;
+  originalPositions?: readonly { id: string; x: number; y: number }[];
+}
+
 export interface BoardDropTarget {
   ownerId: string;
   accepts(noteIds: readonly string[], worldPoint: Point): DropTargetMatch | null;
-  drop(noteIds: readonly string[], match: DropTargetMatch): HistoryCommand | null;
+  drop(noteIds: readonly string[], match: DropTargetMatch, modifiers?: DropTargetModifiers): HistoryCommand | null;
 }
 
 export const activeDropTarget = writable<DropTargetMatch | null>(null);
@@ -38,10 +43,14 @@ export function previewDropTarget(noteIds: readonly string[], worldPoint: Point)
 }
 
 /** Returns a reversible command; the SelectionLayer decides whether to run it. */
-export function dropOnTarget(noteIds: readonly string[], worldPoint: Point): HistoryCommand | null {
+export function dropOnTarget(
+  noteIds: readonly string[],
+  worldPoint: Point,
+  modifiers?: DropTargetModifiers,
+): HistoryCommand | null {
   const resolved = resolveDropTarget(noteIds, worldPoint);
   clearDropTargetPreview();
-  return resolved?.target.drop(noteIds, resolved.match) ?? null;
+  return resolved?.target.drop(noteIds, resolved.match, modifiers) ?? null;
 }
 
 export function clearDropTargetPreview(): void {

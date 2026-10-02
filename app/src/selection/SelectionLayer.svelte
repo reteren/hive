@@ -776,7 +776,7 @@ type PendingBoardMove =
       }
       cancelBoardMove(event.pointerId);
       if (local) updatePointerGesture(event, local, false);
-      finishPointerGesture(event.pointerId, false);
+      finishPointerGesture(event.pointerId, false, true, event.ctrlKey);
     }
 
     function onPointerCancel(event: PointerEvent): void {
@@ -1588,7 +1588,7 @@ type PendingBoardMove =
     applyFrames(gesture.gesture.after);
   }
 
-  function finishPointerGesture(pointerId: number, cancelled: boolean, release = true): void {
+  function finishPointerGesture(pointerId: number, cancelled: boolean, release = true, ctrlKey = false): void {
     if (cancelled) cancelBoardMove(pointerId);
     else flushBoardMove(pointerId);
     const gesture = activeGesture;
@@ -1631,7 +1631,7 @@ type PendingBoardMove =
       if (cancelled) {
         applyFrames(cancelMoveGesture(gesture.gesture));
       } else if (gesture.started) {
-        commitMoveGesture(gesture.gesture, gesture.precision.pointer);
+        commitMoveGesture(gesture.gesture, gesture.precision.pointer, ctrlKey);
       } else if (
         gesture.toggleOnClickId &&
         shouldToggleSelectedHeaderAfterGesture(gesture.started, cancelled)
@@ -1643,7 +1643,7 @@ type PendingBoardMove =
         if (cancelled) {
           applyFrames(cancelMoveGesture(gesture.gesture));
         } else if (gesture.started) {
-          commitMoveGesture(gesture.gesture, gesture.precision.pointer);
+          commitMoveGesture(gesture.gesture, gesture.precision.pointer, ctrlKey);
         }
       }
       gesture.noteElement.style.userSelect = gesture.previousUserSelect;
@@ -2027,8 +2027,11 @@ type PendingBoardMove =
     endZoneMembershipBatch();
   }
 
-  function commitMoveGesture(gesture: MoveGesture, worldPoint: Point): void {
-    const dropCommand = dropOnTarget(gesture.before.map((frame) => frame.id), worldPoint);
+  function commitMoveGesture(gesture: MoveGesture, worldPoint: Point, ctrlKey = false): void {
+    const dropCommand = dropOnTarget(gesture.before.map((frame) => frame.id), worldPoint, {
+      ctrlKey,
+      originalPositions: gesture.before,
+    });
     if (dropCommand) {
       applyFrames(gesture.before);
       execute(dropCommand);

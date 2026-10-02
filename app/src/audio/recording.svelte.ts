@@ -2,6 +2,7 @@ import { screenToWorld, type Point } from "../board/cameraMath";
 import { camera, viewport } from "../board/camera.svelte";
 import { addNote, board, removeNote, updateNote } from "../model/board.svelte";
 import { newId, R5_BASE_WIDTHS, type Note } from "../model/note";
+import { addLink, links, removeLink } from "../model/links.svelte";
 import { execute } from "../history/history.svelte";
 import { captureSelectionSnapshot, clearSelection, restoreSelectionSnapshot, selectOnly } from "../selection/selection.svelte";
 import { clearSelectedLink } from "../links/selection.svelte";
@@ -11,11 +12,14 @@ import { uniqueName } from "../notes/naming";
 import { copyAudioRecordings } from "./recordingData";
 import {
   appendRecording,
+  canDropAudioNodeOnDictaphone,
   deleteRecording,
+  dictaphoneDropCommand,
   droppedAudioNote,
   droppedAudioNoteCommand,
   nextRecordingName,
   pulledOutRecordingCommand,
+  recordingFromAudioNode,
   recordingListCommand,
   renameRecording,
   transitionRecording,
@@ -221,6 +225,50 @@ export function dropAudioRecordingOnBoard(
     }));
   }
   return true;
+}
+
+export function createDictaphoneAudioDropCommand(
+  sourceId: string,
+  targetId: string,
+  copy: boolean,
+  originalPosition?: Point,
+) {
+  const source = board.notes[sourceId];
+  const target = board.notes[targetId];
+  if (!source || !target || !canDropAudioNodeOnDictaphone(source, target)) return null;
+  const recording = recordingFromAudioNode(source);
+  if (!recording) return null;
+  const before = copyAudioRecordings(target.recordings) ?? [];
+  const sourceIndex = board.order.indexOf(sourceId);
+  if (sourceIndex < 0) return null;
+
+  const sourceSnapshot: Note = {
+    ...source,
+    ...(originalPosition ? { x: originalPosition.x, y: originalPosition.y } : {}),
+    ...(source.media ? { media: { ...source.media } } : {}),
+  };
+  const attachedLinks = Object.values(links.byId)
+    .filter((link) => link.from === sourceId || link.to === sourceId)
+    .map((link) => ({ ...link }));
+  const previousSelection = captureSelectionSnapshot();
+
+  return dictaphoneDropCommand(sourceSnapshot, before, recording, copy, {
+    applyRecordings: (recordings) => updateNote(targetId, { recordings: copyAudioRecordings(recordings) ?? [] }),
+    removeSource: () => {
+      attachedLinks.forEach((link) => removeLink(link.id));
+      removeNote(sourceId);
+    },
+    restoreSource: () => {
+      addNote(sourceSnapshot, sourceIndex);
+      attachedLinks.forEach(addLink);
+    },
+    selectDictaphone: () => {
+      clearSelection();
+      clearSelectedLink();
+      selectOnly(targetId);
+    },
+    restoreSelection: () => restoreSelectionSnapshot(previousSelection),
+  });
 }
 
 function handleWindowBlur(): void {

@@ -1,13 +1,19 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { worldToScreen } from "../board/cameraMath";
+  import { camera as boardCamera, viewport as boardViewport } from "../board/camera.svelte";
+  import { board } from "../model/board.svelte";
   import type { Note } from "../model/note";
   import NoteBody from "../editor/NoteBody.svelte";
   import { registerHoverPlayback } from "../media-ui/hoverPlayback";
   import { MediaIcon, MediaTime } from "../media-ui";
+  import { activeDropTarget, registerDropTarget } from "../selection/dropTargets";
   import AudioPlayerRow from "./AudioPlayerRow.svelte";
+  import { canDropAudioNodeOnDictaphone } from "./recordingLogic";
   import {
     audioRecording,
     beginAudioRecording,
+    createDictaphoneAudioDropCommand,
     deleteAudioRecording,
     renameAudioRecording,
     stopAudioRecording,
@@ -17,6 +23,8 @@
   let root = $state<HTMLDivElement | null>(null);
   let hoveredPlayer: HTMLAudioElement | null = null;
   let isDictaphone = $derived(Array.isArray(note.recordings));
+  let dropOwnerId = $derived(`audio-dictaphone:${note.id}`);
+  let isAudioDropTarget = $derived($activeDropTarget?.ownerId === dropOwnerId);
   let isCurrentCapture = $derived(audioRecording.noteId === note.id);
   let phase = $derived(isCurrentCapture ? audioRecording.phase : "idle");
   let isRecording = $derived(phase === "recording");
@@ -27,8 +35,32 @@
   onMount(() => {
     if (!root) return;
     const unregisterHover = registerHoverPlayback(root, toggleHoveredPlayback);
+    const unregisterDrop = isDictaphone ? registerDropTarget({
+      ownerId: dropOwnerId,
+      accepts(noteIds, worldPoint) {
+        if (noteIds.length !== 1 || !root || !canDropAudioNodeOnDictaphone(board.notes[noteIds[0]], note)) return null;
+        const host = root.closest<HTMLElement>(".note-card[data-note-id]");
+        const boardElement = document.querySelector<HTMLElement>(".board");
+        if (!host || !boardElement) return null;
+        const boardBounds = boardElement.getBoundingClientRect();
+        const screen = worldToScreen(boardCamera, boardViewport, worldPoint);
+        const clientX = boardBounds.left + screen.x;
+        const clientY = boardBounds.top + screen.y;
+        const bounds = host.getBoundingClientRect();
+        if (clientX < bounds.left || clientX > bounds.right || clientY < bounds.top || clientY > bounds.bottom) return null;
+        return { ownerId: dropOwnerId, targetId: note.id, payload: { sourceId: noteIds[0] } };
+      },
+      drop(noteIds, _match, modifiers) {
+        const sourceId = noteIds[0];
+        const originalPosition = modifiers?.originalPositions?.find((position) => position.id === sourceId);
+        return sourceId
+          ? createDictaphoneAudioDropCommand(sourceId, note.id, modifiers?.ctrlKey ?? false, originalPosition)
+          : null;
+      },
+    }) : () => undefined;
     return () => {
       unregisterHover();
+      unregisterDrop();
     };
   });
 
@@ -62,7 +94,12 @@
 
 <div class="audio-node" bind:this={root} data-audio-node={note.id} role="group" aria-label={`${note.name} audio node`} onpointermove={trackHoveredPlayer} onpointerleave={() => (hoveredPlayer = null)} ondblclick={(event) => event.stopPropagation()}>
   {#if isDictaphone}
-    <section class="dictaphone" aria-label="Audio recorder">
+    <section
+      class="dictaphone"
+      class:drop-target={isAudioDropTarget}
+      data-audio-dictaphone-drop-target={isAudioDropTarget ? note.id : undefined}
+      aria-label="Audio recorder"
+    >
       <div class="recorder-display" class:is-recording={isRecording} data-audio-recording={note.id}>
         <div class="level-wave" class:active={isRecording} role="meter" aria-label="Microphone level" aria-valuemin="0" aria-valuemax="100" aria-valuenow={isRecording ? Math.round(audioRecording.level * 100) : 0}>
           {#each Array.from({ length: 36 }, (_, index) => index) as index (index)}
@@ -101,6 +138,9 @@
       {#if phase === "error" && isCurrentCapture && audioRecording.error}
         <p class="recorder-error" role="alert">{audioRecording.error}</p>
       {/if}
+      {#if isAudioDropTarget}
+        <div class="dictaphone-drop-hint" data-audio-dictaphone-drop-hint role="status">Drop to add recording</div>
+      {/if}
     </section>
 
     {#if (note.recordings?.length ?? 0) > 0}
@@ -134,6 +174,8 @@
 <style>
   .audio-node { display: flex; min-width: 0; flex-direction: column; gap: 8px; color: #d8d8d8; }
   .dictaphone { display: grid; grid-template-columns: minmax(0, 1fr) 56px; align-items: center; gap: 12px; min-height: 94px; padding: 11px; border: 1px solid #414141; border-radius: 4px; background: #282828; user-select: none; }
+  .dictaphone.drop-target { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .dictaphone-drop-hint { grid-column: 1 / -1; justify-self: center; color: var(--accent); font-size: 11px; font-weight: 600; }
   .recorder-display { display: flex; min-width: 0; flex-direction: column; gap: 9px; }
   .level-wave { display: flex; height: 42px; align-items: center; justify-content: space-between; gap: 2px; overflow: hidden; }
   .level-wave span { display: block; width: 2px; min-width: 1px; max-height: 100%; border-radius: 2px; background: rgba(255, 255, 255, .85); transition: height 90ms linear, background-color 100ms ease; }
