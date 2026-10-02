@@ -40,6 +40,9 @@ export function canRenameNoteHeader(headerHidden: boolean | undefined): boolean 
   return headerHidden !== true;
 }
 
+const MEDIA_KINDS = new Set<string>(["youtube", "video", "audio", "pdf", "format"]);
+const TEXT_ONLY_MENU_IDS = new Set(["task.toggleFlag", "notes.addPlus", "notes.addMinus"]);
+
 /** Apply the intentionally compact menu allowed for images and GIF surfaces. */
 export function noteMenuItemsForContext(
   noteId: string,
@@ -59,6 +62,10 @@ export function noteMenuItemsForContext(
 
   if (target) {
     return allItems.filter((item) => UNIVERSAL_MENU_IDS.has(item.id) || item.id === "attachments.toggleGif");
+  }
+  // Debug 19: media objects are not tasks and carry no plus/minus mini-nodes.
+  if (note && MEDIA_KINDS.has(note.type)) {
+    return allItems.filter((item) => !TEXT_ONLY_MENU_IDS.has(item.id));
   }
   return allItems;
 }
