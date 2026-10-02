@@ -142,6 +142,7 @@ function parseTrashNote(value: unknown): Note | null {
     value.youtube !== undefined && !youtube || value.type === "youtube" && !youtube ||
     value.headerHidden !== undefined && typeof value.headerHidden !== "boolean" ||
     value.pdfZoom !== undefined && (value.type !== "pdf" || pdfZoom === undefined) ||
+    value.frameHidden !== undefined && (value.type !== "youtube" || value.frameHidden !== true) ||
     value.flipX !== undefined && value.flipX !== true || value.flipY !== undefined && value.flipY !== true ||
     value.gifStopped !== undefined && value.gifStopped !== true) return null;
   const scope = value.scope === undefined ? undefined : parseScope(value.scope);
@@ -170,6 +171,7 @@ function parseTrashNote(value: unknown): Note | null {
     ...(value.type === "pdf" && pdfZoom !== undefined ? { pdfZoom } : {}),
     ...(recordings ? { recordings: copyAudioRecordings(recordings) } : {}),
     ...(youtube ? { youtube } : {}),
+    ...(value.type === "youtube" && value.frameHidden === true ? { frameHidden: true } : {}),
     ...(value.type === "image" && value.flipX === true ? { flipX: true } : {}),
     ...(value.type === "image" && value.flipY === true ? { flipY: true } : {}),
     ...(value.type === "image" && value.gifStopped === true ? { gifStopped: true } : {}),

@@ -93,4 +93,6 @@ export interface YouTubeRef {
   author?: string;
   /** Start offset in seconds parsed from t=/start=. */
   start?: number;
+  /** When true, restart from `start` (or zero) after the embedded player ends. */
+  loop?: true;
 }

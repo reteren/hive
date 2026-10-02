@@ -73,6 +73,7 @@ export interface IndexedNote {
   pdfZoom?: number;
   recordings?: Note["recordings"];
   youtube?: YouTubeRef;
+  frameHidden?: true;
   flipX?: true;
   flipY?: true;
   gifStopped?: true;
@@ -244,6 +245,7 @@ export function serializeProjectIndex(
       pdfZoom: note.type === "pdf" ? normalizePdfZoom(note.pdfZoom) : undefined,
       recordings: note.type === "audio" ? copyAudioRecordings(note.recordings) : undefined,
       youtube: note.youtube ? { ...note.youtube } : undefined,
+      frameHidden: note.type === "youtube" && note.frameHidden === true ? true as const : undefined,
       gifStopped: note.gifStopped === true ? true as const : undefined,
       flipX: note.type === "image" && note.flipX === true ? true as const : undefined,
       flipY: note.type === "image" && note.flipY === true ? true as const : undefined,
@@ -324,6 +326,7 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       ...(entry.type === "pdf" && entry.pdfZoom !== undefined ? { pdfZoom: entry.pdfZoom } : {}),
       ...(entry.recordings ? { recordings: copyAudioRecordings(entry.recordings) } : {}),
       ...(entry.youtube ? { youtube: { ...entry.youtube } } : {}),
+      ...(entry.type === "youtube" && entry.frameHidden === true ? { frameHidden: true } : {}),
       ...(entry.type === "image" && entry.gifStopped === true ? { gifStopped: true } : {}),
       ...(entry.type === "image" && entry.flipX === true ? { flipX: true } : {}),
       ...(entry.type === "image" && entry.flipY === true ? { flipY: true } : {}),
@@ -452,6 +455,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
   const recordings = value.recordings === undefined ? undefined : parseAudioRecordings(value.recordings);
   const youtube = value.youtube === undefined ? undefined : parseYouTubeRef(value.youtube);
   const gifStopped = value.gifStopped === true ? true : undefined;
+  const frameHidden: true | undefined = type === "youtube" && value.frameHidden === true ? true : undefined;
   const file = typeof value.file === "string" && value.file.length > 0
     ? value.file
     : type === "calculator"
@@ -484,6 +488,9 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
   }
   if (value.gifStopped !== undefined && value.gifStopped !== true) {
     warnings.push(`Invalid GIF playback state for note ${id}; it was cleared.`);
+  }
+  if (value.frameHidden !== undefined && (type !== "youtube" || value.frameHidden !== true)) {
+    warnings.push(`Invalid hidden frame state for note ${id}; it was cleared.`);
   }
   if (value.pdfZoom !== undefined && (type !== "pdf" || pdfZoom === undefined)) {
     warnings.push(`Invalid PDF zoom for note ${id}; fit-to-width was restored.`);
@@ -575,6 +582,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
       pdfZoom: type === "pdf" ? pdfZoom : undefined,
       recordings: type === "audio" && recordings ? copyAudioRecordings(recordings) : undefined,
       youtube: youtube ?? undefined,
+      frameHidden,
       gifStopped: type === "image" ? gifStopped : undefined,
       flipX: type === "image" && value.flipX === true ? true : undefined,
       flipY: type === "image" && value.flipY === true ? true : undefined,
