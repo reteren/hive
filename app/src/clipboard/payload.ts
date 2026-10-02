@@ -131,7 +131,7 @@ export function serializeNotes(
       color: color ?? null,
       zoneId: zoneId ?? null,
       ...(headerHidden ? { headerHidden: true } : {}),
-      ...(type === "youtube" && frameHidden === true ? { frameHidden: true } : {}),
+      ...((type === "youtube" || type === "video") && frameHidden === true ? { frameHidden: true } : {}),
       ...(image ? { image: { ...image } } : {}),
       ...(media ? { media: { ...media } } : {}),
       ...(type === "pdf" && pdfZoom !== undefined ? { pdfZoom: normalizePdfZoom(pdfZoom) } : {}),
@@ -397,7 +397,7 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     value.recordings !== undefined && (value.type !== "audio" || !recordings) ||
     value.youtube !== undefined && !youtube || value.type === "youtube" && !youtube ||
     value.headerHidden !== undefined && typeof value.headerHidden !== "boolean" ||
-    value.frameHidden !== undefined && (value.type !== "youtube" || value.frameHidden !== true) ||
+    value.frameHidden !== undefined && (value.type !== "youtube" && value.type !== "video" || value.frameHidden !== true) ||
     value.pdfZoom !== undefined && (value.type !== "pdf" || pdfZoom === undefined) ||
     value.flipX !== undefined && value.flipX !== true || value.flipY !== undefined && value.flipY !== true ||
     value.gifStopped !== undefined && value.gifStopped !== true) return null;
@@ -423,7 +423,7 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     color,
     zoneId,
     ...(value.headerHidden === true ? { headerHidden: true } : {}),
-    ...(value.type === "youtube" && value.frameHidden === true ? { frameHidden: true } : {}),
+    ...((value.type === "youtube" || value.type === "video") && value.frameHidden === true ? { frameHidden: true } : {}),
     ...(image ? { image } : {}),
     ...(media ? { media } : {}),
     ...(value.type === "pdf" && pdfZoom !== undefined ? { pdfZoom } : {}),
