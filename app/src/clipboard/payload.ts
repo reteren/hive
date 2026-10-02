@@ -27,6 +27,7 @@ import { parseImageRef } from "../images/imageLogic";
 import { normalizePdfZoom, parseMediaRef } from "../formats/formatLogic";
 import { copyAudioRecordings, parseAudioRecordings } from "../audio/recordingData";
 import { parseYouTubeRef } from "../youtube/logic";
+import { parseSource, type SourceData } from "../model/nodeData";
 
 export const HIVE_CLIPBOARD_MARKER = "hive/nodes";
 export const HIVE_CLIPBOARD_VERSION = 3;
@@ -62,6 +63,7 @@ export interface ClipboardNode {
   pdfZoom?: number;
   recordings?: Note["recordings"];
   youtube?: YouTubeRef;
+  source?: SourceData;
   flipX?: true;
   flipY?: true;
   gifStopped?: true;
@@ -109,7 +111,7 @@ export function serializeNotes(
     marker: HIVE_CLIPBOARD_MARKER,
     version: HIVE_CLIPBOARD_VERSION,
     nodes: notes.map(({
-      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, time, message, embedSections, importance, purposes, moods, color, zoneId, headerHidden, frameHidden, image, media, pdfZoom, recordings, youtube, flipX, flipY, gifStopped,
+      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, time, message, embedSections, importance, purposes, moods, color, zoneId, headerHidden, frameHidden, image, media, pdfZoom, recordings, youtube, source, flipX, flipY, gifStopped,
     }) => ({
       sourceId: id,
       type,
@@ -137,6 +139,7 @@ export function serializeNotes(
       ...(type === "pdf" && pdfZoom !== undefined ? { pdfZoom: normalizePdfZoom(pdfZoom) } : {}),
       ...(type === "audio" && recordings ? { recordings: copyAudioRecordings(recordings) } : {}),
       ...(youtube ? { youtube: { ...youtube } } : {}),
+      ...(type === "source" && source ? { source: { ...source } } : {}),
       ...(type === "image" && flipX === true ? { flipX: true } : {}),
       ...(type === "image" && flipY === true ? { flipY: true } : {}),
       ...(type === "image" && gifStopped === true ? { gifStopped: true } : {}),
@@ -355,7 +358,7 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     (value.type !== "note" && value.type !== "pro" && value.type !== "con" &&
       value.type !== "importance" && value.type !== "purpose" && value.type !== "mood" && value.type !== "beacon" &&
       value.type !== "goal" && value.type !== "progress" && value.type !== "calculator" &&
-      value.type !== "tierlist" && value.type !== "stats" && value.type !== "time" && value.type !== "message" && value.type !== "calendar" && value.type !== "image" && value.type !== "pdf" && value.type !== "format" && value.type !== "audio" && value.type !== "video" && value.type !== "youtube") ||
+      value.type !== "tierlist" && value.type !== "stats" && value.type !== "time" && value.type !== "message" && value.type !== "calendar" && value.type !== "image" && value.type !== "pdf" && value.type !== "format" && value.type !== "audio" && value.type !== "video" && value.type !== "youtube" && value.type !== "source") ||
     typeof value.name !== "string" || typeof value.text !== "string" ||
     !finite(value.x) || !finite(value.y) || !finite(value.width) || value.width <= 0 ||
     !(value.height === null || (finite(value.height) && value.height > 0)) ||
@@ -392,10 +395,12 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
   const pdfZoom = value.pdfZoom === undefined ? undefined : normalizePdfZoom(value.pdfZoom);
   const recordings = value.recordings === undefined ? undefined : parseAudioRecordings(value.recordings);
   const youtube = value.youtube === undefined ? null : parseYouTubeRef(value.youtube) ?? null;
+  const source = value.source === undefined ? null : parseSource(value.source);
   if (value.image !== undefined && !image || value.type === "image" && (!image || !finite(value.height) || value.height <= 0) ||
     value.media !== undefined && !media || value.type === "pdf" && media?.kind !== "pdf" || value.type === "format" && media?.kind !== "text" || value.type === "audio" && media?.kind !== "audio" && !recordings || value.type === "video" && media?.kind !== "video" ||
     value.recordings !== undefined && (value.type !== "audio" || !recordings) ||
     value.youtube !== undefined && !youtube || value.type === "youtube" && !youtube ||
+    value.source !== undefined && (value.type !== "source" || !source) ||
     value.headerHidden !== undefined && typeof value.headerHidden !== "boolean" ||
     value.frameHidden !== undefined && (value.type !== "youtube" && value.type !== "video" || value.frameHidden !== true) ||
     value.pdfZoom !== undefined && (value.type !== "pdf" || pdfZoom === undefined) ||
@@ -429,6 +434,7 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     ...(value.type === "pdf" && pdfZoom !== undefined ? { pdfZoom } : {}),
     ...(recordings ? { recordings: copyAudioRecordings(recordings) } : {}),
     ...(youtube ? { youtube } : {}),
+    ...(source ? { source } : {}),
     ...(value.type === "image" && value.flipX === true ? { flipX: true } : {}),
     ...(value.type === "image" && value.flipY === true ? { flipY: true } : {}),
     ...(value.type === "image" && value.gifStopped === true ? { gifStopped: true } : {}),
