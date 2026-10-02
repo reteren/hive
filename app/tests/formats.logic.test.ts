@@ -9,6 +9,7 @@ import {
   formatLanguageForExtension,
   formatNodeKind,
   hasUnsavedFormatChanges,
+  effectivePdfZoom,
   isFormatMediaKind,
   normalizePdfZoom,
   parseMediaRef,
@@ -83,7 +84,7 @@ describe("PDF and Format nodes", () => {
     });
   });
 
-  it("clamps PDF zoom to ten-percent steps and keeps the viewer zoom independent of board zoom", () => {
+  it("scales the PDF viewer zoom with board and note scale to keep content fixed inside the node", () => {
     expect(normalizePdfZoom(44)).toBe(50);
     expect(normalizePdfZoom(55)).toBe(60);
     expect(normalizePdfZoom(304)).toBe(300);
@@ -92,14 +93,24 @@ describe("PDF and Format nodes", () => {
     expect(stepPdfZoom(undefined, -1)).toBe(90);
     expect(stepPdfZoom(300, 1)).toBe(300);
     expect(stepPdfZoom(50, -1)).toBe(50);
+    expect(effectivePdfZoom(150, 2, 1.5)).toBe(450);
+    expect(effectivePdfZoom(undefined, 2, 1.5)).toBeUndefined();
     expect(pdfViewerSource("asset://localhost/file.pdf#page=3", 150)).toBe("asset://localhost/file.pdf#zoom=150");
-    expect(pdfViewerSource("asset://localhost/file.pdf", undefined)).toBe("asset://localhost/file.pdf#zoom=page-width");
+    expect(pdfViewerSource("asset://localhost/file.pdf", 150, 2, 1.5)).toBe("asset://localhost/file.pdf#zoom=450");
+    expect(pdfViewerSource("asset://localhost/file.pdf", undefined, 2, 1.5)).toBe("asset://localhost/file.pdf#zoom=page-width");
 
-    for (const [cameraZoom, noteScale] of [[0.5, 1], [1, 1], [2, 1.5]] as const) {
-      const frame = pdfFrameMetrics(400, 260, cameraZoom, noteScale);
-      expect(frame.width * frame.inverseScale).toBeCloseTo(400);
+    const nodeWidth = 400;
+    const pageWidth = 600;
+    const expectedRatio = pageWidth * 1.5 / nodeWidth;
+    for (const [cameraZoom, noteScale] of [[0.5, 1], [1, 1], [2, 1.5], [0.25, 0.75]] as const) {
+      const frame = pdfFrameMetrics(nodeWidth, 260, cameraZoom, noteScale);
+      const effectiveZoom = effectivePdfZoom(150, cameraZoom, noteScale);
+      expect(frame.width * frame.inverseScale).toBeCloseTo(nodeWidth);
       expect(frame.height * frame.inverseScale).toBeCloseTo(260);
-      expect(pdfViewerSource("asset://localhost/file.pdf", 150)).toBe("asset://localhost/file.pdf#zoom=150");
+      expect(effectiveZoom).toBeCloseTo(150 * cameraZoom * noteScale);
+
+      const contentWidthWithinNode = pageWidth * ((effectiveZoom ?? 0) / 100) * frame.inverseScale;
+      expect(contentWidthWithinNode / nodeWidth).toBeCloseTo(expectedRatio);
     }
   });
 

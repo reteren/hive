@@ -8,6 +8,7 @@
 
   let { note }: { note: Note } = $props();
   let body = $state<HTMLDivElement | null>(null);
+  let iframe = $state<HTMLIFrameElement | null>(null);
   let failed = $state(false);
   let frameWidth = $state(0);
   let frameHeight = $state(0);
@@ -15,17 +16,85 @@
   let hasAppliedMetrics = false;
   let resizeTimer: ReturnType<typeof setTimeout> | undefined;
   let source = $derived(note.media?.kind === "pdf" ? attachmentUrl(note.media.file) : "");
-  let viewerSource = $derived(pdfViewerSource(source, note.pdfZoom));
   let pdfZoom = $derived(normalizePdfZoom(note.pdfZoom));
+  let viewerBoardZoom = $state(camera.zoom);
+  function initialNoteScale(): number {
+    return normalizeNoteScale(note.scale);
+  }
+  let viewerNoteScale = $state(initialNoteScale());
+  let viewerSource = $derived(pdfViewerSource(source, note.pdfZoom, viewerBoardZoom, viewerNoteScale));
   let displayName = $derived(note.media?.name || note.name || "PDF");
+  let lastMediaSource: string | undefined;
+  let lastPdfZoom: number | undefined;
+  let lastScrollSource: string | undefined;
+  let pendingScrollPosition: { x: number; y: number } | null = null;
 
   function changeZoom(direction: -1 | 1): void {
+    viewerBoardZoom = camera.zoom;
+    viewerNoteScale = normalizeNoteScale(note.scale);
     setPdfZoom(note.id, stepPdfZoom(note.pdfZoom, direction));
+  }
+
+  function restorePdfScroll(): void {
+    const position = pendingScrollPosition;
+    pendingScrollPosition = null;
+    if (!position || !iframe) return;
+    try {
+      iframe.contentWindow?.scrollTo(position.x, position.y);
+    } catch {
+      // The embedded PDF viewer may be isolated from the app by WebView2.
+    }
   }
 
   $effect(() => {
     source;
     failed = false;
+  });
+
+  $effect(() => {
+    const currentSource = source;
+    const currentPdfZoom = normalizePdfZoom(note.pdfZoom);
+    const boardZoom = camera.zoom;
+    const noteScale = normalizeNoteScale(note.scale);
+    const settingChanged = currentSource !== lastMediaSource || currentPdfZoom !== lastPdfZoom;
+    lastMediaSource = currentSource;
+    lastPdfZoom = currentPdfZoom;
+
+    if (!currentSource || currentPdfZoom === undefined) return;
+    if (settingChanged) {
+      viewerBoardZoom = boardZoom;
+      viewerNoteScale = noteScale;
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      viewerBoardZoom = boardZoom;
+      viewerNoteScale = noteScale;
+    }, 150);
+    return () => clearTimeout(timer);
+  });
+
+  $effect.pre(() => {
+    const nextSource = viewerSource;
+    const currentFrame = iframe;
+    if (lastScrollSource === undefined) {
+      lastScrollSource = nextSource;
+      return;
+    }
+    if (nextSource === lastScrollSource) return;
+    const hadPreviousSource = lastScrollSource !== "";
+    lastScrollSource = nextSource;
+    if (!hadPreviousSource || !currentFrame) return;
+
+    try {
+      const frameWindow = currentFrame.contentWindow;
+      pendingScrollPosition = frameWindow
+        ? { x: frameWindow.scrollX, y: frameWindow.scrollY }
+        : null;
+    } catch {
+      // Cross-origin PDF viewer documents do not expose their scroll position.
+      pendingScrollPosition = null;
+    }
   });
 
   $effect(() => {
@@ -83,9 +152,11 @@
       class="pdf-viewer"
       title={displayName}
       src={viewerSource}
+      bind:this={iframe}
       style:width={`${frameWidth}px`}
       style:height={`${frameHeight}px`}
       style:transform={`scale(${inverseScale})`}
+      onload={restorePdfScroll}
       onerror={() => { failed = true; }}
     ></iframe>
   {:else}

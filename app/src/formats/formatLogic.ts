@@ -67,12 +67,23 @@ export function stepPdfZoom(value: unknown, direction: -1 | 1): number {
   return normalizePdfZoom(current + direction * PDF_ZOOM_STEP) ?? PDF_ZOOM_DEFAULT;
 }
 
-/** Keep this fragment independent of board zoom; only the PDF controls change it. */
-export function pdfViewerSource(source: string, zoom: unknown): string {
+/** Scale an explicit PDF zoom with the board and note so it stays fixed inside the node. */
+export function effectivePdfZoom(zoom: unknown, boardZoom: number, noteScale: number): number | undefined {
+  const normalized = normalizePdfZoom(zoom);
+  if (normalized === undefined) return undefined;
+  const safeBoardZoom = Number.isFinite(boardZoom) && boardZoom > 0 ? boardZoom : 1;
+  const safeNoteScale = Number.isFinite(noteScale) && noteScale > 0 ? noteScale : 1;
+  return normalized * safeBoardZoom * safeNoteScale;
+}
+
+/** Fit width is viewport-relative and deliberately ignores camera and note scale. */
+export function pdfViewerSource(source: string, zoom: unknown, boardZoom = 1, noteScale = 1): string {
   const base = source.split("#", 1)[0] ?? "";
   if (!base) return "";
-  const normalized = normalizePdfZoom(zoom);
-  return `${base}#zoom=${normalized ?? "page-width"}`;
+  const effectiveZoom = effectivePdfZoom(zoom, boardZoom, noteScale);
+  if (effectiveZoom === undefined) return `${base}#zoom=page-width`;
+  const stableZoom = Number(effectiveZoom.toFixed(2));
+  return `${base}#zoom=${stableZoom}`;
 }
 
 /**
