@@ -110,7 +110,7 @@ function parseArchivedNote(value: unknown): Note | null {
     value.youtube !== undefined && !youtube || value.type === "youtube" && !youtube ||
     value.headerHidden !== undefined && typeof value.headerHidden !== "boolean" ||
     value.pdfZoom !== undefined && (value.type !== "pdf" || pdfZoom === undefined) ||
-    value.frameHidden !== undefined && (value.type !== "youtube" || value.frameHidden !== true) ||
+    value.frameHidden !== undefined && (value.type !== "youtube" && value.type !== "video" || value.frameHidden !== true) ||
     value.flipX !== undefined && value.flipX !== true || value.flipY !== undefined && value.flipY !== true ||
     value.gifStopped !== undefined && value.gifStopped !== true) return null;
   if (value.time !== undefined && !time) return null;
@@ -148,7 +148,7 @@ function parseArchivedNote(value: unknown): Note | null {
     ...(value.type === "pdf" && pdfZoom !== undefined ? { pdfZoom } : {}),
     ...(recordings ? { recordings: copyAudioRecordings(recordings) } : {}),
     ...(youtube ? { youtube } : {}),
-    ...(value.type === "youtube" && value.frameHidden === true ? { frameHidden: true } : {}),
+    ...((value.type === "youtube" || value.type === "video") && value.frameHidden === true ? { frameHidden: true } : {}),
     ...(value.type === "image" && value.flipX === true ? { flipX: true } : {}),
     ...(value.type === "image" && value.flipY === true ? { flipY: true } : {}),
     ...(value.type === "image" && value.gifStopped === true ? { gifStopped: true } : {}),
