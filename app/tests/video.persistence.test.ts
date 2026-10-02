@@ -14,6 +14,7 @@ const videoNote: Note = {
   y: 18,
   width: 48,
   height: null,
+  frameHidden: true,
   media: {
     file: `${"a".repeat(64)}.mp4`,
     mime: "video/mp4",
@@ -48,9 +49,9 @@ describe("video node persistence", () => {
   it("round-trips local and YouTube video data through project, archive, trash and clipboard", () => {
     const notes = [videoNote, youtubeNote];
     const project = parseProjectIndex(serializeProjectIndex(notes));
-    expect(project.notes.map(({ media, youtube }) => ({ media, youtube }))).toEqual([
-      { media: videoNote.media, youtube: undefined },
-      { media: undefined, youtube: youtubeNote.youtube },
+    expect(project.notes.map(({ media, youtube, frameHidden }) => ({ media, youtube, frameHidden }))).toEqual([
+      { media: videoNote.media, youtube: undefined, frameHidden: true },
+      { media: undefined, youtube: youtubeNote.youtube, frameHidden: undefined },
     ]);
 
     const loaded = mergeLoadedNotes(project, notes.map((note) => ({
@@ -63,9 +64,9 @@ describe("video node persistence", () => {
       width: note.width,
       height: note.height,
     })));
-    expect(loaded.map(({ media, youtube }) => ({ media, youtube }))).toEqual([
-      { media: videoNote.media, youtube: undefined },
-      { media: undefined, youtube: youtubeNote.youtube },
+    expect(loaded.map(({ media, youtube, frameHidden }) => ({ media, youtube, frameHidden }))).toEqual([
+      { media: videoNote.media, youtube: undefined, frameHidden: true },
+      { media: undefined, youtube: youtubeNote.youtube, frameHidden: undefined },
     ]);
 
     const archive = sanitizeArchiveEntries(notes.map((note, index) => ({
@@ -75,9 +76,9 @@ describe("video node persistence", () => {
       links: [],
     })));
     expect(archive.warnings).toEqual([]);
-    expect(archive.entries.map(({ note }) => ({ media: note.media, youtube: note.youtube }))).toEqual([
-      { media: videoNote.media, youtube: undefined },
-      { media: undefined, youtube: youtubeNote.youtube },
+    expect(archive.entries.map(({ note }) => ({ media: note.media, youtube: note.youtube, frameHidden: note.frameHidden }))).toEqual([
+      { media: videoNote.media, youtube: undefined, frameHidden: true },
+      { media: undefined, youtube: youtubeNote.youtube, frameHidden: undefined },
     ]);
 
     const trash = sanitizeTrashEntries(notes.map((note, index) => ({
@@ -88,15 +89,15 @@ describe("video node persistence", () => {
       links: [],
     })));
     expect(trash.warnings).toEqual([]);
-    expect(trash.entries.map(({ notes: saved }) => ({ media: saved[0]?.media, youtube: saved[0]?.youtube }))).toEqual([
-      { media: videoNote.media, youtube: undefined },
-      { media: undefined, youtube: youtubeNote.youtube },
+    expect(trash.entries.map(({ notes: saved }) => ({ media: saved[0]?.media, youtube: saved[0]?.youtube, frameHidden: saved[0]?.frameHidden }))).toEqual([
+      { media: videoNote.media, youtube: undefined, frameHidden: true },
+      { media: undefined, youtube: youtubeNote.youtube, frameHidden: undefined },
     ]);
 
     const clipboard = parseNotesPayload(serializeNotes(notes));
-    expect(clipboard?.nodes.map(({ media, youtube }) => ({ media, youtube }))).toEqual([
-      { media: videoNote.media, youtube: undefined },
-      { media: undefined, youtube: youtubeNote.youtube },
+    expect(clipboard?.nodes.map(({ media, youtube, frameHidden }) => ({ media, youtube, frameHidden }))).toEqual([
+      { media: videoNote.media, youtube: undefined, frameHidden: true },
+      { media: undefined, youtube: youtubeNote.youtube, frameHidden: undefined },
     ]);
   });
 });

@@ -1,6 +1,14 @@
+import type { Point } from "../board/cameraMath";
+import { crossedGestureThreshold } from "../selection/gestures";
+
 export interface VideoNodeSize {
   width: number;
   height: number;
+}
+
+/** Preserve playback on a click, and hand the gesture to the board after its drag threshold. */
+export function videoCaptureAction(start: Point, current: Point): "click" | "move" {
+  return crossedGestureThreshold(start, current) ? "move" : "click";
 }
 
 /** Fit a video's natural dimensions so its longest side occupies 48 board units. */

@@ -148,7 +148,7 @@
     border-radius: 999px;
     background: linear-gradient(
       to right,
-      #e8e8e8 0 var(--slider-fill),
+      #fff 0 var(--slider-fill),
       rgba(255, 255, 255, .5) var(--slider-fill) var(--slider-buffer),
       rgba(255, 255, 255, .25) var(--slider-buffer) 100%
     );
@@ -159,7 +159,7 @@
     border-radius: 999px;
     background: linear-gradient(
       to right,
-      #e8e8e8 0 var(--slider-fill),
+      #fff 0 var(--slider-fill),
       rgba(255, 255, 255, .5) var(--slider-fill) var(--slider-buffer),
       rgba(255, 255, 255, .25) var(--slider-buffer) 100%
     );
@@ -234,7 +234,7 @@
     height: auto;
     background: linear-gradient(
       to top,
-      #e8e8e8 0 var(--slider-fill),
+      #fff 0 var(--slider-fill),
       rgba(255, 255, 255, .5) var(--slider-fill) var(--slider-buffer),
       rgba(255, 255, 255, .25) var(--slider-buffer) 100%
     );
@@ -245,7 +245,7 @@
     height: auto;
     background: linear-gradient(
       to top,
-      #e8e8e8 0 var(--slider-fill),
+      #fff 0 var(--slider-fill),
       rgba(255, 255, 255, .5) var(--slider-fill) var(--slider-buffer),
       rgba(255, 255, 255, .25) var(--slider-buffer) 100%
     );

@@ -4,6 +4,7 @@
   import MediaTime from "../media-ui/MediaTime.svelte";
   import MediaIcon from "../media-ui/MediaIcon.svelte";
   import { createHoverIntent } from "./hoverIntent";
+  import { VIDEO_VOLUME_POPOVER } from "./volumePopover";
 
   interface Props {
     playing: boolean;
@@ -75,7 +76,11 @@
     <button class="player-button" type="button" aria-label={muted ? "Unmute video" : "Mute video"} aria-expanded={volumeOpen} onclick={onToggleMute}>
       <MediaIcon name={muted || volume === 0 ? "mute" : "volume"} size={15} />
     </button>
-    <div class="volume-slider" data-video-volume>
+    <div
+      class="volume-slider"
+      data-video-volume
+      style={`--volume-popover-width: ${VIDEO_VOLUME_POPOVER.width}px; --volume-popover-height: ${VIDEO_VOLUME_POPOVER.height}px;`}
+    >
       <MediaSlider value={volume} max={1} step={0.01} label="Video volume" orientation="vertical" oninput={onVolume} onchange={onVolume} />
     </div>
   </div>
@@ -91,9 +96,10 @@
   .player-controls :global(.media-slider) { flex: 1 1 auto; min-width: 40px; }
   .player-button { display: grid; width: 25px; height: 25px; flex: 0 0 auto; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 3px; color: #e8e8e8; background: transparent; cursor: pointer; }
   .player-button:hover { border-color: rgba(255, 255, 255, .35); color: #fff; background: #363636; }
+  .player-button:active { border-color: rgba(255, 255, 255, .35); color: #fff; background: #363636; }
   .player-button:focus-visible { border-color: rgba(255, 255, 255, .35); color: #fff; background: #363636; outline: 2px solid var(--accent); outline-offset: 1px; }
   .volume-control { position: relative; display: flex; align-items: center; }
-  .volume-slider { display: none; position: absolute; z-index: 3; right: 50%; bottom: calc(100% - 4px); box-sizing: border-box; width: 40px; height: 112px; padding: 14px 11px 10px; transform: translateX(50%); border: 1px solid #4a4a4a; border-radius: 3px; background: #282828; }
+  .volume-slider { display: none; position: absolute; z-index: 3; right: 50%; bottom: calc(100% - 4px); box-sizing: border-box; width: var(--volume-popover-width); height: var(--volume-popover-height); padding: 6px; transform: translateX(50%); border: 1px solid #4a4a4a; border-radius: 6px; background: #363636; box-shadow: 0 3px 10px rgb(0 0 0 / 32%); }
   .volume-slider :global(.media-slider) { width: 16px; min-width: 16px; height: 100%; flex: 0 0 auto; }
   .volume-control.open .volume-slider { display: flex; align-items: center; justify-content: center; }
   :global(html[data-reduce-motion="true"]) .player-controls { transition: none; }

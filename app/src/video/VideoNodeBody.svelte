@@ -4,6 +4,7 @@
   import { registerHoverPlayback } from "../media-ui/hoverPlayback";
   import type { Note } from "../model/note";
   import NoteBody from "../editor/NoteBody.svelte";
+  import { videoCaptureAction } from "./logic";
   import VideoControls from "./VideoControls.svelte";
   import { createControlsAutoHide } from "./controlsAutoHide";
 
@@ -20,6 +21,7 @@
   let volume = $state(1);
   let muted = $state(false);
   let controlsVisible = $state(true);
+  let captureGesture: { pointerId: number; start: { x: number; y: number }; moved: boolean } | null = null;
   let media = $derived(note.media?.kind === "video" ? note.media : null);
   let source = $derived(media ? attachmentUrl(media.file) : "");
   let displayTime = $derived(seekDraft ?? currentTime);
@@ -41,7 +43,19 @@
     controlsAutoHide.setPlaying(playing);
   });
 
-  onMount(() => nodeElement ? registerHoverPlayback(nodeElement, togglePlayback) : undefined);
+  onMount(() => {
+    const unregisterHoverPlayback = nodeElement ? registerHoverPlayback(nodeElement, togglePlayback) : undefined;
+    window.addEventListener("pointermove", onCapturePointerMove, true);
+    window.addEventListener("pointerup", onCapturePointerUp, true);
+    window.addEventListener("pointercancel", onCapturePointerCancel, true);
+    return () => {
+      window.removeEventListener("pointermove", onCapturePointerMove, true);
+      window.removeEventListener("pointerup", onCapturePointerUp, true);
+      window.removeEventListener("pointercancel", onCapturePointerCancel, true);
+      unregisterHoverPlayback?.();
+      captureGesture = null;
+    };
+  });
   onDestroy(() => controlsAutoHide.dispose());
 
   function togglePlayback(): void {
@@ -108,9 +122,48 @@
     controlsAutoHide.pointerActivity();
   }
 
+  function onVideoCapturePointerDown(event: PointerEvent): void {
+    if (event.button !== 0 || event.isPrimary === false) return;
+    captureGesture = {
+      pointerId: event.pointerId,
+      start: { x: event.clientX, y: event.clientY },
+      moved: false,
+    };
+  }
+
+  function onCapturePointerMove(event: PointerEvent): void {
+    const gesture = captureGesture;
+    if (!gesture || gesture.pointerId !== event.pointerId || gesture.moved) return;
+    if (videoCaptureAction(gesture.start, { x: event.clientX, y: event.clientY }) === "move") {
+      gesture.moved = true;
+    }
+  }
+
+  function onCapturePointerUp(event: PointerEvent): void {
+    const gesture = captureGesture;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    captureGesture = null;
+    if (!gesture.moved) togglePlayback();
+  }
+
+  function onCapturePointerCancel(event: PointerEvent): void {
+    if (captureGesture?.pointerId === event.pointerId) captureGesture = null;
+  }
+
+  function onVideoCaptureKeydown(event: KeyboardEvent): void {
+    if (event.code !== "Enter" || event.repeat) return;
+    event.preventDefault();
+    togglePlayback();
+  }
+
 </script>
 
-<section class="video-node-body" bind:this={nodeElement} data-video-node={note.id}>
+<section
+  class="video-node-body"
+  bind:this={nodeElement}
+  data-video-node={note.id}
+  data-frame-hidden={note.frameHidden === true ? "true" : undefined}
+>
   {#if !source || failed}
     <div class="video-error" data-video-error role="status">{failed ? "Video could not be played." : `File missing: ${media?.name ?? note.name}`}</div>
   {:else}
@@ -147,6 +200,18 @@
         onerror={() => { failed = true; }}
         onclick={(event) => { event.stopPropagation(); togglePlayback(); }}
       ></video>
+      {#if note.frameHidden === true}
+        <div
+          class="video-capture"
+          data-video-capture
+          data-note-header
+          role="button"
+          tabindex="0"
+          aria-label={`Play or pause ${media?.name ?? note.name}`}
+          onpointerdown={onVideoCapturePointerDown}
+          onkeydown={onVideoCaptureKeydown}
+        ></div>
+      {/if}
       <VideoControls
         playing={playing}
         visible={controlsVisible || !playing}
@@ -164,15 +229,24 @@
       />
     </div>
   {/if}
-  <div class="video-caption" data-video-caption>
-    <NoteBody {note} />
-  </div>
+  {#if note.frameHidden !== true}
+    <div class="video-caption" data-video-caption>
+      <NoteBody {note} />
+    </div>
+  {/if}
 </section>
 
 <style>
   .video-node-body { display: flex; min-width: 0; flex-direction: column; gap: 5px; }
   .video-frame { position: relative; width: 100%; overflow: hidden; background: #282828; }
   .video-player { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; background: #282828; }
+  .video-capture { position: absolute; z-index: 1; inset: 0; background: transparent; cursor: grab; touch-action: none; }
+  .video-capture:active { cursor: grabbing; }
   .video-error { display: grid; min-height: 72px; place-items: center; padding: 8px; color: #c3c3c3; background: #282828; font-size: 11px; overflow-wrap: anywhere; }
   .video-caption { min-width: 0; }
+  :global(.note-card:has(.video-node-body[data-frame-hidden="true"])) { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+  :global(.note-card:has(.video-node-body[data-frame-hidden="true"]) > .hidden-note-header) { display: none; }
+  :global(.note-card:has(.video-node-body[data-frame-hidden="true"]) > .note-frame) { display: block; min-height: 0; flex: 1 1 auto; background: transparent; }
+  :global(.note-card:has(.video-node-body[data-frame-hidden="true"]) .note-frame-edge) { display: none; }
+  :global(.note-card:has(.video-node-body[data-frame-hidden="true"]) .note-content) { min-height: 0; padding: 0; background: transparent; }
 </style>
