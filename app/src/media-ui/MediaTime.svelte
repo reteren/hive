@@ -8,9 +8,11 @@
 
 <style>
   .media-time {
-    color: #bcbcbc;
+    color: #e8e8e8;
     font-size: 10px;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+    user-select: none;
+    -webkit-user-select: none;
   }
 </style>

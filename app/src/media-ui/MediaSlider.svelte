@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { clampSliderValue, sliderPercent, sliderValueAtPercent } from "./sliderLogic";
+  import { clampSliderValue, sliderPercent, sliderRatioAtPoint, sliderValueAfterArrow, sliderValueAtPercent } from "./sliderLogic";
 
   interface Props {
     value: number;
@@ -60,12 +60,16 @@
   function updateHover(event: PointerEvent): void {
     if (!(event.currentTarget instanceof HTMLElement)) return;
     const bounds = event.currentTarget.getBoundingClientRect();
-    const extent = orientation === "vertical" ? bounds.height : bounds.width;
-    if (extent <= 0) return;
-    const ratio = orientation === "vertical"
-      ? (bounds.bottom - event.clientY) / extent
-      : (event.clientX - bounds.left) / extent;
-    hoverRatio = Math.min(1, Math.max(0, ratio));
+    hoverRatio = sliderRatioAtPoint(bounds, event.clientX, event.clientY, orientation);
+  }
+
+  function handleKeydown(event: KeyboardEvent): void {
+    const next = sliderValueAfterArrow(currentValue, safeMax, step, event.key, orientation);
+    if (next === null) return;
+    event.preventDefault();
+    oninput?.(next);
+    onchange(next);
+    if (focused) hoverRatio = safeMax > 0 ? next / safeMax : 0;
   }
 
   function clearHover(): void {
@@ -102,6 +106,7 @@
     onchange={commitValue}
     onpointermove={updateHover}
     onpointerleave={clearHover}
+    onkeydown={handleKeydown}
     onfocus={focusSlider}
     onblur={blurSlider}
   />
@@ -118,6 +123,8 @@
     min-width: 34px;
     height: 16px;
     touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
   }
 
   .media-slider input {
@@ -141,9 +148,9 @@
     border-radius: 999px;
     background: linear-gradient(
       to right,
-      var(--accent) 0 var(--slider-fill),
-      #626262 var(--slider-fill) var(--slider-buffer),
-      #414141 var(--slider-buffer) 100%
+      #e8e8e8 0 var(--slider-fill),
+      rgba(255, 255, 255, .5) var(--slider-fill) var(--slider-buffer),
+      rgba(255, 255, 255, .25) var(--slider-buffer) 100%
     );
   }
 
@@ -152,9 +159,9 @@
     border-radius: 999px;
     background: linear-gradient(
       to right,
-      var(--accent) 0 var(--slider-fill),
-      #626262 var(--slider-fill) var(--slider-buffer),
-      #414141 var(--slider-buffer) 100%
+      #e8e8e8 0 var(--slider-fill),
+      rgba(255, 255, 255, .5) var(--slider-fill) var(--slider-buffer),
+      rgba(255, 255, 255, .25) var(--slider-buffer) 100%
     );
   }
 
@@ -163,18 +170,18 @@
     height: 8px;
     margin-top: -2.5px;
     appearance: none;
-    border: 1px solid #e7d19c;
+    border: 1px solid rgba(255, 255, 255, .85);
     border-radius: 50%;
-    background: var(--accent);
+    background: #fff;
     transition: transform 120ms ease;
   }
 
   .media-slider input::-moz-range-thumb {
     width: 7px;
     height: 7px;
-    border: 1px solid #e7d19c;
+    border: 1px solid rgba(255, 255, 255, .85);
     border-radius: 50%;
-    background: var(--accent);
+    background: #fff;
     transition: transform 120ms ease;
   }
 
@@ -227,9 +234,9 @@
     height: auto;
     background: linear-gradient(
       to top,
-      var(--accent) 0 var(--slider-fill),
-      #626262 var(--slider-fill) var(--slider-buffer),
-      #414141 var(--slider-buffer) 100%
+      #e8e8e8 0 var(--slider-fill),
+      rgba(255, 255, 255, .5) var(--slider-fill) var(--slider-buffer),
+      rgba(255, 255, 255, .25) var(--slider-buffer) 100%
     );
   }
 
@@ -238,9 +245,9 @@
     height: auto;
     background: linear-gradient(
       to top,
-      var(--accent) 0 var(--slider-fill),
-      #626262 var(--slider-fill) var(--slider-buffer),
-      #414141 var(--slider-buffer) 100%
+      #e8e8e8 0 var(--slider-fill),
+      rgba(255, 255, 255, .5) var(--slider-fill) var(--slider-buffer),
+      rgba(255, 255, 255, .25) var(--slider-buffer) 100%
     );
   }
 

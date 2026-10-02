@@ -13,22 +13,28 @@
   let { name, size = 16 }: { name: MediaIconName; size?: number } = $props();
 </script>
 
-{#if name === "play"}
-  <PlayIcon {size} />
-{:else if name === "pause"}
-  <PauseIcon {size} />
-{:else if name === "volume"}
-  <VolumeIcon {size} />
-{:else if name === "mute"}
-  <MuteIcon {size} />
-{:else if name === "record"}
-  <RecordIcon {size} />
-{:else if name === "stop"}
-  <StopIcon {size} />
-{:else if name === "export"}
-  <ExportIcon {size} />
-{:else if name === "delete"}
-  <DeleteIcon {size} />
-{:else}
-  <FullscreenIcon {size} />
-{/if}
+<span class="media-icon" aria-hidden="true">
+  {#if name === "play"}
+    <PlayIcon {size} />
+  {:else if name === "pause"}
+    <PauseIcon {size} />
+  {:else if name === "volume"}
+    <VolumeIcon {size} />
+  {:else if name === "mute"}
+    <MuteIcon {size} />
+  {:else if name === "record"}
+    <RecordIcon {size} />
+  {:else if name === "stop"}
+    <StopIcon {size} />
+  {:else if name === "export"}
+    <ExportIcon {size} />
+  {:else if name === "delete"}
+    <DeleteIcon {size} />
+  {:else}
+    <FullscreenIcon {size} />
+  {/if}
+</span>
+
+<style>
+  .media-icon { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; color: inherit; user-select: none; -webkit-user-select: none; }
+</style>

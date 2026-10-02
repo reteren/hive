@@ -224,13 +224,13 @@
   button.file-name { padding: 0; border: 0; background: transparent; text-align: left; cursor: text; }
   .recording-name-input { min-width: 0; flex: 1; padding: 2px 4px; border: 1px solid #5c5137; border-radius: 3px; outline: none; color: #eee; background: #242424; font: inherit; font-size: 11px; }
   .file-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; margin-left: auto; }
-  .icon-button, .play-button { display: grid; flex: 0 0 auto; place-items: center; padding: 0; border: 1px solid transparent; color: #c8c8c8; background: transparent; cursor: pointer; }
+  .icon-button, .play-button { display: grid; flex: 0 0 auto; place-items: center; padding: 0; border: 1px solid transparent; color: #e8e8e8; background: transparent; cursor: pointer; }
   .icon-button { width: 23px; height: 23px; border-radius: 3px; }
-  .icon-button:hover, .icon-button:focus-visible { border-color: #4c4c4c; color: #f2d38e; background: #383838; outline: none; }
-  .delete-button:hover { color: #ff9b91; }
+  .icon-button:hover, .icon-button:focus-visible { border-color: #4c4c4c; color: #fff; background: #383838; outline: none; }
+  .delete-button:hover { color: #fff; }
   .transport { display: grid; min-width: 0; grid-template-columns: 26px auto minmax(28px, 1fr) auto 24px; align-items: center; gap: 5px; }
-  .play-button { width: 25px; height: 25px; border-color: #4a4a4a; border-radius: 50%; color: #e6d09b; background: #353535; }
-  .play-button:hover { border-color: var(--accent); background: #404040; }
+  .play-button { width: 25px; height: 25px; border-color: #4a4a4a; border-radius: 50%; color: #e8e8e8; background: #353535; }
+  .play-button:hover { border-color: rgba(255, 255, 255, .45); background: #404040; }
   .volume-wrap { position: relative; display: grid; width: 24px; height: 24px; place-items: center; }
   .volume-popover { position: absolute; z-index: 5; right: 0; bottom: 100%; display: none; width: 118px; padding: 5px 7px; border: 1px solid #494949; border-radius: 4px; background: #222; box-shadow: 0 3px 9px #0006; }
   .volume-wrap:hover .volume-popover, .volume-wrap:focus-within .volume-popover { display: block; }
