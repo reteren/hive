@@ -32,7 +32,7 @@ import { copyStopwatchData, parseCalendarRule, parseStopwatchData } from "../tim
 import { copyEmbedSections, copyTimeForHost, parseEmbedSections } from "../combo/data";
 import type { ImageRef, MediaRef, YouTubeRef } from "../attachments/types";
 import { parseImageRef } from "../images/imageLogic";
-import { parseMediaRef } from "../formats/formatLogic";
+import { normalizePdfZoom, parseMediaRef } from "../formats/formatLogic";
 import { copyAudioRecordings, parseAudioRecordings } from "../audio/recordingData";
 import { parseYouTubeRef } from "../youtube/logic";
 
@@ -70,6 +70,7 @@ export interface IndexedNote {
   smoothLineAnchors?: NonNullable<Note["smoothLineAnchors"]>;
   image?: ImageRef;
   media?: MediaRef;
+  pdfZoom?: number;
   recordings?: Note["recordings"];
   youtube?: YouTubeRef;
   flipX?: true;
@@ -240,6 +241,7 @@ export function serializeProjectIndex(
       ...(note.listStats ? { listStats: true } : {}),
       image: note.image ? { ...note.image } : undefined,
       media: note.media ? { ...note.media } : undefined,
+      pdfZoom: note.type === "pdf" ? normalizePdfZoom(note.pdfZoom) : undefined,
       recordings: note.type === "audio" ? copyAudioRecordings(note.recordings) : undefined,
       youtube: note.youtube ? { ...note.youtube } : undefined,
       gifStopped: note.gifStopped === true ? true as const : undefined,
@@ -319,6 +321,7 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       ...(entry.listStats ? { listStats: true } : {}),
       ...(entry.image ? { image: { ...entry.image } } : {}),
       ...(entry.media ? { media: { ...entry.media } } : {}),
+      ...(entry.type === "pdf" && entry.pdfZoom !== undefined ? { pdfZoom: entry.pdfZoom } : {}),
       ...(entry.recordings ? { recordings: copyAudioRecordings(entry.recordings) } : {}),
       ...(entry.youtube ? { youtube: { ...entry.youtube } } : {}),
       ...(entry.type === "image" && entry.gifStopped === true ? { gifStopped: true } : {}),
@@ -445,6 +448,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
   const type = parseNoteKind(value.type);
   const image = value.image === undefined ? undefined : parseImageRef(value.image);
   const media = value.media === undefined ? undefined : parseMediaRef(value.media);
+  const pdfZoom = value.pdfZoom === undefined ? undefined : normalizePdfZoom(value.pdfZoom);
   const recordings = value.recordings === undefined ? undefined : parseAudioRecordings(value.recordings);
   const youtube = value.youtube === undefined ? undefined : parseYouTubeRef(value.youtube);
   const gifStopped = value.gifStopped === true ? true : undefined;
@@ -480,6 +484,9 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
   }
   if (value.gifStopped !== undefined && value.gifStopped !== true) {
     warnings.push(`Invalid GIF playback state for note ${id}; it was cleared.`);
+  }
+  if (value.pdfZoom !== undefined && (type !== "pdf" || pdfZoom === undefined)) {
+    warnings.push(`Invalid PDF zoom for note ${id}; fit-to-width was restored.`);
   }
   if (type === "image" && height === null) {
     height = image ? width * image.naturalHeight / image.naturalWidth : width;
@@ -565,6 +572,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
       moods: moods.values,
       image: image ?? undefined,
       media: media ?? undefined,
+      pdfZoom: type === "pdf" ? pdfZoom : undefined,
       recordings: type === "audio" && recordings ? copyAudioRecordings(recordings) : undefined,
       youtube: youtube ?? undefined,
       gifStopped: type === "image" ? gifStopped : undefined,

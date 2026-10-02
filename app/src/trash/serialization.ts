@@ -9,7 +9,7 @@ import type { CountMode, TimeNodeData, TimeRuntime, TimeSchedule } from "../time
 import { parseCalendarRule, parseStopwatchData } from "../time/data";
 import { copyTimeForHost, parseEmbedSections } from "../combo/data";
 import { parseImageRef } from "../images/imageLogic";
-import { parseMediaRef } from "../formats/formatLogic";
+import { normalizePdfZoom, parseMediaRef } from "../formats/formatLogic";
 import { copyAudioRecordings, parseAudioRecordings } from "../audio/recordingData";
 import { parseYouTubeRef } from "../youtube/logic";
 import { copyTrashEntry } from "./trash";
@@ -123,6 +123,7 @@ function parseTrashNote(value: unknown): Note | null {
   const embedSections = parseEmbedSections(value.embedSections);
   const image = value.image === undefined ? null : parseImageRef(value.image);
   const media = value.media === undefined ? null : parseMediaRef(value.media);
+  const pdfZoom = value.pdfZoom === undefined ? undefined : normalizePdfZoom(value.pdfZoom);
   const recordings = value.recordings === undefined ? undefined : parseAudioRecordings(value.recordings);
   const youtube = value.youtube === undefined ? null : parseYouTubeRef(value.youtube) ?? null;
   if (task === false || taskMemory === false ||
@@ -140,6 +141,7 @@ function parseTrashNote(value: unknown): Note | null {
     value.recordings !== undefined && (value.type !== "audio" || !recordings) ||
     value.youtube !== undefined && !youtube || value.type === "youtube" && !youtube ||
     value.headerHidden !== undefined && typeof value.headerHidden !== "boolean" ||
+    value.pdfZoom !== undefined && (value.type !== "pdf" || pdfZoom === undefined) ||
     value.flipX !== undefined && value.flipX !== true || value.flipY !== undefined && value.flipY !== true ||
     value.gifStopped !== undefined && value.gifStopped !== true) return null;
   const scope = value.scope === undefined ? undefined : parseScope(value.scope);
@@ -165,6 +167,7 @@ function parseTrashNote(value: unknown): Note | null {
     ...(embedSections ? { embedSections } : {}),
     ...(image ? { image } : {}),
     ...(media ? { media } : {}),
+    ...(value.type === "pdf" && pdfZoom !== undefined ? { pdfZoom } : {}),
     ...(recordings ? { recordings: copyAudioRecordings(recordings) } : {}),
     ...(youtube ? { youtube } : {}),
     ...(value.type === "image" && value.flipX === true ? { flipX: true } : {}),
