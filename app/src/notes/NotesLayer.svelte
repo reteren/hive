@@ -16,6 +16,7 @@
   import TasksPanel from "../tasks/TasksPanel.svelte";
   import { boardPopupStyle, dismissBoardPopup, fitBoardPopupAnchor } from "../ui/boardAnchor";
   import { imageFirstOrder } from "../images/imageLogic";
+  import ImageOpacityPopover from "../images/ImageOpacityPopover.svelte";
   import { handleBoardImagePaste, registerImageDropHandler, registerImagePasteToBoard } from "../images/imageActions";
   import { handleBoardAudioPaste, registerAudioDropHandler, registerAudioPasteHandler } from "../audio/audioActions";
   import {
@@ -230,6 +231,7 @@
   </div>
 
   <TasksPanel />
+  <ImageOpacityPopover />
 
   {#if linkContext.menu}
     <div
