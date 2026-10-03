@@ -460,6 +460,13 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
     min-height: 0;
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr);
+    background: transparent;
+  }
+
+  .note-card[data-kind="image"] {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
   }
 
   .note-card[data-kind="image"] .note-frame-edge {
