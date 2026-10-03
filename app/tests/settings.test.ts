@@ -16,6 +16,10 @@ describe("view settings serialization", () => {
       history: { limit: 256 },
       accessibility: { reduceAnimations: true },
       zones: { brushSize: 240 },
+      drawing: {
+        brush: { color: "#336699", size: 42, opacity: 0.75, hardness: 0.4 },
+        presets: [{ id: "soft", name: "Soft", color: "#336699", size: 42, opacity: 0.75, hardness: 0.4 }],
+      },
       keyOverrides: { "view.home": ["Ctrl+Alt+KeyH"], "edit.undo": [] },
       transferHintsShown: 3,
       fitWidthToText: false,
@@ -89,6 +93,7 @@ describe("view settings serialization", () => {
       history: { limit: 64 },
       accessibility: DEFAULT_VIEW_SETTINGS.accessibility,
       zones: DEFAULT_VIEW_SETTINGS.zones,
+      drawing: DEFAULT_VIEW_SETTINGS.drawing,
       keyOverrides: {},
       transferHintsShown: 0,
       fitWidthToText: true,
@@ -113,6 +118,25 @@ describe("view settings serialization", () => {
     expect(parseViewSettings('{"zones":{"brushSize":301}}', DEFAULT_VIEW_SETTINGS).zones.brushSize).toBe(300);
     expect(parseViewSettings('{"zones":{"brushSize":0}}', DEFAULT_VIEW_SETTINGS).zones.brushSize).toBe(20);
     expect(parseViewSettings('{"zones":{"brushSize":"large"}}', DEFAULT_VIEW_SETTINGS).zones.brushSize).toBe(60);
+  });
+
+  it("persists brush settings and validates drawing presets", () => {
+    const settings = {
+      ...DEFAULT_VIEW_SETTINGS,
+      drawing: {
+        brush: { color: "#123ABC", size: 401, opacity: 0.73, hardness: -1 },
+        presets: [
+          { id: "soft", name: " Soft ", color: "#aabbcc", size: 20, opacity: 0.5, hardness: 0.25 },
+          { id: "bad", name: "Bad", color: "red", size: 10, opacity: 0.5, hardness: 0.5 },
+        ],
+      },
+    };
+    const saved = serializeViewSettings(settings);
+    const parsed = parseViewSettings(saved, DEFAULT_VIEW_SETTINGS);
+    expect(parsed.drawing).toEqual({
+      brush: { color: "#123abc", size: 400, opacity: 0.73, hardness: 0 },
+      presets: [{ id: "soft", name: "Soft", color: "#aabbcc", size: 20, opacity: 0.5, hardness: 0.25 }],
+    });
   });
 
   it("rejects non-finite positions and zooms outside the configured limits", () => {

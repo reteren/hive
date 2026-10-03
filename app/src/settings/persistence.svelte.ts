@@ -12,6 +12,7 @@ import { quickInputShortcut, setQuickInputShortcutValue } from "./quickInputShor
 import { setTimeCounters, timeCounters } from "../time/runtime.svelte";
 import { timeEnablePreference } from "../time/enablePreference.svelte";
 import { gifPlayback, setGifPlaybackMode } from "../attachments/gifPlayback.svelte";
+import { drawingPreferencesSnapshot, loadDrawingPreferences } from "../drawing/tools.svelte";
 import {
   parseTimeCounters,
   parseViewSettings,
@@ -132,6 +133,7 @@ function currentSettings(): ViewSettings {
     history: { limit: undoHistory.limit },
     accessibility: { reduceAnimations: preferences.reduceAnimations },
     zones: { brushSize: brushState.size },
+    drawing: drawingPreferencesSnapshot(),
     keyOverrides: getCommandKeyOverrides(),
     transferHintsShown: preferences.transferHintsShown,
     fitWidthToText: preferences.fitWidthToText,
@@ -157,6 +159,7 @@ function applySettings(settings: ViewSettings): void {
   grid.snap = settings.grid.snap;
   setHistoryLimit(settings.history.limit);
   setBrushSize(settings.zones.brushSize);
+  loadDrawingPreferences(settings.drawing);
   setReduceAnimations(settings.accessibility.reduceAnimations);
   setCommandKeyOverrides(settings.keyOverrides);
   setTransferHintsShown(settings.transferHintsShown);

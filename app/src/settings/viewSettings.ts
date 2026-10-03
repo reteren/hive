@@ -7,8 +7,9 @@ import { systemPrefersReducedMotion } from "./motion";
 import type { BackupInterval } from "../backup/backupSettings.svelte";
 import { DEFAULT_QUICK_INPUT_SHORTCUT, normalizeQuickInputShortcut } from "../quickInput/shortcutModel";
 import { normalizeGifPlaybackMode, type GifPlaybackMode } from "../attachments/gifPlayback.svelte";
+import { DEFAULT_DRAWING_PREFERENCES, normalizeDrawingPreferences, type DrawingPreferences } from "../drawing/settings";
 
-export const VIEW_SETTINGS_VERSION = 13;
+export const VIEW_SETTINGS_VERSION = 14;
 
 export interface CameraSettings {
   minZoom: number;
@@ -43,6 +44,7 @@ export interface ViewSettings {
   history: HistorySettings;
   accessibility: AccessibilitySettings;
   zones: ZoneSettings;
+  drawing: DrawingPreferences;
   keyOverrides: KeyBindingOverrides;
   transferHintsShown: number;
   fitWidthToText: boolean;
@@ -73,6 +75,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
   history: { limit: DEFAULT_HISTORY_LIMIT },
   accessibility: { reduceAnimations: systemPrefersReducedMotion() },
   zones: { brushSize: BRUSH_MIN * 3 },
+  drawing: { brush: { ...DEFAULT_DRAWING_PREFERENCES.brush }, presets: [] },
   keyOverrides: {},
   transferHintsShown: 0,
   fitWidthToText: true,
@@ -136,6 +139,7 @@ export function parseViewSettings(serialized: string | null | undefined, default
     zones: {
       brushSize: brushSizeOrDefault(zonesInput.brushSize, defaults.zones.brushSize),
     },
+    drawing: normalizeDrawingPreferences(parsed.drawing, defaults.drawing),
     keyOverrides: sanitizeKeyOverrides(parsed.keyOverrides),
     transferHintsShown: hintCountOrDefault(parsed.transferHintsShown, defaults.transferHintsShown),
     fitWidthToText: booleanOrDefault(parsed.fitWidthToText, defaults.fitWidthToText),
@@ -167,6 +171,7 @@ export function serializeViewSettings(settings: ViewSettings): string {
     history: { limit: settings.history.limit },
     accessibility: { reduceAnimations: settings.accessibility.reduceAnimations },
     zones: { brushSize: settings.zones.brushSize },
+    drawing: normalizeDrawingPreferences(settings.drawing),
     keyOverrides: sanitizeKeyOverrides(settings.keyOverrides),
     transferHintsShown: hintCountOrDefault(settings.transferHintsShown, 0),
     fitWidthToText: settings.fitWidthToText,
@@ -238,6 +243,7 @@ function cloneViewSettings(settings: ViewSettings): ViewSettings {
     history: { ...settings.history },
     accessibility: { ...settings.accessibility },
     zones: { ...settings.zones },
+    drawing: normalizeDrawingPreferences(settings.drawing),
     keyOverrides: sanitizeKeyOverrides(settings.keyOverrides),
     transferHintsShown: settings.transferHintsShown,
     fitWidthToText: settings.fitWidthToText,
