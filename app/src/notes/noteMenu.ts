@@ -5,6 +5,9 @@ import { execute } from "../history/history.svelte";
 import { toggleSmoothLinesForNote } from "../links/smoothLines";
 import { menuShortcutLabel } from "../commands/menuShortcut";
 import { runNoteMenuCommand } from "../commands/objectMenu";
+import { camera } from "../board/camera.svelte";
+import { linkContext } from "../links-in-text/contextMenu.svelte";
+import { openImageOpacityPopover } from "../images/imageOpacity.svelte";
 import {
   closeGifContextMenu,
   gifPlayback,
@@ -53,7 +56,7 @@ export function noteMenuItemsForContext(
   const target = gifTarget?.noteId === noteId ? gifTarget : null;
 
   if (note?.type === "image") {
-    const allowed = new Set(["notes.copyLink", "archive.note", ...UNIVERSAL_MENU_IDS]);
+    const allowed = new Set(["notes.copyLink", "image.opacity", "archive.note", ...UNIVERSAL_MENU_IDS]);
     if (note.image?.mime === "image/gif" && target?.kind === "board") {
       allowed.add("attachments.toggleGif");
     }
@@ -84,6 +87,19 @@ registerNoteMenuItem({
   },
   visible: (noteId) => gifPlayback.contextMenu?.target.noteId === noteId,
   order: 11,
+});
+
+registerNoteMenuItem({
+  id: "image.opacity",
+  label: () => "Opacity…",
+  run: (noteId) => {
+    const menu = linkContext.menu;
+    if (menu?.kind === "note" && menu.noteId === noteId) {
+      openImageOpacityPopover(noteId, { x: menu.x, y: menu.y }, camera.zoom);
+    }
+  },
+  visible: (noteId) => board.notes[noteId]?.type === "image",
+  order: 12,
 });
 
 registerNoteMenuItem({
