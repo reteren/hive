@@ -272,7 +272,7 @@ function selectIds(ids: readonly string[], zoneIds: readonly string[] = []): voi
 
 type CopySource = Omit<Pick<Note,
   "type" | "name" | "text" | "x" | "y" | "width" | "height" | "createdAt" |
-  "task" | "taskMemory" | "importance" | "purposes" | "embedSections" | "headerHidden" | "frameHidden" | "image" | "media" | "pdfZoom" | "recordings" | "youtube" | "source" | "flipX" | "flipY" | "gifStopped"
+  "task" | "taskMemory" | "importance" | "purposes" | "embedSections" | "headerHidden" | "frameHidden" | "image" | "opacity" | "media" | "pdfZoom" | "recordings" | "youtube" | "source" | "flipX" | "flipY" | "gifStopped"
 >, "time" | "message"> & {
   time?: Note["time"] | null;
   message?: Note["message"] | null;
@@ -339,6 +339,7 @@ function createCopies(
       ...(note.headerHidden ? { headerHidden: true } : {}),
       ...((note.type === "youtube" || note.type === "video") && note.frameHidden === true ? { frameHidden: true as const } : {}),
       ...(note.image ? { image: { ...note.image } } : {}),
+      ...(note.type === "image" && note.opacity !== undefined ? { opacity: note.opacity } : {}),
       ...(note.media ? { media: { ...note.media } } : {}),
       ...(note.pdfZoom !== undefined ? { pdfZoom: note.pdfZoom } : {}),
       ...(note.recordings ? { recordings: copyAudioRecordings(note.recordings) } : {}),
@@ -607,7 +608,7 @@ function sameNotes(first: readonly Note[], second: readonly Note[]): boolean {
     return other && note.id === other.id && note.name === other.name && note.text === other.text &&
       note.type === other.type && note.x === other.x && note.y === other.y && note.width === other.width &&
       note.height === other.height && note.createdAt === other.createdAt &&
-      note.pdfZoom === other.pdfZoom &&
+      note.pdfZoom === other.pdfZoom && note.opacity === other.opacity &&
       note.headerHidden === other.headerHidden && note.frameHidden === other.frameHidden && note.flipX === other.flipX && note.flipY === other.flipY && note.gifStopped === other.gifStopped &&
       JSON.stringify(note.image ?? null) === JSON.stringify(other.image ?? null) &&
       JSON.stringify(note.media ?? null) === JSON.stringify(other.media ?? null) &&
