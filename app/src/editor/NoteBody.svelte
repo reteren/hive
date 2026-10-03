@@ -6,8 +6,18 @@
   import EditorHost from "./EditorHost.svelte";
   import MarkdownPreview from "./MarkdownPreview.svelte";
   import { startNoteEditing } from "./editorSession";
+  import { canScrollTextNote, wheelScrollsText } from "../notes/textScroll";
 
   let { note }: { note: Note } = $props();
+
+  function handleWheel(event: WheelEvent): void {
+    if (!canScrollTextNote(note)) return;
+    const body = event.currentTarget as HTMLElement;
+    const scroller = body.querySelector<HTMLElement>(".cm-scroller") ?? body;
+    if (wheelScrollsText(scroller.scrollTop, scroller.clientHeight, scroller.scrollHeight, event.deltaY)) {
+      event.stopPropagation();
+    }
+  }
 
   function beginEditingFromKeyboard(event: KeyboardEvent): void {
     if (event.target !== event.currentTarget) return;
@@ -21,18 +31,20 @@
 </script>
 
 {#if editing.noteId === note.id}
-  <div class="note-body" class:fixed-height={note.height !== null} data-gif-host-selected={selection.ids.includes(note.id) ? "true" : "false"}>
+  <div class="note-body editing-body" class:fixed-height={note.height !== null} class:scrollable-text={canScrollTextNote(note)} data-gif-host-selected={selection.ids.includes(note.id) ? "true" : "false"} onwheel={handleWheel}>
     <EditorHost {note} />
   </div>
 {:else}
   <div
     class="note-body"
     class:fixed-height={note.height !== null}
+    class:scrollable-text={canScrollTextNote(note)}
     data-gif-host-selected={selection.ids.includes(note.id) ? "true" : "false"}
     role="button"
     tabindex="0"
     aria-label={`Edit text for ${note.name}`}
     onkeydown={beginEditingFromKeyboard}
+    onwheel={handleWheel}
   >
     <MarkdownPreview text={note.text} noteId={note.id} />
   </div>
@@ -48,7 +60,10 @@
     height: 100%;
     min-height: 0;
     overflow: hidden;
+    overflow-x: hidden;
   }
+
+  .fixed-height.scrollable-text:not(.editing-body) { overflow-y: auto; }
 
   .fixed-height :global(.editor-host),
   .fixed-height :global(.cm-editor) {
@@ -57,7 +72,8 @@
   }
 
   .fixed-height :global(.cm-scroller) {
-    overflow: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 
   :global(.note-content:has(> .note-body.fixed-height)) {

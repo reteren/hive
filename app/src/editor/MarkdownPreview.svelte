@@ -127,6 +127,8 @@
 <style>
   .markdown-preview {
     min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
     color: var(--text);
     font-size: 14px;
     line-height: 1.45;
@@ -308,10 +310,10 @@
   }
 
   .markdown-preview :global(.md-table) {
-    display: block;
     width: 100%;
+    max-width: 100%;
     border-collapse: collapse;
-    overflow-x: auto;
+    table-layout: fixed;
     font-size: 0.94em;
   }
 
@@ -327,11 +329,11 @@
 
   .markdown-preview :global(.md-table th),
   .markdown-preview :global(.md-table td) {
-    min-width: 2.6em;
     padding: 0.25em 0.4em;
     border: 1px solid #4a4a4a;
     text-align: left;
     overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .markdown-preview :global(.md-table th) {

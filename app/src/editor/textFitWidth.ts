@@ -2,9 +2,11 @@ import type { NoteKind } from "../model/note";
 import {
   cacheMinimumTextWidth,
   clearMinimumTextWidth,
+  MIN_NOTE_WIDTH,
   maximumNoteWidthForKind,
   minimumWidthForText,
 } from "../notes/layout.svelte";
+import { isTextNoteKind } from "../notes/textScroll";
 
 interface NoteLineWidthCache {
   font: string;
@@ -65,6 +67,11 @@ export function measureAndCacheTextMinimumWidth(
   source: HTMLElement,
   kind: NoteKind,
 ): number | null {
+  // Text notes always wrap at their chosen width; an unbroken line must not widen them.
+  if (isTextNoteKind(kind)) {
+    cacheMinimumTextWidth(noteId, MIN_NOTE_WIDTH);
+    return MIN_NOTE_WIDTH;
+  }
   if (typeof document === "undefined" || typeof getComputedStyle === "undefined") return null;
   const root = source.matches(".note-card") ? source : source.closest<HTMLElement>(".note-card");
   const content = root?.querySelector<HTMLElement>(".note-content");

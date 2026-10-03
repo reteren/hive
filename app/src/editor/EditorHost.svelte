@@ -26,17 +26,8 @@
       }
     });
 
-    const onWheel = (event: WheelEvent) => {
-      const scroller = view.scrollDOM;
-      if (note.height !== null && scroller.scrollHeight > scroller.clientHeight + 1) {
-        event.stopPropagation();
-      }
-    };
-    view.dom.addEventListener("wheel", onWheel);
-
     return () => {
       cancelAnimationFrame(frame);
-      view.dom.removeEventListener("wheel", onWheel);
       closeHighlightPalette(view);
       breakTextEditGroup();
       detachEditor(view);
