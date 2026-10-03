@@ -11,7 +11,7 @@ import {
 } from "./types";
 
 const MAX_TILE_COORDINATE = 10_000_000;
-const MAX_TILES_PER_RECT = 10_000;
+const MAX_TILES_PER_RECT = 100_000;
 
 export interface DrawingCanvasAdapter {
   createCanvas(): HTMLCanvasElement;
@@ -129,6 +129,7 @@ export function createDrawingTileStore(adapter: DrawingCanvasAdapter = browserDr
       if (!blob) return [key, null] as const;
       const canvas = adapter.createCanvas();
       await adapter.restore(canvas, blob);
+      if (isRgbaTransparent(adapter.pixels(canvas))) return [key, null] as const;
       return [key, canvas] as const;
     }));
     for (const [key, canvas] of prepared) {

@@ -14,6 +14,11 @@ export interface DrawingHistoryExtras {
 
 let restoreQueue = Promise.resolve();
 
+/** Wait until an asynchronous tile restore caused by Undo/Redo has completed. */
+export function waitForDrawingHistoryRestore(): Promise<void> {
+  return restoreQueue;
+}
+
 /** Record one already-applied drawing action with its compact before/after tile snapshots. */
 export function pushDrawingHistory(
   label: string,
@@ -111,7 +116,7 @@ export function writeRasterRect(image: ImageData, rasterX: number, rasterY: numb
       const context = tile?.getContext("2d");
       if (!tile || !context) throw new Error(`Could not write drawing tile ${col}:${row}.`);
       const chunk = new ImageData(right - left, bottom - top);
-      copyRows(image.data, image.width, bottom - top, chunk.data, chunk.width, 0, 0, left - rasterX);
+      copyRows(image.data, image.width, bottom - top, chunk.data, chunk.width, 0, 0, left - rasterX, right - left);
       context.putImageData(chunk, left - col * DRAW_TILE_SIZE_PX, top - row * DRAW_TILE_SIZE_PX);
       changed.push(`${col}:${row}`);
     }
@@ -142,8 +147,9 @@ function copyRows(
   targetX: number,
   targetY: number,
   sourceX = 0,
+  copyWidth = sourceWidth - sourceX,
 ): void {
-  const byteWidth = targetWidth * 4;
+  const byteWidth = copyWidth * 4;
   for (let row = 0; row < rowCount; row += 1) {
     const sourceStart = (row * sourceWidth + sourceX) * 4;
     const targetStart = ((targetY + row) * targetWidth + targetX) * 4;

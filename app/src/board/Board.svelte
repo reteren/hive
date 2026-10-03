@@ -7,6 +7,7 @@
   import ZonesLayer from "../zones/ZonesLayer.svelte";
   import ZoneBrushLayer from "../zones/ZoneBrushLayer.svelte";
   import BrushPanel from "../zones/BrushPanel.svelte";
+  import DrawingLayer from "../drawing/DrawingLayer.svelte";
   import BeaconsLayer from "../beacons/BeaconsLayer.svelte";
   import LinksLayer from "../links/LinksLayer.svelte";
   import "../links/commands";
@@ -117,6 +118,7 @@
   <GridLayer />
   <ZonesLayer />
   <ZoneBrushLayer />
+  <DrawingLayer />
   <SelectionOverlay />
   <BrushPanel />
   <LinksLayer />

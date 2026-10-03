@@ -1,12 +1,7 @@
 import {
   DRAW_PX_PER_UNIT,
-  type WorldRect,
   type BrushSettings,
 } from "./types";
-import { drawingTools } from "./tools.svelte";
-import { registerDrawTool } from "./toolRegistry";
-import { drawingTileStore } from "./tileStore.svelte";
-import { paintIntoTiles, pushDrawingHistory } from "./history";
 export { paintIntoTiles, readRasterRect, writeRasterRect } from "./history";
 
 export interface StrokePoint {
@@ -20,29 +15,36 @@ export interface FinishedStroke {
   rasterY: number;
 }
 
+export interface StrokeRasterRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface DrawStroke {
   add(world: StrokePoint, pressure?: number): void;
   readonly preview: HTMLCanvasElement;
   readonly rasterX: number;
   readonly rasterY: number;
+  readonly lastDirtyRect: StrokeRasterRect | null;
   finish(): FinishedStroke | null;
   dispose(): void;
 }
 
-export const drawingStrokePreview = $state({
-  source: null as HTMLCanvasElement | null,
-  rasterX: 0,
-  rasterY: 0,
-  revision: 0,
-});
-
-let activeStroke: DrawStroke | null = null;
-let activeSettings: BrushSettings | null = null;
-let commitQueue = Promise.resolve();
-
 /** The diameter is a fixed board width for the duration of the gesture. */
 export function brushWorldWidth(size: number, zoom: number): number {
   return size / (10 * safeZoom(zoom));
+}
+
+/** Source-over alpha for consecutive pointer-up strokes (opacity is applied once per stroke). */
+export function sourceOverAlpha(destinationAlpha: number, maskAlpha: number, opacity: number): number {
+  const destinationByte = Number.isFinite(destinationAlpha) ? Math.min(255, Math.max(0, destinationAlpha)) : 0;
+  const sourceByte = Number.isFinite(maskAlpha) ? Math.min(255, Math.max(0, maskAlpha)) : 0;
+  const sourceOpacity = Number.isFinite(opacity) ? Math.min(1, Math.max(0, opacity)) : 0;
+  const destination = destinationByte / 255;
+  const source = sourceByte / 255 * sourceOpacity;
+  return Math.round((source + destination * (1 - source)) * 255);
 }
 
 /** Interpolate a path at no more than `spacing` between samples, including both endpoints. */
@@ -127,6 +129,8 @@ export function createStroke(settings: BrushSettings, zoom: number): DrawStroke 
   let pixels: ImageData | null = null;
   let closed = false;
   let previous: StrokePoint | null = null;
+  let contentBounds: StrokeRasterRect | null = null;
+  let lastDirtyRect: StrokeRasterRect | null = null;
   let bounds: { left: number; top: number; right: number; bottom: number } | null = null;
 
   function ensureBounds(point: StrokePoint, radius: number): void {
@@ -134,11 +138,15 @@ export function createStroke(settings: BrushSettings, zoom: number): DrawStroke 
     const nextTop = Math.floor(point.y - radius - 1);
     const nextRight = Math.ceil(point.x + radius + 1);
     const nextBottom = Math.ceil(point.y + radius + 1);
-    const left = bounds ? Math.min(bounds.left, nextLeft) : nextLeft;
-    const top = bounds ? Math.min(bounds.top, nextTop) : nextTop;
-    const right = bounds ? Math.max(bounds.right, nextRight) : nextRight;
-    const bottom = bounds ? Math.max(bounds.bottom, nextBottom) : nextBottom;
-    if (bounds && left === bounds.left && top === bounds.top && right === bounds.right && bottom === bounds.bottom) return;
+    const growthMargin = 128;
+    if (bounds && nextLeft >= bounds.left + growthMargin && nextTop >= bounds.top + growthMargin &&
+      nextRight <= bounds.right - growthMargin && nextBottom <= bounds.bottom - growthMargin) return;
+    const horizontalGrowth = bounds ? Math.max(growthMargin, width) : growthMargin;
+    const verticalGrowth = bounds ? Math.max(growthMargin, height) : growthMargin;
+    const left = bounds ? Math.min(bounds.left, nextLeft - horizontalGrowth) : nextLeft - growthMargin;
+    const top = bounds ? Math.min(bounds.top, nextTop - verticalGrowth) : nextTop - growthMargin;
+    const right = bounds ? Math.max(bounds.right, nextRight + horizontalGrowth) : nextRight + growthMargin;
+    const bottom = bounds ? Math.max(bounds.bottom, nextBottom + verticalGrowth) : nextBottom + growthMargin;
 
     const nextWidth = right - left;
     const nextHeight = bottom - top;
@@ -181,12 +189,11 @@ export function createStroke(settings: BrushSettings, zoom: number): DrawStroke 
     }
   }
 
-  function dab(point: StrokePoint, pressure: number): void {
-    const normalizedPressure = clamp(pressure, 0.1, 1, 0.5);
-    const radius = Math.max(0.5, baseDiameter * normalizedPressure / 2);
+  function dab(point: StrokePoint): StrokeRasterRect | null {
+    const radius = Math.max(0.5, baseDiameter / 2);
     ensureBounds(point, radius);
     const dirty = accumulateDabMaxAlpha(mask, width, height, point.x - originX, point.y - originY, radius, safeSettings.hardness);
-    if (!dirty || !pixels || !context) return;
+    if (!dirty || !pixels) return null;
     const red = Number.parseInt(safeSettings.color.slice(1, 3), 16);
     const green = Number.parseInt(safeSettings.color.slice(3, 5), 16);
     const blue = Number.parseInt(safeSettings.color.slice(5, 7), 16);
@@ -200,25 +207,34 @@ export function createStroke(settings: BrushSettings, zoom: number): DrawStroke 
         pixels.data[colorOffset + 3] = mask[pixelOffset];
       }
     }
-    context.putImageData(pixels, 0, 0, dirty.x, dirty.y, dirty.width, dirty.height);
+    return { x: dirty.x + originX, y: dirty.y + originY, width: dirty.width, height: dirty.height };
   }
 
-  function add(world: StrokePoint, pressure = 0.5): void {
+  function add(world: StrokePoint, _pressure = 0.5): void {
+    // Pressure is intentionally ignored in R10.1: the configured screen diameter is fixed per stroke.
     if (closed || !Number.isFinite(world.x) || !Number.isFinite(world.y)) return;
+    lastDirtyRect = null;
     const raster = { x: world.x * DRAW_PX_PER_UNIT, y: world.y * DRAW_PX_PER_UNIT };
     if (!previous) {
-      dab(raster, pressure);
+      lastDirtyRect = dab(raster);
       previous = raster;
-      return;
+    } else {
+      const distance = Math.hypot(raster.x - previous.x, raster.y - previous.y);
+      const spacing = Math.max(0.5, baseDiameter * 0.35);
+      const steps = Math.max(1, Math.ceil(distance / spacing));
+      for (let index = 1; index <= steps; index += 1) {
+        const ratio = index / steps;
+        const changed = dab({ x: previous.x + (raster.x - previous.x) * ratio, y: previous.y + (raster.y - previous.y) * ratio });
+        if (changed) lastDirtyRect = unionRects(lastDirtyRect, changed);
+      }
+      previous = raster;
     }
-    const distance = Math.hypot(raster.x - previous.x, raster.y - previous.y);
-    const spacing = Math.max(0.5, baseDiameter * 0.35);
-    const steps = Math.max(1, Math.ceil(distance / spacing));
-    for (let index = 1; index <= steps; index += 1) {
-      const ratio = index / steps;
-      dab({ x: previous.x + (raster.x - previous.x) * ratio, y: previous.y + (raster.y - previous.y) * ratio }, pressure);
+    if (lastDirtyRect) {
+      contentBounds = unionRects(contentBounds, lastDirtyRect);
+      const dirtyX = lastDirtyRect.x - originX;
+      const dirtyY = lastDirtyRect.y - originY;
+      context?.putImageData(pixels!, 0, 0, dirtyX, dirtyY, lastDirtyRect.width, lastDirtyRect.height);
     }
-    previous = raster;
   }
 
   return {
@@ -226,10 +242,28 @@ export function createStroke(settings: BrushSettings, zoom: number): DrawStroke 
     preview,
     get rasterX() { return originX; },
     get rasterY() { return originY; },
+    get lastDirtyRect() { return lastDirtyRect; },
     finish() {
       if (closed) return null;
       closed = true;
-      return mask.some((alpha) => alpha > 0) ? { source: preview, rasterX: originX, rasterY: originY } : null;
+      if (!contentBounds) return null;
+      const source = document.createElement("canvas");
+      source.width = contentBounds.width;
+      source.height = contentBounds.height;
+      const sourceContext = source.getContext("2d");
+      if (!sourceContext) throw new Error("Could not crop a drawing stroke.");
+      sourceContext.drawImage(
+        preview,
+        contentBounds.x - originX,
+        contentBounds.y - originY,
+        contentBounds.width,
+        contentBounds.height,
+        0,
+        0,
+        contentBounds.width,
+        contentBounds.height,
+      );
+      return { source, rasterX: contentBounds.x, rasterY: contentBounds.y };
     },
     dispose() {
       closed = true;
@@ -238,97 +272,11 @@ export function createStroke(settings: BrushSettings, zoom: number): DrawStroke 
       mask = new Uint8ClampedArray();
       pixels = null;
       bounds = null;
+      contentBounds = null;
+      lastDirtyRect = null;
     },
   };
 }
-
-/** Begin a brush gesture; the actual paint is committed as one action on endStroke. */
-export function beginStroke(settings: BrushSettings, world: StrokePoint, zoom: number, pressure = 0.5): void {
-  cancelStroke();
-  activeSettings = { ...settings };
-  activeStroke = createStroke(activeSettings, zoom);
-  activeStroke.add(world, pressure);
-  publishPreview();
-}
-
-export function extendStroke(world: StrokePoint, pressure = 0.5): void {
-  if (!activeStroke) return;
-  activeStroke.add(world, pressure);
-  publishPreview();
-}
-
-export async function endStroke(): Promise<void> {
-  const stroke = activeStroke;
-  const settings = activeSettings;
-  activeStroke = null;
-  activeSettings = null;
-  clearPreview();
-  if (!stroke || !settings) return;
-
-  const finished = stroke.finish();
-  if (!finished) {
-    stroke.dispose();
-    return;
-  }
-  const rect: WorldRect = {
-    x: finished.rasterX / DRAW_PX_PER_UNIT,
-    y: finished.rasterY / DRAW_PX_PER_UNIT,
-    width: finished.source.width / DRAW_PX_PER_UNIT,
-    height: finished.source.height / DRAW_PX_PER_UNIT,
-  };
-  const keys = drawingTileStore.keysInRect(rect, true);
-  const operation = commitQueue.then(async () => {
-    let before: Awaited<ReturnType<typeof drawingTileStore.snapshot>> | null = null;
-    let attemptedPaint = false;
-    try {
-      before = await drawingTileStore.snapshot(keys);
-      attemptedPaint = true;
-      const changed = paintIntoTiles(finished.source, finished.rasterX, finished.rasterY, "source-over", settings.opacity);
-      const after = await drawingTileStore.snapshot(keys);
-      if (changed.length > 0) pushDrawingHistory("Draw", before, after);
-    } catch (error) {
-      if (before && attemptedPaint) await drawingTileStore.restore(before).catch((restoreError: unknown) => {
-        console.error("Could not roll back an incomplete drawing stroke", restoreError);
-      });
-      console.error("Could not finish drawing stroke", error);
-      throw error;
-    } finally {
-      stroke.dispose();
-    }
-  });
-  commitQueue = operation.catch(() => undefined);
-  await operation;
-}
-
-export function cancelStroke(): void {
-  activeStroke?.dispose();
-  activeStroke = null;
-  activeSettings = null;
-  clearPreview();
-}
-
-function publishPreview(): void {
-  if (!activeStroke) return;
-  drawingStrokePreview.source = activeStroke.preview;
-  drawingStrokePreview.rasterX = activeStroke.rasterX;
-  drawingStrokePreview.rasterY = activeStroke.rasterY;
-  drawingStrokePreview.revision += 1;
-}
-
-function clearPreview(): void {
-  drawingStrokePreview.source = null;
-  drawingStrokePreview.revision += 1;
-}
-
-registerDrawTool("brush", {
-  down(event) { beginStroke(drawingTools.brush, event.world, event.zoom, event.pressure); },
-  move(event) { extendStroke(event.world, event.pressure); },
-  up(event) {
-    extendStroke(event.world, event.pressure);
-    void endStroke().catch((error: unknown) => console.error("Drawing stroke failed", error));
-  },
-  cancel: cancelStroke,
-});
 
 function safeZoom(zoom: number): number {
   return Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
@@ -336,4 +284,16 @@ function safeZoom(zoom: number): number {
 
 function clamp(value: number, min: number, max: number, fallback: number): number {
   return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+}
+
+function unionRects(first: StrokeRasterRect | null, second: StrokeRasterRect): StrokeRasterRect {
+  if (!first) return second;
+  const x = Math.min(first.x, second.x);
+  const y = Math.min(first.y, second.y);
+  return {
+    x,
+    y,
+    width: Math.max(first.x + first.width, second.x + second.width) - x,
+    height: Math.max(first.y + first.height, second.y + second.height) - y,
+  };
 }
