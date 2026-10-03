@@ -64,7 +64,9 @@ fn validate_key(key: &str) -> Result<(i64, i64), String> {
     let (col, row) = key.split_once(':').ok_or("invalid drawing tile key")?;
     let col = col.parse::<i64>().map_err(|_| "invalid drawing tile column")?;
     let row = row.parse::<i64>().map_err(|_| "invalid drawing tile row")?;
-    if col.abs() > MAX_COORDINATE || row.abs() > MAX_COORDINATE || format!("{col}:{row}") != key {
+    if !(-MAX_COORDINATE..=MAX_COORDINATE).contains(&col)
+        || !(-MAX_COORDINATE..=MAX_COORDINATE).contains(&row)
+        || format!("{col}:{row}") != key {
         return Err("drawing tile key is outside the allowed range or is not canonical".to_string());
     }
     Ok((col, row))
@@ -112,6 +114,46 @@ fn load_index_at(root: &Path) -> Result<Option<DrawingIndex>, String> {
         .map_err(|error| format!("drawing index is invalid: {error}"))?;
     validate_index(&index)?;
     Ok(Some(index))
+}
+
+pub(crate) fn health_findings(root: &Path) -> Vec<String> {
+    let drawing = root.join(DRAWING_DIRECTORY);
+    let mut findings = Vec::new();
+    let index = match load_index_at(root) {
+        Ok(Some(index)) => index,
+        Ok(None) => {
+            if drawing.exists() { findings.push("Drawing index is missing".to_string()); }
+            return findings;
+        }
+        Err(error) => {
+            findings.push(format!("Drawing index: {error}"));
+            return findings;
+        }
+    };
+    let tiles = drawing.join(TILES_DIRECTORY);
+    match check_directory(&tiles, false) {
+        Ok(true) => {}
+        Ok(false) => {
+            for key in index.tiles { findings.push(format!("Missing drawing tile: {key}")); }
+            return findings;
+        }
+        Err(error) => {
+            findings.push(format!("Drawing tiles: {error}"));
+            return findings;
+        }
+    }
+    for key in index.tiles {
+        let path = match tile_path(root, &key) {
+            Ok(path) => path,
+            Err(error) => { findings.push(format!("Drawing tile {key}: {error}")); continue; }
+        };
+        match check_regular_file(&path, false) {
+            Ok(true) => {}
+            Ok(false) => findings.push(format!("Missing drawing tile: {key}")),
+            Err(error) => findings.push(format!("Drawing tile {key}: {error}")),
+        }
+    }
+    findings
 }
 
 fn read_tile_at(root: &Path, key: &str) -> Result<Vec<u8>, String> {
@@ -242,7 +284,7 @@ mod tests {
     #[test]
     fn validates_canonical_bounded_keys_and_png_payloads() {
         for key in ["0:0", "-10000000:10000000", "17:-4"] { assert!(validate_key(key).is_ok()); }
-        for key in ["10000001:0", "0:-10000001", "../0:0", "01:0", "-0:0", "0/1:0"] { assert!(validate_key(key).is_err(), "{key}"); }
+        for key in ["10000001:0", "0:-10000001", "-9223372036854775808:0", "../0:0", "01:0", "-0:0", "0/1:0"] { assert!(validate_key(key).is_err(), "{key}"); }
         assert!(validate_png(&png()).is_ok());
         assert!(validate_png(b"not png").is_err());
         assert!(validate_png(&vec![0; MAX_TILE_BYTES + 1]).is_err());
@@ -256,11 +298,21 @@ mod tests {
         save_at(&root, &[DrawingTileChange { key: "-2:3".into(), png: Some(tile.clone()) }], &index(&["-2:3"])).unwrap();
         assert_eq!(read_tile_at(&root, "-2:3").unwrap(), tile);
         assert_eq!(load_index_at(&root).unwrap().unwrap().tiles, vec!["-2:3"]);
+        assert!(health_findings(&root).is_empty());
         assert!(save_at(&root, &[DrawingTileChange { key: "-2:3".into(), png: Some(vec![1, 2]) }], &index(&["-2:3"])).is_err());
         assert_eq!(read_tile_at(&root, "-2:3").unwrap(), tile);
         save_at(&root, &[DrawingTileChange { key: "-2:3".into(), png: None }], &index(&[])).unwrap();
         assert!(read_tile_at(&root, "-2:3").is_err());
         assert!(load_index_at(&root).unwrap().unwrap().tiles.is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn health_reports_tiles_listed_but_missing_on_disk() {
+        let root = test_root("health");
+        save_at(&root, &[DrawingTileChange { key: "1:2".into(), png: Some(png()) }], &index(&["1:2"])).unwrap();
+        fs::remove_file(tile_path(&root, "1:2").unwrap()).unwrap();
+        assert!(health_findings(&root).iter().any(|finding| finding == "Missing drawing tile: 1:2"));
         fs::remove_dir_all(root).unwrap();
     }
 }
