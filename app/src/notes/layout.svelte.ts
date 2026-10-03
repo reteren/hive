@@ -14,7 +14,7 @@ const minimumTextWidths = new Map<string, number>();
 
 export function maximumNoteWidthForKind(kind: NoteKind | undefined): number {
   if (!kind) return Number.POSITIVE_INFINITY;
-  const baseWidth = kind in R5_BASE_WIDTHS
+  const baseWidth = kind === "format" ? DEFAULT_NOTE_WIDTH : kind in R5_BASE_WIDTHS
     ? R5_BASE_WIDTHS[kind as keyof typeof R5_BASE_WIDTHS]
     : kind === "pro" || kind === "con" ? 18 : DEFAULT_NOTE_WIDTH;
   return baseWidth * FIT_WIDTH_MAX_MULTIPLIER;

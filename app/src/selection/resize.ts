@@ -133,6 +133,7 @@ export interface ResizeLimits {
 
 export function defaultWidthForKind(kind: NoteKind | undefined): number {
   if (!kind) return DEFAULT_NOTE_WIDTH;
+  if (kind === "format") return DEFAULT_NOTE_WIDTH;
   if (kind === "beacon") return BEACON_SIZE;
   if (kind in R5_BASE_WIDTHS) return R5_BASE_WIDTHS[kind as keyof typeof R5_BASE_WIDTHS];
   if (kind === "importance" || kind === "purpose" || kind === "mood") return MODULE_NOTE_WIDTH;
