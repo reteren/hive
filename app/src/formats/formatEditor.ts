@@ -8,6 +8,9 @@ import { EditorState } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { formatLanguageForExtension } from "./formatLogic";
 
+/** Toggle this to wrap long file lines instead of scrolling horizontally. */
+export const FORMAT_WRAP_LINES = false;
+
 export function createFormatEditor(
   parent: HTMLElement,
   extension: string,
@@ -27,7 +30,7 @@ export function createFormatEditor(
     history(),
     ...(languageSupport ? [languageSupport] : []),
     syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-    EditorView.lineWrapping,
+    ...(FORMAT_WRAP_LINES ? [EditorView.lineWrapping] : []),
     keymap.of([
       { key: "Mod-s", run: () => { onSave(); return true; } },
       ...defaultKeymap,
@@ -38,9 +41,13 @@ export function createFormatEditor(
     }),
     EditorView.contentAttributes.of({ "aria-label": "File contents" }),
     EditorView.theme({
-      "&": { height: "100%", color: "var(--text)", backgroundColor: "transparent" },
-      ".cm-scroller": { overflow: "auto", fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" },
-      ".cm-content": { minHeight: "100%", padding: "8px 0" },
+      "&": { height: "100%", minHeight: "0", color: "var(--text)", backgroundColor: "transparent" },
+      ".cm-scroller": {
+        height: "100%", minHeight: "0", overflowY: "auto", overflowX: FORMAT_WRAP_LINES ? "hidden" : "auto",
+        scrollbarWidth: "thin", scrollbarColor: "rgb(190 190 190 / 45%) transparent",
+        fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+      },
+      ".cm-content": { minHeight: "100%", boxSizing: "border-box", padding: "8px 0" },
       ".cm-gutters": { color: "var(--text-dim)", backgroundColor: "#252525", borderRight: "1px solid #414141" },
       ".cm-activeLineGutter": { backgroundColor: "#303030" },
       ".cm-activeLine": { backgroundColor: "rgb(255 255 255 / 3%)" },

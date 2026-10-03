@@ -4,6 +4,7 @@
   import type { MediaRef } from "../attachments/types";
   import { board } from "../model/board.svelte";
   import type { Note } from "../model/note";
+  import { formatWheelUsesEditor } from "./formatScroll";
   import { project } from "../project/project.svelte";
   import { createFormatEditor } from "./formatEditor";
   import { clearFormatDraft, formatDraft, setFormatDraft } from "./formatDrafts";
@@ -26,6 +27,12 @@
 
   let media = $derived(note.media?.kind === "text" ? note.media : null);
   let displayName = $derived(media?.name || note.name || "File");
+
+  function handleWheel(event: WheelEvent): void {
+    if (view && formatWheelUsesEditor(view.scrollDOM, event.deltaX, event.deltaY)) {
+      event.stopPropagation();
+    }
+  }
 
   $effect(() => {
     const currentMedia = media;
@@ -120,7 +127,12 @@
   }
 </script>
 
-<section class="format-node-body" aria-label={`Text file ${displayName}`}>
+<section
+  class="format-node-body"
+  class:manual-height={note.height !== null}
+  class:compact-height={note.height !== null && note.height < 14}
+  aria-label={`Text file ${displayName}`}
+>
   <div class="format-file-row">
     <span>Copy in project · {displayName}</span>
     {#if dirty}<span class="format-unsaved-dot" title="Unsaved changes" aria-label="Unsaved changes">●</span>{/if}
@@ -128,7 +140,7 @@
   {#if errorMessage}
     <div class="format-error" role="alert">{errorMessage}</div>
   {/if}
-  <div class="format-editor" class:has-error={Boolean(errorMessage)} bind:this={editorHost}></div>
+  <div class="format-editor" class:has-error={Boolean(errorMessage)} bind:this={editorHost} onwheel={handleWheel}></div>
   <footer class="format-actions" data-selection-ignore>
     <button type="button" disabled={!dirty || saving} onclick={() => { void saveCurrentDraft(); }}>Save</button>
     <button type="button" disabled={!media} onclick={() => { void saveAs(); }}>Save as…</button>
@@ -148,8 +160,27 @@
     background: #202020;
   }
 
+  .format-node-body.manual-height {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .format-node-body.compact-height .format-file-row {
+    display: none;
+  }
+
+  .format-node-body.compact-height .format-actions {
+    min-height: 22px;
+    padding: 1px 4px;
+  }
+
+  .format-node-body.compact-height .format-actions button {
+    padding: 1px 5px;
+  }
+
   .format-file-row {
     display: flex;
+    flex: 0 0 auto;
     min-height: 28px;
     align-items: center;
     gap: 6px;
@@ -172,10 +203,16 @@
   }
 
   .format-editor {
+    min-width: 0;
     min-height: 215px;
     flex: 1 1 auto;
     overflow: hidden;
     background: #202020;
+  }
+
+  .manual-height .format-editor,
+  .manual-height .format-error {
+    min-height: 0;
   }
 
   .format-editor.has-error { display: none; }
@@ -199,6 +236,7 @@
 
   .format-actions {
     display: flex;
+    flex: 0 0 auto;
     min-height: 30px;
     align-items: center;
     gap: 5px;
