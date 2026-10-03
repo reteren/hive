@@ -12,6 +12,7 @@
   import { geometryFromListStatisticsFrame, listStatisticsFrameLimits, listStatisticsWidth } from "../stats/listStatsLayout";
   import { raiseMovingCards } from "../stats/movingCards";
 import { MIN_NOTE_WIDTH, maximumResizableHeight, maximumResizableHeightForNote, minimumTextWidthForNote, noteBounds, renderedNoteMetrics, type Bounds } from "../notes/layout.svelte";
+import { minimumManualTextHeight } from "../notes/textScroll";
 import { preferences } from "../settings/preferences.svelte";
 import { inboxAutoHeight, inboxMinHeight } from "../inbox/inboxLayout";
 import { userDictionary } from "../spell/dictionary.svelte";
@@ -1180,7 +1181,7 @@ type PendingBoardMove =
       ...(listLimits.minWidth === undefined ? {} : { minWidth: listLimits.minWidth * scale }),
       maxWidth: listLimits.maxWidth * scale,
       ...(listLimits.statisticsExtensionWidth === undefined ? {} : { statisticsExtensionWidth: listLimits.statisticsExtensionWidth * scale }),
-      minHeight: minimumHeightForKind(note.type) * scale,
+      minHeight: minimumManualTextHeight(note, minimumHeightForKind(note.type), renderedNoteMetrics(id)?.contentHeight ?? null) * scale,
       maxHeight,
       scale,
       ...(note.flipX === true ? { flipX: true as const } : {}),
