@@ -1,6 +1,8 @@
 import { normalizePdfZoom } from "./formatLogic";
 
 export const PDF_RENDER_DEBOUNCE_MS = 150;
+/** Pages within about two viewport heights above/below are rendered ahead, so scrolling shows them ready. */
+export const PDF_PREFETCH_MARGIN = "200% 0px";
 export const PDF_RENDER_MAX_DIMENSION = 8192;
 
 export interface PdfPageSize {
@@ -151,7 +153,9 @@ export function createPdfRenderScheduler(
     if (visible) {
       if (visiblePages.has(pageNumber)) return;
       visiblePages.add(pageNumber);
-      schedule();
+      // A page scrolling into view renders right away, without the zoom debounce and without
+      // cancelling pages that are already rendering (that restart made scrolling feel slow).
+      if (timer === null) void renderVisiblePage(pageNumber, generation);
       return;
     }
 

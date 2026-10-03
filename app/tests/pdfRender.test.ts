@@ -69,17 +69,23 @@ describe("PDF page rendering", () => {
       return page.render();
     });
 
+    // A page entering view renders immediately (no debounce, no restart of other pages).
     scheduler.setVisible(2, true);
-    await vi.advanceTimersByTimeAsync(PDF_RENDER_DEBOUNCE_MS - 1);
-    expect(pages.get(2)?.render).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(1);
-    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(0);
     expect(pages.get(2)?.render).toHaveBeenCalledTimes(1);
     expect(pages.get(1)?.render).not.toHaveBeenCalled();
+    scheduler.setVisible(1, true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pages.get(1)?.render).toHaveBeenCalledTimes(1);
+    expect(firstRender.cancel).not.toHaveBeenCalled();
 
+    // A zoom/layout change is debounced and cancels stale work.
     scheduler.schedule();
     expect(firstRender.cancel).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(PDF_RENDER_DEBOUNCE_MS - 1);
+    expect(pages.get(2)?.render).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(pages.get(2)?.render).toHaveBeenCalledTimes(2);
     scheduler.destroy();
-    expect(firstRender.cancel).toHaveBeenCalledTimes(1);
   });
 });

@@ -9,6 +9,7 @@
   import { normalizePdfZoom, pdfZoomLabel, stepPdfZoom } from "./formatLogic";
   import {
     createPdfRenderScheduler,
+    PDF_PREFETCH_MARGIN,
     pdfBackingResolution,
     pdfPageLayout,
     type PdfPageSize,
@@ -149,7 +150,7 @@
 
     const observer = new IntersectionObserver((entries) => {
       for (const entry of entries) setPageVisible(pageNumber, entry.isIntersecting);
-    }, { root, rootMargin: "120px 0px", threshold: 0 });
+    }, { root, rootMargin: PDF_PREFETCH_MARGIN, threshold: 0 });
     observer.observe(node);
     return {
       destroy() {
