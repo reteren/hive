@@ -7,7 +7,7 @@ import type { ArchiveEntry } from "../model/retention.svelte";
 import type { CountMode, TimeNodeData, TimeRuntime, TimeSchedule } from "../time/types";
 import { parseCalendarRule, parseStopwatchData } from "../time/data";
 import { copyTimeForHost, parseEmbedSections } from "../combo/data";
-import { parseImageRef } from "../images/imageLogic";
+import { normalizeImageOpacity, parseImageRef } from "../images/imageLogic";
 import { normalizePdfZoom, parseMediaRef } from "../formats/formatLogic";
 import { copyAudioRecordings, parseAudioRecordings } from "../audio/recordingData";
 import { parseYouTubeRef } from "../youtube/logic";
@@ -99,6 +99,7 @@ function parseArchivedNote(value: unknown): Note | null {
   const message = parseMessageData(value.message);
   const embedSections = parseEmbedSections(value.embedSections);
   const image = value.image === undefined ? null : parseImageRef(value.image);
+  const opacity = value.opacity === undefined ? undefined : normalizeImageOpacity(value.opacity);
   const media = value.media === undefined ? null : parseMediaRef(value.media);
   const pdfZoom = value.pdfZoom === undefined ? undefined : normalizePdfZoom(value.pdfZoom);
   const recordings = value.recordings === undefined ? undefined : parseAudioRecordings(value.recordings);
@@ -110,6 +111,7 @@ function parseArchivedNote(value: unknown): Note | null {
     value.youtube !== undefined && !youtube || value.type === "youtube" && !youtube ||
     value.headerHidden !== undefined && typeof value.headerHidden !== "boolean" ||
     value.pdfZoom !== undefined && (value.type !== "pdf" || pdfZoom === undefined) ||
+    value.opacity !== undefined && (value.type !== "image" || opacity === undefined) ||
     value.frameHidden !== undefined && (value.type !== "youtube" && value.type !== "video" || value.frameHidden !== true) ||
     value.flipX !== undefined && value.flipX !== true || value.flipY !== undefined && value.flipY !== true ||
     value.gifStopped !== undefined && value.gifStopped !== true) return null;
@@ -144,6 +146,7 @@ function parseArchivedNote(value: unknown): Note | null {
     ...(value.type === "message" ? { message: message ?? defaultMessageData() } : message ? { message } : {}),
     ...(embedSections ? { embedSections } : {}),
     ...(image ? { image } : {}),
+    ...(value.type === "image" && opacity !== undefined ? { opacity } : {}),
     ...(media ? { media } : {}),
     ...(value.type === "pdf" && pdfZoom !== undefined ? { pdfZoom } : {}),
     ...(recordings ? { recordings: copyAudioRecordings(recordings) } : {}),
