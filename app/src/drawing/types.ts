@@ -96,3 +96,47 @@ export function parseTileKey(key: TileKey): { col: number; row: number } | null 
 export function worldToRaster(x: number, y: number): { px: number; py: number } {
   return { px: x * DRAW_PX_PER_UNIT, py: y * DRAW_PX_PER_UNIT };
 }
+
+/**
+ * TOOL HANDLERS (coordinator contract, added after dispatch). TOOLS owns input: in draw mode it turns
+ * pointer/keyboard events into DrawPointerEvent and calls the handler registered for the active tool
+ * (src/drawing/toolRegistry.ts). Owners register: CORE → "brush"; ERASEFILL → "eraser", "fill";
+ * SELECT → "select-rect", "select-lasso", "select-polygon".
+ */
+export interface DrawPointerEvent {
+  /** World units. */
+  world: { x: number; y: number };
+  /** Client px (for overlays). */
+  client: { x: number; y: number };
+  zoom: number;
+  /** 0..1, 0.5 when the device has no pressure. */
+  pressure: number;
+  shift: boolean;
+  ctrl: boolean;
+  alt: boolean;
+  /** Number of clicks (2 = double click), for polygon close. */
+  detail: number;
+}
+
+export interface DrawToolHandler {
+  down(event: DrawPointerEvent): void;
+  move(event: DrawPointerEvent): void;
+  up(event: DrawPointerEvent): void;
+  /** Pointer lost / Esc / tool switched mid-gesture: abandon without committing. */
+  cancel(): void;
+  /** Key while this tool is active (Delete, Enter, Esc, Ctrl+C/V…). Return true when handled. */
+  key?(event: KeyboardEvent): boolean;
+  /** Called when the tool stops being active (commit pending selection etc.). */
+  deactivate?(): void;
+}
+
+/**
+ * CORE also exports (src/drawing/history.ts, src/drawing/tileStore.svelte.ts, src/drawing/brush.ts):
+ *   drawingStore: DrawingTileStore                       — the singleton store
+ *   pushDrawingHistory(label, before: TileSnapshot, after: TileSnapshot, extra?: { undo(): void; redo(): void })
+ *       — one Undo entry; `extra` lets ERASEFILL restore an image node ref together with tiles
+ *   paintIntoTiles(source: HTMLCanvasElement, rasterX: number, rasterY: number,
+ *                  mode: GlobalCompositeOperation, alpha: number): TileKey[]  — composite + returns touched keys
+ *   readRasterRect(rasterX, rasterY, width, height): ImageData   — read across tiles (fill/selection)
+ *   writeRasterRect(image: ImageData, rasterX, rasterY): TileKey[] — write across tiles (replace pixels)
+ */
