@@ -168,14 +168,15 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
     if (event.code !== "Escape" && (isDrawOverlayControl(event.target) || isTextEditingTarget(event.target) ||
       isTextEditingTarget(document.activeElement))) return;
 
-    if (handler?.key?.(event)) {
-      consume(event);
-      return;
-    }
     if (event.code === "Escape" && !event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
+      handler?.key?.(event);
       consume(event);
       deactivateDrawInput();
       tool.active = "select";
+      return;
+    }
+    if (handler?.key?.(event)) {
+      consume(event);
       return;
     }
 
