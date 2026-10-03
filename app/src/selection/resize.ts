@@ -50,6 +50,7 @@ const RULES: Partial<Record<NoteKind, NodeResizeRule>> = {
   source: FIXED_RULE,
   markas: FIXED_RULE,
   tierlist: FIXED_RULE,
+  pdf: { width: "free", height: "free", handles: "all", groupDimensions: "scale" },
   image: { width: "free", height: "free", handles: "all", groupDimensions: "scale" },
   list: { width: "locked", height: "free", handles: "bottom-if-shrinkable", groupDimensions: "preserve" },
   purpose: { width: "locked", height: "free", handles: "none", groupDimensions: "scale" },
@@ -195,7 +196,7 @@ export function resizeNote(
   const axes = resizeEdgeAxes(edge);
   const scale = normalizeNoteScale(initial.scale);
   const maxWidth = limits.maxWidth ?? initial.maxWidth ?? maximumWidthForKind(initial.type) * scale;
-  const maxHeight = initial.type === "image" || initial.type === "map"
+  const maxHeight = initial.type === "image" || initial.type === "map" || initial.type === "pdf"
     ? Number.POSITIVE_INFINITY
     : limits.maxHeight ?? initial.maxHeight ?? (initial.type ? MIN_NOTE_HEIGHT * 1.5 * scale : Number.POSITIVE_INFINITY);
   const hostedMinimumWidth = board.notes[initial.id]

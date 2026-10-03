@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { MediaRef } from "../src/attachments/types";
 import { clear as clearHistory, history, undo } from "../src/history/history.svelte";
 import { board, replaceBoard } from "../src/model/board.svelte";
-import { minimumHeightForKind, minimumWidthForKind } from "../src/selection/resize";
+import { hasResizeHandle, minimumHeightForKind, minimumWidthForKind, resizeNote, resizeRuleForKind } from "../src/selection/resize";
 import { createFormatNotes } from "../src/formats/formatCreation";
 import { clearAllFormatDrafts, formatDraft, setFormatDraft } from "../src/formats/formatDrafts";
 import {
@@ -14,6 +14,7 @@ import {
   parseMediaRef,
   pdfFrameMetrics,
   pdfViewerSource,
+  pdfZoomLabel,
   PDF_RENDER_OVERSAMPLE,
   stepPdfZoom,
 } from "../src/formats/formatLogic";
@@ -82,6 +83,52 @@ describe("PDF and Format nodes", () => {
     expect(metrics[1]).toEqual(metrics[2]);
   });
 
+  it("recreates the PDF iframe when zoom or fit mode changes and keeps the level label in sync", () => {
+    const source = "asset://localhost/file.pdf";
+    const hundredUrl = pdfViewerSource(source, 100);
+    const zoomedUrl = pdfViewerSource(source, 110);
+    const fitUrl = pdfViewerSource(source, undefined);
+    expect(hundredUrl).not.toBe(zoomedUrl);
+    expect(zoomedUrl).not.toBe(fitUrl);
+    expect(new URLSearchParams(pdfViewerSource(source, 165).split("#")[1]).get("zoom")).toBe("170");
+    expect(pdfZoomLabel(undefined)).toBe("Fit");
+    expect(pdfZoomLabel(100)).toBe("100%");
+    expect(pdfZoomLabel(165)).toBe("170%");
+
+    const component = Object.values(import.meta.glob<string>("../src/formats/PdfNodeBody.svelte", {
+      eager: true,
+      query: "?raw",
+      import: "default",
+    }))[0] ?? "";
+    expect(component).toContain("{#key viewerSource}");
+    expect(component).toContain("src={viewerSource}");
+    expect(component).toContain("pdfZoomLabel(pdfZoom)");
+  });
+
+  it("lets PDF nodes resize vertically while preserving the 30-unit minimum", () => {
+    expect(resizeRuleForKind("pdf")).toMatchObject({ width: "free", height: "free", handles: "all" });
+    expect(hasResizeHandle("pdf", "bottom")).toBe(true);
+    expect(minimumHeightForKind("pdf")).toBe(30);
+    const resized = resizeNote(
+      { id: "pdf-resize", type: "pdf", x: 4, y: 8, width: 40, height: 30, maxHeight: 12 },
+      30,
+      "bottom",
+      { x: 0, y: 10 },
+      false,
+      1,
+    );
+    expect(resized).toMatchObject({ x: 4, y: 8, width: 40, height: 40 });
+    const tooSmall = resizeNote(
+      { id: "pdf-resize", type: "pdf", x: 4, y: 8, width: 40, height: 30 },
+      30,
+      "bottom",
+      { x: 0, y: -40 },
+      false,
+      1,
+    );
+    expect(tooSmall.height).toBe(30);
+  });
+
   it("hides the built-in PDF controls and keeps viewer zoom in URL parameters", () => {
     expect(normalizePdfZoom(44)).toBe(50);
     expect(normalizePdfZoom(55)).toBe(60);
@@ -119,13 +166,13 @@ describe("PDF and Format nodes", () => {
     const documentIndex = component.indexOf('<div bind:this={documentViewport} class="pdf-document">');
     expect(controlsIndex).toBeGreaterThanOrEqual(0);
     expect(documentIndex).toBeGreaterThan(controlsIndex);
-    expect(component).toContain('{pdfZoom === undefined ? "Fit" : `${pdfZoom}%`}');
+    expect(component).toContain("pdfZoomLabel(pdfZoom)");
     expect(component).toMatch(/\.pdf-controls\s*\{[\s\S]*?position:\s*relative;/);
     expect(component).toMatch(/\.pdf-document\s*\{[\s\S]*?overflow:\s*hidden;/);
     expect(component).toMatch(/\.pdf-viewer\s*\{[\s\S]*?overflow-x:\s*hidden;/);
     expect(component).not.toContain("camera.zoom");
     expect(component).toContain("pdfFrameMetrics(element.clientWidth, element.clientHeight)");
-    expect(component).toContain("pdfViewerSource(source, note.pdfZoom)");
+    expect(component).toContain("pdfViewerSource(source, pdfZoom)");
   });
 
   it("creates the PDF and Format nodes at the picker point in a single undo step", () => {

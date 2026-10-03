@@ -2,7 +2,7 @@
   import type { Note } from "../model/note";
   import { attachmentUrl } from "../attachments/service";
   import { setPdfZoom } from "./formatActions";
-  import { normalizePdfZoom, pdfFrameMetrics, pdfViewerSource, stepPdfZoom } from "./formatLogic";
+  import { normalizePdfZoom, pdfFrameMetrics, pdfViewerSource, pdfZoomLabel, stepPdfZoom } from "./formatLogic";
 
   let { note }: { note: Note } = $props();
   let documentViewport = $state<HTMLDivElement | null>(null);
@@ -12,7 +12,7 @@
   let inverseScale = $state(1);
   let source = $derived(note.media?.kind === "pdf" ? attachmentUrl(note.media.file) : "");
   let pdfZoom = $derived(normalizePdfZoom(note.pdfZoom));
-  let viewerSource = $derived(pdfViewerSource(source, note.pdfZoom));
+  let viewerSource = $derived(pdfViewerSource(source, pdfZoom));
   let displayName = $derived(note.media?.name || note.name || "PDF");
 
   function changeZoom(direction: -1 | 1): void {
@@ -47,20 +47,22 @@
   {#if source && !failed}
     <div class="pdf-controls" role="toolbar" aria-label="PDF zoom controls" data-selection-ignore>
       <button type="button" aria-label="Zoom out" title="Zoom out" disabled={pdfZoom === 50} onclick={() => changeZoom(-1)}>−</button>
-      <output aria-label="PDF zoom level">{pdfZoom === undefined ? "Fit" : `${pdfZoom}%`}</output>
+      <output aria-label="PDF zoom level">{pdfZoomLabel(pdfZoom)}</output>
       <button type="button" aria-label="Zoom in" title="Zoom in" disabled={pdfZoom === 300} onclick={() => changeZoom(1)}>+</button>
       <button type="button" class="fit-width" aria-label="Fit width" onclick={() => setPdfZoom(note.id, undefined)}>Fit width</button>
     </div>
     <div bind:this={documentViewport} class="pdf-document">
-      <iframe
-        class="pdf-viewer"
-        title={displayName}
-        src={viewerSource}
-        style:width={`${frameWidth}px`}
-        style:height={`${frameHeight}px`}
-        style:transform={`scale(${inverseScale})`}
-        onerror={() => { failed = true; }}
-      ></iframe>
+      {#key viewerSource}
+        <iframe
+          class="pdf-viewer"
+          title={displayName}
+          src={viewerSource}
+          style:width={`${frameWidth}px`}
+          style:height={`${frameHeight}px`}
+          style:transform={`scale(${inverseScale})`}
+          onerror={() => { failed = true; }}
+        ></iframe>
+      {/key}
     </div>
   {:else}
     <div class="pdf-error" role="status">File missing: {displayName}</div>

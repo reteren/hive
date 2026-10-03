@@ -63,6 +63,11 @@ export function normalizePdfZoom(value: unknown): number | undefined {
   return Math.round(clamped / PDF_ZOOM_STEP) * PDF_ZOOM_STEP;
 }
 
+export function pdfZoomLabel(value: unknown): string {
+  const normalized = normalizePdfZoom(value);
+  return normalized === undefined ? "Fit" : `${normalized}%`;
+}
+
 export function stepPdfZoom(value: unknown, direction: -1 | 1): number {
   const current = normalizePdfZoom(value) ?? PDF_ZOOM_DEFAULT;
   return normalizePdfZoom(current + direction * PDF_ZOOM_STEP) ?? PDF_ZOOM_DEFAULT;
