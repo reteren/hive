@@ -23,7 +23,7 @@ import { copyTimeNodeData as cloneTimeNodeData, parseCalendarRule, parseStopwatc
 import { defaultMessageData, parseMessageData } from "../messages/data";
 import { copyEmbedSections, copyTimeForHost, parseEmbedSections } from "../combo/data";
 import type { ImageRef, MediaRef, YouTubeRef } from "../attachments/types";
-import { parseImageRef } from "../images/imageLogic";
+import { normalizeImageOpacity, parseImageRef } from "../images/imageLogic";
 import { normalizePdfZoom, parseMediaRef } from "../formats/formatLogic";
 import { copyAudioRecordings, parseAudioRecordings } from "../audio/recordingData";
 import { parseYouTubeRef } from "../youtube/logic";
@@ -59,6 +59,7 @@ export interface ClipboardNode {
   headerHidden?: boolean;
   frameHidden?: true;
   image?: ImageRef;
+  opacity?: number;
   media?: MediaRef;
   pdfZoom?: number;
   recordings?: Note["recordings"];
@@ -111,7 +112,7 @@ export function serializeNotes(
     marker: HIVE_CLIPBOARD_MARKER,
     version: HIVE_CLIPBOARD_VERSION,
     nodes: notes.map(({
-      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, time, message, embedSections, importance, purposes, moods, color, zoneId, headerHidden, frameHidden, image, media, pdfZoom, recordings, youtube, source, flipX, flipY, gifStopped,
+      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, time, message, embedSections, importance, purposes, moods, color, zoneId, headerHidden, frameHidden, image, opacity, media, pdfZoom, recordings, youtube, source, flipX, flipY, gifStopped,
     }) => ({
       sourceId: id,
       type,
@@ -135,6 +136,7 @@ export function serializeNotes(
       ...(headerHidden ? { headerHidden: true } : {}),
       ...((type === "youtube" || type === "video") && frameHidden === true ? { frameHidden: true } : {}),
       ...(image ? { image: { ...image } } : {}),
+      ...(type === "image" && opacity !== undefined ? { opacity: normalizeImageOpacity(opacity) } : {}),
       ...(media ? { media: { ...media } } : {}),
       ...(type === "pdf" && pdfZoom !== undefined ? { pdfZoom: normalizePdfZoom(pdfZoom) } : {}),
       ...(type === "audio" && recordings ? { recordings: copyAudioRecordings(recordings) } : {}),
@@ -391,6 +393,7 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     : typeof value.zoneId === "string" && value.zoneId.trim() ? value.zoneId : null;
   if (value.zoneId !== undefined && value.zoneId !== null && zoneId === null) return null;
   const image = value.image === undefined ? null : parseImageRef(value.image);
+  const opacity = value.opacity === undefined ? undefined : normalizeImageOpacity(value.opacity);
   const media = value.media === undefined ? null : parseMediaRef(value.media);
   const pdfZoom = value.pdfZoom === undefined ? undefined : normalizePdfZoom(value.pdfZoom);
   const recordings = value.recordings === undefined ? undefined : parseAudioRecordings(value.recordings);
@@ -404,6 +407,7 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     value.headerHidden !== undefined && typeof value.headerHidden !== "boolean" ||
     value.frameHidden !== undefined && (value.type !== "youtube" && value.type !== "video" || value.frameHidden !== true) ||
     value.pdfZoom !== undefined && (value.type !== "pdf" || pdfZoom === undefined) ||
+    value.opacity !== undefined && (value.type !== "image" || opacity === undefined) ||
     value.flipX !== undefined && value.flipX !== true || value.flipY !== undefined && value.flipY !== true ||
     value.gifStopped !== undefined && value.gifStopped !== true) return null;
 
@@ -430,6 +434,7 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     ...(value.headerHidden === true ? { headerHidden: true } : {}),
     ...((value.type === "youtube" || value.type === "video") && value.frameHidden === true ? { frameHidden: true } : {}),
     ...(image ? { image } : {}),
+    ...(value.type === "image" && opacity !== undefined ? { opacity } : {}),
     ...(media ? { media } : {}),
     ...(value.type === "pdf" && pdfZoom !== undefined ? { pdfZoom } : {}),
     ...(recordings ? { recordings: copyAudioRecordings(recordings) } : {}),
