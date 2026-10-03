@@ -151,6 +151,7 @@ export function minimumHeightForKind(kind: NoteKind | undefined): number {
   if (kind === "image") return 4;
   if (kind === "map") return MAP_MIN_HEIGHT;
   if (kind === "pdf") return 30;
+  if (kind === "format") return 10;
   if (kind === "calendar") return CALENDAR_MIN_HEIGHT;
   const width = defaultWidthForKind(kind);
   const initialHeight = kind === "beacon" ? BEACON_SIZE : kind === "importance" ? MODULE_NOTE_HEIGHT : null;
