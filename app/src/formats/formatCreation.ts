@@ -1,12 +1,15 @@
 import type { MediaRef } from "../attachments/types";
 import { execute } from "../history/history.svelte";
 import { addNote, board, removeNote } from "../model/board.svelte";
-import { newId, R5_BASE_WIDTHS, type Note } from "../model/note";
+import { DEFAULT_NOTE_WIDTH, newId, R5_BASE_WIDTHS, type Note } from "../model/note";
 import { captureSelectionSnapshot, clearSelection, includeSelected, restoreSelectionSnapshot, selectOnly } from "../selection/selection.svelte";
 import { clearSelectedLink } from "../links/selection.svelte";
 import { uniqueName } from "../notes/naming";
 import type { Point } from "../board/cameraMath";
 import { formatNodeKind, isFormatMediaKind } from "./formatLogic";
+
+/** A Format file has no decoded text yet; keep the first viewport compact and scrollable. */
+export const FORMAT_INITIAL_HEIGHT = 40;
 
 /** Create one undoable batch from a picker/drop gesture, centred on its world point. */
 export function createFormatNotes(mediaRefs: readonly MediaRef[], center: Point): string[] {
@@ -18,8 +21,8 @@ export function createFormatNotes(mediaRefs: readonly MediaRef[], center: Point)
     const type = formatNodeKind(media)!;
     const name = uniqueName(media.name?.trim() || (type === "pdf" ? "PDF.pdf" : "File.txt"), reservedNames);
     reservedNames.push(name);
-    const width = R5_BASE_WIDTHS[type];
-    const height = type === "pdf" ? 30 : null;
+    const width = type === "format" ? DEFAULT_NOTE_WIDTH : R5_BASE_WIDTHS.pdf;
+    const height = type === "pdf" ? 30 : FORMAT_INITIAL_HEIGHT;
     const cascade = index * 2.2;
     return {
       id: newId(),
@@ -27,7 +30,7 @@ export function createFormatNotes(mediaRefs: readonly MediaRef[], center: Point)
       name,
       text: "",
       x: center.x + cascade - width / 2,
-      y: center.y + cascade - (height ?? 24) / 2,
+      y: center.y + cascade - height / 2,
       width,
       height,
       createdAt: Date.now(),

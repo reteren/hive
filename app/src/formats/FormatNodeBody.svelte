@@ -152,7 +152,8 @@
   .format-node-body {
     display: flex;
     min-width: 0;
-    min-height: 250px;
+    height: 340px;
+    min-height: 0;
     flex: 1 1 auto;
     flex-direction: column;
     overflow: hidden;

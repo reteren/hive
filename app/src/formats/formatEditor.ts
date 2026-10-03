@@ -7,8 +7,9 @@ import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language"
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { formatLanguageForExtension } from "./formatLogic";
+import { formatWrapsExtension } from "./formatWrapping";
 
-/** Toggle this to wrap long file lines instead of scrolling horizontally. */
+/** Toggle this to force wrapping in code formats as well. */
 export const FORMAT_WRAP_LINES = false;
 
 export function createFormatEditor(
@@ -19,6 +20,7 @@ export function createFormatEditor(
   onSave: () => void,
   highlight = true,
 ): EditorView {
+  const wrapLines = FORMAT_WRAP_LINES || formatWrapsExtension(extension);
   const language = highlight ? formatLanguageForExtension(extension) : "plain";
   const languageSupport = language === "markdown" ? markdown()
     : language === "javascript" ? javascript({ typescript: extension.toLowerCase() === "ts" })
@@ -30,7 +32,7 @@ export function createFormatEditor(
     history(),
     ...(languageSupport ? [languageSupport] : []),
     syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-    ...(FORMAT_WRAP_LINES ? [EditorView.lineWrapping] : []),
+    ...(wrapLines ? [EditorView.lineWrapping] : []),
     keymap.of([
       { key: "Mod-s", run: () => { onSave(); return true; } },
       ...defaultKeymap,
@@ -43,7 +45,7 @@ export function createFormatEditor(
     EditorView.theme({
       "&": { height: "100%", minHeight: "0", color: "var(--text)", backgroundColor: "transparent" },
       ".cm-scroller": {
-        height: "100%", minHeight: "0", overflowY: "auto", overflowX: FORMAT_WRAP_LINES ? "hidden" : "auto",
+        height: "100%", minHeight: "0", overflowY: "auto", overflowX: wrapLines ? "hidden" : "auto",
         scrollbarWidth: "thin", scrollbarColor: "rgb(190 190 190 / 45%) transparent",
         fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
       },

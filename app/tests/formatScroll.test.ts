@@ -45,9 +45,9 @@ describe("Format node scrolling", () => {
     expect(editor).toMatch(/scrollbarWidth:\s*"thin"/);
   });
 
-  it("leaves code lines unwrapped by default behind a single switch", () => {
+  it("leaves code lines unwrapped by default behind a single override", () => {
     expect(FORMAT_WRAP_LINES).toBe(false);
     expect(sources["../src/formats/formatEditor.ts"])
-      .toMatch(/FORMAT_WRAP_LINES \? \[EditorView\.lineWrapping\] : \[\]/);
+      .toMatch(/wrapLines \? \[EditorView\.lineWrapping\] : \[\]/);
   });
 });
