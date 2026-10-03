@@ -1,0 +1,266 @@
+use crate::project::{active_project_root, ProjectState};
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::fs::{self, OpenOptions};
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
+use tauri::State;
+
+const DRAWING_DIRECTORY: &str = "drawing";
+const TILES_DIRECTORY: &str = "tiles";
+const INDEX_FILE: &str = "drawing.json";
+const TILE_PX: u32 = 512;
+const PX_PER_UNIT: u32 = 20;
+const MAX_COORDINATE: i64 = 10_000_000;
+const MAX_TILE_BYTES: usize = 4 * 1024 * 1024;
+const MAX_INDEX_BYTES: u64 = 8 * 1024 * 1024;
+const PNG_MAGIC: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
+static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+static SAVE_LOCK: Mutex<()> = Mutex::new(());
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DrawingIndex {
+    version: u8,
+    px_per_unit: u32,
+    tile_size_px: u32,
+    tiles: Vec<String>,
+}
+
+#[derive(Serialize)]
+pub struct DrawingLoadResponse {
+    index: Option<DrawingIndex>,
+}
+
+#[derive(Deserialize)]
+pub struct DrawingTileChange {
+    key: String,
+    png: Option<Vec<u8>>,
+}
+
+#[tauri::command]
+pub fn drawing_load(state: State<'_, ProjectState>) -> Result<DrawingLoadResponse, String> {
+    let root = active_project_root(&state)?;
+    Ok(DrawingLoadResponse { index: load_index_at(&root)? })
+}
+
+#[tauri::command]
+pub fn drawing_read_tile(state: State<'_, ProjectState>, key: String) -> Result<Vec<u8>, String> {
+    read_tile_at(&active_project_root(&state)?, &key)
+}
+
+#[tauri::command]
+pub fn drawing_save(
+    state: State<'_, ProjectState>,
+    changes: Vec<DrawingTileChange>,
+    index: DrawingIndex,
+) -> Result<(), String> {
+    save_at(&active_project_root(&state)?, &changes, &index)
+}
+
+fn validate_key(key: &str) -> Result<(i64, i64), String> {
+    let (col, row) = key.split_once(':').ok_or("invalid drawing tile key")?;
+    let col = col.parse::<i64>().map_err(|_| "invalid drawing tile column")?;
+    let row = row.parse::<i64>().map_err(|_| "invalid drawing tile row")?;
+    if col.abs() > MAX_COORDINATE || row.abs() > MAX_COORDINATE || format!("{col}:{row}") != key {
+        return Err("drawing tile key is outside the allowed range or is not canonical".to_string());
+    }
+    Ok((col, row))
+}
+
+fn tile_path(root: &Path, key: &str) -> Result<PathBuf, String> {
+    let (col, row) = validate_key(key)?;
+    Ok(root.join(DRAWING_DIRECTORY).join(TILES_DIRECTORY).join(format!("{col}_{row}.png")))
+}
+
+fn validate_index(index: &DrawingIndex) -> Result<(), String> {
+    if index.version != 1 || index.px_per_unit != PX_PER_UNIT || index.tile_size_px != TILE_PX {
+        return Err("unsupported drawing index version or raster dimensions".to_string());
+    }
+    let mut keys = HashSet::with_capacity(index.tiles.len());
+    for key in &index.tiles {
+        validate_key(key)?;
+        if !keys.insert(key) {
+            return Err(format!("duplicate drawing tile key: {key}"));
+        }
+    }
+    Ok(())
+}
+
+fn validate_png(png: &[u8]) -> Result<(), String> {
+    if png.len() > MAX_TILE_BYTES {
+        return Err("drawing tile exceeds the 4 MB limit".to_string());
+    }
+    if !png.starts_with(PNG_MAGIC) {
+        return Err("drawing tile is not a PNG".to_string());
+    }
+    Ok(())
+}
+
+fn load_index_at(root: &Path) -> Result<Option<DrawingIndex>, String> {
+    let drawing = root.join(DRAWING_DIRECTORY);
+    if !check_directory(&drawing, false)? { return Ok(None); }
+    let path = drawing.join(INDEX_FILE);
+    if !check_regular_file(&path, true)? { return Ok(None); }
+    if fs::metadata(&path).map_err(|error| format!("could not inspect drawing index: {error}"))?.len() > MAX_INDEX_BYTES {
+        return Err("drawing index exceeds the 8 MB limit".to_string());
+    }
+    let bytes = fs::read(&path).map_err(|error| format!("could not read drawing index: {error}"))?;
+    let index: DrawingIndex = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("drawing index is invalid: {error}"))?;
+    validate_index(&index)?;
+    Ok(Some(index))
+}
+
+fn read_tile_at(root: &Path, key: &str) -> Result<Vec<u8>, String> {
+    let path = tile_path(root, key)?;
+    check_directory(&root.join(DRAWING_DIRECTORY), false)?;
+    check_directory(&root.join(DRAWING_DIRECTORY).join(TILES_DIRECTORY), false)?;
+    if !check_regular_file(&path, false)? {
+        return Err(format!("drawing tile {key} is missing"));
+    }
+    if fs::metadata(&path).map_err(|error| format!("could not inspect drawing tile: {error}"))?.len() > MAX_TILE_BYTES as u64 {
+        return Err("drawing tile exceeds the 4 MB limit".to_string());
+    }
+    let png = fs::read(&path).map_err(|error| format!("could not read drawing tile {key}: {error}"))?;
+    validate_png(&png)?;
+    Ok(png)
+}
+
+fn save_at(root: &Path, changes: &[DrawingTileChange], index: &DrawingIndex) -> Result<(), String> {
+    let _guard = SAVE_LOCK.lock().map_err(|_| "drawing save lock is unavailable")?;
+    validate_index(index)?;
+    let listed: HashSet<&str> = index.tiles.iter().map(String::as_str).collect();
+    let mut changed = HashSet::new();
+    for change in changes {
+        validate_key(&change.key)?;
+        if !changed.insert(change.key.as_str()) {
+            return Err(format!("duplicate drawing tile change: {}", change.key));
+        }
+        if change.png.is_some() != listed.contains(change.key.as_str()) {
+            return Err(format!("drawing index disagrees with tile change {}", change.key));
+        }
+        if let Some(png) = &change.png { validate_png(png)?; }
+    }
+    let bytes = serde_json::to_vec(index).map_err(|error| format!("could not encode drawing index: {error}"))?;
+    if bytes.len() as u64 > MAX_INDEX_BYTES { return Err("drawing index exceeds the 8 MB limit".to_string()); }
+    let drawing = root.join(DRAWING_DIRECTORY);
+    let tiles = drawing.join(TILES_DIRECTORY);
+    check_directory(&drawing, true)?;
+    check_directory(&tiles, true)?;
+    for change in changes {
+        let path = tile_path(root, &change.key)?;
+        check_regular_file(&path, true)?;
+        if let Some(png) = &change.png {
+            atomic_write(&path, png)?;
+        } else if path.exists() {
+            fs::remove_file(&path).map_err(|error| format!("could not remove drawing tile {}: {error}", change.key))?;
+        }
+    }
+    let index_path = drawing.join(INDEX_FILE);
+    check_regular_file(&index_path, true)?;
+    atomic_write(&index_path, &bytes)
+}
+
+fn check_directory(path: &Path, create: bool) -> Result<bool, String> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() =>
+            Err(format!("drawing path is not a real directory: {}", path.display())),
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == io::ErrorKind::NotFound && create => {
+            fs::create_dir(path).map_err(|error| format!("could not create drawing folder: {error}"))?;
+            Ok(true)
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(format!("could not inspect drawing folder: {error}")),
+    }
+}
+
+fn check_regular_file(path: &Path, allow_missing: bool) -> Result<bool, String> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() =>
+            Err(format!("drawing path is not a regular file: {}", path.display())),
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == io::ErrorKind::NotFound && allow_missing => Ok(false),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(format!("could not inspect drawing file: {error}")),
+    }
+}
+
+fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let parent = path.parent().ok_or("drawing file has no parent")?;
+    let name = path.file_name().and_then(|name| name.to_str()).unwrap_or("tile");
+    let temp = parent.join(format!(".{name}.{}.{}.tmp", std::process::id(), TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)));
+    let result = (|| {
+        let mut file = OpenOptions::new().write(true).create_new(true).open(&temp)
+            .map_err(|error| format!("could not stage drawing file: {error}"))?;
+        file.write_all(bytes).and_then(|()| file.sync_all())
+            .map_err(|error| format!("could not write drawing file: {error}"))?;
+        drop(file);
+        replace_file(&temp, path).map_err(|error| format!("could not install drawing file: {error}"))
+    })();
+    if result.is_err() { let _ = fs::remove_file(&temp); }
+    result
+}
+
+#[cfg(windows)]
+fn replace_file(source: &Path, destination: &Path) -> io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    const REPLACE_EXISTING: u32 = 0x1;
+    const WRITE_THROUGH: u32 = 0x8;
+    #[link(name = "Kernel32")]
+    extern "system" { fn MoveFileExW(existing: *const u16, new: *const u16, flags: u32) -> i32; }
+    let wide = |path: &Path| path.as_os_str().encode_wide().chain(Some(0)).collect::<Vec<_>>();
+    if unsafe { MoveFileExW(wide(source).as_ptr(), wide(destination).as_ptr(), REPLACE_EXISTING | WRITE_THROUGH) } == 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(not(windows))]
+fn replace_file(source: &Path, destination: &Path) -> io::Result<()> { fs::rename(source, destination) }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_root(name: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("hive-drawing-{name}-{}-{}", std::process::id(), TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)));
+        fs::create_dir(&path).unwrap();
+        path
+    }
+
+    fn index(keys: &[&str]) -> DrawingIndex {
+        DrawingIndex { version: 1, px_per_unit: PX_PER_UNIT, tile_size_px: TILE_PX, tiles: keys.iter().map(|key| (*key).into()).collect() }
+    }
+
+    fn png() -> Vec<u8> { [PNG_MAGIC.as_slice(), &[0, 0, 0, 0]].concat() }
+
+    #[test]
+    fn validates_canonical_bounded_keys_and_png_payloads() {
+        for key in ["0:0", "-10000000:10000000", "17:-4"] { assert!(validate_key(key).is_ok()); }
+        for key in ["10000001:0", "0:-10000001", "../0:0", "01:0", "-0:0", "0/1:0"] { assert!(validate_key(key).is_err(), "{key}"); }
+        assert!(validate_png(&png()).is_ok());
+        assert!(validate_png(b"not png").is_err());
+        assert!(validate_png(&vec![0; MAX_TILE_BYTES + 1]).is_err());
+    }
+
+    #[test]
+    fn saves_loads_and_deletes_tiles_with_index_written_last() {
+        let root = test_root("roundtrip");
+        assert!(load_index_at(&root).unwrap().is_none());
+        let tile = png();
+        save_at(&root, &[DrawingTileChange { key: "-2:3".into(), png: Some(tile.clone()) }], &index(&["-2:3"])).unwrap();
+        assert_eq!(read_tile_at(&root, "-2:3").unwrap(), tile);
+        assert_eq!(load_index_at(&root).unwrap().unwrap().tiles, vec!["-2:3"]);
+        assert!(save_at(&root, &[DrawingTileChange { key: "-2:3".into(), png: Some(vec![1, 2]) }], &index(&["-2:3"])).is_err());
+        assert_eq!(read_tile_at(&root, "-2:3").unwrap(), tile);
+        save_at(&root, &[DrawingTileChange { key: "-2:3".into(), png: None }], &index(&[])).unwrap();
+        assert!(read_tile_at(&root, "-2:3").is_err());
+        assert!(load_index_at(&root).unwrap().unwrap().tiles.is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
+}

@@ -1,5 +1,6 @@
 mod attachments;
 mod backup;
+mod drawing;
 mod export;
 mod overhive;
 mod project;
@@ -188,6 +189,9 @@ pub fn run() {
             backup::delete_backup,
             backup::restore_backup,
             backup::check_project_health,
+            drawing::drawing_load,
+            drawing::drawing_read_tile,
+            drawing::drawing_save,
             export::export_project,
             export::import_project_zip,
             export::project_storage_stats,
