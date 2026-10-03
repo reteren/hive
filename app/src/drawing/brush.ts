@@ -220,7 +220,8 @@ export function createStroke(settings: BrushSettings, zoom: number): DrawStroke 
       previous = raster;
     } else {
       const distance = Math.hypot(raster.x - previous.x, raster.y - previous.y);
-      const spacing = Math.max(0.5, baseDiameter * 0.35);
+      // Dense dabs (10% of the diameter) so the edge of a stroke is smooth instead of scalloped.
+      const spacing = Math.max(0.5, baseDiameter * 0.1);
       const steps = Math.max(1, Math.ceil(distance / spacing));
       for (let index = 1; index <= steps; index += 1) {
         const ratio = index / steps;

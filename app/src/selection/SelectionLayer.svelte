@@ -2126,6 +2126,7 @@ type PendingBoardMove =
 <div
   class="selection-layer"
   class:line-tool-active={lineToolActive}
+  class:draw-mode={tool.active === "draw"}
   data-transform-mode={transformModeHint?.toLowerCase()}
   data-shift-held={shiftHeld ? "true" : undefined}
   bind:this={layer}
@@ -2307,6 +2308,11 @@ type PendingBoardMove =
 
   .selection-outline[data-primary="true"] {
     outline-width: 1.5px;
+  }
+
+  /* Draw mode (R10): node selection chrome is hidden so it never captures pen input. */
+  .selection-layer.draw-mode {
+    display: none;
   }
 
   .selection-layer.line-tool-active .resize-handle {

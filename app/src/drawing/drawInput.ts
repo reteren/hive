@@ -169,8 +169,12 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
       isTextEditingTarget(document.activeElement))) return;
 
     if (event.code === "Escape" && !event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
-      handler?.key?.(event);
+      // First Esc lets the active tool finish its own state (commit a floating selection, close a
+      // polygon); only an Esc the tool does not need leaves draw mode. The tool sees the event before
+      // it is consumed, since handlers ignore already-handled (defaultPrevented) keys.
+      const handled = handler?.key?.(event) ?? false;
       consume(event);
+      if (handled) return;
       deactivateDrawInput();
       tool.active = "select";
       return;

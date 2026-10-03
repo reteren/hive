@@ -1,5 +1,6 @@
 import { registerCommand } from "../commands/registry.svelte";
 import { tool } from "../tools/tool.svelte";
+import { clearSelection } from "../selection/selection.svelte";
 import { deactivateDrawInput } from "./drawInput";
 import "./brush";
 import "./eraser";
@@ -11,6 +12,8 @@ export function toggleDrawMode(): void {
     deactivateDrawInput();
     tool.active = "select";
   } else {
+    // Node selection handles would sit on top of the canvas and swallow strokes/selections.
+    clearSelection();
     tool.active = "draw";
   }
 }

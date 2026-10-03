@@ -792,13 +792,15 @@ function createHandler(tool: SelectionTool) {
           void cancelMove(gesture).finally(clearSelection);
           return true;
         }
+        const hadState = Boolean(gesture || drawingSelection.area || drawingSelection.preview);
         if (gesture) {
           activeGesture = null;
           drawingSelection.preview = null;
           updateState();
         }
         clearSelection();
-        return true;
+        // Nothing to drop: let Esc leave draw mode.
+        return hadState;
       }
       if (activeGesture?.completion) return false;
       if (event.key === "Enter" && drawingSelection.preview?.tool === "select-polygon") {
