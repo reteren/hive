@@ -13,6 +13,7 @@ describe("drawing API browser fallback", () => {
     expect((await drawingReadTile(key))[0]).toBe(137);
     expect((await drawingLoad()).index?.tiles).toEqual([key]);
     const read = await drawingReadTile(key);
+    expect(read.buffer).toBeInstanceOf(ArrayBuffer);
     read[0] = 0;
     expect((await drawingReadTile(key))[0]).toBe(137);
     await drawingSave([{ key, png: null }], { version: 1, pxPerUnit: 20, tileSizePx: 512, tiles: [] });
