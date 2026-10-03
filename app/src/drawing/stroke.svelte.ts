@@ -38,11 +38,14 @@ export async function endStroke(): Promise<void> {
   const settings = activeSettings;
   activeStroke = null;
   activeSettings = null;
-  clearPreview();
-  if (!stroke || !settings) return;
+  if (!stroke || !settings) {
+    clearPreview();
+    return;
+  }
 
   const finished = stroke.finish();
   if (!finished) {
+    clearPreviewOf(stroke);
     stroke.dispose();
     return;
   }
@@ -61,6 +64,8 @@ export async function endStroke(): Promise<void> {
       before = await drawingTileStore.snapshot(keys);
       attemptedPaint = true;
       const changed = paintIntoTiles(finished.source, finished.rasterX, finished.rasterY, "source-over", settings.opacity);
+      // The live preview stays until the paint is in the tiles, so the stroke never blinks out after pointer-up.
+      clearPreviewOf(stroke);
       const after = await drawingTileStore.snapshot(keys);
       if (changed.length > 0) pushDrawingHistory("Draw", before, after);
     } catch (error) {
@@ -70,6 +75,7 @@ export async function endStroke(): Promise<void> {
       console.error("Could not finish drawing stroke", error);
       throw error;
     } finally {
+      clearPreviewOf(stroke);
       stroke.dispose();
     }
   });
@@ -91,6 +97,11 @@ function publishPreview(): void {
   drawingStrokePreview.rasterY = activeStroke.rasterY;
   drawingStrokePreview.dirtyRect = activeStroke.lastDirtyRect;
   drawingStrokePreview.revision += 1;
+}
+
+/** Clear the preview only if it still shows this stroke (a newer stroke may already be drawing). */
+function clearPreviewOf(stroke: DrawStroke): void {
+  if (drawingStrokePreview.source === stroke.preview) clearPreview();
 }
 
 function clearPreview(): void {
