@@ -56,6 +56,7 @@ export function mountInlineGifDom(parent: HTMLElement, options: InlineGifDomOpti
     }
     canvas.width = imageLoader.naturalWidth;
     canvas.height = imageLoader.naturalHeight;
+    context.clearRect(0, 0, canvas.width, canvas.height);
     context.drawImage(imageLoader, 0, 0);
     stillReady = true;
     parent.removeAttribute("aria-busy");

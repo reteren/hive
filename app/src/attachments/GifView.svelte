@@ -67,6 +67,7 @@
       }
       currentCanvas.width = frame.naturalWidth;
       currentCanvas.height = frame.naturalHeight;
+      context.clearRect(0, 0, currentCanvas.width, currentCanvas.height);
       context.drawImage(frame, 0, 0);
       loading = false;
       stillReady = true;
