@@ -593,6 +593,7 @@ mod tests {
         fs::create_dir_all(source.join("notes")).expect("create notes");
         fs::create_dir_all(source.join("data")).expect("create data folder");
         fs::create_dir_all(source.join("attachments")).expect("create attachments folder");
+        fs::create_dir_all(source.join("drawing/tiles")).expect("create drawing tiles");
         fs::create_dir_all(source.join(".hive/removed")).expect("create retained project data");
         fs::create_dir_all(source.join(".hive/backups/snapshot-1")).expect("create backups");
         fs::create_dir_all(&destination).expect("create destination");
@@ -602,6 +603,8 @@ mod tests {
         fs::write(source.join("data/attachment.bin"), [0_u8, 1, 2, 255]).expect("write other data");
         let attachment_name = format!("{}.png", "a".repeat(64));
         fs::write(source.join("attachments").join(&attachment_name), [8_u8, 9, 10]).expect("write image attachment");
+        fs::write(source.join("drawing/drawing.json"), br#"{"version":1,"pxPerUnit":20,"tileSizePx":512,"tiles":["-1:2"]}"#).expect("write drawing index");
+        fs::write(source.join("drawing/tiles/-1_2.png"), [137_u8, 80, 78, 71]).expect("write drawing tile");
         fs::write(
             source.join(".hive/removed/deleted.md"),
             "retained note file",
@@ -633,6 +636,8 @@ mod tests {
             fs::read(destination.join("attachments").join(&attachment_name)).expect("read imported attachment"),
             [8_u8, 9, 10]
         );
+        assert_eq!(fs::read(destination.join("drawing/tiles/-1_2.png")).expect("read imported tile"), [137_u8, 80, 78, 71]);
+        assert_eq!(fs::read(destination.join("drawing/drawing.json")).expect("read imported drawing index"), fs::read(source.join("drawing/drawing.json")).unwrap());
         assert_eq!(
             fs::read_to_string(destination.join(".hive/removed/deleted.md"))
                 .expect("read retained project data"),
