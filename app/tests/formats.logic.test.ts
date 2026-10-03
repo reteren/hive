@@ -179,7 +179,7 @@ describe("PDF and Format nodes", () => {
     const ids = createFormatNotes([pdfRef, textRef], { x: 100, y: 80 });
     expect(ids).toHaveLength(2);
     expect(board.notes[ids[0]!]).toMatchObject({ type: "pdf", x: 80, y: 65, width: 40, height: 30, media: pdfRef });
-    expect(board.notes[ids[1]!]).toMatchObject({ type: "format", x: 77.2, y: 70.2, width: 50, height: null, media: textRef });
+    expect(board.notes[ids[1]!]).toMatchObject({ type: "format", x: 87.2, y: 62.2, width: 30, height: 40, media: textRef });
     expect(history.entries).toHaveLength(1);
     undo();
     expect(ids.every((id) => !board.notes[id])).toBe(true);
