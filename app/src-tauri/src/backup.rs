@@ -1,5 +1,6 @@
 use crate::project::{self, ProjectState};
 use crate::attachments;
+use crate::drawing;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
@@ -15,6 +16,7 @@ const BACKUPS_DIRECTORY: &str = "backups";
 const INDEX_FILE: &str = "board.json";
 const NOTES_DIRECTORY: &str = "notes";
 const ATTACHMENTS_DIRECTORY: &str = "attachments";
+const DRAWING_DIRECTORY: &str = "drawing";
 const ATTACHMENTS_POOL_DIRECTORY: &str = "attachments-pool";
 const ATTACHMENTS_MANIFEST: &str = "attachments.json";
 const META_FILE: &str = "snapshot.json";
@@ -127,6 +129,8 @@ fn create_backup_at(root: &Path) -> Result<BackupInfo, String> {
     ensure_real_directory(&notes_path)?;
     let attachments_path = root.join(ATTACHMENTS_DIRECTORY);
     let has_attachments = optional_directory_present(&attachments_path)?;
+    let drawing_path = root.join(DRAWING_DIRECTORY);
+    let has_drawing = optional_directory_present(&drawing_path)?;
 
     let fingerprint = project_fingerprint(&root)?;
     let (hive_dir, backups_dir) = ensure_backup_directories(&root)?;
@@ -140,6 +144,7 @@ fn create_backup_at(root: &Path) -> Result<BackupInfo, String> {
     let result = (|| {
         copy_file(&index_path, &temp.join(INDEX_FILE))?;
         copy_directory_tree(&notes_path, &temp.join(NOTES_DIRECTORY))?;
+        if has_drawing { copy_directory_tree(&drawing_path, &temp.join(DRAWING_DIRECTORY))?; }
         let attachment_files = if has_attachments {
             copy_attachments_to_pool(&attachments_path, &attachments_pool)?
         } else {
@@ -402,6 +407,15 @@ fn snapshot_fingerprint_with(snapshot: &Path, pool: &Path, attachments_by_size: 
         let relative = path.strip_prefix(snapshot).unwrap_or(&path).to_string_lossy().replace('\\', "/");
         (relative, path)
     }));
+    let drawing = snapshot.join(DRAWING_DIRECTORY);
+    if optional_directory_present(&drawing)? {
+        let mut drawing_files = Vec::new();
+        collect_files(&drawing, &mut drawing_files)?;
+        entries.extend(drawing_files.into_iter().map(|path| {
+            let relative = path.strip_prefix(snapshot).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+            (relative, path)
+        }));
+    }
     if let Some(files) = read_attachment_manifest(snapshot)? {
         for file in files {
             entries.push((format!("{ATTACHMENTS_DIRECTORY}/{file}"), pool.join(file)));
@@ -466,6 +480,10 @@ fn restore_snapshot_at(root: &Path, backup: &Path) -> Result<(), String> {
     let stage_result = (|| {
         copy_file(&backup.join(INDEX_FILE), &staged.join(INDEX_FILE))?;
         copy_directory_tree(&backup.join(NOTES_DIRECTORY), &staged.join(NOTES_DIRECTORY))?;
+        let backup_drawing = backup.join(DRAWING_DIRECTORY);
+        if optional_directory_present(&backup_drawing)? {
+            copy_directory_tree(&backup_drawing, &staged.join(DRAWING_DIRECTORY))?;
+        }
         if let Some(files) = read_attachment_manifest(backup)? {
             let pool = backup.parent().ok_or_else(|| "snapshot has no parent folder".to_string())?
                 .join(ATTACHMENTS_POOL_DIRECTORY);
@@ -501,7 +519,7 @@ fn restore_snapshot_at(root: &Path, backup: &Path) -> Result<(), String> {
             &mut installed,
         )?;
 
-        for name in [INDEX_FILE, ATTACHMENTS_DIRECTORY] {
+        for name in [INDEX_FILE, ATTACHMENTS_DIRECTORY, DRAWING_DIRECTORY] {
             let live = root.join(name);
             if fs::symlink_metadata(&live).is_ok() {
                 fs::rename(&live, previous.join(name)).map_err(|error| {
@@ -767,6 +785,7 @@ fn check_project_health_at(root: &Path) -> HealthReport {
             findings.push("board.json zones must be an array".to_string());
         }
     }
+    findings.extend(drawing::health_findings(root));
     HealthReport { findings }
 }
 
@@ -837,7 +856,7 @@ fn legacy_project_fingerprint(root: &Path) -> Result<String, String> {
 
 fn project_fingerprint_with(root: &Path, attachments_by_size: bool) -> Result<String, String> {
     let mut files = vec![root.join(INDEX_FILE)];
-    for directory_name in [NOTES_DIRECTORY, ATTACHMENTS_DIRECTORY] {
+    for directory_name in [NOTES_DIRECTORY, ATTACHMENTS_DIRECTORY, DRAWING_DIRECTORY] {
         let directory = root.join(directory_name);
         if optional_directory_present(&directory)? {
             collect_files(&directory, &mut files)?;
@@ -1199,7 +1218,7 @@ fn remove_path(path: &Path) -> io::Result<()> {
 mod tests {
     use super::{
         check_project_health_at, commit_snapshot_directory, create_backup_at, delete_backup_at,
-        legacy_project_fingerprint, list_backups_at, restore_snapshot_at,
+        legacy_project_fingerprint, list_backups_at, project_fingerprint, restore_snapshot_at,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -1257,6 +1276,26 @@ mod tests {
                 .len(),
             2
         );
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn drawing_tiles_are_fingerprinted_backed_up_restored_and_health_checked() {
+        let root = project("drawing");
+        let drawing = root.join("drawing");
+        fs::create_dir_all(drawing.join("tiles")).expect("create drawing tiles");
+        fs::write(drawing.join("drawing.json"), br#"{"version":1,"pxPerUnit":20,"tileSizePx":512,"tiles":["-1:2"]}"#).expect("write drawing index");
+        let tile = drawing.join("tiles/-1_2.png");
+        fs::write(&tile, b"original drawing bytes").expect("write drawing tile");
+        let before = project_fingerprint(&root).expect("fingerprint drawing");
+        let snapshot = create_backup_at(&root).expect("snapshot drawing");
+        assert_eq!(fs::read(root.join(".hive/backups").join(&snapshot.id).join("drawing/tiles/-1_2.png")).unwrap(), b"original drawing bytes");
+        fs::write(&tile, b"changed drawing bytes!").expect("change drawing tile");
+        assert_ne!(project_fingerprint(&root).unwrap(), before);
+        restore_snapshot_at(&root, &root.join(".hive/backups").join(&snapshot.id)).expect("restore drawing");
+        assert_eq!(fs::read(&tile).unwrap(), b"original drawing bytes");
+        fs::remove_file(&tile).expect("remove listed tile");
+        assert!(check_project_health_at(&root).findings.iter().any(|finding| finding == "Missing drawing tile: -1:2"));
         fs::remove_dir_all(root).expect("remove fixture");
     }
 
