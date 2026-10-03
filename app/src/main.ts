@@ -28,6 +28,7 @@ import "./inbox/init";
 import "./time/uiInit";
 import "./messages/init";
 import "./time/init";
+import "./drawing/init";
 
 await initializeViewSettingsPersistence();
 await initializeProjectPersistence();
