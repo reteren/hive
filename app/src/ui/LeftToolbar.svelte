@@ -4,6 +4,7 @@
   import CommandButton from "./CommandButton.svelte";
   import Tooltip from "./Tooltip.svelte";
   import { isLineTool, tool } from "../tools/tool.svelte";
+  import DrawToolbar from "../drawing/DrawToolbar.svelte";
   import "../zones/commands";
 
   let searchCommand = $derived(getCommand("search.open"));
@@ -23,6 +24,8 @@
   <CommandButton commandId="tool.lineStrong" />
   <CommandButton commandId="tool.lineWeak" />
   <CommandButton commandId="tool.zone" />
+  <CommandButton commandId="tool.draw" />
+  <DrawToolbar />
   {#if isLineTool()}
     <Tooltip label={`Line shape: ${shapeLabel}`} bindings={shapeBindings}>
       <button

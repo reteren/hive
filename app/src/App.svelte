@@ -2,6 +2,7 @@
   import "./commands/appCommands.svelte";
   import "./settings/commands.svelte";
   import "./beacons/focusCommands";
+  import "./drawing/commands.svelte";
 </script>
 
 <script lang="ts">
