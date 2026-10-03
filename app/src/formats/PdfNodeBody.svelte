@@ -62,15 +62,29 @@
     );
     if (resolution.width <= 0 || resolution.height <= 0) throw new Error("PDF page has no drawable size.");
 
-    canvas.width = resolution.width;
-    canvas.height = resolution.height;
+    // Double buffer: render into an offscreen canvas and swap only when it is complete, so a
+    // re-render after a zoom never blanks the visible page (the old bitmap stays, CSS-scaled).
+    const offscreen = document.createElement("canvas");
+    offscreen.width = resolution.width;
+    offscreen.height = resolution.height;
     const viewport = page.getViewport({ scale: layout.scale });
-    return page.render({
-      canvas,
+    const task = page.render({
+      canvas: offscreen,
       viewport,
       transform: [resolution.scale, 0, 0, resolution.scale, 0, 0],
       background: "rgb(255, 255, 255)",
     });
+    return {
+      cancel: () => task.cancel(),
+      promise: task.promise.then(() => {
+        if (canvases.get(pageNumber) !== canvas) return;
+        canvas.width = offscreen.width;
+        canvas.height = offscreen.height;
+        canvas.getContext("2d")?.drawImage(offscreen, 0, 0);
+        offscreen.width = 0;
+        offscreen.height = 0;
+      }),
+    };
   }
 
   async function loadDocument(

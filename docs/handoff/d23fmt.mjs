@@ -1,0 +1,22 @@
+// Debug 23 smoke, item 2: huge single-line .txt and wide .json in Format nodes — width cap, wrapping vs horizontal scroll, height cap.
+import { writeFileSync } from "node:fs";
+const page = (await fetch(`http://localhost:9334/json/list`).then((r) => r.json())).find((t) => t.type === "page");
+const ws = new WebSocket(page.webSocketDebuggerUrl); let id = 0; const pending = new Map(); const errors = [];
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.method === "Runtime.exceptionThrown") errors.push(m.params.exceptionDetails.exception?.description?.slice(0, 200)); if (pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+await new Promise((r) => (ws.onopen = r));
+const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+await send("Runtime.enable");
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const ev = async (expression) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); return r.result?.result?.value ?? r.result?.exceptionDetails?.exception?.description; };
+console.log(await ev(`(async()=>{const b=await import('/src/model/board.svelte.ts');const cam=await import('/src/board/camera.svelte.ts');const h=await import('/src/history/history.svelte.ts');for(const i of [...b.board.order])b.removeNote(i);h.clear();cam.camera.x=10;cam.camera.y=15;cam.camera.zoom=0.7;
+ const s=await import('/src/attachments/service.ts');const c=await import('/src/formats/formatCreation.ts');
+ const huge=Array.from({length:4000},(_,i)=>'word'+i).join(' ');
+ const t=await s.importMediaFile(new File([huge],'huge.txt',{type:'text/plain'}));
+ const j=await s.importMediaFile(new File([JSON.stringify({rows:Array.from({length:80},(_,i)=>({id:i,text:'a fairly long value to make this json line wider than the node width limit '+i}))},null,0)],'data.json',{type:'application/json'}));
+ c.createFormatNotes([t.media],{x:-25,y:0});c.createFormatNotes([j.media],{x:45,y:0});return 'ok'})()`));
+await wait(2500);
+console.log(await ev(`(async()=>{const b=await import('/src/model/board.svelte.ts');return b.board.order.map(i=>b.board.notes[i]).filter(n=>n.type==='format').map(n=>n.name+' '+n.width+'x'+n.height).join(' | ')})()`));
+console.log(await ev(`[...document.querySelectorAll('article[data-kind=format]')].map(a=>{const r=a.getBoundingClientRect();const s=a.querySelector('.cm-scroller');const c=a.querySelector('.cm-content');return a.querySelector('header')?.innerText.trim().split('\\n')[0]+': card '+Math.round(r.width)+'x'+Math.round(r.height)+' | scroller sh/ch '+s.scrollHeight+'/'+s.clientHeight+' sw/cw '+s.scrollWidth+'/'+s.clientWidth+' | wrapping '+(c?.classList.contains('cm-lineWrapping'))}).join('\\n')`));
+writeFileSync("C:/Users/reteren/AppData/Local/Temp/claude/d23-fmt.png", Buffer.from((await send("Page.captureScreenshot", { format: "png" })).result.data, "base64"));
+console.log("errors:", errors.length ? errors.join(" || ") : "none");
+ws.close();
