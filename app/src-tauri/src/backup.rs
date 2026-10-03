@@ -26,7 +26,14 @@ struct SnapshotMeta {
     id: String,
     fingerprint: String,
     note_count: usize,
+    /// 0 (absent) = legacy fingerprint over full attachment contents; 2 = attachments by name + size.
+    #[serde(default)]
+    fingerprint_version: u32,
 }
+
+/// Attachments are content-addressed (`<sha256>.<ext>`) and immutable, so their name and size identify
+/// them. Reading multi-gigabyte videos on every project open made opening take minutes.
+const FINGERPRINT_VERSION: u32 = 2;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -94,7 +101,7 @@ pub fn delete_backup(state: State<'_, ProjectState>, id: String) -> Result<(), S
 pub fn restore_backup(state: State<'_, ProjectState>, id: String) -> Result<(), String> {
     let root = project::active_project_root(&state)?;
     let backup = backup_path(&root, &id)?;
-    validate_snapshot(&backup)?;
+    validate_snapshot_deep(&backup)?;
     // The current project is snapshotted first. A bad current index aborts here,
     // leaving both the selected backup and the live project untouched.
     create_backup_at(&root)?;
@@ -152,6 +159,7 @@ fn create_backup_at(root: &Path) -> Result<BackupInfo, String> {
             id: id.clone(),
             fingerprint: snapshot_fingerprint,
             note_count,
+            fingerprint_version: FINGERPRINT_VERSION,
         };
         let meta_contents = serde_json::to_vec_pretty(&meta)
             .map_err(|error| format!("could not encode snapshot metadata: {error}"))?;
@@ -221,7 +229,17 @@ fn backup_info(path: &Path, id: &str, note_count: usize) -> Result<BackupInfo, S
     })
 }
 
+/// Listing snapshots (every project open) uses the cheap check: structure, names and sizes.
+/// `deep` (restore only) also re-hashes every pooled attachment and checks legacy content fingerprints.
 fn validate_snapshot(path: &Path) -> Result<SnapshotMeta, String> {
+    validate_snapshot_with(path, false)
+}
+
+fn validate_snapshot_deep(path: &Path) -> Result<SnapshotMeta, String> {
+    validate_snapshot_with(path, true)
+}
+
+fn validate_snapshot_with(path: &Path, deep: bool) -> Result<SnapshotMeta, String> {
     ensure_real_directory(path)?;
     let index_path = path.join(INDEX_FILE);
     ensure_regular_file(&index_path)?;
@@ -239,6 +257,10 @@ fn validate_snapshot(path: &Path) -> Result<SnapshotMeta, String> {
         return Err("snapshot metadata does not match its directory name".to_string());
     }
     let note_count = project::validate_project_index_contents(&contents)?;
+    let by_size = meta.fingerprint_version >= FINGERPRINT_VERSION;
+    // A legacy snapshot's fingerprint covers full attachment contents; recomputing it means reading
+    // every video again, so it is only checked on restore.
+    let check_fingerprint = by_size || deep;
     let fingerprint = if let Some(files) = read_attachment_manifest(path)? {
         if has_legacy_attachments {
             return Err("snapshot contains both pooled and embedded attachments".to_string());
@@ -248,15 +270,19 @@ fn validate_snapshot(path: &Path) -> Result<SnapshotMeta, String> {
         for file in &files {
             let target = pool.join(file);
             ensure_regular_file(&target)?;
-            let hash = file.split_once('.').map(|(hash, _)| hash).unwrap_or_default();
-            attachments::verify_existing_attachment(&target, hash)?;
+            if deep {
+                let hash = file.split_once('.').map(|(hash, _)| hash).unwrap_or_default();
+                attachments::verify_existing_attachment(&target, hash)?;
+            }
         }
-        snapshot_fingerprint(path, &pool)?
-    } else {
+        if check_fingerprint { Some(snapshot_fingerprint_with(path, &pool, by_size)?) } else { None }
+    } else if check_fingerprint {
         // Snapshots made before pooled storage keep their embedded attachments folder.
-        project_fingerprint(path)?
+        Some(if by_size { project_fingerprint(path)? } else { legacy_project_fingerprint(path)? })
+    } else {
+        None
     };
-    if note_count != meta.note_count || fingerprint != meta.fingerprint {
+    if note_count != meta.note_count || fingerprint.is_some_and(|value| value != meta.fingerprint) {
         return Err("snapshot contents do not match its integrity metadata".to_string());
     }
     Ok(meta)
@@ -309,13 +335,15 @@ fn copy_attachments_to_pool(source: &Path, pool: &Path) -> Result<Vec<String>, S
         }
         let source_file = entry.path();
         ensure_regular_file(&source_file)?;
-        let hash = name.split_once('.').map(|(hash, _)| hash).unwrap_or_default();
-        attachments::verify_existing_attachment(&source_file, hash)?;
+        // Content-addressed and immutable: an already pooled file with the same name and size is the
+        // same file. Re-hashing every video on every snapshot made opening a project take minutes.
         let pooled = pool.join(&name);
         match fs::symlink_metadata(&pooled) {
             Ok(_) => {
                 ensure_regular_file(&pooled)?;
-                attachments::verify_existing_attachment(&pooled, hash)?;
+                if !same_size(&source_file, &pooled)? {
+                    return Err(format!("pooled attachment {name} differs from the project copy"));
+                }
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => copy_pool_file(&source_file, &pooled)?,
             Err(error) => return Err(format!("could not inspect pooled attachment {name}: {error}")),
@@ -323,6 +351,12 @@ fn copy_attachments_to_pool(source: &Path, pool: &Path) -> Result<Vec<String>, S
         files.push(name);
     }
     Ok(files)
+}
+
+fn same_size(left: &Path, right: &Path) -> Result<bool, String> {
+    let left = fs::metadata(left).map_err(|error| format!("could not inspect attachment: {error}"))?;
+    let right = fs::metadata(right).map_err(|error| format!("could not inspect pooled attachment: {error}"))?;
+    Ok(left.len() == right.len())
 }
 
 fn copy_pool_file(source: &Path, destination: &Path) -> Result<(), String> {
@@ -339,9 +373,11 @@ fn copy_pool_file(source: &Path, destination: &Path) -> Result<(), String> {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
                 ensure_regular_file(destination)?;
-                let hash = destination.file_name().and_then(|name| name.to_str())
-                    .and_then(|name| name.split_once('.').map(|(hash, _)| hash)).unwrap_or_default();
-                attachments::verify_existing_attachment(destination, hash)
+                if same_size(source, destination)? {
+                    Ok(())
+                } else {
+                    Err("pooled attachment differs from the project copy".to_string())
+                }
             }
             Err(error) => Err(format!("could not install pooled attachment: {error}")),
         }
@@ -351,6 +387,10 @@ fn copy_pool_file(source: &Path, destination: &Path) -> Result<(), String> {
 }
 
 fn snapshot_fingerprint(snapshot: &Path, pool: &Path) -> Result<String, String> {
+    snapshot_fingerprint_with(snapshot, pool, true)
+}
+
+fn snapshot_fingerprint_with(snapshot: &Path, pool: &Path, attachments_by_size: bool) -> Result<String, String> {
     let mut entries = vec![
         (INDEX_FILE.to_string(), snapshot.join(INDEX_FILE)),
         (ATTACHMENTS_MANIFEST.to_string(), snapshot.join(ATTACHMENTS_MANIFEST)),
@@ -367,7 +407,7 @@ fn snapshot_fingerprint(snapshot: &Path, pool: &Path) -> Result<String, String> 
             entries.push((format!("{ATTACHMENTS_DIRECTORY}/{file}"), pool.join(file)));
         }
     }
-    fingerprint_entries(entries)
+    fingerprint_entries(entries, attachments_by_size)
 }
 
 fn garbage_collect_attachment_pool(backups: &Path) -> Result<(), String> {
@@ -411,7 +451,7 @@ fn delete_backup_at(root: &Path, id: &str) -> Result<(), String> {
 }
 
 fn restore_snapshot_at(root: &Path, backup: &Path) -> Result<(), String> {
-    let _ = validate_snapshot(backup)?;
+    let _ = validate_snapshot_deep(backup)?;
     let (_, backups_dir) = ensure_backup_directories(root)?;
     let transaction = backups_dir.join(format!(
         ".tmp-restore-{}-{}",
@@ -787,6 +827,15 @@ fn valid_polygon(polygon: &Value) -> bool {
 }
 
 fn project_fingerprint(root: &Path) -> Result<String, String> {
+    project_fingerprint_with(root, true)
+}
+
+/// Fingerprint over full attachment contents, only for validating snapshots made before version 2.
+fn legacy_project_fingerprint(root: &Path) -> Result<String, String> {
+    project_fingerprint_with(root, false)
+}
+
+fn project_fingerprint_with(root: &Path, attachments_by_size: bool) -> Result<String, String> {
     let mut files = vec![root.join(INDEX_FILE)];
     for directory_name in [NOTES_DIRECTORY, ATTACHMENTS_DIRECTORY] {
         let directory = root.join(directory_name);
@@ -798,12 +847,13 @@ fn project_fingerprint(root: &Path) -> Result<String, String> {
         let relative = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().replace('\\', "/");
         (relative, path)
     }).collect();
-    fingerprint_entries(entries)
+    fingerprint_entries(entries, attachments_by_size)
 }
 
-fn fingerprint_entries(mut entries: Vec<(String, PathBuf)>) -> Result<String, String> {
+fn fingerprint_entries(mut entries: Vec<(String, PathBuf)>, attachments_by_size: bool) -> Result<String, String> {
     entries.sort_by(|left, right| left.0.cmp(&right.0));
     let mut hash = 0xcbf29ce484222325_u64;
+    let attachment_prefix = format!("{ATTACHMENTS_DIRECTORY}/");
     for (relative, path) in entries {
         for byte in relative.as_bytes() {
             hash ^= u64::from(*byte);
@@ -811,12 +861,18 @@ fn fingerprint_entries(mut entries: Vec<(String, PathBuf)>) -> Result<String, St
         }
         hash ^= 0xff;
         hash = hash.wrapping_mul(0x100000001b3);
-        let bytes = fs::read(&path).map_err(|error| {
-            format!(
-                "could not read project file {}: {error}",
-                relative
-            )
-        })?;
+        let bytes = if attachments_by_size && relative.starts_with(&attachment_prefix) {
+            let metadata = fs::metadata(&path)
+                .map_err(|error| format!("could not inspect project file {relative}: {error}"))?;
+            metadata.len().to_le_bytes().to_vec()
+        } else {
+            fs::read(&path).map_err(|error| {
+                format!(
+                    "could not read project file {}: {error}",
+                    relative
+                )
+            })?
+        };
         for byte in bytes {
             hash ^= u64::from(byte);
             hash = hash.wrapping_mul(0x100000001b3);
@@ -1143,7 +1199,7 @@ fn remove_path(path: &Path) -> io::Result<()> {
 mod tests {
     use super::{
         check_project_health_at, commit_snapshot_directory, create_backup_at, delete_backup_at,
-        list_backups_at, project_fingerprint, restore_snapshot_at,
+        legacy_project_fingerprint, list_backups_at, restore_snapshot_at,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -1201,6 +1257,22 @@ mod tests {
                 .len(),
             2
         );
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn listing_snapshots_does_not_read_attachment_contents_but_restore_still_verifies_them() {
+        let root = project("cheap-listing");
+        let file = write_attachment(&root, b"original video bytes");
+        let snapshot = create_backup_at(&root).expect("create snapshot");
+        let pooled = root.join(".hive/backups/attachments-pool").join(&file);
+        // Same size, different content: only a full content check can notice this.
+        fs::write(&pooled, b"corrupted video bytes".get(..b"original video bytes".len()).unwrap()).expect("corrupt pooled copy");
+        assert_eq!(fs::metadata(&pooled).unwrap().len(), b"original video bytes".len() as u64);
+
+        let listing = list_backups_at(&root).expect("listing stays cheap and succeeds");
+        assert_eq!(listing.backups.len(), 1);
+        assert!(restore_snapshot_at(&root, &root.join(".hive/backups").join(&snapshot.id)).is_err());
         fs::remove_dir_all(root).expect("remove fixture");
     }
 
@@ -1280,7 +1352,7 @@ mod tests {
         fs::copy(root.join("board.json"), legacy.join("board.json")).expect("copy legacy index");
         fs::copy(root.join("notes/First.md"), legacy.join("notes/First.md")).expect("copy legacy note");
         fs::write(legacy.join("attachments/old-photo.bin"), b"legacy attachment").expect("write legacy attachment");
-        let fingerprint = project_fingerprint(&legacy).expect("fingerprint legacy snapshot");
+        let fingerprint = legacy_project_fingerprint(&legacy).expect("fingerprint legacy snapshot");
         let meta = serde_json::json!({ "id": "legacy-snapshot", "fingerprint": fingerprint, "noteCount": 1 });
         fs::write(legacy.join("snapshot.json"), serde_json::to_vec(&meta).expect("encode metadata")).expect("write metadata");
         fs::write(root.join("notes/First.md"), "new live note").expect("change live project");

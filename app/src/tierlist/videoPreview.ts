@@ -25,7 +25,7 @@ function captureFrame(url: string): Promise<HTMLCanvasElement | null> {
   if (typeof document === "undefined") return Promise.resolve(null);
   return new Promise((resolve) => {
     const video = document.createElement("video");
-    video.preload = "auto";
+    video.preload = "metadata";
     video.muted = true;
     video.playsInline = true;
     let settled = false;
