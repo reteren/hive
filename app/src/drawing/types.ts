@@ -140,3 +140,19 @@ export interface DrawToolHandler {
  *   readRasterRect(rasterX, rasterY, width, height): ImageData   — read across tiles (fill/selection)
  *   writeRasterRect(image: ImageData, rasterX, rasterY): TileKey[] — write across tiles (replace pixels)
  */
+
+/**
+ * STROKE API (CORE, src/drawing/brush.ts) — shared by brush and eraser:
+ *   createStroke(settings: BrushSettings, zoom: number): DrawStroke
+ *   interface DrawStroke {
+ *     add(world: { x: number; y: number }, pressure?: number): void;  // interpolates, max-alpha within stroke
+ *     readonly preview: HTMLCanvasElement;   // live stroke mask (white×alpha for erase use), world-positioned by
+ *     readonly rasterX: number;              //   raster origin rasterX/rasterY (px, may be negative)
+ *     readonly rasterY: number;
+ *     finish(): { source: HTMLCanvasElement; rasterX: number; rasterY: number } | null; // null if empty
+ *     dispose(): void;
+ *   }
+ * Brush tool: paintIntoTiles(source, x, y, "source-over", settings.opacity).
+ * Eraser tool: paintIntoTiles(source, x, y, "destination-out", settings.opacity) + photo copy-on-write with
+ * the same source mask. The stroke source is painted in the brush colour; for erase only its alpha matters.
+ */
