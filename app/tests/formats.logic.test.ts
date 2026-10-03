@@ -12,10 +12,7 @@ import {
   isFormatMediaKind,
   normalizePdfZoom,
   parseMediaRef,
-  pdfFrameMetrics,
-  pdfViewerSource,
   pdfZoomLabel,
-  PDF_RENDER_OVERSAMPLE,
   stepPdfZoom,
 } from "../src/formats/formatLogic";
 import { saveFormatText, setPdfZoom } from "../src/formats/formatActions";
@@ -72,25 +69,7 @@ describe("PDF and Format nodes", () => {
     expect(minimumHeightForKind("pdf")).toBe(30);
   });
 
-  it("uses fixed two-times PDF raster dimensions independent of board zoom", () => {
-    const metrics = [0.3, 1, 3].map(() => pdfFrameMetrics(400, 260));
-    expect(metrics).toEqual([
-      { width: 800, height: 520, scale: PDF_RENDER_OVERSAMPLE, inverseScale: 0.5 },
-      { width: 800, height: 520, scale: PDF_RENDER_OVERSAMPLE, inverseScale: 0.5 },
-      { width: 800, height: 520, scale: PDF_RENDER_OVERSAMPLE, inverseScale: 0.5 },
-    ]);
-    expect(metrics[0]).toEqual(metrics[1]);
-    expect(metrics[1]).toEqual(metrics[2]);
-  });
-
-  it("recreates the PDF iframe when zoom or fit mode changes and keeps the level label in sync", () => {
-    const source = "asset://localhost/file.pdf";
-    const hundredUrl = pdfViewerSource(source, 100);
-    const zoomedUrl = pdfViewerSource(source, 110);
-    const fitUrl = pdfViewerSource(source, undefined);
-    expect(hundredUrl).not.toBe(zoomedUrl);
-    expect(zoomedUrl).not.toBe(fitUrl);
-    expect(new URLSearchParams(pdfViewerSource(source, 165).split("#")[1]).get("zoom")).toBe("170");
+  it("keeps the PDF zoom label in sync and renders canvas pages through PDF.js", () => {
     expect(pdfZoomLabel(undefined)).toBe("Fit");
     expect(pdfZoomLabel(100)).toBe("100%");
     expect(pdfZoomLabel(165)).toBe("170%");
@@ -100,8 +79,9 @@ describe("PDF and Format nodes", () => {
       query: "?raw",
       import: "default",
     }))[0] ?? "";
-    expect(component).toContain("{#key viewerSource}");
-    expect(component).toContain("src={viewerSource}");
+    expect(component).toContain("pdfjs.getDocument({ url: currentSource })");
+    expect(component).toContain("<canvas");
+    expect(component).not.toContain("<iframe");
     expect(component).toContain("pdfZoomLabel(pdfZoom)");
   });
 
@@ -129,7 +109,7 @@ describe("PDF and Format nodes", () => {
     expect(tooSmall.height).toBe(30);
   });
 
-  it("hides the built-in PDF controls and keeps viewer zoom in URL parameters", () => {
+  it("normalizes and steps PDF zoom without changing the fit-width default", () => {
     expect(normalizePdfZoom(44)).toBe(50);
     expect(normalizePdfZoom(55)).toBe(60);
     expect(normalizePdfZoom(304)).toBe(300);
@@ -138,41 +118,25 @@ describe("PDF and Format nodes", () => {
     expect(stepPdfZoom(undefined, -1)).toBe(90);
     expect(stepPdfZoom(300, 1)).toBe(300);
     expect(stepPdfZoom(50, -1)).toBe(50);
-    const zoomParams = new URLSearchParams(pdfViewerSource("asset://localhost/file.pdf#page=3", 150).split("#")[1]);
-    expect(zoomParams.get("toolbar")).toBe("0");
-    expect(zoomParams.get("navpanes")).toBe("0");
-    expect(zoomParams.get("zoom")).toBe("150");
-
-    const fitParams = new URLSearchParams(pdfViewerSource("asset://localhost/file.pdf", undefined).split("#")[1]);
-    expect(fitParams.get("toolbar")).toBe("0");
-    expect(fitParams.get("navpanes")).toBe("0");
-    expect(fitParams.get("zoom")).toBe("page-width");
-
-    const sources = [0.3, 1, 3].map(() => pdfViewerSource("asset://localhost/file.pdf", 150));
-    expect(sources).toEqual([
-      "asset://localhost/file.pdf#toolbar=0&navpanes=0&zoom=150",
-      "asset://localhost/file.pdf#toolbar=0&navpanes=0&zoom=150",
-      "asset://localhost/file.pdf#toolbar=0&navpanes=0&zoom=150",
-    ]);
   });
 
-  it("places PDF controls in a separate strip and clips horizontal overflow in the document area", () => {
+  it("places PDF controls above a scrollable document and contains canvas pages", () => {
     const component = Object.values(import.meta.glob<string>("../src/formats/PdfNodeBody.svelte", {
       eager: true,
       query: "?raw",
       import: "default",
     }))[0] ?? "";
     const controlsIndex = component.indexOf('<div class="pdf-controls"');
-    const documentIndex = component.indexOf('<div bind:this={documentViewport} class="pdf-document">');
+    const documentIndex = component.indexOf('<div bind:this={documentViewport} class="pdf-document"');
     expect(controlsIndex).toBeGreaterThanOrEqual(0);
     expect(documentIndex).toBeGreaterThan(controlsIndex);
     expect(component).toContain("pdfZoomLabel(pdfZoom)");
     expect(component).toMatch(/\.pdf-controls\s*\{[\s\S]*?position:\s*relative;/);
-    expect(component).toMatch(/\.pdf-document\s*\{[\s\S]*?overflow:\s*hidden;/);
-    expect(component).toMatch(/\.pdf-viewer\s*\{[\s\S]*?overflow-x:\s*hidden;/);
-    expect(component).not.toContain("camera.zoom");
-    expect(component).toContain("pdfFrameMetrics(element.clientWidth, element.clientHeight)");
-    expect(component).toContain("pdfViewerSource(source, pdfZoom)");
+    expect(component).toMatch(/\.pdf-document\s*\{[\s\S]*?overflow:\s*auto;/);
+    expect(component).toContain("use:observePage={page.pageNumber}");
+    expect(component).toContain("pdfBackingResolution(");
+    expect(component).toContain("pdfPageLayout(page.width, page.height, contentWidth, pdfZoom)");
+    expect(component).not.toContain("<iframe");
   });
 
   it("creates the PDF and Format nodes at the picker point in a single undo step", () => {
