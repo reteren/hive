@@ -3,12 +3,12 @@
   import Tooltip from "../ui/Tooltip.svelte";
   import { tool } from "../tools/tool.svelte";
   import DrawCursor from "./DrawCursor.svelte";
+  import { selectDrawingSubtool } from "./drawInput";
   import {
     applyBrushPreset,
     deleteBrushPreset,
     drawingTools,
     saveBrushPreset,
-    setActiveDrawTool,
     setBrushSettings,
   } from "./tools.svelte";
   import type { DrawTool } from "./types";
@@ -74,7 +74,7 @@
             type="button"
             class:active={drawingTools.active === option.id}
             aria-pressed={drawingTools.active === option.id}
-            onclick={() => setActiveDrawTool(option.id)}
+            onclick={() => selectDrawingSubtool(option.id)}
           >
             <span>{option.label}</span><kbd>{option.key}</kbd>
           </button>

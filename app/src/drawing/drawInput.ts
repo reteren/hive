@@ -188,7 +188,7 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
     });
     if (!shortcut) return;
     consume(event);
-    if (shortcut.kind === "tool") setActiveDrawTool(shortcut.tool);
+    if (shortcut.kind === "tool") selectDrawingSubtool(shortcut.tool);
     else adjustBrushSize(shortcut.delta);
   }
 
@@ -226,6 +226,13 @@ export function deactivateDrawInput(): void {
   selectedHandler?.deactivate?.();
   selectedTool = null;
   selectedHandler = undefined;
+}
+
+/** Switch subtools only after the previous handler has cancelled/committed its transient state. */
+export function selectDrawingSubtool(next: DrawTool): void {
+  if (drawingTools.active === next) return;
+  deactivateDrawInput();
+  setActiveDrawTool(next);
 }
 
 function cancelGesture(): void {
