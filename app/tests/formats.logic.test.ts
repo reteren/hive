@@ -9,12 +9,12 @@ import {
   formatLanguageForExtension,
   formatNodeKind,
   hasUnsavedFormatChanges,
-  effectivePdfZoom,
   isFormatMediaKind,
   normalizePdfZoom,
   parseMediaRef,
   pdfFrameMetrics,
   pdfViewerSource,
+  PDF_RENDER_OVERSAMPLE,
   stepPdfZoom,
 } from "../src/formats/formatLogic";
 import { saveFormatText, setPdfZoom } from "../src/formats/formatActions";
@@ -71,20 +71,18 @@ describe("PDF and Format nodes", () => {
     expect(minimumHeightForKind("pdf")).toBe(30);
   });
 
-  it.each([
-    [0.5, 1, 200, 130, 2],
-    [1, 1, 400, 260, 1],
-    [2, 1, 800, 520, 0.5],
-    [0.5, 2, 400, 260, 1],
-    [2, 1.5, 1200, 780, 1 / 3],
-    [2, 4, 3200, 2080, 1 / 8],
-  ])("keeps the PDF frame geometry while rasterizing at zoom %s and note scale %s", (zoom, noteScale, width, height, inverseScale) => {
-    expect(pdfFrameMetrics(400, 260, zoom, noteScale)).toEqual({
-      width, height, scale: zoom * noteScale, inverseScale,
-    });
+  it("uses fixed two-times PDF raster dimensions independent of board zoom", () => {
+    const metrics = [0.3, 1, 3].map(() => pdfFrameMetrics(400, 260));
+    expect(metrics).toEqual([
+      { width: 800, height: 520, scale: PDF_RENDER_OVERSAMPLE, inverseScale: 0.5 },
+      { width: 800, height: 520, scale: PDF_RENDER_OVERSAMPLE, inverseScale: 0.5 },
+      { width: 800, height: 520, scale: PDF_RENDER_OVERSAMPLE, inverseScale: 0.5 },
+    ]);
+    expect(metrics[0]).toEqual(metrics[1]);
+    expect(metrics[1]).toEqual(metrics[2]);
   });
 
-  it("scales the PDF viewer zoom with board and note scale to keep content fixed inside the node", () => {
+  it("changes viewer zoom only from the PDF setting and leaves fit-width viewport-relative", () => {
     expect(normalizePdfZoom(44)).toBe(50);
     expect(normalizePdfZoom(55)).toBe(60);
     expect(normalizePdfZoom(304)).toBe(300);
@@ -93,25 +91,28 @@ describe("PDF and Format nodes", () => {
     expect(stepPdfZoom(undefined, -1)).toBe(90);
     expect(stepPdfZoom(300, 1)).toBe(300);
     expect(stepPdfZoom(50, -1)).toBe(50);
-    expect(effectivePdfZoom(150, 2, 1.5)).toBe(450);
-    expect(effectivePdfZoom(undefined, 2, 1.5)).toBeUndefined();
     expect(pdfViewerSource("asset://localhost/file.pdf#page=3", 150)).toBe("asset://localhost/file.pdf#zoom=150");
-    expect(pdfViewerSource("asset://localhost/file.pdf", 150, 2, 1.5)).toBe("asset://localhost/file.pdf#zoom=450");
-    expect(pdfViewerSource("asset://localhost/file.pdf", undefined, 2, 1.5)).toBe("asset://localhost/file.pdf#zoom=page-width");
+    expect(pdfViewerSource("asset://localhost/file.pdf", undefined)).toBe("asset://localhost/file.pdf#zoom=page-width");
 
-    const nodeWidth = 400;
-    const pageWidth = 600;
-    const expectedRatio = pageWidth * 1.5 / nodeWidth;
-    for (const [cameraZoom, noteScale] of [[0.5, 1], [1, 1], [2, 1.5], [0.25, 0.75]] as const) {
-      const frame = pdfFrameMetrics(nodeWidth, 260, cameraZoom, noteScale);
-      const effectiveZoom = effectivePdfZoom(150, cameraZoom, noteScale);
-      expect(frame.width * frame.inverseScale).toBeCloseTo(nodeWidth);
-      expect(frame.height * frame.inverseScale).toBeCloseTo(260);
-      expect(effectiveZoom).toBeCloseTo(150 * cameraZoom * noteScale);
+    const sources = [0.3, 1, 3].map(() => pdfViewerSource("asset://localhost/file.pdf", 150));
+    expect(sources).toEqual([
+      "asset://localhost/file.pdf#zoom=150",
+      "asset://localhost/file.pdf#zoom=150",
+      "asset://localhost/file.pdf#zoom=150",
+    ]);
+  });
 
-      const contentWidthWithinNode = pageWidth * ((effectiveZoom ?? 0) / 100) * frame.inverseScale;
-      expect(contentWidthWithinNode / nodeWidth).toBeCloseTo(expectedRatio);
-    }
+  it("does not subscribe the PDF iframe to camera zoom or use a zoom debounce", () => {
+    const component = Object.values(import.meta.glob<string>("../src/formats/PdfNodeBody.svelte", {
+      eager: true,
+      query: "?raw",
+      import: "default",
+    }))[0] ?? "";
+    expect(component).not.toContain("camera.zoom");
+    expect(component).not.toContain("viewerBoardZoom");
+    expect(component).not.toContain("setTimeout");
+    expect(component).toContain("pdfFrameMetrics(element.clientWidth, element.clientHeight)");
+    expect(component).toContain("pdfViewerSource(source, note.pdfZoom)");
   });
 
   it("creates the PDF and Format nodes at the picker point in a single undo step", () => {

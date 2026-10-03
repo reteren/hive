@@ -41,15 +41,16 @@ export function hasUnsavedFormatChanges(draft: string, saved: string): boolean {
 }
 
 export interface PdfFrameMetrics {
-  /** CSS dimensions used to rasterize the PDF before the board scale is undone. */
+  /** Fixed CSS dimensions used to rasterize the PDF above the node's normal resolution. */
   width: number;
   height: number;
-  /** The combined camera zoom and per-note/group scale. */
+  /** Constant raster oversampling factor, independent of camera zoom and note scale. */
   scale: number;
-  /** Applied to the frame so its final board-space size remains unchanged. */
+  /** Applied to the frame so its final node-space size remains unchanged. */
   inverseScale: number;
 }
 
+export const PDF_RENDER_OVERSAMPLE = 2;
 export const PDF_ZOOM_MIN = 50;
 export const PDF_ZOOM_MAX = 300;
 export const PDF_ZOOM_STEP = 10;
@@ -67,41 +68,23 @@ export function stepPdfZoom(value: unknown, direction: -1 | 1): number {
   return normalizePdfZoom(current + direction * PDF_ZOOM_STEP) ?? PDF_ZOOM_DEFAULT;
 }
 
-/** Scale an explicit PDF zoom with the board and note so it stays fixed inside the node. */
-export function effectivePdfZoom(zoom: unknown, boardZoom: number, noteScale: number): number | undefined {
-  const normalized = normalizePdfZoom(zoom);
-  if (normalized === undefined) return undefined;
-  const safeBoardZoom = Number.isFinite(boardZoom) && boardZoom > 0 ? boardZoom : 1;
-  const safeNoteScale = Number.isFinite(noteScale) && noteScale > 0 ? noteScale : 1;
-  return normalized * safeBoardZoom * safeNoteScale;
-}
-
-/** Fit width is viewport-relative and deliberately ignores camera and note scale. */
-export function pdfViewerSource(source: string, zoom: unknown, boardZoom = 1, noteScale = 1): string {
+/** Fit width and fixed PDF zoom depend only on the PDF control, never the board camera. */
+export function pdfViewerSource(source: string, zoom: unknown): string {
   const base = source.split("#", 1)[0] ?? "";
   if (!base) return "";
-  const effectiveZoom = effectivePdfZoom(zoom, boardZoom, noteScale);
-  if (effectiveZoom === undefined) return `${base}#zoom=page-width`;
-  const stableZoom = Number(effectiveZoom.toFixed(2));
-  return `${base}#zoom=${stableZoom}`;
+  const normalized = normalizePdfZoom(zoom);
+  return `${base}#zoom=${normalized ?? "page-width"}`;
 }
 
 /**
- * Rasterize a PDF frame at its on-screen CSS resolution, then counter-scale it
- * inside the note. This keeps its final geometry unchanged through camera zoom
- * and note/group scaling while giving the embedded viewer a larger viewport.
+ * Rasterize PDF content at a fixed oversampled size, then counter-scale it
+ * inside the node. Board and note transforms scale the iframe like any other
+ * node, so camera movement never changes its internal zoom or layout.
  */
-export function pdfFrameMetrics(
-  width: number,
-  height: number,
-  zoom: number,
-  noteScale: number,
-): PdfFrameMetrics {
+export function pdfFrameMetrics(width: number, height: number): PdfFrameMetrics {
   const safeWidth = Number.isFinite(width) ? Math.max(0, width) : 0;
   const safeHeight = Number.isFinite(height) ? Math.max(0, height) : 0;
-  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
-  const safeNoteScale = Number.isFinite(noteScale) && noteScale > 0 ? noteScale : 1;
-  const scale = safeZoom * safeNoteScale;
+  const scale = PDF_RENDER_OVERSAMPLE;
 
   return {
     width: safeWidth * scale,
