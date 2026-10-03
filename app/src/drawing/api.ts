@@ -14,16 +14,22 @@ export interface DrawingLoadResult {
 let browserIndex: DrawingIndex | null = null;
 const browserTiles = new Map<TileKey, Uint8Array>();
 
+function ownedPng(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
+  const copy = new Uint8Array(new ArrayBuffer(bytes.byteLength));
+  copy.set(bytes);
+  return copy;
+}
+
 export async function drawingLoad(): Promise<DrawingLoadResult> {
   if (isTauri()) return invoke<DrawingLoadResult>("drawing_load");
   return { index: browserIndex ? { ...browserIndex, tiles: [...browserIndex.tiles] } : null };
 }
 
-export async function drawingReadTile(key: TileKey): Promise<Uint8Array> {
-  if (isTauri()) return Uint8Array.from(await invoke<number[]>("drawing_read_tile", { key }));
+export async function drawingReadTile(key: TileKey): Promise<Uint8Array<ArrayBuffer>> {
+  if (isTauri()) return ownedPng(Uint8Array.from(await invoke<number[]>("drawing_read_tile", { key })));
   const png = browserTiles.get(key);
   if (!png) throw new Error(`Drawing tile ${key} is missing.`);
-  return png.slice();
+  return ownedPng(png);
 }
 
 export async function drawingSave(changes: readonly DrawingTileChange[], index: DrawingIndex): Promise<void> {
@@ -36,7 +42,7 @@ export async function drawingSave(changes: readonly DrawingTileChange[], index: 
   }
   for (const { key, png } of changes) {
     if (png === null) browserTiles.delete(key);
-    else browserTiles.set(key, png.slice());
+    else browserTiles.set(key, ownedPng(png));
   }
   browserIndex = { ...index, tiles: [...index.tiles] };
 }
