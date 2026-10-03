@@ -99,7 +99,6 @@ export function inlineImagesExtension(breakHistoryGroup: BreakHistoryGroup, note
       },
       ".cm-inline-image-widget[aria-busy='true']": {
         minHeight: "24px",
-        backgroundColor: "rgba(255,255,255,0.035)",
       },
       ".cm-inline-image-missing": {
         display: "flex",

@@ -1156,7 +1156,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
   .tier-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px #f5cd4d50; }
   .tier-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .tier-card.image-card { box-sizing: border-box; height: 56px; min-height: 56px; max-height: 56px; padding: 0; }
-  :global(.tier-card-image) { max-width: none; border-radius: 3px; }
+  :global(.tier-card-image) { max-width: none; border-radius: 3px; background: transparent; }
   .tier-card.youtube-card { box-sizing: border-box; height: 72px; min-height: 72px; max-height: 72px; gap: 2px; padding: 3px 15px 3px 3px; }
   .tier-youtube-preview { display: flex; min-height: 0; width: 100%; flex-direction: column; gap: 2px; overflow: hidden; }
   .tier-youtube-thumbnail { display: block; width: 100%; height: 48px; flex: 0 0 48px; object-fit: cover; border-radius: 3px; }

@@ -49,7 +49,6 @@
     min-height: 0;
     overflow: hidden;
     border-radius: inherit;
-    background: #1c1c1c;
   }
 
   .image-node-picture-viewport {
