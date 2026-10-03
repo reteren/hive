@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { board } from "../model/board.svelte";
   import AttachmentImage from "../attachments/AttachmentImage.svelte";
   import GifView from "../attachments/GifView.svelte";
   import type { ImageRef } from "../attachments/types";
+  import { clampImageOpacity } from "./imageLogic";
 
   let { image, selected, name, noteId, flipX, flipY }: {
     image?: ImageRef;
@@ -11,11 +13,12 @@
     flipX?: true;
     flipY?: true;
   } = $props();
+  let opacity = $derived(clampImageOpacity(board.notes[noteId]?.opacity ?? 1));
 </script>
 
 <div class="image-node-body" role="group" aria-label={name} ondragstart={(event) => event.preventDefault()}>
   {#if image?.mime === "image/gif"}
-    <div class="image-node-picture-viewport" style:transform={`scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`}>
+    <div class="image-node-picture-viewport" style:transform={`scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`} style:opacity={opacity}>
       <GifView
         {image}
         target={{ kind: "board", noteId }}
@@ -27,7 +30,7 @@
       />
     </div>
   {:else if image}
-    <div class="image-node-picture-viewport" style:transform={`scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`}>
+    <div class="image-node-picture-viewport" style:transform={`scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`} style:opacity={opacity}>
       <AttachmentImage
         {image}
         alt={name}

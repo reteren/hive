@@ -5,10 +5,35 @@ import type { Note } from "../model/note";
 export const MIN_INITIAL_IMAGE_SIDE = 6;
 export const MAX_INITIAL_IMAGE_SIDE = 40;
 export const MIN_RESIZED_IMAGE_SIDE = 4;
+export const MIN_IMAGE_OPACITY = 0.1;
+export const MAX_IMAGE_OPACITY = 1;
+export const IMAGE_OPACITY_STEP = 0.05;
 
 export interface ImageSize {
   width: number;
   height: number;
+}
+
+/** Snap UI changes to the opacity slider's 5% steps and keep the supported range. */
+export function clampImageOpacity(value: number): number {
+  const finite = Number.isFinite(value) ? value : MAX_IMAGE_OPACITY;
+  const bounded = Math.min(MAX_IMAGE_OPACITY, Math.max(MIN_IMAGE_OPACITY, finite));
+  return Number((Math.round(bounded / IMAGE_OPACITY_STEP) * IMAGE_OPACITY_STEP).toFixed(2));
+}
+
+/** Normalize a persisted value; invalid types are ignored and out-of-range values are clamped. */
+export function normalizeImageOpacity(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? clampImageOpacity(value) : undefined;
+}
+
+/** MediaSlider's 0–90 range maps to image opacity from 10% through 100%. */
+export function imageOpacityFromSliderValue(value: number): number {
+  const sliderValue = Number.isFinite(value) ? Math.min(90, Math.max(0, Math.round(value / 5) * 5)) : 90;
+  return clampImageOpacity((sliderValue + 10) / 100);
+}
+
+export function imageOpacitySliderValue(value: number): number {
+  return Math.round(clampImageOpacity(value) * 100) - 10;
 }
 
 /** Keep the imported aspect ratio, using native pixel dimensions as board units at 10 px/u. */
