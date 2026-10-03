@@ -10,6 +10,7 @@
   import BeaconsLayer from "../beacons/BeaconsLayer.svelte";
   import LinksLayer from "../links/LinksLayer.svelte";
   import "../links/commands";
+  import SelectionOverlay from "../drawing/SelectionOverlay.svelte";
   import MeMarker from "./MeMarker.svelte";
   import NotesLayer from "../notes/NotesLayer.svelte";
   import OverviewZoneLabels from "../overview/OverviewZoneLabels.svelte";
@@ -116,6 +117,7 @@
   <GridLayer />
   <ZonesLayer />
   <ZoneBrushLayer />
+  <SelectionOverlay />
   <BrushPanel />
   <LinksLayer />
   <MeMarker />
