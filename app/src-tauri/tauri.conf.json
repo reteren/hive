@@ -57,7 +57,7 @@
     ],
     "security": {
       "assetProtocol": { "enable": true, "scope": [] },
-      "csp": "default-src 'self'; img-src 'self' data: blob: asset: http://asset.localhost https://i.ytimg.com; media-src 'self' blob: asset: http://asset.localhost; frame-src 'self' asset: http://asset.localhost https://www.youtube-nocookie.com https://www.youtube.com; object-src 'self' asset: http://asset.localhost; connect-src 'self' ipc: http://ipc.localhost https://www.youtube.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
+      "csp": "default-src 'self'; img-src 'self' data: blob: asset: http://asset.localhost https://i.ytimg.com; media-src 'self' blob: asset: http://asset.localhost; frame-src 'self' asset: http://asset.localhost https://www.youtube-nocookie.com https://www.youtube.com; object-src 'self' asset: http://asset.localhost; connect-src 'self' ipc: http://ipc.localhost asset: http://asset.localhost https://www.youtube.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
     }
   },
   "bundle": {
