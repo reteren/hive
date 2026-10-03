@@ -139,6 +139,8 @@ export interface Note {
   scope?: NodeScope;
   /** Board image (kind "image", R9.2): the picture file and its intrinsic size. */
   image?: ImageRef;
+  /** Image node opacity from 0.1 to 1; absent means fully opaque. */
+  opacity?: number;
   /** R9.3–R9.5 file of a "pdf" / "format" / "audio" / "video" node (see src/attachments/types.ts). */
   media?: MediaRef;
   /** PDF viewer zoom percentage (50–300); absent means fit to width. */
