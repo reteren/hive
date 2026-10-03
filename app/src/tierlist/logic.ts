@@ -57,6 +57,10 @@ export function pointerDragThresholdPassed(start: { x: number; y: number }, curr
   return (current.x - start.x) ** 2 + (current.y - start.y) ** 2 >= threshold ** 2;
 }
 
+export function isTierlistAudioPlayTarget(target: { closest(selector: string): unknown } | null): boolean {
+  return Boolean(target?.closest("[data-tier-audio-play]"));
+}
+
 /** Find the row under a pointer and the nearest insertion boundary within that row. */
 export function tierCardDropTargetAt(
   point: { x: number; y: number },

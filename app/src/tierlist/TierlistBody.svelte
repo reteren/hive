@@ -53,6 +53,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
     markTierHintsDismissed,
     tierCardPreview,
     tierLabelTextColor,
+    isTierlistAudioPlayTarget,
     pointerDragThresholdPassed,
     tierCardDropTargetAt,
     tierCardInsertionIndicatorAt,
@@ -412,6 +413,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
   }
 
   function beginCardPointerDrag(row: TierRow, card: TierCard, event: PointerEvent): void {
+    if (event.target instanceof Element && isTierlistAudioPlayTarget(event.target)) return;
     if (event.button !== 0 || editingCardId === card.id) return;
     event.preventDefault();
     const element = (event.currentTarget as HTMLElement).closest<HTMLElement>("[data-tier-card-id]")!;
@@ -864,7 +866,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
           {@const preview = cardPreview(card)}
           {@const mediaUrl = preview.kind === "video" || preview.kind === "audio" ? attachmentUrl(preview.file) : ""}
           {@const audioKey = `${note.id}:${card.id}`}
-          {@const audioUnavailable = preview.kind === "audio" && tierlistAudioPlayback.unavailableKey === audioKey}
+          {@const audioPlaying = tierlistAudioPlayback.key === audioKey && tierlistAudioPlayback.playing}
           <div
             class="tier-card-content"
             data-tier-card-kind={card.kind}
@@ -882,24 +884,62 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
                 onblur={() => finishEditCard(true)}
               ></textarea>
             {:else}
-              <button
-                class="tier-card"
-                class:image-card={preview.kind === "image" || preview.kind === "video"}
-                class:youtube-card={preview.kind === "youtube" && failedYouTubeCardId !== card.id}
-                class:tier-audio-card={preview.kind === "audio" && Boolean(mediaUrl) && !audioUnavailable}
-                class:selected={selectedCard?.cardId === card.id}
-                class:missing={preview.kind === "note" && preview.missing}
-                type="button"
-                aria-label={preview.kind === "text" ? `Text card: ${preview.text || "empty"}` : preview.kind === "image" ? `Image card: ${preview.name}` : preview.kind === "audio" && Boolean(mediaUrl) && !audioUnavailable ? `${tierlistAudioPlayback.key === audioKey && tierlistAudioPlayback.playing ? "Pause" : "Play"} audio: ${preview.name}` : preview.kind === "video" && mediaUrl ? `Video preview: ${preview.name}` : preview.kind === "youtube" && failedYouTubeCardId !== card.id ? `YouTube preview: ${preview.name}` : `Node preview: ${preview.name}`}
-                aria-pressed={preview.kind === "audio" && Boolean(mediaUrl) && !audioUnavailable
-                  ? tierlistAudioPlayback.key === audioKey && tierlistAudioPlayback.playing
-                  : selectedCard?.cardId === card.id}
-                onfocus={() => { selectedCard = { rowId: row.id, cardId: card.id }; }}
-                onclick={() => activateCard(row.id, card, preview)}
-                onpointerdown={(event) => beginCardPointerDrag(row, card, event)}
-                ondblclick={(event) => beginEditCard(row, card, event)}
-                onkeydown={(event) => handleCardKeydown(row.id, card.id, event)}
-              >
+              {#if preview.kind === "audio" && mediaUrl}
+                <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+                <div
+                  class="tier-card tier-audio-card"
+                  class:selected={selectedCard?.cardId === card.id}
+                  role="group"
+                  aria-label={`Audio card: ${preview.name}`}
+                  onpointerdown={(event) => {
+                    selectedCard = { rowId: row.id, cardId: card.id };
+                    beginCardPointerDrag(row, card, event);
+                  }}
+                >
+                  <button
+                    class="tier-audio-play-button"
+                    data-tier-audio-play
+                    data-selection-ignore
+                    type="button"
+                    aria-label={`${audioPlaying ? "Pause" : "Play"} audio: ${preview.name}`}
+                    aria-pressed={audioPlaying}
+                    onfocus={() => { selectedCard = { rowId: row.id, cardId: card.id }; }}
+                    onpointerdown={(event) => event.stopPropagation()}
+                    onclick={(event) => {
+                      event.stopPropagation();
+                      selectedCard = { rowId: row.id, cardId: card.id };
+                      void toggleTierlistAudio(audioKey, mediaUrl);
+                    }}
+                    onkeydown={(event) => handleCardKeydown(row.id, card.id, event)}
+                  >
+                    <svg viewBox="0 0 24 24" width="18" height="18" focusable="false">
+                      {#if audioPlaying}<path d="M7 5h4v14H7zM15 5h4v14h-4z" fill="currentColor" />
+                      {:else}<path d="M8 5.5v13l10-6.5z" fill="currentColor" />{/if}
+                    </svg>
+                  </button>
+                  <div class="tier-audio-copy">
+                    <strong>{preview.name}</strong>
+                    {#if tierlistAudioPlayback.errorKey === audioKey}
+                      <small class="tier-audio-error" role="status" title={tierlistAudioPlayback.error}>Could not play audio</small>
+                    {/if}
+                  </div>
+                </div>
+              {:else}
+                <button
+                  class="tier-card"
+                  class:image-card={preview.kind === "image" || preview.kind === "video"}
+                  class:youtube-card={preview.kind === "youtube" && failedYouTubeCardId !== card.id}
+                  class:selected={selectedCard?.cardId === card.id}
+                  class:missing={preview.kind === "note" && preview.missing}
+                  type="button"
+                  aria-label={preview.kind === "text" ? `Text card: ${preview.text || "empty"}` : preview.kind === "image" ? `Image card: ${preview.name}` : preview.kind === "video" && mediaUrl ? `Video preview: ${preview.name}` : preview.kind === "youtube" && failedYouTubeCardId !== card.id ? `YouTube preview: ${preview.name}` : `Node preview: ${preview.name}`}
+                  aria-pressed={selectedCard?.cardId === card.id}
+                  onfocus={() => { selectedCard = { rowId: row.id, cardId: card.id }; }}
+                  onclick={() => activateCard(row.id, card, preview)}
+                  onpointerdown={(event) => beginCardPointerDrag(row, card, event)}
+                  ondblclick={(event) => beginEditCard(row, card, event)}
+                  onkeydown={(event) => handleCardKeydown(row.id, card.id, event)}
+                >
                 {#if preview.kind === "text"}
                   <span>{preview.text || "Double-click to edit"}</span>
                 {:else if preview.kind === "image" && preview.image.mime === "image/gif"}
@@ -915,21 +955,10 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
                 {:else if preview.kind === "image"}
                   <AttachmentImage image={preview.image} alt={preview.name} class="tier-card-image" style={imagePreviewStyle(preview)} />
                 {:else if preview.kind === "video" && mediaUrl}
-                  <TierlistVideoFrame file={preview.file} url={mediaUrl} duration={preview.duration} name={preview.name} lines={preview.lines} />
+                  <TierlistVideoFrame file={preview.file} url={mediaUrl} name={preview.name} lines={preview.lines} />
                 {:else if preview.kind === "youtube" && failedYouTubeCardId !== card.id}
                   <div class="tier-youtube-preview">
                     <img class="tier-youtube-thumbnail" src={preview.thumbnail} alt="" onerror={() => { failedYouTubeCardId = card.id; }} />
-                    <strong>{preview.name}</strong>
-                  </div>
-                {:else if preview.kind === "audio" && mediaUrl && !audioUnavailable}
-                  {@const audioPlaying = tierlistAudioPlayback.key === audioKey && tierlistAudioPlayback.playing}
-                  <div class="tier-audio-preview">
-                    <div class="tier-audio-play-button" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" width="18" height="18" focusable="false">
-                        {#if audioPlaying}<path d="M7 5h4v14H7zM15 5h4v14h-4z" fill="currentColor" />
-                        {:else}<path d="M8 5.5v13l10-6.5z" fill="currentColor" />{/if}
-                      </svg>
-                    </div>
                     <strong>{preview.name}</strong>
                   </div>
                 {:else}
@@ -938,7 +967,8 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
                     <span>{"lines" in preview ? preview.lines.join("\n") || "No text" : "No text"}</span>
                   {/if}
                 {/if}
-              </button>
+                </button>
+              {/if}
             {/if}
             <button
               class="tier-card-delete"
@@ -1161,8 +1191,9 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
   .tier-youtube-preview { display: flex; min-height: 0; width: 100%; flex-direction: column; gap: 2px; overflow: hidden; }
   .tier-youtube-thumbnail { display: block; width: 100%; height: 48px; flex: 0 0 48px; object-fit: cover; border-radius: 3px; }
   .tier-card.tier-audio-card { box-sizing: border-box; height: 56px; min-height: 56px; max-height: 56px; flex-direction: row; align-items: center; gap: 8px; padding: 5px 16px 5px 7px; }
-  .tier-audio-preview { display: flex; min-width: 0; align-items: center; gap: 8px; }
-  .tier-audio-play-button { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; border: 1px solid #686d76; border-radius: 50%; color: #f5f5f6; background: #373b42; }
+  .tier-audio-play-button { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; padding: 0; border: 1px solid #686d76; border-radius: 50%; color: #f5f5f6; background: #373b42; cursor: pointer; }
+  .tier-audio-copy { display: flex; min-width: 0; flex-direction: column; gap: 2px; overflow: hidden; }
+  .tier-audio-error { display: block; overflow: hidden; color: #f29b9b; font-size: 8px; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
   .tier-card.tier-audio-card:hover .tier-audio-play-button { border-color: #9096a0; background: #414650; }
   .tier-card.missing { border-style: dashed; color: #aaa; background: #242529; }
   .tier-card strong { overflow: hidden; color: #f0e4c9; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { Note } from "../src/model/note";
-import { tierCardPreview } from "../src/tierlist/logic";
-import { videoFrameSeekTime } from "../src/tierlist/videoPreview";
+import tierlistBodySource from "../src/tierlist/TierlistBody.svelte?raw";
+import videoPreviewSource from "../src/tierlist/videoPreview.ts?raw";
+import { isTierlistAudioPlayTarget, tierCardPreview } from "../src/tierlist/logic";
+import { videoFrameSeekTime, videoFrameTimeoutFallbackTime } from "../src/tierlist/videoPreview";
 
 function mediaNode(overrides: Partial<Note>): Note {
   return {
@@ -87,6 +89,24 @@ describe("Tierlist media previews", () => {
     expect(videoFrameSeekTime(120)).toBe(60);
     expect(videoFrameSeekTime(1.5)).toBe(0.75);
     expect(videoFrameSeekTime(0)).toBe(0);
-    expect(videoFrameSeekTime(Number.NaN)).toBe(0);
+    expect(videoFrameSeekTime(Number.NaN)).toBe(1);
+    expect(videoFrameSeekTime(Number.POSITIVE_INFINITY)).toBe(1);
+  });
+
+  it("routes playback-button pointer input away from card dragging", () => {
+    const playTarget = { closest: (selector: string) => selector === "[data-tier-audio-play]" ? {} : null };
+    const cardTarget = { closest: () => null };
+    expect(isTierlistAudioPlayTarget(playTarget)).toBe(true);
+    expect(isTierlistAudioPlayTarget(cardTarget)).toBe(false);
+    expect(tierlistBodySource).toContain("data-tier-audio-play");
+    expect(tierlistBodySource).toContain("onpointerdown={(event) => event.stopPropagation()}");
+    expect(tierlistBodySource).toContain("onclick={(event) => {");
+  });
+
+  it("falls back to a first-frame seek if the middle-frame capture times out", () => {
+    expect(videoFrameTimeoutFallbackTime()).toBe(0.1);
+    expect(videoPreviewSource).toContain("window.setTimeout(requestFirstFrame, TIERLIST_VIDEO_FRAME_TIMEOUT_MS)");
+    expect(videoPreviewSource).toContain("video.currentTime = videoFrameTimeoutFallbackTime()");
+    expect(videoPreviewSource).not.toContain("toDataURL");
   });
 });

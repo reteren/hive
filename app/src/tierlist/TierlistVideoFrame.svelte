@@ -1,28 +1,36 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { tierlistVideoFrame } from "./videoPreview";
 
-  let { file, url, duration, name, lines }: {
+  let { file, url, name, lines }: {
     file: string;
     url: string;
-    duration?: number;
     name: string;
     lines: string[];
   } = $props();
-  let frame = $state<string | null>(null);
+  let frame = $state<HTMLCanvasElement | null>(null);
 
   $effect(() => {
-    const request = tierlistVideoFrame(file, url, duration);
+    const request = tierlistVideoFrame(file, url);
     let active = true;
     void request.then((result) => {
       if (active) frame = result;
     });
     return () => { active = false; };
   });
+
+  function drawFrame(element: HTMLCanvasElement, source: HTMLCanvasElement) {
+    const draw = (frame: HTMLCanvasElement): void => {
+      element.width = frame.width;
+      element.height = frame.height;
+      element.getContext("2d")?.drawImage(frame, 0, 0);
+    };
+    draw(source);
+    return { update: draw };
+  }
 </script>
 
 {#if frame}
-  <img class="tier-card-image tier-video-frame" src={frame} alt={name} />
+  <canvas class="tier-card-image tier-video-frame" aria-label={name} title={name} use:drawFrame={frame}>{name}</canvas>
 {:else}
   <div class="tier-video-fallback">
     <strong>{name}</strong>

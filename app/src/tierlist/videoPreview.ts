@@ -1,21 +1,27 @@
-const frameByFile = new Map<string, Promise<string | null>>();
+const frameByFile = new Map<string, Promise<HTMLCanvasElement | null>>();
+export const TIERLIST_VIDEO_FRAME_TIMEOUT_MS = 15_000;
+export const TIERLIST_VIDEO_FRAME_FALLBACK_TIME = 0.1;
 
 /** The still shown for a linked video is captured exactly halfway through its duration. */
 export function videoFrameSeekTime(duration: number): number {
-  return Number.isFinite(duration) && duration > 0 ? duration / 2 : 0;
+  return Number.isFinite(duration) ? Math.max(0, duration) / 2 : 1;
 }
 
-/** Capture one small JPEG frame per immutable attachment file for this app session. */
-export function tierlistVideoFrame(file: string, url: string, duration?: number): Promise<string | null> {
+export function videoFrameTimeoutFallbackTime(): number {
+  return TIERLIST_VIDEO_FRAME_FALLBACK_TIME;
+}
+
+/** Capture and retain one small canvas per immutable attachment file for this app session. */
+export function tierlistVideoFrame(file: string, url: string): Promise<HTMLCanvasElement | null> {
   if (!url) return Promise.resolve(null);
   const cached = frameByFile.get(file);
   if (cached) return cached;
-  const frame = captureFrame(url, duration);
+  const frame = captureFrame(url);
   frameByFile.set(file, frame);
   return frame;
 }
 
-function captureFrame(url: string, expectedDuration?: number): Promise<string | null> {
+function captureFrame(url: string): Promise<HTMLCanvasElement | null> {
   if (typeof document === "undefined") return Promise.resolve(null);
   return new Promise((resolve) => {
     const video = document.createElement("video");
@@ -23,16 +29,20 @@ function captureFrame(url: string, expectedDuration?: number): Promise<string | 
     video.muted = true;
     video.playsInline = true;
     let settled = false;
-    let timer = 0;
+    let timeoutTimer = 0;
+    let fallbackTimer = 0;
+    let fallbackRequested = false;
+    let fallbackSeekStarted = false;
 
-    const finish = (image: string | null): void => {
+    const finish = (canvas: HTMLCanvasElement | null): void => {
       if (settled) return;
       settled = true;
-      window.clearTimeout(timer);
+      window.clearTimeout(timeoutTimer);
+      window.clearTimeout(fallbackTimer);
       video.pause();
       video.removeAttribute("src");
       video.load();
-      resolve(image);
+      resolve(canvas);
     };
 
     const draw = (): void => {
@@ -52,16 +62,38 @@ function captureFrame(url: string, expectedDuration?: number): Promise<string | 
       }
       try {
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        finish(canvas.toDataURL("image/jpeg", 0.82));
+        finish(canvas);
       } catch {
         finish(null);
       }
     };
 
+    const requestFirstFrame = (): void => {
+      if (settled || fallbackSeekStarted) return;
+      fallbackRequested = true;
+      fallbackSeekStarted = true;
+      video.onseeked = draw;
+      try {
+        video.currentTime = videoFrameTimeoutFallbackTime();
+      } catch {
+        fallbackSeekStarted = false;
+        if (video.videoWidth > 0) draw();
+      }
+      if (!settled) {
+        fallbackTimer = window.setTimeout(() => {
+          if (video.videoWidth > 0) draw();
+          else finish(null);
+        }, 3_000);
+      }
+    };
+
     video.onerror = () => finish(null);
     video.onloadedmetadata = () => {
-      const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : expectedDuration ?? 0;
-      const seekTo = videoFrameSeekTime(duration);
+      if (fallbackRequested) {
+        requestFirstFrame();
+        return;
+      }
+      const seekTo = videoFrameSeekTime(video.duration);
       if (seekTo <= 0) {
         video.onloadeddata = draw;
         return;
@@ -70,10 +102,10 @@ function captureFrame(url: string, expectedDuration?: number): Promise<string | 
       try {
         video.currentTime = seekTo;
       } catch {
-        finish(null);
+        requestFirstFrame();
       }
     };
-    timer = window.setTimeout(() => finish(null), 15_000);
+    timeoutTimer = window.setTimeout(requestFirstFrame, TIERLIST_VIDEO_FRAME_TIMEOUT_MS);
     video.src = url;
     video.load();
   });
