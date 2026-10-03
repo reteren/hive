@@ -29,6 +29,7 @@
   import TrashPanel from "./trash/TrashPanel.svelte";
   import MapOverlay from "./map/MapOverlay.svelte";
   import MessageCards from "./messages/MessageCards.svelte";
+  import DrawToolbar from "./drawing/DrawToolbar.svelte";
 
   let undoLogCommand = $derived(getCommand("ui.toggleUndoLog"));
   let undoLogKeys = $derived(undoLogCommand?.keys.map(formatKey).join(", ") ?? "");
@@ -39,6 +40,7 @@
   <div class="left"><LeftToolbar /></div>
   <main class="center">
     <Board />
+    <DrawToolbar />
     <MapOverlay />
     <BeaconMenu />
     <CommandSearch />
