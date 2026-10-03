@@ -9,7 +9,8 @@
   import { clearFormatDraft, formatDraft, setFormatDraft } from "./formatDrafts";
   import { saveFormatText } from "./formatActions";
   import { hasUnsavedFormatChanges, mediaExtension } from "./formatLogic";
-  import { decodeFormatText, encodeFormatText, shouldHighlightFormatText, type FormatTextEncoding } from "./textEncoding";
+  import { encodeFormatText, shouldHighlightFormatText, type FormatTextEncoding } from "./textEncoding";
+  import { loadFormatText } from "./formatLoad";
   import type { EditorView } from "@codemirror/view";
 
   let { note }: { note: Note } = $props();
@@ -48,11 +49,7 @@
   async function loadEditor(currentMedia: MediaRef, host: HTMLDivElement, request: number, projectPath: string): Promise<void> {
     try {
       const source = attachmentUrl(currentMedia.file);
-      if (!source) throw new Error(`File missing: ${currentMedia.name || note.name}`);
-      const response = await fetch(source);
-      if (!response.ok) throw new Error(`File missing: ${currentMedia.name || note.name}`);
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      const { text: loadedText, encoding } = decodeFormatText(bytes);
+      const { text: loadedText, encoding, byteLength } = await loadFormatText(currentMedia.file, source);
       if (request !== generation) return;
       textEncoding = encoding;
       const draft = formatDraft(note.id, currentMedia, projectPath);
@@ -71,10 +68,13 @@
           dirty = hasUnsavedFormatChanges(text, savedText);
         },
         () => { void saveCurrentDraft(); },
-        shouldHighlightFormatText(bytes.length),
+        shouldHighlightFormatText(byteLength),
       );
     } catch (error) {
-      if (request === generation) errorMessage = error instanceof Error ? error.message : String(error);
+      if (request === generation) {
+        const message = error instanceof Error ? error.message : String(error);
+        errorMessage = message.startsWith("Could not load file:") ? message : `Could not load file: ${message || "Unknown error"}`;
+      }
     }
   }
 
@@ -127,9 +127,8 @@
   </div>
   {#if errorMessage}
     <div class="format-error" role="alert">{errorMessage}</div>
-  {:else}
-    <div class="format-editor" bind:this={editorHost}></div>
   {/if}
+  <div class="format-editor" class:has-error={Boolean(errorMessage)} bind:this={editorHost}></div>
   <footer class="format-actions" data-selection-ignore>
     <button type="button" disabled={!dirty || saving} onclick={() => { void saveCurrentDraft(); }}>Save</button>
     <button type="button" disabled={!media} onclick={() => { void saveAs(); }}>Save as…</button>
@@ -178,6 +177,8 @@
     overflow: hidden;
     background: #202020;
   }
+
+  .format-editor.has-error { display: none; }
 
   .format-editor :global(.cm-editor) {
     height: 100%;
