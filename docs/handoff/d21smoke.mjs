@@ -1,40 +1,42 @@
-// Debug after 1.2.1: per-object trash entries (real keys/mouse) and no resize handles on fixed-size nodes.
+// Debug 21 smoke (after 1.4.6): PDF iframe props identical across board zoom + single toolbar, long text note scrolls, transparent image node, Tierlist audio play + video frame.
+import { writeFileSync } from "node:fs";
 const page = (await fetch(`http://localhost:9334/json/list`).then((r) => r.json())).find((t) => t.type === "page");
-const ws = new WebSocket(page.webSocketDebuggerUrl); let id = 0; const pending = new Map();
-ws.onmessage = (e) => { const m = JSON.parse(e.data); if (pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+const ws = new WebSocket(page.webSocketDebuggerUrl); let id = 0; const pending = new Map(); const errors = [];
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.method === "Runtime.exceptionThrown") errors.push(m.params.exceptionDetails.exception?.description?.slice(0, 200)); if (pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
 await new Promise((r) => (ws.onopen = r));
 const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+await send("Runtime.enable");
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const ev = async (expression) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); return r.result?.result?.value ?? r.result?.exceptionDetails?.exception?.description; };
-const mouse = (type, x, y, button = "none", buttons = 0, modifiers = 0) => send("Input.dispatchMouseEvent", { type, x, y, button, buttons, modifiers, clickCount: type === "mousePressed" || type === "mouseReleased" ? 1 : 0 });
-const click = async (p, modifiers = 0) => { await mouse("mouseMoved", p.x, p.y, "none", 0, modifiers); await mouse("mousePressed", p.x, p.y, "left", 1, modifiers); await mouse("mouseReleased", p.x, p.y, "left", 0, modifiers); await wait(200); };
-const key = async (k, code, vk, modifiers = 0) => { await send("Input.dispatchKeyEvent", { type: "keyDown", key: k, code, windowsVirtualKeyCode: vk, modifiers }); await send("Input.dispatchKeyEvent", { type: "keyUp", key: k, code, windowsVirtualKeyCode: vk, modifiers }); await wait(250); };
-const at = (sel) => ev(`(()=>{const e=document.querySelector(${JSON.stringify(sel)});if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
-const state = () => ev(`(async()=>{const b=await import('/src/model/board.svelte.ts');const l=await import('/src/model/links.svelte.ts');const r=await import('/src/model/retention.svelte.ts');
-  return JSON.stringify({notes:Object.values(b.board.notes).filter(n=>n.type==='note').map(n=>n.name),links:Object.keys(l.links.byId).length,trash:r.trash.entries.map(e=>e.notes.map(n=>n.name).join('+'))})})()`);
-await ev(`(async()=>{const b=await import('/src/model/board.svelte.ts');const l=await import('/src/model/links.svelte.ts');const c=await import('/src/board/camera.svelte.ts');const n=Date.now();
- for(const [i,name] of ['A','B','C'].entries()) b.addNote({id:name,type:'note',name,text:name,x:-60+i*35,y:-30,width:25,height:null,createdAt:n+i});
- l.addLink({id:'ab',from:'A',to:'B',kind:'strong',shape:'base'}); l.addLink({id:'bc',from:'B',to:'C',kind:'strong',shape:'base'});
- for(const [i,k] of ['stats','progress','goal','trash','archive'].entries()) b.addNote({id:'k'+i,type:k,name:k,text:'',x:-90+i*45,y:10,width:30,height:null,createdAt:n+10+i});
- c.camera.x=0;c.camera.y=0;c.camera.zoom=0.8;return 1})()`);
+const mouse = (type, x, y, button = "none", buttons = 0) => send("Input.dispatchMouseEvent", { type, x, y, button, buttons, clickCount: type === "mouseMoved" ? 0 : 1 });
+const pos = (expr) => ev(`(()=>{const e=${expr};if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+const click = async (p) => { await mouse("mouseMoved", p.x, p.y); await mouse("mousePressed", p.x, p.y, "left", 1); await mouse("mouseReleased", p.x, p.y, "left", 0); await wait(300); };
+const wheel = async (x, y, dy) => { await send("Input.dispatchMouseEvent", { type: "mouseWheel", x, y, deltaX: 0, deltaY: dy }); await wait(80); };
+const shot = async (n) => writeFileSync(`C:/Users/reteren/AppData/Local/Temp/claude/${n}.png`, Buffer.from((await send("Page.captureScreenshot", { format: "png" })).result.data, "base64"));
+await ev(`(async()=>{const b=await import('/src/model/board.svelte.ts');const cam=await import('/src/board/camera.svelte.ts');const h=await import('/src/history/history.svelte.ts');for(const i of [...b.board.order])b.removeNote(i);h.clear();cam.camera.x=0;cam.camera.y=0;cam.camera.zoom=1;
+ const s=await import('/src/attachments/service.ts');const c=await import('/src/formats/formatCreation.ts');const st='%PDF-1.4\\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj 3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\\ntrailer<</Root 1 0 R>>\\n%%EOF';const p=await s.importMediaFile(new File([st],'doc.pdf',{type:'application/pdf'}));c.createFormatNotes([p.media],{x:-30,y:-5});
+ b.addNote({id:'long',type:'note',name:'Long',text:Array.from({length:40},(_,i)=>'Line '+(i+1)+' with some words').join('\\n'),x:30,y:-20,width:24,height:20,createdAt:Date.now()});return 1})()`);
+await wait(1200);
+const frame = () => ev(`(()=>{const f=document.querySelector('article[data-kind=pdf] iframe,article[data-kind=pdf] embed');if(!f)return 'none';return f.style.width+'x'+f.style.height+' '+f.style.transform+' #'+(f.src.split('#')[1]??'')})()`);
+const f1 = await frame();
+for (let k = 0; k < 6; k++) await wheel(1100, 600, 120);
 await wait(600);
-// select A, B, C with Ctrl-click and press Delete
-await click(await at('[data-note-id="A"] [data-note-header]'));
-await click(await at('[data-note-id="B"] [data-note-header]'), 2);
-await click(await at('[data-note-id="C"] [data-note-header]'), 2);
-await key("Delete", "Delete", 46);
-console.log("after deleting 3 (3 separate entries):", await state());
-console.log("trash rows in node:", await ev(`document.querySelectorAll('[data-note-id="k3"] [data-trash-entry]').length`));
-// restore the entry of B via the trash node's first matching Restore button
-const restoreB = await ev(`(()=>{const rows=[...document.querySelectorAll('[data-note-id="k3"] [data-trash-entry]')];const row=rows.find(r=>/\\bB\\b/.test(r.textContent));const b=row&&[...row.querySelectorAll('button')].find(x=>/^Restore/i.test(x.textContent.trim()));if(!b)return null;const r=b.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
-if (restoreB) { await click(restoreB); const conf = await ev(`(()=>{const e=[...document.querySelectorAll('button')].find(b=>/^Confirm/i.test(b.textContent.trim()));if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`); if (conf) await click(conf); }
-console.log("after restoring B alone (no links yet):", await state());
-await key("z", "KeyZ", 90, 2);
-await key("z", "KeyZ", 90, 2);
-console.log("after 2x Undo (all back, trash empty):", await state());
-// fixed-size nodes: select each, count resize handles
-for (const [i, k] of ["stats", "progress", "goal", "trash", "archive"].entries()) {
-  await click(await at(`[data-note-id="k${i}"] [data-note-header]`));
-  console.log(k, "handles:", await ev(`document.querySelectorAll('[data-resize-handle]').length`), "size:", await ev(`(()=>{const r=document.querySelector('[data-note-id="k${i}"]').getBoundingClientRect();return Math.round(r.width)+'x'+Math.round(r.height)})()`));
-}
+const f2 = await frame();
+for (let k = 0; k < 10; k++) await wheel(1100, 600, -120);
+await wait(600);
+const f3 = await frame();
+console.log("1 PDF iframe props zoom1/out/in:", f1, "|", f2, "|", f3, "| identical:", f1 === f2 && f2 === f3);
+console.log("1 toolbars:", await ev(`(()=>{const a=document.querySelector('article[data-kind=pdf]');return [...a.querySelectorAll('button')].map(b=>b.getAttribute('aria-label')||b.innerText.trim()).join(',')+' | output '+a.querySelector('output')?.textContent})()`));
+await ev(`(async()=>{const c=await import('/src/board/camera.svelte.ts');c.camera.zoom=1;c.camera.x=0;c.camera.y=0})()`); await wait(500);
+console.log("2 long note scroll:", await ev(`(()=>{const a=document.querySelector('[data-note-id="long"]');const els=[...a.querySelectorAll('*')].filter(e=>e.scrollHeight>e.clientHeight+4&&getComputedStyle(e).overflowY!=='visible');const e=els[0];return e?'scroller '+e.className.slice(0,40)+' overflowY='+getComputedStyle(e).overflowY+' overflowX='+getComputedStyle(e).overflowX+' sh/ch='+e.scrollHeight+'/'+e.clientHeight:'no scroller'})()`));
+const ln = await pos(`document.querySelector('[data-note-id="long"] [data-note-body]')`);
+const before = await ev(`(async()=>{const c=await import('/src/board/camera.svelte.ts');return c.camera.zoom})()`);
+await wheel(ln.x, ln.y, 120); await wait(300);
+console.log("2 wheel over long note: zoom", before, "->", await ev(`(async()=>{const c=await import('/src/board/camera.svelte.ts');return c.camera.zoom})()`), "| scrollTop", await ev(`(()=>{const a=document.querySelector('[data-note-id="long"]');const e=[...a.querySelectorAll('*')].find(e=>e.scrollTop>0);return e?e.scrollTop:0})()`));
+await shot("d21-pdf-note");
+// 4: transparent PNG
+await ev(`(async()=>{const cv=document.createElement('canvas');cv.width=200;cv.height=200;const x=cv.getContext('2d');x.fillStyle='#e04040';x.beginPath();x.arc(100,100,80,0,7);x.fill();const bl=await new Promise(r=>cv.toBlob(r,'image/png'));const a=await import('/src/images/imageActions.ts');await a.importImageFiles([new File([bl],'dot.png',{type:'image/png'})],{x:-30,y:30})})()`); await wait(800);
+console.log("4 image node backgrounds:", await ev(`(()=>{const a=[...document.querySelectorAll('article[data-kind=image]')].pop();const chain=[a,...a.querySelectorAll('*')].map(e=>getComputedStyle(e).backgroundColor).filter(c=>c!=='rgba(0, 0, 0, 0)'&&c!=='transparent');return chain.length?chain.join(','):'all transparent'})()`));
+await shot("d21-alpha");
+console.log("errors:", errors.length ? errors.join(" || ") : "none");
 ws.close();
