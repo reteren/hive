@@ -82,7 +82,7 @@ describe("PDF and Format nodes", () => {
     expect(metrics[1]).toEqual(metrics[2]);
   });
 
-  it("changes viewer zoom only from the PDF setting and leaves fit-width viewport-relative", () => {
+  it("hides the built-in PDF controls and keeps viewer zoom in URL parameters", () => {
     expect(normalizePdfZoom(44)).toBe(50);
     expect(normalizePdfZoom(55)).toBe(60);
     expect(normalizePdfZoom(304)).toBe(300);
@@ -91,26 +91,39 @@ describe("PDF and Format nodes", () => {
     expect(stepPdfZoom(undefined, -1)).toBe(90);
     expect(stepPdfZoom(300, 1)).toBe(300);
     expect(stepPdfZoom(50, -1)).toBe(50);
-    expect(pdfViewerSource("asset://localhost/file.pdf#page=3", 150)).toBe("asset://localhost/file.pdf#zoom=150");
-    expect(pdfViewerSource("asset://localhost/file.pdf", undefined)).toBe("asset://localhost/file.pdf#zoom=page-width");
+    const zoomParams = new URLSearchParams(pdfViewerSource("asset://localhost/file.pdf#page=3", 150).split("#")[1]);
+    expect(zoomParams.get("toolbar")).toBe("0");
+    expect(zoomParams.get("navpanes")).toBe("0");
+    expect(zoomParams.get("zoom")).toBe("150");
+
+    const fitParams = new URLSearchParams(pdfViewerSource("asset://localhost/file.pdf", undefined).split("#")[1]);
+    expect(fitParams.get("toolbar")).toBe("0");
+    expect(fitParams.get("navpanes")).toBe("0");
+    expect(fitParams.get("zoom")).toBe("page-width");
 
     const sources = [0.3, 1, 3].map(() => pdfViewerSource("asset://localhost/file.pdf", 150));
     expect(sources).toEqual([
-      "asset://localhost/file.pdf#zoom=150",
-      "asset://localhost/file.pdf#zoom=150",
-      "asset://localhost/file.pdf#zoom=150",
+      "asset://localhost/file.pdf#toolbar=0&navpanes=0&zoom=150",
+      "asset://localhost/file.pdf#toolbar=0&navpanes=0&zoom=150",
+      "asset://localhost/file.pdf#toolbar=0&navpanes=0&zoom=150",
     ]);
   });
 
-  it("does not subscribe the PDF iframe to camera zoom or use a zoom debounce", () => {
+  it("places PDF controls in a separate strip and clips horizontal overflow in the document area", () => {
     const component = Object.values(import.meta.glob<string>("../src/formats/PdfNodeBody.svelte", {
       eager: true,
       query: "?raw",
       import: "default",
     }))[0] ?? "";
+    const controlsIndex = component.indexOf('<div class="pdf-controls"');
+    const documentIndex = component.indexOf('<div bind:this={documentViewport} class="pdf-document">');
+    expect(controlsIndex).toBeGreaterThanOrEqual(0);
+    expect(documentIndex).toBeGreaterThan(controlsIndex);
+    expect(component).toContain('{pdfZoom === undefined ? "Fit" : `${pdfZoom}%`}');
+    expect(component).toMatch(/\.pdf-controls\s*\{[\s\S]*?position:\s*relative;/);
+    expect(component).toMatch(/\.pdf-document\s*\{[\s\S]*?overflow:\s*hidden;/);
+    expect(component).toMatch(/\.pdf-viewer\s*\{[\s\S]*?overflow-x:\s*hidden;/);
     expect(component).not.toContain("camera.zoom");
-    expect(component).not.toContain("viewerBoardZoom");
-    expect(component).not.toContain("setTimeout");
     expect(component).toContain("pdfFrameMetrics(element.clientWidth, element.clientHeight)");
     expect(component).toContain("pdfViewerSource(source, note.pdfZoom)");
   });

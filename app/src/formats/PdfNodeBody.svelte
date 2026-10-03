@@ -5,7 +5,7 @@
   import { normalizePdfZoom, pdfFrameMetrics, pdfViewerSource, stepPdfZoom } from "./formatLogic";
 
   let { note }: { note: Note } = $props();
-  let body = $state<HTMLDivElement | null>(null);
+  let documentViewport = $state<HTMLDivElement | null>(null);
   let failed = $state(false);
   let frameWidth = $state(0);
   let frameHeight = $state(0);
@@ -25,7 +25,7 @@
   });
 
   $effect(() => {
-    const element = body;
+    const element = documentViewport;
     const currentSource = source;
     if (!element || !currentSource) return;
 
@@ -43,23 +43,25 @@
   });
 </script>
 
-<div bind:this={body} class="pdf-node-body" aria-label={displayName}>
+<div class="pdf-node-body" aria-label={displayName}>
   {#if source && !failed}
     <div class="pdf-controls" role="toolbar" aria-label="PDF zoom controls" data-selection-ignore>
       <button type="button" aria-label="Zoom out" title="Zoom out" disabled={pdfZoom === 50} onclick={() => changeZoom(-1)}>−</button>
-      <output aria-label="PDF zoom level">{pdfZoom === undefined ? "Fit width" : `${pdfZoom}%`}</output>
+      <output aria-label="PDF zoom level">{pdfZoom === undefined ? "Fit" : `${pdfZoom}%`}</output>
       <button type="button" aria-label="Zoom in" title="Zoom in" disabled={pdfZoom === 300} onclick={() => changeZoom(1)}>+</button>
       <button type="button" class="fit-width" aria-label="Fit width" onclick={() => setPdfZoom(note.id, undefined)}>Fit width</button>
     </div>
-    <iframe
-      class="pdf-viewer"
-      title={displayName}
-      src={viewerSource}
-      style:width={`${frameWidth}px`}
-      style:height={`${frameHeight}px`}
-      style:transform={`scale(${inverseScale})`}
-      onerror={() => { failed = true; }}
-    ></iframe>
+    <div bind:this={documentViewport} class="pdf-document">
+      <iframe
+        class="pdf-viewer"
+        title={displayName}
+        src={viewerSource}
+        style:width={`${frameWidth}px`}
+        style:height={`${frameHeight}px`}
+        style:transform={`scale(${inverseScale})`}
+        onerror={() => { failed = true; }}
+      ></iframe>
+    </div>
   {:else}
     <div class="pdf-error" role="status">File missing: {displayName}</div>
   {/if}
@@ -67,7 +69,8 @@
 
 <style>
   .pdf-node-body {
-    position: relative;
+    display: flex;
+    flex-direction: column;
     width: 100%;
     height: 100%;
     min-width: 0;
@@ -76,29 +79,21 @@
     background: #202020;
   }
 
-  .pdf-viewer {
-    display: block;
-    position: absolute;
-    top: 0;
-    left: 0;
-    border: 0;
-    background: #202020;
-    transform-origin: top left;
-  }
-
   .pdf-controls {
-    position: absolute;
+    position: relative;
     z-index: 1;
-    top: 6px;
-    right: 6px;
     display: flex;
+    min-width: 0;
+    min-height: 28px;
+    flex: 0 0 28px;
     align-items: center;
+    justify-content: center;
     gap: 3px;
-    padding: 3px;
+    padding: 3px 5px;
+    box-sizing: border-box;
     color: #e8e8e8;
-    background: rgb(25 25 25 / 90%);
-    border: 1px solid #505050;
-    border-radius: 4px;
+    background: #252525;
+    border-bottom: 1px solid #505050;
     font-family: inherit;
     font-size: 10px;
     line-height: 1.2;
@@ -128,7 +123,7 @@
   }
 
   .pdf-controls output {
-    min-width: 48px;
+    min-width: 38px;
     color: #fff;
     text-align: center;
   }
@@ -137,10 +132,31 @@
     min-width: auto;
   }
 
+  .pdf-document {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: #202020;
+  }
+
+  .pdf-viewer {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    border: 0;
+    background: #202020;
+    overflow-x: hidden;
+    transform-origin: top left;
+  }
+
   .pdf-error {
     display: grid;
     width: 100%;
     height: 100%;
+    flex: 1 1 auto;
     min-height: 0;
     place-items: center;
     padding: 16px;

@@ -73,7 +73,7 @@ export function pdfViewerSource(source: string, zoom: unknown): string {
   const base = source.split("#", 1)[0] ?? "";
   if (!base) return "";
   const normalized = normalizePdfZoom(zoom);
-  return `${base}#zoom=${normalized ?? "page-width"}`;
+  return `${base}#toolbar=0&navpanes=0&zoom=${normalized ?? "page-width"}`;
 }
 
 /**
