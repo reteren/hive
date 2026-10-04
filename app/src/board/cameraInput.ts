@@ -1,3 +1,4 @@
+import { cachedClientRect } from "./boardRect";
 import { camera, cameraSettings, refreshPointerWorld, setPointerScreen, viewport } from "./camera.svelte";
 import { pixelsPerUnit, zoomAt, type Point } from "./cameraMath";
 import { isTextEditingTarget } from "../commands/focus";
@@ -26,7 +27,7 @@ export function attachCameraInput(board: HTMLElement): () => void {
   board.style.cursor = "grab";
 
   function localPoint(clientX: number, clientY: number): Point | null {
-    const rect = board.getBoundingClientRect();
+    const rect = cachedClientRect(board);
     const point = { x: clientX - rect.left, y: clientY - rect.top };
     if (point.x < 0 || point.y < 0 || point.x > rect.width || point.y > rect.height) {
       return null;

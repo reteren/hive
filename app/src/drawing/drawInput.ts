@@ -1,3 +1,4 @@
+import { cachedClientRect } from "../board/boardRect";
 import { screenToWorld } from "../board/cameraMath";
 import { camera, setPointerScreen, viewport } from "../board/camera.svelte";
 import { isTextEditingTarget } from "../commands/focus";
@@ -71,7 +72,7 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
   }
 
   function pointerEvent(event: PointerEvent): DrawPointerEvent {
-    const bounds = boardElement.getBoundingClientRect();
+    const bounds = cachedClientRect(boardElement);
     const local = { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
     setPointerScreen(local);
     const world = screenToWorld(camera, viewport, local);

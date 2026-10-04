@@ -16,8 +16,6 @@ import { ERASER_GIF_TOOLTIP, eraserCompositeOptions } from "./photoErase";
 
 export { ERASER_GIF_TOOLTIP, eraserCompositeOptions } from "./photoErase";
 
-/** Translucent live mark of the eraser path (the real erase lands on pointer-up as one Undo step). */
-const ERASER_PREVIEW_OPACITY = 0.45;
 
 export function createEraserHandler(getSettings: () => BrushSettings = () => drawingTools.brush): DrawToolHandler {
   let stroke: DrawStroke | null = null;
@@ -40,12 +38,13 @@ export function createEraserHandler(getSettings: () => BrushSettings = () => dra
       strokeSettings = { ...getSettings() };
       stroke = createStroke({ ...strokeSettings, color: "#ffffff" }, event.zoom);
       stroke.add(event.world, event.pressure);
-      showStrokePreview(stroke, { opacity: ERASER_PREVIEW_OPACITY, erase: true });
+      // Shown as real erasing on screen right away; the tiles change once, on release (one Undo step).
+      showStrokePreview(stroke, { opacity: 1, erase: true });
     },
     move(event: DrawPointerEvent) {
       if (!stroke) return;
       stroke.add(event.world, event.pressure);
-      showStrokePreview(stroke, { opacity: ERASER_PREVIEW_OPACITY, erase: true });
+      showStrokePreview(stroke, { opacity: 1, erase: true });
     },
     up(event: DrawPointerEvent) {
       if (!stroke || !strokeSettings) return;

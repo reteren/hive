@@ -1,5 +1,6 @@
 <!-- SVG zones stay crisp at every camera zoom; the selection layer owns move/resize. -->
 <script lang="ts">
+  import { cachedClientRect } from "../board/boardRect";
   import { onMount, tick } from "svelte";
   import { camera, viewport } from "../board/camera.svelte";
   import { PX_PER_UNIT, screenToWorld, type Point } from "../board/cameraMath";
@@ -60,7 +61,7 @@
   }
 
   function local(clientX: number, clientY: number): Point {
-    const rect = surface!.getBoundingClientRect();
+    const rect = cachedClientRect(surface!);
     return { x: clientX - rect.left, y: clientY - rect.top };
   }
 

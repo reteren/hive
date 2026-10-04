@@ -46,11 +46,15 @@
         });
       }
     }
+    const strokeQuads: DrawQuad[] = [];
     const stroke = previewStroke();
     if (stroke) {
       const ppu = levelPxPerUnit(stroke.level);
-      const opacity = drawingStrokePreview.opacity;
-      const tint = drawingStrokePreview.erase ? [1, 1, 1] : stroke.color;
+      // Erasing is shown for real: the stroke cuts the drawing on screen (destination-out) while the
+      // tiles change on release; painting shows the stroke in its colour and opacity.
+      const erase = drawingStrokePreview.erase;
+      const opacity = erase ? 1 : drawingStrokePreview.opacity;
+      const tint = erase ? [1, 1, 1] : stroke.color;
       const selection = drawingSelection.area;
       const clipTexture = selection ? selectionMaskTexture(gpu, selection) : null;
       for (const piece of stroke.pieces()) {
@@ -71,7 +75,7 @@
             rect: { x: piece.x * toSelection - selection.x, y: piece.y * toSelection - selection.y, width: piece.texRect.width * toSelection, height: piece.texRect.height * toSelection },
           };
         }
-        quads.push({
+        strokeQuads.push({
           dst,
           src: { texture: piece.texture, width: piece.texWidth, height: piece.texHeight, rect: piece.texRect },
           mode: "mask",
@@ -80,7 +84,10 @@
         });
       }
     }
-    gpu.drawToScreen(quads);
+    gpu.drawToScreen([
+      { quads, blend: "over" },
+      { quads: strokeQuads, blend: drawingStrokePreview.erase ? "out" : "over" },
+    ]);
   }
 
   $effect(() => {

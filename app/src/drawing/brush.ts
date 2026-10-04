@@ -93,7 +93,7 @@ export interface DrawStroke {
   readonly lastDirtyRect: StrokeRasterRect | null;
   /** Raster rect of everything drawn so far. */
   readonly bounds: StrokeRasterRect | null;
-  /** Live GPU coverage pieces (for the on-screen preview). */
+  /** Live GPU coverage pieces for the on-screen preview (including the provisional tail). */
   pieces(): RasterPiece[];
   finish(): FinishedStroke | null;
   dispose(): void;
@@ -444,10 +444,22 @@ export function createStroke(settings: BrushSettings, zoom: number, level = curr
     return tile.state;
   }
 
-  /** Run the pending segments on the GPU over their bounding box. */
-  function flushSegments(): void {
+  /** Regions of `next` that hold the live (provisional) tail instead of committed state. */
+  let provisional: { state: StrokeStateTile; rect: { x: number; y: number; width: number; height: number } }[] = [];
+
+  function dropProvisional(): void {
+    for (const { state, rect } of provisional) gpu.syncStrokeRect(state, rect);
+    provisional = [];
+  }
+
+  /**
+   * Run the pending segments on the GPU over their bounding box. A provisional run (the tail up to
+   * the pointer, redrawn on every event) only updates what the preview shows.
+   */
+  function flushSegments(commit = true): void {
     const count = pendingLengths.length / 2;
     if (count === 0) return;
+    if (commit) dropProvisional();
     const segments = pendingSegments;
     const lengths = pendingLengths;
     pendingSegments = [];
@@ -475,7 +487,7 @@ export function createStroke(settings: BrushSettings, zoom: number, level = curr
       };
       const dirty = { x: box.x, y: box.y, width: box.right - box.x, height: box.bottom - box.y };
       lastDirtyRect = unionRects(lastDirtyRect, dirty);
-      contentBounds = unionRects(contentBounds, dirty);
+      if (commit) contentBounds = unionRects(contentBounds, dirty);
       for (let col = Math.floor(box.x / STROKE_TILE); col <= Math.floor((box.right - 1) / STROKE_TILE); col += 1) {
         for (let row = Math.floor(box.y / STROKE_TILE); row <= Math.floor((box.bottom - 1) / STROKE_TILE); row += 1) {
           const originX = col * STROKE_TILE;
@@ -495,7 +507,10 @@ export function createStroke(settings: BrushSettings, zoom: number, level = curr
             lengthData[index * 2] = lengths[(first + index) * 2]!;
             lengthData[index * 2 + 1] = lengths[(first + index) * 2 + 1]!;
           }
-          gpu.strokePass(tileFor(col, row), { x: 0, y: 0 }, { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }, segmentData, lengthData, n, shape);
+          const state = tileFor(col, row);
+          const rect = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+          gpu.strokePass(state, { x: 0, y: 0 }, rect, segmentData, lengthData, n, shape, commit);
+          if (!commit) provisional.push({ state, rect });
         }
       }
     }
@@ -523,6 +538,18 @@ export function createStroke(settings: BrushSettings, zoom: number, level = curr
       }
     }
     flushSegments();
+    drawProvisionalTail();
+  }
+
+  /** Show the stroke right up to the pointer: the last piece, drawn only into the preview buffers. */
+  function drawProvisionalTail(): void {
+    const n = inputs.length;
+    if (n < 2) return;
+    const committedLength = pathLength;
+    const p2 = inputs[n - 1]!;
+    drawThrough(inputs[n - 2]!, smoothStrokeSamples(inputs[n - 3] ?? inputs[n - 2]!, inputs[n - 2]!, p2, p2));
+    flushSegments(false);
+    pathLength = committedLength;
   }
 
   /** Draw the last input piece, which waits for a following point while the pointer is down. */
@@ -536,9 +563,9 @@ export function createStroke(settings: BrushSettings, zoom: number, level = curr
     flushSegments();
   }
 
-  function pieces(): RasterPiece[] {
+  function pieces(preview = false): RasterPiece[] {
     return [...tiles.values()].map(({ col, row, state }) => ({
-      texture: state.current.state,
+      texture: preview ? state.next.state : state.current.state,
       texWidth: STROKE_TILE,
       texHeight: STROKE_TILE,
       texRect: { x: 0, y: 0, width: STROKE_TILE, height: STROKE_TILE },
@@ -554,9 +581,10 @@ export function createStroke(settings: BrushSettings, zoom: number, level = curr
     color,
     get lastDirtyRect() { return lastDirtyRect; },
     get bounds() { return contentBounds; },
-    pieces,
+    pieces: () => pieces(true),
     finish() {
       if (closed) return null;
+      dropProvisional();
       drawTail();
       closed = true;
       if (!contentBounds) return null;
@@ -565,7 +593,7 @@ export function createStroke(settings: BrushSettings, zoom: number, level = curr
         level,
         mode: "mask",
         color,
-        pieces: pieces(),
+        pieces: pieces(false),
         bounds,
         prepare(engine) {
           for (const tile of tiles.values()) engine.ensureStrokeMips(tile.state);

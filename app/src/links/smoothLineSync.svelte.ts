@@ -19,19 +19,38 @@ export function startSmoothLineSync(): void {
       previous = signature;
       if (pending) return;
       pending = true;
-      queueMicrotask(() => {
+      // At most once per frame: dragging fires many geometry changes per frame.
+      const run = () => {
         pending = false;
         reflowSmoothLineAnchorsRaw();
-      });
+      };
+      if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
+      else queueMicrotask(run);
     });
   });
 }
 
+/**
+ * Only notes with smooth lines and the notes they are linked to affect smooth anchors; hashing every
+ * note on every pointer move made dragging on a big board stutter.
+ */
 function geometrySignature(): string {
-  const noteGeometry = Object.values(board.notes).map((note) => {
+  const smooth = new Set<string>();
+  for (const note of Object.values(board.notes)) if (note.smoothLines === true) smooth.add(note.id);
+  const relevant = new Set(smooth);
+  const linkTopology: unknown[] = [];
+  for (const link of Object.values(links.byId)) {
+    if (!smooth.has(link.from) && !smooth.has(link.to)) continue;
+    relevant.add(link.from);
+    relevant.add(link.to);
+    linkTopology.push([link.id, link.from, link.to]);
+  }
+  const noteGeometry: unknown[] = [];
+  for (const id of relevant) {
+    const note = board.notes[id];
+    if (!note) continue;
     const bounds = noteBounds(note);
-    return [note.id, note.smoothLines === true, bounds.x, bounds.y, bounds.width, bounds.height];
-  });
-  const linkTopology = Object.values(links.byId).map((link) => [link.id, link.from, link.to]);
+    noteGeometry.push([id, smooth.has(id), bounds.x, bounds.y, bounds.width, bounds.height]);
+  }
   return JSON.stringify([noteGeometry, linkTopology]);
 }

@@ -355,15 +355,17 @@ export class DrawingGpu {
     return { width, height };
   }
 
-  /** Clear the visible canvas and draw quads in screen orientation (y down). */
-  drawToScreen(quads: readonly DrawQuad[]): void {
+  /** Clear the visible canvas and draw quad groups in screen orientation (y down). */
+  drawToScreen(groups: readonly { quads: readonly DrawQuad[]; blend: BlendKind }[]): void {
     const gl = this.gl;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.disable(gl.SCISSOR_TEST);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    this.drawQuads(quads, "over", this.canvas.width, this.canvas.height, true);
+    for (const group of groups) {
+      if (group.quads.length) this.drawQuads(group.quads, group.blend, this.canvas.width, this.canvas.height, true);
+    }
   }
 
   /** A reusable offscreen texture at least `width`×`height` (readback composites). */
@@ -385,7 +387,8 @@ export class DrawingGpu {
       if (!state || !position || !fbo) throw new Error("Out of GPU memory for the brush.");
       gl.bindTexture(gl.TEXTURE_2D, state);
       gl.texStorage2D(gl.TEXTURE_2D, Math.floor(Math.log2(size)) + 1, gl.RGBA8, size, size);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      // Only level 0 is valid while drawing; ensureStrokeMips switches to trilinear for the commit.
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -427,6 +430,7 @@ export class DrawingGpu {
     lengths: Float32Array,
     count: number,
     brush: { radius: number; core: number; edge: number; passWindow: number },
+    commit = true,
   ): void {
     const gl = this.gl;
     const u = this.strokeUniforms;
@@ -456,9 +460,32 @@ export class DrawingGpu {
     gl.uniform1f(u.u_edge, brush.edge);
     gl.uniform1f(u.u_pass, brush.passWindow);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    // Copy the updated rect back so the next pass reads it (both attachments).
-    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, tile.next.fbo);
-    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, tile.current.fbo);
+    gl.disable(gl.SCISSOR_TEST);
+    gl.bindVertexArray(null);
+    // A committed pass is copied back so the next pass reads it; a provisional one (the live tail)
+    // stays only in `next`, which is what the preview shows.
+    if (commit) this.blitState(tile.next.fbo, tile.current.fbo, rect);
+    tile.mipsDirty = true;
+  }
+
+  ensureStrokeMips(tile: StrokeStateTile): void {
+    if (!tile.mipsDirty) return;
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, tile.current.state);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    tile.mipsDirty = false;
+  }
+
+  /** Copy a rect of the committed stroke state over the scratch buffers (drops a provisional tail). */
+  syncStrokeRect(tile: StrokeStateTile, rect: TexRect): void {
+    this.blitState(tile.current.fbo, tile.next.fbo, rect);
+  }
+
+  private blitState(from: WebGLFramebuffer, to: WebGLFramebuffer, rect: TexRect): void {
+    const gl = this.gl;
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, from);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, to);
     for (const attachment of [gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]) {
       gl.readBuffer(attachment);
       gl.drawBuffers(attachment === gl.COLOR_ATTACHMENT0 ? [gl.COLOR_ATTACHMENT0, gl.NONE] : [gl.NONE, gl.COLOR_ATTACHMENT1]);
@@ -468,17 +495,6 @@ export class DrawingGpu {
     gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
-    gl.disable(gl.SCISSOR_TEST);
-    gl.bindVertexArray(null);
-    tile.mipsDirty = true;
-  }
-
-  ensureStrokeMips(tile: StrokeStateTile): void {
-    if (!tile.mipsDirty) return;
-    const gl = this.gl;
-    gl.bindTexture(gl.TEXTURE_2D, tile.current.state);
-    gl.generateMipmap(gl.TEXTURE_2D);
-    tile.mipsDirty = false;
   }
 
   /** Red channel (stroke coverage) of a stroke tile rect as 0..255 bytes, raster row order. */

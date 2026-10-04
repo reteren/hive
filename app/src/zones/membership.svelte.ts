@@ -80,12 +80,30 @@ export function recomputeZoneMembership(): void {
     return;
   }
   const candidates = availableZones();
+  // Only objects whose bounds changed need a new answer while the zones stay the same; a drag used to
+  // recompute every note × zone pair on every pointer move.
+  const zonesChanged = candidates.length !== lastZoneShapes.length ||
+    candidates.some((zone, index) => lastZoneShapes[index]?.parts !== zone.parts || lastZoneShapes[index]?.holes !== zone.holes || lastZoneShapes[index]?.id !== zone.id);
+  if (zonesChanged || lastResolvedRecord !== board.notes) {
+    resolved.clear();
+    lastZoneShapes = candidates.map((zone) => ({ id: zone.id, parts: zone.parts, holes: zone.holes }));
+    lastResolvedRecord = board.notes;
+  }
   for (const note of Object.values(board.notes)) {
+    const bounds = noteBounds(note);
+    const key = `${bounds.x},${bounds.y},${bounds.width},${bounds.height}`;
+    const previous = resolved.get(note.id);
+    if (previous && previous.key === key && previous.zoneId === (note.zoneId ?? null)) continue;
     const next = membershipFor(note.id, candidates);
+    resolved.set(note.id, { key, zoneId: next });
     if ((note.zoneId ?? null) !== next) updateNote(note.id, { zoneId: next });
   }
   membershipFor(ME_OBJECT_ID, candidates);
 }
+
+const resolved = new Map<string, { key: string; zoneId: string | null }>();
+let lastZoneShapes: { id: string; parts: Zone["parts"]; holes: Zone["holes"] }[] = [];
+let lastResolvedRecord = board.notes;
 
 /** Keep auto-zone membership stable while a zone drag previews; resolve it once when it ends. */
 export function beginZoneMembershipBatch(): void {

@@ -1,5 +1,6 @@
 <!-- Screen-space selection outlines and pointer gestures for board notes (R1.4). -->
 <script lang="ts">
+  import { cachedClientRect } from "../board/boardRect";
   import { onMount } from "svelte";
   import { board as boardState, updateNote } from "../model/board.svelte";
   import { camera, pointer, viewport } from "../board/camera.svelte";
@@ -1148,7 +1149,7 @@ type PendingBoardMove =
 
   function localPoint(event: Pick<PointerEvent, "clientX" | "clientY">): Point | null {
     if (!boardElement) return null;
-    const rect = boardElement.getBoundingClientRect();
+    const rect = cachedClientRect(boardElement);
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   }
 
@@ -1158,7 +1159,7 @@ type PendingBoardMove =
 
   function isPointInsideBoard(point: Point): boolean {
     if (!boardElement) return false;
-    const rect = boardElement.getBoundingClientRect();
+    const rect = cachedClientRect(boardElement);
     return point.x >= 0 && point.y >= 0 && point.x <= rect.width && point.y <= rect.height;
   }
 
@@ -1996,20 +1997,29 @@ type PendingBoardMove =
   }
 
   function endMovingStacking(): void {
+    zoneMoveCards = null;
     restoreMovingStacking?.();
     restoreMovingStacking = null;
     movingVisuals.clear();
   }
 
+  /** Member cards of the zone being moved; looked up once per member set, not on every pointer move. */
+  let zoneMoveCards: { key: string; cards: HTMLElement[] } | null = null;
+
   function applyZoneMovePreview(gesture: ZoneMoveGesture): void {
     setZoneMovePreview(gesture.beforeZone.id, gesture.offset);
     applyMemberPositions(gesture.afterMembers);
-    const movedIds = new Set(movedZoneMemberIds(gesture));
-    const cards = boardElement
-      ? [...boardElement.querySelectorAll<HTMLElement>(".note-card[data-note-id], .beacon-object[data-note-id]")]
-        .filter((card) => movedIds.has(card.dataset.noteId ?? ""))
-      : [];
-    movingVisuals.setTargets(cards);
+    const movedIds = movedZoneMemberIds(gesture);
+    const key = movedIds.join("|");
+    if (zoneMoveCards?.key !== key) {
+      const ids = new Set(movedIds);
+      const cards = boardElement
+        ? [...boardElement.querySelectorAll<HTMLElement>(".note-card[data-note-id], .beacon-object[data-note-id]")]
+          .filter((card) => ids.has(card.dataset.noteId ?? ""))
+        : [];
+      zoneMoveCards = { key, cards };
+      movingVisuals.setTargets(cards);
+    }
   }
 
   function applyMemberPositions(members: readonly MemberPosition[]): void {
@@ -2029,6 +2039,7 @@ type PendingBoardMove =
 
   function endZoneMoveBatch(): void {
     clearZoneMovePreview();
+    zoneMoveCards = null;
     movingVisuals.clear();
     if (!zoneMembershipBatchOpen) return;
     zoneMembershipBatchOpen = false;

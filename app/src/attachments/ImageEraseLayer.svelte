@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { cachedClientRect } from "../board/boardRect";
   import { onMount } from "svelte";
   import { camera, setPointerScreen, viewport } from "../board/camera.svelte";
   import { screenToWorld, worldToScreen } from "../board/cameraMath";
@@ -44,7 +45,7 @@
     if (!boardElement) return;
 
     const updateBoardOrigin = () => {
-      const rect = boardElement!.getBoundingClientRect();
+      const rect = cachedClientRect(boardElement!);
       boardOrigin = { x: rect.left, y: rect.top };
     };
     updateBoardOrigin();
@@ -63,14 +64,14 @@
     }
 
     function worldPoint(event: PointerEvent): { x: number; y: number } {
-      const rect = boardElement!.getBoundingClientRect();
+      const rect = cachedClientRect(boardElement!);
       const local = { x: event.clientX - rect.left, y: event.clientY - rect.top };
       setPointerScreen(local);
       return screenToWorld(camera, viewport, local);
     }
 
     function updatePointer(event: PointerEvent): void {
-      const rect = boardElement!.getBoundingClientRect();
+      const rect = cachedClientRect(boardElement!);
       const inside = event.clientX >= rect.left && event.clientX <= rect.right &&
         event.clientY >= rect.top && event.clientY <= rect.bottom;
       if (inside) setPointerScreen({ x: event.clientX - rect.left, y: event.clientY - rect.top });

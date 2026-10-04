@@ -1,0 +1,43 @@
+// debug 22 part 2: line/draw sub-tools unfold under their hotbar button; draw panel has no tool grid.
+import { writeFileSync } from "node:fs";
+const OUT = "C:/Users/reteren/AppData/Local/Temp/claude";
+const page = (await fetch(`http://localhost:9334/json/list`).then((r) => r.json())).find((t) => t.type === "page" && t.url.includes("1450"));
+const ws = new WebSocket(page.webSocketDebuggerUrl); let id = 0; const pending = new Map(); const errors = [];
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.method === "Runtime.exceptionThrown") errors.push(m.params.exceptionDetails.exception?.description?.slice(0, 220)); if (pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+await new Promise((r) => (ws.onopen = r));
+const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+await send("Runtime.enable");
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const ev = async (expression) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); return r.result?.result?.value ?? r.result?.exceptionDetails?.exception?.description; };
+const mouse = (type, x, y) => send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" ? "none" : "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: type === "mouseMoved" ? 0 : 1 });
+const click = async (x, y) => { await mouse("mouseMoved", x, y); await mouse("mousePressed", x, y); await mouse("mouseReleased", x, y); await wait(300); };
+const key = async (k, code, vk, modifiers = 0) => { await send("Input.dispatchKeyEvent", { type: "keyDown", key: k, code, windowsVirtualKeyCode: vk, modifiers }); await send("Input.dispatchKeyEvent", { type: "keyUp", key: k, code, windowsVirtualKeyCode: vk, modifiers }); await wait(250); };
+const shot = async (n) => writeFileSync(`${OUT}/${n}.png`, Buffer.from((await send("Page.captureScreenshot", { format: "png" })).result.data, "base64"));
+const alphaAt = (sx, sy) => ev(`(async()=>{const cam=await import('/src/board/camera.svelte.ts');const cm=await import('/src/board/cameraMath.ts');const h=await import('/src/drawing/history.ts');const t=await import('/src/drawing/types.ts');const b=document.querySelector('.board').getBoundingClientRect();const w=cm.screenToWorld(cam.camera,cam.viewport??(await import('/src/board/camera.svelte.ts')).viewport,{x:${sx}-b.left,y:${sy}-b.top});const px=Math.floor(w.x*t.DRAW_PX_PER_UNIT),py=Math.floor(w.y*t.DRAW_PX_PER_UNIT);const img=h.readRasterRect(px,py,1,1);return img.data[3]})()`);
+// Live drawing: mid-stroke screenshots with the button still held (brush reaches the pointer, eraser erases at once).
+const set = (o) => ev(`(async()=>{(await import('/src/drawing/tools.svelte.ts')).setBrushSettings(${JSON.stringify(o)})})()`);
+const press = async (x, y) => { await mouse("mouseMoved", x, y); await send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", buttons: 1, clickCount: 1 }); };
+const moveHeld = async (x, y) => { await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y, button: "left", buttons: 1 }); await wait(10); };
+const release = async (x, y) => { await send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", buttons: 0, clickCount: 1 }); await wait(500); };
+// screen pixel of the drawing canvas (WebGL readback of what is shown)
+const shown = (x, y) => ev(`(()=>{const c=document.querySelector('[data-drawing-surface]');const gl=c.getContext('webgl2');const r=c.getBoundingClientRect();const px=new Uint8Array(4);const dpr=c.width/r.width;gl.readPixels(Math.round((${x}-r.left)*dpr),Math.round(c.height-(${y}-r.top)*dpr),1,1,gl.RGBA,gl.UNSIGNED_BYTE,px);return px[3]})()`);
+await send("Page.reload"); await wait(2500);
+await ev(`(async()=>{const c=await import('/src/board/camera.svelte.ts');c.camera.zoom=1;c.camera.x=0;c.camera.y=0})()`);
+await mouse("mouseMoved", 700, 500); await key("d", "KeyD", 68, 2);
+await set({ size: 40, hardness: 0.9, opacity: 1, color: "#40a0f0" });
+await press(350, 300);
+for (let i = 1; i <= 20; i += 1) await moveHeld(350 + i * 25, 300 + Math.sin(i / 3) * 40);
+const tip = [350 + 20 * 25, 300 + Math.sin(20 / 3) * 40];
+await shot("live-brush-held");
+console.log("brush held: shown at pointer", await shown(tip[0], tip[1]), "| one step back", await shown(350 + 19 * 25, 300 + Math.sin(19 / 3) * 40));
+await release(tip[0], tip[1]);
+await key("e", "KeyE", 69); await set({ size: 30, hardness: 1 });
+await press(500, 250);
+for (let i = 1; i <= 10; i += 1) await moveHeld(500, 250 + i * 12);
+await shot("live-erase-held");
+const crossY = 300 + Math.sin((500 - 350) / 25 / 3) * 40;
+console.log("erase held: shown where erased", await shown(500, crossY), "| tile still has it", await alphaAt(500, crossY));
+await release(500, 370);
+console.log("after release: tile", await alphaAt(500, crossY), "| shown", await shown(500, crossY));
+console.log("errors:", errors);
+process.exit(0);

@@ -14,6 +14,8 @@
   import { toggleEmbeddedSection } from "./actions.svelte";
   import { COMBO_SECTION_WIDTH_PX } from "./layout";
   import { isComboDropPlan } from "./dropLogic";
+  import { noteBounds } from "../notes/layout.svelte";
+  import { cachedClientRect } from "../board/boardRect";
 
   let { note }: { note: Note } = $props();
   let root: HTMLDivElement;
@@ -32,13 +34,19 @@
       ownerId: dropOwnerId,
       accepts(noteIds, worldPoint) {
         if (noteIds.length !== 1) return null;
+        // Every note is a drop target: reject by board geometry first, so a drag over a board with
+        // hundreds of notes does not force a layout per note and pointer move.
+        const area = noteBounds(note);
+        const slack = 2;
+        if (worldPoint.x < area.x - slack || worldPoint.y < area.y - slack ||
+          worldPoint.x > area.x + area.width + slack || worldPoint.y > area.y + area.height + slack) return null;
         const sourceId = noteIds[0];
         const host = root.closest<HTMLElement>(".note-card[data-note-id]");
         const plan = comboDropPlanFor(sourceId, note.id);
         if (!plan || !host) return null;
         const boardElement = document.querySelector<HTMLElement>(".board");
         if (!boardElement) return null;
-        const boardRect = boardElement.getBoundingClientRect();
+        const boardRect = cachedClientRect(boardElement);
         const screen = worldToScreen(boardCamera, boardViewport, worldPoint);
         const clientX = boardRect.left + screen.x;
         const clientY = boardRect.top + screen.y;

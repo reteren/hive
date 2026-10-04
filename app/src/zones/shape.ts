@@ -64,7 +64,61 @@ export function shapeAreaInRect(shape: ZoneShape, rect: ZoneBounds): number {
   if (![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite) || rect.width <= 0 || rect.height <= 0) return 0;
   const normalizedRect = normalizeBounds(rect);
   if (normalizedRect.width <= 0 || normalizedRect.height <= 0) return 0;
+  // Parts never overlap and every hole lies inside one part, so the area is a plain sum of each ring
+  // clipped to the rectangle. This runs for every note × zone pair whenever something moves; building
+  // a shape grid per pair made dragging on a busy board stutter.
+  let area = 0;
+  for (const part of shape.parts) area += polygonArea(clipToRect(part, normalizedRect));
+  for (const hole of shape.holes) area -= polygonArea(clipToRect(hole, normalizedRect));
+  return Math.max(0, area);
+}
+
+/** Reference implementation on the shape grid (tests compare the fast path against it). */
+export function shapeAreaInRectByGrid(shape: ZoneShape, rect: ZoneBounds): number {
+  if (![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite) || rect.width <= 0 || rect.height <= 0) return 0;
+  const normalizedRect = normalizeBounds(rect);
+  if (normalizedRect.width <= 0 || normalizedRect.height <= 0) return 0;
   return gridArea(createShapeGrid([shape], [normalizedRect]), normalizedRect);
+}
+
+/** Sutherland–Hodgman clip of any simple polygon against an axis-aligned rectangle. */
+function clipToRect(polygon: readonly Point[], rect: ZoneBounds): Point[] {
+  const right = rect.x + rect.width;
+  const bottom = rect.y + rect.height;
+  let points: Point[] = [...polygon];
+  const edges: Array<[(p: Point) => boolean, (a: Point, b: Point) => Point]> = [
+    [(p) => p.x >= rect.x, (a, b) => ({ x: rect.x, y: a.y + (b.y - a.y) * (rect.x - a.x) / (b.x - a.x) })],
+    [(p) => p.x <= right, (a, b) => ({ x: right, y: a.y + (b.y - a.y) * (right - a.x) / (b.x - a.x) })],
+    [(p) => p.y >= rect.y, (a, b) => ({ x: a.x + (b.x - a.x) * (rect.y - a.y) / (b.y - a.y), y: rect.y })],
+    [(p) => p.y <= bottom, (a, b) => ({ x: a.x + (b.x - a.x) * (bottom - a.y) / (b.y - a.y), y: bottom })],
+  ];
+  for (const [inside, cut] of edges) {
+    if (points.length === 0) return points;
+    const input = points;
+    points = [];
+    for (let index = 0; index < input.length; index += 1) {
+      const current = input[index]!;
+      const previous = input[(index + input.length - 1) % input.length]!;
+      const currentIn = inside(current);
+      if (currentIn) {
+        if (!inside(previous)) points.push(cut(previous, current));
+        points.push(current);
+      } else if (inside(previous)) {
+        points.push(cut(previous, current));
+      }
+    }
+  }
+  return points;
+}
+
+function polygonArea(points: readonly Point[]): number {
+  let twice = 0;
+  for (let index = 0; index < points.length; index += 1) {
+    const a = points[index]!;
+    const b = points[(index + 1) % points.length]!;
+    twice += a.x * b.y - b.x * a.y;
+  }
+  return Math.abs(twice) / 2;
 }
 
 /** True when the two shapes share a positive area (touching edges are allowed, M020). */

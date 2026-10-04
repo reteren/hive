@@ -14,7 +14,7 @@ export function toggleDrawMode(): void {
     deactivateDrawInput();
     tool.active = "select";
   } else {
-    if (!drawingGpu()) {
+    if (typeof document !== "undefined" && !drawingGpu()) {
       showLinkStatus("Drawing needs GPU acceleration (WebGL2), which is unavailable on this system.");
       return;
     }
