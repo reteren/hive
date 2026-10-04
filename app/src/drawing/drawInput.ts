@@ -27,6 +27,7 @@ const DRAW_SHORTCUTS: Record<string, DrawShortcut> = {
   KeyM: { kind: "tool", tool: "select-rect" },
   KeyL: { kind: "tool", tool: "select-lasso" },
   KeyP: { kind: "tool", tool: "select-polygon" },
+  KeyT: { kind: "tool", tool: "text" },
   BracketLeft: { kind: "size", delta: -5 },
   BracketRight: { kind: "size", delta: 5 },
 };

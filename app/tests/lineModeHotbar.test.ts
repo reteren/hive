@@ -35,7 +35,7 @@ describe("Line tool with strong/weak sub-tools", () => {
 
   it("lists draw sub-tools with the rectangle select renamed", () => {
     expect(DRAW_SUBTOOLS.map((item) => item.label)).toEqual(
-      ["Brush", "Eraser", "Fill", "Select rectangle", "Lasso", "Polygon"],
+      ["Brush", "Eraser", "Fill", "Select rectangle", "Lasso", "Polygon", "Text"],
     );
   });
 });

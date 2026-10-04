@@ -13,6 +13,7 @@ import {
   selectionMoveHandler,
   type RasterPixels,
 } from "../src/drawing/selection.svelte";
+import { drawingTools } from "../src/drawing/tools.svelte";
 import type { DrawPointerEvent } from "../src/drawing/types";
 
 const harness = vi.hoisted(() => ({
@@ -107,15 +108,15 @@ function putPixel(data: Uint8ClampedArray, width: number, x: number, y: number, 
   data.set(rgba, (y * width + x) * 4);
 }
 
-function pointer(rasterX: number, rasterY: number, clientX: number, clientY: number, ctrl = false): DrawPointerEvent {
+function pointer(rasterX: number, rasterY: number, clientX: number, clientY: number, ctrl = false, alt = false, zoom = 1): DrawPointerEvent {
   return {
     world: { x: rasterX / 20, y: rasterY / 20 },
     client: { x: clientX, y: clientY },
-    zoom: 1,
+    zoom,
     pressure: 0.5,
     shift: false,
     ctrl,
-    alt: false,
+    alt,
     detail: 1,
   };
 }
@@ -170,6 +171,7 @@ describe("drawing selection", () => {
     drawingSelection.preview = null;
     drawingSelection.floating = null;
     drawingSelection.floatingAt = null;
+    drawingTools.active = "brush";
     vi.stubGlobal("document", testCanvasDocument());
     vi.stubGlobal("ImageData", TestImageData);
   });
@@ -297,13 +299,33 @@ describe("drawing selection", () => {
     expect(harness.commands[0]?.label).toBe("Move selection");
   });
 
-  it("copies by Ctrl-drag and records one undo action", async () => {
+  it("moves from anywhere inside a selection with Ctrl and records one undo action", async () => {
     putPixel(harness.pixels, 8, 1, 0, [255, 0, 0, 255]);
+    drawingTools.active = "select-rect";
+    drawingSelection.area = buildSelectionArea("select-rect", [{ x: 0, y: 0 }, { x: 8, y: 8 }]);
+
+    const interior = pointer(4, 4, 100, 10, true, false, 10);
+    expect(isDrawingSelectionBorder(pointer(4, 4, 100, 10, false, false, 10))).toBe(false);
+    expect(isDrawingSelectionBorder(interior)).toBe(true);
+    expect(beginSelectionBorderMove(interior)).toBe(true);
+    selectionMoveHandler.move(pointer(6, 4, 104, 10, true, false, 10));
+    selectionMoveHandler.up(pointer(6, 4, 104, 10, true, false, 10));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(pixel(harness.pixels, 8, 3, 0)).toEqual([255, 0, 0, 255]);
+    expect(pixel(harness.pixels, 8, 1, 0)).toEqual([0, 0, 0, 0]);
+    expect(harness.commands).toHaveLength(1);
+    expect(harness.commands[0]?.label).toBe("Move selection");
+  });
+
+  it("copies with Ctrl+Alt-drag and records one undo action", async () => {
+    putPixel(harness.pixels, 8, 1, 0, [255, 0, 0, 255]);
+    drawingTools.active = "select-rect";
     const handler = selectRectangle()!;
 
-    handler.down(pointer(1.5, 0.5, 100, 10, true));
-    handler.move(pointer(3.5, 0.5, 104, 10, true));
-    handler.up(pointer(3.5, 0.5, 104, 10, true));
+    handler.down(pointer(1.5, 0.5, 100, 10, true, true));
+    handler.move(pointer(3.5, 0.5, 104, 10, true, true));
+    handler.up(pointer(3.5, 0.5, 104, 10, true, true));
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(pixel(harness.pixels, 8, 1, 0)).toEqual([255, 0, 0, 255]);

@@ -3,6 +3,7 @@
   import HexColorPicker from "../color/HexColorPicker.svelte";
   import { tool } from "../tools/tool.svelte";
   import DrawCursor from "./DrawCursor.svelte";
+  import TextEditorOverlay from "./TextEditorOverlay.svelte";
   import { drawingTools, setBrushSettings } from "./tools.svelte";
 
 
@@ -81,20 +82,24 @@
       </label>
     {/if}
 
-    <label class="field slider-field">
-      <span>Hardness <strong>{Math.round(drawingTools.brush.hardness * 100)}%</strong></span>
-      <MediaSlider
-        value={hardnessSlider}
-        max={100}
-        step={1}
-        label="Brush hardness"
-        oninput={updateHardness}
-        onchange={updateHardness}
-        tooltip={(value) => `${Math.round(value)}%`}
-      />
-    </label>
+    <!-- Text has no soft edge: hardness does not apply to it. -->
+    {#if drawingTools.active !== "text"}
+      <label class="field slider-field">
+        <span>Hardness <strong>{Math.round(drawingTools.brush.hardness * 100)}%</strong></span>
+        <MediaSlider
+          value={hardnessSlider}
+          max={100}
+          step={1}
+          label="Brush hardness"
+          oninput={updateHardness}
+          onchange={updateHardness}
+          tooltip={(value) => `${Math.round(value)}%`}
+        />
+      </label>
+    {/if}
   </aside>
   <DrawCursor />
+  <TextEditorOverlay />
 {/if}
 
 <style>

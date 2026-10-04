@@ -122,10 +122,16 @@ function distanceToSegment(point: RasterPoint, start: RasterPoint, end: RasterPo
   return Math.hypot(point.x - (start.x + t * dx), point.y - (start.y + t * dy));
 }
 
-/** True when the pointer is within the screen-space move band around the current outline. */
+/** True when the existing selection should handle this pointer as a move gesture. */
 export function isDrawingSelectionBorder(event: DrawPointerEvent, bandPx = 6): boolean {
   const area = drawingSelection.area;
   if (!area || drawingSelection.floatingAt) return false;
+
+  // Ctrl makes the selected pixels a move handle while a selection tool is active. Ctrl+Alt is
+  // reserved for copying in beginMove; Ctrl alone always means move, including on the border.
+  if (event.ctrl && SELECTION_TOOLS.includes(drawingTools.active as SelectionTool) &&
+    selectionContains(area, readPoint(event, area.level))) return true;
+
   const ppu = levelPxPerUnit(area.level);
   const point = { x: event.world.x * ppu, y: event.world.y * ppu };
   const pixelsPerRasterPx = event.zoom * PX_PER_UNIT / ppu;
@@ -550,7 +556,7 @@ function beginMove(event: DrawPointerEvent): boolean {
     last: point,
     startClient: { ...event.client },
     lastClient: { ...event.client },
-    copy: event.ctrl,
+    copy: event.ctrl && event.alt,
     prepared,
   };
   return true;
@@ -919,6 +925,30 @@ if (typeof window !== "undefined") {
     const point = worldFromClient(event.clientX, event.clientY);
     if (point) cursorWorld = point;
   }, true);
+
+  const updateSelectionMoveHover = (event: KeyboardEvent) => {
+    if (document.documentElement.dataset.drawingMode !== "true" ||
+      !SELECTION_TOOLS.includes(drawingTools.active as SelectionTool) || activeGesture) return;
+    const area = drawingSelection.area;
+    if (!area || drawingSelection.floatingAt || !cursorWorld) {
+      delete document.documentElement.dataset.selectionMoveHover;
+      return;
+    }
+    const pointer: DrawPointerEvent = {
+      world: cursorWorld,
+      client: { x: 0, y: 0 },
+      zoom: camera.zoom,
+      pressure: 0.5,
+      shift: event.shiftKey,
+      ctrl: event.ctrlKey,
+      alt: event.altKey,
+      detail: 1,
+    };
+    if (isDrawingSelectionBorder(pointer)) document.documentElement.dataset.selectionMoveHover = "true";
+    else delete document.documentElement.dataset.selectionMoveHover;
+  };
+  window.addEventListener("keydown", updateSelectionMoveHover, true);
+  window.addEventListener("keyup", updateSelectionMoveHover, true);
 }
 
 export function selectionAreaWorldRect(area: PixelBounds & { level?: number }): WorldRect {

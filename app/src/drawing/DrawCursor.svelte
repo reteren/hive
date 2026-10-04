@@ -13,7 +13,7 @@
   /** Below this diameter the circle alone gets lost on the board, so four short ticks frame it. */
   const RETICLE_BELOW_PX = 12;
   /** Selection tools work on points, not with a brush footprint: they get the precise reticle only. */
-  let pointTool = $derived(drawingTools.active === "select-rect" || drawingTools.active === "select-lasso" || drawingTools.active === "select-polygon");
+  let pointTool = $derived(drawingTools.active === "select-rect" || drawingTools.active === "select-lasso" || drawingTools.active === "select-polygon" || drawingTools.active === "text");
   let reticleGap = $derived(pointTool ? 3 : cursorSize / 2 + 3);
 
   onMount(() => {

@@ -94,8 +94,10 @@
           {:else if option.id === "select-lasso"}
             <path d="M8.2 14.4C4.9 13.8 3 12 3 9.8 3 6.6 6.2 4 10.2 4S17 6.4 17 9.3c0 2.7-2.9 4.9-6.6 5.1" stroke-dasharray="2.2 1.8" />
             <path d="M8.2 14.4c-.6 1-1.4 1.8-2.6 2.2M9.4 13.3a1.4 1.4 0 1 1-1.2 1.1" />
-          {:else}
+          {:else if option.id === "select-polygon"}
             <path d="M4 7.2 9.6 3.4l6.6 3.2-1.4 8.6-8.4 1.4z" stroke-dasharray="2.2 1.8" />
+          {:else}
+            <path d="M4.5 5V3.8h11V5M10 3.8v12.4M7.6 16.2h4.8" />
           {/if}
         </SubtoolButton>
       {/each}

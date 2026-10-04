@@ -76,7 +76,7 @@ export interface DrawingIndex {
   tiles: TileKey[];
 }
 
-export type DrawTool = "brush" | "eraser" | "fill" | "select-rect" | "select-lasso" | "select-polygon";
+export type DrawTool = "brush" | "eraser" | "fill" | "text" | "select-rect" | "select-lasso" | "select-polygon";
 
 export interface BrushSettings {
   /** "#rrggbb" */

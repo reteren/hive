@@ -8,6 +8,7 @@ import "./brush";
 import "./eraser";
 import "./fill";
 import "./selection.svelte";
+import "./text.svelte";
 
 export function toggleDrawMode(): void {
   if (tool.active === "draw") {

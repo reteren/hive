@@ -16,4 +16,5 @@ export const DRAW_SUBTOOLS: readonly DrawSubtoolInfo[] = [
   { id: "select-rect", label: "Select rectangle", key: "KeyM" },
   { id: "select-lasso", label: "Lasso", key: "KeyL" },
   { id: "select-polygon", label: "Polygon", key: "KeyP" },
+  { id: "text", label: "Text", key: "KeyT", hint: "Click to type; Enter adds a line; Ctrl+Enter commits; Esc cancels." },
 ];
