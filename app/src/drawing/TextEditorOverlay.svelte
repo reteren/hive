@@ -4,15 +4,17 @@
   import { worldToScreen } from "../board/cameraMath";
   import { drawingTools } from "./tools.svelte";
   import { cancelTextEditor, commitTextEditor, textEditor, updateTextEditor } from "./text.svelte";
+  import { textScreenSizeAtZoom } from "./textLayout";
 
   let editor = $state<HTMLTextAreaElement | null>(null);
   let focusedSessionId = 0;
   let boardOriginX = $state(0);
   let boardOriginY = $state(0);
   const screenPoint = $derived(worldToScreen(camera, viewport, { x: textEditor.worldX, y: textEditor.worldY }));
-  const lineHeight = $derived(Math.max(1, drawingTools.brush.size * 1.2));
+  const fontSizeScreen = $derived(textScreenSizeAtZoom(textEditor.fontSizeWorld, camera.zoom));
+  const lineHeight = $derived(Math.max(1, fontSizeScreen * 1.2));
   const lineCount = $derived(Math.max(1, textEditor.value.split("\n").length));
-  const editorWidth = $derived(measureEditorWidth(textEditor.value, drawingTools.brush.size));
+  const editorWidth = $derived(measureEditorWidth(textEditor.value, fontSizeScreen));
 
   onMount(() => {
     const board = document.querySelector<HTMLElement>(".board");
@@ -94,7 +96,7 @@
       style:top={`${boardOriginY + screenPoint.y}px`}
       style:width={`${editorWidth}px`}
       style:height={`${Math.ceil(lineHeight * lineCount + 4)}px`}
-      style:font-size={`${drawingTools.brush.size}px`}
+      style:font-size={`${fontSizeScreen}px`}
       style:line-height={`${lineHeight}px`}
       style:color={drawingTools.brush.color}
       style:opacity={drawingTools.brush.opacity}

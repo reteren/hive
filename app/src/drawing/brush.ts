@@ -1,5 +1,6 @@
 import {
   currentDrawLevel,
+  DRAW_MAX_LEVEL,
   levelPxPerUnit,
   type BrushSettings,
 } from "./types";
@@ -371,6 +372,30 @@ export function accumulateDabMaxAlpha(
   return changed ? { x: left, y: top, width: right - left, height: bottom - top } : null;
 }
 
+/** Below this raster diameter a stroke always stays at the working level. */
+const COARSEN_ABOVE_DIAMETER = 192;
+/** A nearly hard brush is coarsened only when it is this big (its 1 px rim then grows to ~2 px). */
+const HARD_COARSEN_ABOVE_DIAMETER = 640;
+
+/**
+ * The pyramid level a stroke is rasterised at. A huge brush (zoomed far out with a big size) would
+ * otherwise cover millions of raster px per pointer move. Each coarser level halves the raster; it is
+ * used while the soft edge (radius × (1 − hardness)) still spans ≥ 2 px there, so the edge looks the
+ * same on screen at a quarter of the cost per level.
+ */
+export function strokeRasterLevel(diameterAtWorkingLevel: number, hardness: number, workingLevel: number): number {
+  const softness = 1 - Math.min(1, Math.max(0, hardness));
+  let level = workingLevel;
+  let diameter = diameterAtWorkingLevel;
+  while (level < DRAW_MAX_LEVEL && diameter > COARSEN_ABOVE_DIAMETER) {
+    const edgeAfter = (diameter / 4) * softness;
+    if (edgeAfter < 2 && diameter <= HARD_COARSEN_ABOVE_DIAMETER) break;
+    level += 1;
+    diameter /= 2;
+  }
+  return level;
+}
+
 /** Stroke tiles: the live stroke state is kept in tile-aligned pieces at the working level. */
 const STROKE_TILE = 512;
 
@@ -390,7 +415,7 @@ export function brushShape(diameter: number, hardness: number): { radius: number
  * is smoothed on the CPU; every pixel is computed by the drawing GPU (gpu/glEngine.ts STROKE_SHADER),
  * one pass per pointer event over just that event's bounding box.
  */
-export function createStroke(settings: BrushSettings, zoom: number, level = currentDrawLevel(zoom)): DrawStroke {
+export function createStroke(settings: BrushSettings, zoom: number, requestedLevel?: number): DrawStroke {
   const gpu = requireDrawingGpu();
   const safeSettings = {
     color: /^#[\da-f]{6}$/i.test(settings.color) ? settings.color : "#e8e8e8",
@@ -398,6 +423,11 @@ export function createStroke(settings: BrushSettings, zoom: number, level = curr
     opacity: clamp(settings.opacity, 0.05, 1, 1),
     hardness: clamp(settings.hardness, 0, 1, 0.85),
   };
+  const level = requestedLevel ?? strokeRasterLevel(
+    brushWorldWidth(safeSettings.size, zoom) * levelPxPerUnit(currentDrawLevel(zoom)),
+    safeSettings.hardness,
+    currentDrawLevel(zoom),
+  );
   const pixelsPerUnit = levelPxPerUnit(level);
   const baseDiameter = brushWorldWidth(safeSettings.size, zoom) * pixelsPerUnit;
   const shape = brushShape(baseDiameter, safeSettings.hardness);

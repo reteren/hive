@@ -151,3 +151,15 @@ describe("smoothed stroke path (debug 23 p.1)", () => {
     expect(samples.at(-1)).toEqual({ x: 10, y: 10 });
   });
 });
+
+describe("raster level of huge brushes (debug 25 p.7)", () => {
+  it("coarsens big soft brushes, keeps small and hard ones crisp", async () => {
+    const { strokeRasterLevel } = await import("../src/drawing/brush");
+    expect(strokeRasterLevel(60, 0, 0)).toBe(0);
+    expect(strokeRasterLevel(800, 0, 0)).toBe(3);
+    expect(strokeRasterLevel(800, 0.85, 0)).toBe(3);
+    expect(strokeRasterLevel(300, 1, 0)).toBe(0);
+    expect(strokeRasterLevel(1000, 1, 0)).toBe(1);
+    expect(strokeRasterLevel(800, 0, 5)).toBe(6);
+  });
+});

@@ -11,11 +11,24 @@ export interface TextRasterLayout {
 
 export interface TextRasterRect { x: number; y: number; width: number; height: number }
 
-/** Convert the screen-space brush size into font pixels at the selected raster level. */
-export function textFontSizeAtLevel(size: number, zoom: number, level: number): number {
+/** Convert the clicked screen-space brush size into a stable board-space text size. */
+export function textWorldSizeAtZoom(size: number, zoom: number): number {
   const safeSize = Number.isFinite(size) && size > 0 ? size : 1;
   const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
-  return safeSize * levelPxPerUnit(level) / (PX_PER_UNIT * safeZoom);
+  return safeSize / (PX_PER_UNIT * safeZoom);
+}
+
+/** Screen-space preview size for a fixed board-space font size. */
+export function textScreenSizeAtZoom(worldSize: number, zoom: number): number {
+  const safeSize = Number.isFinite(worldSize) && worldSize > 0 ? worldSize : 1 / PX_PER_UNIT;
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  return safeSize * PX_PER_UNIT * safeZoom;
+}
+
+/** Raster font size for the fixed board-space font size at a chosen pyramid level. */
+export function textFontSizeAtLevel(worldSize: number, level: number): number {
+  const safeSize = Number.isFinite(worldSize) && worldSize > 0 ? worldSize : 1 / PX_PER_UNIT;
+  return safeSize * levelPxPerUnit(level);
 }
 
 /** Raster origin for a text insertion point; floor keeps negative world coordinates consistent. */
@@ -27,6 +40,11 @@ export function textRasterOrigin(worldX: number, worldY: number, level: number):
 /** World insertion point and measured layout combined as a level-specific raster rectangle. */
 export function textRasterRect(worldX: number, worldY: number, level: number, layout: TextRasterLayout): TextRasterRect {
   return { ...textRasterOrigin(worldX, worldY, level), width: layout.width, height: layout.height };
+}
+
+/** Raster rectangle when the insertion point has already been snapped to a raster origin. */
+export function textRasterRectAtOrigin(rasterX: number, rasterY: number, layout: TextRasterLayout): TextRasterRect {
+  return { x: rasterX, y: rasterY, width: layout.width, height: layout.height };
 }
 
 /** Measure each line in raster pixels and reserve a little leading between baselines. */

@@ -21,6 +21,8 @@ export interface MutableDrawingTileStore extends DrawingTileStore {
   replaceFromPngs(pngs: ReadonlyMap<TileKey, Blob>): Promise<void>;
   /** PNG (straight alpha) of each tile for saving; null for a missing or fully transparent tile (dropped). */
   exportPngs(keys: readonly TileKey[]): Promise<Map<TileKey, Uint8Array | null>>;
+  /** Synchronous snapshot (GPU copies), for capturing tiles bit by bit during a gesture. */
+  snapshotNow(keys: readonly TileKey[]): TileSnapshot;
   /** List stored tile keys in stable level/row/column order. */
   allKeys(): TileKey[];
   /** Keys whose content changed in the most recent revision. */
@@ -48,7 +50,8 @@ export class TileCopy {
   private packed: Promise<Uint8Array> | null = null;
 
   constructor(gpu: DrawingGpu, source: GpuTexture) {
-    this.gpuCopy = gpu.createTexture(DRAW_TILE_SIZE_PX, DRAW_TILE_SIZE_PX, false);
+    // Allocating 1 MB textures is the slow part of copying; demoted copies hand theirs back.
+    this.gpuCopy = copyPool.pop() ?? gpu.createTexture(DRAW_TILE_SIZE_PX, DRAW_TILE_SIZE_PX, false);
     gpu.copyTexture(source, this.gpuCopy);
     liveCopies.push(this);
     scheduleDemotion();
@@ -72,13 +75,16 @@ export class TileCopy {
   demote(gpu: DrawingGpu): void {
     if (!this.gpuCopy) return;
     const raw = gpu.readPremultiplied(this.gpuCopy);
-    gpu.deleteTexture(this.gpuCopy);
+    if (copyPool.length < MAX_POOLED_COPIES) copyPool.push(this.gpuCopy);
+    else gpu.deleteTexture(this.gpuCopy);
     this.gpuCopy = null;
     this.packed = deflate(raw);
   }
 }
 
 const liveCopies: TileCopy[] = [];
+const MAX_POOLED_COPIES = 64;
+const copyPool: GpuTexture[] = [];
 let demotionScheduled = false;
 
 function scheduleDemotion(): void {
@@ -214,6 +220,7 @@ export function createDrawingTileStore(): MutableDrawingTileStore {
     tiles.clear();
     levelCounts.clear();
     liveCopies.length = 0;
+    copyPool.length = 0;
     bump([]);
   });
 
@@ -235,6 +242,9 @@ export function createDrawingTileStore(): MutableDrawingTileStore {
     },
     levels,
     async snapshot(keys) {
+      return store.snapshotNow(keys);
+    },
+    snapshotNow(keys) {
       const engine = requireDrawingGpu();
       const snapshot: TileSnapshot = new Map();
       for (const key of new Set(keys)) {

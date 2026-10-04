@@ -90,15 +90,13 @@ async function commitErase(finished: FinishedStroke, settings: BrushSettings): P
 
   const tileKeys = affectedTileKeys(worldRect, finished.level, "erase");
   const before: TileSnapshot = await drawingStore.snapshot(tileKeys);
-  let after: TileSnapshot;
   const options = eraserCompositeOptions(settings);
   try {
     applyAcrossLevels(finished.source, finished.rasterX, finished.rasterY, finished.level, "erase", options.opacity, selection);
-    after = await drawingStore.snapshot(tileKeys);
   } catch (error) {
     await drawingStore.restore(before);
     throw error;
   }
 
-  pushDrawingHistory("Erase", before, after);
+  pushDrawingHistory("Erase", before, tileKeys);
 }

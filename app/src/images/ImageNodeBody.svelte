@@ -52,7 +52,7 @@
 <div class="image-node-body" role="group" aria-label={name} ondragstart={(event) => event.preventDefault()}>
   <div
     class="image-node-frame-outline"
-    class:visible={selected || fullyTransparent}
+    class:visible={fullyTransparent}
     data-image-frame-outline
     aria-hidden="true"
   ></div>
@@ -115,8 +115,8 @@
     transition: opacity 100ms ease-out;
   }
 
-  .image-node-frame-outline.visible,
-  .image-node-body:hover .image-node-frame-outline {
+  /* Only a fully erased picture gets a frame, so it can still be found and deleted. */
+  .image-node-frame-outline.visible {
     opacity: 1;
   }
 

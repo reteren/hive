@@ -1,12 +1,11 @@
 import { showLinkStatus } from "../links-in-text/contextMenu.svelte";
-import { camera } from "../board/camera.svelte";
 import { drawingSelection } from "./selection.svelte";
 import { drawingStore } from "./tileStore.svelte";
 import { drawingTools } from "./tools.svelte";
 import { affectedTileKeys, applyAcrossLevels, pushDrawingHistory, rasterRectToWorld } from "./history";
 import { registerDrawTool } from "./toolRegistry";
-import { currentDrawLevel, type DrawPointerEvent, type DrawToolHandler } from "./types";
-import { layoutTextRaster, textFontSizeAtLevel, textRasterRect } from "./textLayout";
+import { currentDrawLevel, levelPxPerUnit, type DrawPointerEvent, type DrawToolHandler } from "./types";
+import { layoutTextRaster, textFontSizeAtLevel, textRasterOrigin, textRasterRectAtOrigin, textWorldSizeAtZoom } from "./textLayout";
 
 const UI_FONT = "system-ui, sans-serif";
 
@@ -17,14 +16,19 @@ export const textEditor = $state({
   value: "",
   worldX: 0,
   worldY: 0,
+  rasterX: 0,
+  rasterY: 0,
+  level: 0,
+  fontSizeWorld: 1,
 });
 
 interface TextCommit {
   text: string;
-  worldX: number;
-  worldY: number;
-  zoom: number;
-  settings: { color: string; size: number; opacity: number };
+  rasterX: number;
+  rasterY: number;
+  level: number;
+  fontSizeWorld: number;
+  settings: { color: string; opacity: number };
   selection: typeof drawingSelection.area;
 }
 
@@ -33,10 +37,18 @@ let commitQueue = Promise.resolve();
 function beginText(event: DrawPointerEvent): void {
   // Finish the previous insertion before opening an editor at the new click.
   commitTextEditor();
+  const level = currentDrawLevel(event.zoom);
+  const rasterOrigin = textRasterOrigin(event.world.x, event.world.y, level);
+  const pixelsPerUnit = levelPxPerUnit(level);
   textEditor.sessionId += 1;
   textEditor.value = "";
-  textEditor.worldX = event.world.x;
-  textEditor.worldY = event.world.y;
+  // Snap both the editor and the eventual canvas origin to the same raster pixel to avoid a jump.
+  textEditor.rasterX = rasterOrigin.x;
+  textEditor.rasterY = rasterOrigin.y;
+  textEditor.worldX = rasterOrigin.x / pixelsPerUnit;
+  textEditor.worldY = rasterOrigin.y / pixelsPerUnit;
+  textEditor.level = level;
+  textEditor.fontSizeWorld = textWorldSizeAtZoom(drawingTools.brush.size, event.zoom);
   textEditor.active = true;
 }
 
@@ -51,12 +63,12 @@ export function commitTextEditor(sessionId = textEditor.sessionId): void {
   const text = textEditor.value;
   const commit: TextCommit = {
     text,
-    worldX: textEditor.worldX,
-    worldY: textEditor.worldY,
-    zoom: camera.zoom,
+    rasterX: textEditor.rasterX,
+    rasterY: textEditor.rasterY,
+    level: textEditor.level,
+    fontSizeWorld: textEditor.fontSizeWorld,
     settings: {
       color: drawingTools.brush.color,
-      size: drawingTools.brush.size,
       opacity: drawingTools.brush.opacity,
     },
     selection: drawingSelection.area,
@@ -77,8 +89,8 @@ export function cancelTextEditor(sessionId = textEditor.sessionId): void {
 }
 
 async function commitRasterText(commit: TextCommit): Promise<void> {
-  const level = currentDrawLevel(commit.zoom);
-  const fontSize = textFontSizeAtLevel(commit.settings.size, commit.zoom, level);
+  const level = commit.level;
+  const fontSize = textFontSizeAtLevel(commit.fontSizeWorld, level);
   const canvas = document.createElement("canvas");
   const measureContext = canvas.getContext("2d");
   if (!measureContext) throw new Error("Could not create the text drawing canvas.");
@@ -95,7 +107,7 @@ async function commitRasterText(commit: TextCommit): Promise<void> {
   context.fillStyle = commit.settings.color;
   layout.lines.forEach((line, index) => context.fillText(line, 0, index * layout.lineHeight));
 
-  const rasterRect = textRasterRect(commit.worldX, commit.worldY, level, layout);
+  const rasterRect = textRasterRectAtOrigin(commit.rasterX, commit.rasterY, layout);
   const rect = rasterRectToWorld(rasterRect.x, rasterRect.y, rasterRect.width, rasterRect.height, level);
   const beforeKeys = affectedTileKeys(rect, level, "paint");
   const before = await drawingStore.snapshot(beforeKeys);

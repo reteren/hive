@@ -18,26 +18,45 @@ export interface DrawingHistoryExtras {
 }
 
 let restoreQueue = Promise.resolve();
+let pendingRestores = 0;
+
+/** True while no Undo/Redo tile restore is queued (tiles hold their settled content). */
+export function drawingHistoryIdle(): boolean {
+  return pendingRestores === 0;
+}
 
 /** Wait until an asynchronous tile restore caused by Undo/Redo has completed. */
 export function waitForDrawingHistoryRestore(): Promise<void> {
   return restoreQueue;
 }
 
-/** Record one already-applied drawing action with its before/after tile copies. */
+/**
+ * Record one already-applied drawing action. `after` may be the keys of the changed tiles instead of
+ * copies: the "after" state is then captured on the first Undo — history is linear, so at that moment
+ * the tiles hold exactly this action's result. A huge stroke over a detailed drawing touches hundreds
+ * of tiles; copying them twice at pointer-up was a visible hitch.
+ */
 export function pushDrawingHistory(
   label: string,
   before: TileSnapshot,
-  after: TileSnapshot,
+  after: TileSnapshot | readonly TileKey[],
   extra?: DrawingHistoryExtras,
 ): void {
+  let afterSnapshot: TileSnapshot | null = after instanceof Map ? after : null;
+  const afterKeys = after instanceof Map ? [] : [...new Set([...before.keys(), ...after])];
   const command: HistoryCommand = {
     label,
     do() {
-      enqueueRestore(after);
+      const snapshot = afterSnapshot;
+      if (snapshot) enqueueRestore(snapshot);
       extra?.redo();
     },
     undo() {
+      if (!afterSnapshot) {
+        restoreQueue = restoreQueue.then(async () => {
+          afterSnapshot ??= await drawingStore.snapshot(afterKeys);
+        }).catch((error: unknown) => console.error("Could not keep the drawing redo state", error));
+      }
       enqueueRestore(before);
       extra?.undo();
     },
@@ -341,9 +360,10 @@ export function writeRasterRect(image: ImageData, rasterX: number, rasterY: numb
 }
 
 function enqueueRestore(snapshot: TileSnapshot): void {
+  pendingRestores += 1;
   restoreQueue = restoreQueue.then(() => drawingStore.restore(snapshot)).catch((error: unknown) => {
     console.error("Could not restore drawing history snapshot", error);
-  });
+  }).finally(() => { pendingRestores -= 1; });
 }
 
 function validateRasterRect(x: number, y: number, width: number, height: number): void {
