@@ -47,6 +47,8 @@
 
     /** Why the overview may not start right now, or null when the board is idle. */
     function idleBlocker(): string | null {
+      // Draw mode keeps Alt for the brush (Alt + wheel = opacity); the overview is not available there.
+      if (tool.active === "draw") return "draw mode";
       if (editing.noteId !== null) return "editing a note";
       if (beaconEditor.noteId !== null) return "beacon editor";
       if (creationMenu.open) return "create menu open";
@@ -56,9 +58,7 @@
       if (selection.grabActive) return "grab";
       if (zoneMode.active === "move") return "zone move";
       if (zoneMode.resizeZoneId !== null) return "zone resize";
-      const activeElement = document.activeElement;
-      const focusedDrawControl = tool.active === "draw" && isDrawOverlayControl(activeElement);
-      if (isTextEditingTarget(activeElement) && !focusedDrawControl) return "text field focused";
+      if (isTextEditingTarget(document.activeElement)) return "text field focused";
       // Only real pop-up menus block. (The Mark as tag editor used to be listed here: it is part
       // of every Mark as node and open by default, so one Mark as on the board disabled Alt forever.)
       const open = document.querySelector(

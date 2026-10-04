@@ -12,7 +12,9 @@
   let cursorSize = $derived(drawCursorDiameter(drawingTools.brush.size));
   /** Below this diameter the circle alone gets lost on the board, so four short ticks frame it. */
   const RETICLE_BELOW_PX = 12;
-  let reticleGap = $derived(cursorSize / 2 + 3);
+  /** Selection tools work on points, not with a brush footprint: they get the precise reticle only. */
+  let pointTool = $derived(drawingTools.active === "select-rect" || drawingTools.active === "select-lasso" || drawingTools.active === "select-polygon");
+  let reticleGap = $derived(pointTool ? 3 : cursorSize / 2 + 3);
 
   onMount(() => {
     const board = document.querySelector<HTMLElement>(".board");
@@ -59,6 +61,11 @@
   <div class="brush-hint" style={cursorStyle} data-brush-hint>{brushHint.text}</div>
 {/if}
 {#if screenPoint && eyedropper.active}
+  <!-- Pipette cursor: its tip stops 2 px short of the hotspot so it is never the sampled pixel. -->
+  <svg class="eyedropper-cursor" style={cursorStyle} viewBox="0 0 24 24" data-eyedropper-cursor aria-hidden="true">
+    <path class="pipette-halo" d="M2.5 21.5 4 17.6l9.2-9.2 2.4 2.4-9.2 9.2zM13.2 8.4l2.1-2.1a2.6 2.6 0 0 1 3.7 0 2.6 2.6 0 0 1 0 3.7l-2.1 2.1M12.4 7.6l4 4" />
+    <path class="pipette-line" d="M2.5 21.5 4 17.6l9.2-9.2 2.4 2.4-9.2 9.2zM13.2 8.4l2.1-2.1a2.6 2.6 0 0 1 3.7 0 2.6 2.6 0 0 1 0 3.7l-2.1 2.1M12.4 7.6l4 4" />
+  </svg>
   <div class="eyedropper-preview" style={cursorStyle} data-eyedropper aria-live="polite">
     <span class="eyedropper-swatch" class:empty={!eyedropper.color} style:background={eyedropper.color ?? "transparent"}></span>
     <span class="eyedropper-hex">{eyedropper.color ?? "—"}</span>
@@ -72,7 +79,7 @@
       <path d="m14.6 6.3 3.2-3.2M16.5 17.5h.01M19.4 14.6h.01M20 20h.01" />
     </svg>
   {:else}
-    {#if cursorSize < RETICLE_BELOW_PX}
+    {#if pointTool || cursorSize < RETICLE_BELOW_PX}
       <svg class="draw-reticle" style={cursorStyle} viewBox="-16 -16 32 32" data-draw-reticle aria-hidden="true">
         {#each [0, 90, 180, 270] as angle (angle)}
           <g transform={`rotate(${angle})`}>
@@ -84,6 +91,7 @@
     {/if}
     <span
       class="draw-cursor"
+      class:point={pointTool}
       class:eraser={drawingTools.active === "eraser"}
       style={cursorStyle}
       data-draw-cursor
@@ -108,6 +116,43 @@
     border-radius: 50%;
     box-shadow: inset 0 0 0 1px #fff;
     pointer-events: none;
+  }
+
+  .draw-cursor.point {
+    width: 3px;
+    height: 3px;
+    border: 0;
+    background: #fff;
+    box-shadow: 0 0 0 1px rgb(17 17 17 / 85%);
+  }
+
+  .eyedropper-cursor {
+    position: fixed;
+    z-index: 10002;
+    left: 0;
+    top: 0;
+    width: 22px;
+    height: 22px;
+    overflow: visible;
+    pointer-events: none;
+    /* The pipette tip (2.5, 21.5) sits 2 px up-right of the hotspot. */
+    transform: translate(-0.5px, -23.5px);
+  }
+
+  .pipette-halo {
+    fill: none;
+    stroke: rgb(17 17 17 / 90%);
+    stroke-width: 3.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .pipette-line {
+    fill: rgb(255 255 255 / 18%);
+    stroke: #fff;
+    stroke-width: 1.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
 
   .draw-reticle {

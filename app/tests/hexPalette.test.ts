@@ -42,15 +42,15 @@ describe("live colour session", () => {
 });
 
 describe("recent colours row", () => {
-  it("keeps the last 10 in time order: new on the right, oldest dropped", async () => {
+  it("keeps the last 10, newest on the left; the oldest drops off the right", async () => {
     const { pushRecentColor, recentColors, RECENT_COLOR_LIMIT } = await import("../src/color/recentColors.svelte");
     recentColors.list = [];
     for (let index = 0; index < 12; index += 1) pushRecentColor(`#0000${index.toString(16).padStart(2, "0")}`);
     expect(recentColors.list).toHaveLength(RECENT_COLOR_LIMIT);
-    expect(recentColors.list[0]).toBe("#000002");
-    expect(recentColors.list.at(-1)).toBe("#00000b");
+    expect(recentColors.list[0]).toBe("#00000b");
+    expect(recentColors.list.at(-1)).toBe("#000002");
     pushRecentColor("#000005");
-    expect(recentColors.list.at(-1)).toBe("#000005");
+    expect(recentColors.list[0]).toBe("#000005");
     expect(recentColors.list.filter((color) => color === "#000005")).toHaveLength(1);
   });
 });
