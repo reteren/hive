@@ -1,7 +1,7 @@
 import { screenToWorld } from "../board/cameraMath";
 import { camera, setPointerScreen, viewport } from "../board/camera.svelte";
 import { isTextEditingTarget } from "../commands/focus";
-import { drawingTools, adjustBrushSize, setActiveDrawTool } from "./tools.svelte";
+import { drawingTools, adjustBrushSize, setActiveDrawTool, showBrushHint, stepBrushSetting, type BrushWheelSetting } from "./tools.svelte";
 import { drawToolHandler } from "./toolRegistry";
 import { beginEyedropper, cancelEyedropper, finishEyedropper, moveEyedropper } from "./eyedropper.svelte";
 import type { DrawPointerEvent, DrawTool, DrawToolHandler } from "./types";
@@ -21,6 +21,15 @@ const DRAW_SHORTCUTS: Record<string, DrawShortcut> = {
   BracketLeft: { kind: "size", delta: -5 },
   BracketRight: { kind: "size", delta: 5 },
 };
+
+/** Ctrl + wheel → size, Alt + wheel → opacity, Shift + wheel → hardness (exactly one modifier). */
+export function brushWheelSetting(modifiers: { ctrl: boolean; alt: boolean; shift: boolean; meta: boolean }): BrushWheelSetting | null {
+  if (modifiers.meta) return null;
+  if (modifiers.ctrl && !modifiers.alt && !modifiers.shift) return "size";
+  if (modifiers.alt && !modifiers.ctrl && !modifiers.shift) return "opacity";
+  if (modifiers.shift && !modifiers.ctrl && !modifiers.alt) return "hardness";
+  return null;
+}
 
 /** Shortcuts are mode scoped; unmodified keys keep their ordinary board actions in other modes. */
 export function drawShortcutForKey(
@@ -186,6 +195,30 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
     consume(event);
   }
 
+  let wheelRemainder = 0;
+  let wheelSetting: BrushWheelSetting | null = null;
+
+  function onWheel(event: WheelEvent): void {
+    if (tool.active !== "draw") return;
+    const setting = brushWheelSetting({ ctrl: event.ctrlKey, alt: event.altKey, shift: event.shiftKey, meta: event.metaKey });
+    if (!setting) return;
+    // Before the camera: Ctrl + wheel must not zoom the board while it resizes the brush.
+    consume(event);
+    if (setting !== wheelSetting) wheelRemainder = 0;
+    wheelSetting = setting;
+    // Shift + wheel arrives as horizontal scrolling on Windows.
+    const delta = event.deltaY !== 0 ? event.deltaY : event.deltaX;
+    const notchDelta = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? delta / 3
+      : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? delta : delta / 120;
+    wheelRemainder += notchDelta;
+    const notches = Math.trunc(wheelRemainder);
+    wheelRemainder -= notches;
+    if (notches === 0) return;
+    // Wheel up = more.
+    stepBrushSetting(setting, -notches);
+    showBrushHint(setting);
+  }
+
   function onWindowBlur(): void {
     cancelGesture();
     eyedropperPointerId = null;
@@ -235,6 +268,7 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
   boardElement.addEventListener("pointercancel", onPointerCancel, true);
   boardElement.addEventListener("lostpointercapture", onLostPointerCapture, true);
   boardElement.addEventListener("contextmenu", onContextMenu, true);
+  boardElement.addEventListener("wheel", onWheel, { capture: true, passive: false });
   window.addEventListener("keydown", onKeyDown, true);
   window.addEventListener("blur", onWindowBlur);
   selectedTool = null;
@@ -254,6 +288,7 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
     boardElement.removeEventListener("pointercancel", onPointerCancel, true);
     boardElement.removeEventListener("lostpointercapture", onLostPointerCapture, true);
     boardElement.removeEventListener("contextmenu", onContextMenu, true);
+    boardElement.removeEventListener("wheel", onWheel, true);
     window.removeEventListener("keydown", onKeyDown, true);
     window.removeEventListener("blur", onWindowBlur);
   };

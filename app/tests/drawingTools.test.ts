@@ -3,13 +3,14 @@ import { getCommands } from "../src/commands/registry.svelte";
 import { DEFAULT_VIEW_SETTINGS, parseViewSettings, serializeViewSettings } from "../src/settings/viewSettings";
 import { tool } from "../src/tools/tool.svelte";
 import { drawCursorDiameter } from "../src/drawing/settings";
-import { drawShortcutForKey } from "../src/drawing/drawInput";
+import { brushWheelSetting, drawShortcutForKey } from "../src/drawing/drawInput";
 import {
   drawingPreferencesSnapshot,
   drawingTools,
   loadDrawingPreferences,
   setActiveDrawTool,
   setBrushSettings,
+  stepBrushSetting,
 } from "../src/drawing/tools.svelte";
 import "../src/board/gridCommands";
 import "../src/beacons/focusCommands";
@@ -67,5 +68,26 @@ describe("drawing tools", () => {
     loadDrawingPreferences(parseViewSettings(serialized, DEFAULT_VIEW_SETTINGS).drawing);
     expect(drawingTools.brush).toMatchObject({ color: "#123456", size: 72, opacity: 0.65, hardness: 0.3 });
     expect(drawingPreferencesSnapshot()).toEqual({ brush: drawingTools.brush });
+  });
+
+  it("maps Ctrl/Alt/Shift + wheel to size, opacity and hardness", () => {
+    const none = { ctrl: false, alt: false, shift: false, meta: false };
+    expect(brushWheelSetting({ ...none, ctrl: true })).toBe("size");
+    expect(brushWheelSetting({ ...none, alt: true })).toBe("opacity");
+    expect(brushWheelSetting({ ...none, shift: true })).toBe("hardness");
+    expect(brushWheelSetting(none)).toBeNull();
+    expect(brushWheelSetting({ ...none, ctrl: true, shift: true })).toBeNull();
+
+    setBrushSettings({ size: 10, opacity: 0.5, hardness: 0.5 });
+    stepBrushSetting("size", 1);
+    expect(drawingTools.brush.size).toBe(11);
+    stepBrushSetting("size", -3);
+    expect(drawingTools.brush.size).toBe(8);
+    stepBrushSetting("opacity", 2);
+    expect(drawingTools.brush.opacity).toBe(0.6);
+    stepBrushSetting("hardness", -20);
+    expect(drawingTools.brush.hardness).toBe(0);
+    stepBrushSetting("size", 400);
+    expect(drawingTools.brush.size).toBe(400);
   });
 });

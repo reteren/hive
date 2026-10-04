@@ -32,3 +32,31 @@ export function loadDrawingPreferences(value: unknown): void {
 export function drawingPreferencesSnapshot(): DrawingPreferences {
   return { brush: { ...drawingTools.brush } };
 }
+
+export type BrushWheelSetting = "size" | "opacity" | "hardness";
+
+/** Ctrl / Alt / Shift + mouse wheel in draw mode: size ~10% per notch, opacity and hardness 5% per notch. */
+export function stepBrushSetting(setting: BrushWheelSetting, notches: number): void {
+  if (!Number.isFinite(notches) || notches === 0) return;
+  const brush = drawingTools.brush;
+  if (setting === "size") {
+    const scaled = Math.round(brush.size * 1.1 ** notches);
+    const size = scaled === brush.size ? brush.size + Math.sign(notches) : scaled;
+    setBrushSettings({ size });
+  } else if (setting === "opacity") {
+    setBrushSettings({ opacity: Math.round((brush.opacity + notches * 0.05) * 100) / 100 });
+  } else {
+    setBrushSettings({ hardness: Math.round((brush.hardness + notches * 0.05) * 100) / 100 });
+  }
+}
+
+/** Short label next to the draw cursor after a wheel adjustment ("Size 24 px"). */
+export const brushHint = $state({ text: "", revision: 0 });
+
+export function showBrushHint(setting: BrushWheelSetting): void {
+  const brush = drawingTools.brush;
+  brushHint.text = setting === "size" ? `Size ${brush.size} px`
+    : setting === "opacity" ? `Opacity ${Math.round(brush.opacity * 100)}%`
+      : `Hardness ${Math.round(brush.hardness * 100)}%`;
+  brushHint.revision += 1;
+}

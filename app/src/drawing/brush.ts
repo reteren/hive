@@ -75,6 +75,121 @@ export function interpolateStrokePoints(points: readonly StrokePoint[], spacing:
   return result;
 }
 
+/** Per-pixel state of one stroke: shown alpha = earlier passes ⊕ the current pass. */
+export interface StrokeCoverage {
+  /** Shown alpha (0..255). */
+  value: Uint8ClampedArray;
+  /** Alpha of the earlier passes over this pixel. */
+  base: Uint8ClampedArray;
+  /** Max alpha of the current pass over this pixel. */
+  pass: Uint8ClampedArray;
+  /** Path length (raster px) at which the stroke last touched this pixel; -Infinity = never. */
+  position: Float32Array;
+  /** 0 = the current pass merges with the base by max, 255 = composites over it (see below). */
+  blend: Uint8ClampedArray;
+}
+
+export function createStrokeCoverage(pixels: number): StrokeCoverage {
+  const position = new Float32Array(pixels);
+  position.fill(Number.NEGATIVE_INFINITY);
+  return {
+    value: new Uint8ClampedArray(pixels),
+    base: new Uint8ClampedArray(pixels),
+    pass: new Uint8ClampedArray(pixels),
+    position,
+    blend: new Uint8ClampedArray(pixels),
+  };
+}
+
+/**
+ * Add the capsule from (ax, ay) to (bx, by) — path length `startLength`..`endLength` — to a stroke.
+ *
+ * Within one pass over a pixel (touched again less than `passWindow` px of path ago: neighbouring
+ * pieces, holding still) alpha is the max, so joints and a resting pointer never build up. When the
+ * stroke comes back from further along the path (crossing itself, going back over) the new pass is
+ * composited over the earlier ones like paint (a + b·(1 − a)); between `passWindow` and 3× it the two
+ * rules are blended smoothly, so a tight V turn shows no seam. Pure max over the whole path left dark
+ * creases where a soft stroke crossed itself.
+ */
+export function accumulateStrokeSegment(
+  coverage: StrokeCoverage,
+  width: number,
+  height: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  startLength: number,
+  endLength: number,
+  radius: number,
+  hardness: number,
+  passWindow: number,
+): { x: number; y: number; width: number; height: number } | null {
+  const { value, base, pass, position, blend } = coverage;
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || value.length !== width * height) {
+    throw new RangeError("Stroke mask dimensions do not match its buffer.");
+  }
+  if (![ax, ay, bx, by, startLength, endLength, radius, hardness, passWindow].every(Number.isFinite) || radius <= 0) return null;
+
+  const left = Math.max(0, Math.floor(Math.min(ax, bx) - radius - 1));
+  const top = Math.max(0, Math.floor(Math.min(ay, by) - radius - 1));
+  const right = Math.min(width, Math.ceil(Math.max(ax, bx) + radius + 1));
+  const bottom = Math.min(height, Math.ceil(Math.max(ay, by) + radius + 1));
+  if (right <= left || bottom <= top) return null;
+
+  const hard = Math.min(1, Math.max(0, hardness));
+  // Keep at least a one-pixel antialiased rim, even for a fully hard brush.
+  const coreRadius = Math.max(0, Math.min(radius * hard, radius - 1));
+  const edgeWidth = Math.max(radius - coreRadius, 1e-6);
+  const radiusSquared = radius * radius;
+  const coreSquared = coreRadius * coreRadius;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lengthSquared = dx * dx + dy * dy;
+  const lengthDelta = endLength - startLength;
+  let changed = false;
+  for (let y = top; y < bottom; y += 1) {
+    const py = y + 0.5 - ay;
+    for (let x = left; x < right; x += 1) {
+      const px = x + 0.5 - ax;
+      const t = lengthSquared > 0 ? Math.min(1, Math.max(0, (px * dx + py * dy) / lengthSquared)) : 0;
+      const ox = px - t * dx;
+      const oy = py - t * dy;
+      const distanceSquared = ox * ox + oy * oy;
+      if (distanceSquared > radiusSquared) continue;
+      let alpha = 255;
+      if (distanceSquared > coreSquared) {
+        const edge = Math.min(1, Math.max(0, (Math.sqrt(distanceSquared) - coreRadius) / edgeWidth));
+        alpha = Math.round(255 * (1 - edge * edge * (3 - 2 * edge)));
+        if (alpha === 0) continue;
+      }
+      const offset = y * width + x;
+      const at = startLength + t * lengthDelta;
+      const gap = at - position[offset]!;
+      if (gap > passWindow) {
+        // A new pass over this pixel: fold what is shown into the base.
+        const ramp = Math.min(1, (gap - passWindow) / (passWindow * 2));
+        base[offset] = value[offset]!;
+        pass[offset] = alpha;
+        blend[offset] = Math.round(255 * ramp * ramp * (3 - 2 * ramp));
+      } else if (alpha > pass[offset]!) {
+        pass[offset] = alpha;
+      }
+      position[offset] = at;
+      const below = base[offset]!;
+      const current = pass[offset]!;
+      const over = below + current * (255 - below) / 255;
+      const weight = blend[offset]! / 255;
+      const shown = Math.round(Math.max(below, current) * (1 - weight) + over * weight);
+      if (shown > value[offset]!) {
+        value[offset] = shown;
+        changed = true;
+      }
+    }
+  }
+  return changed ? { x: left, y: top, width: right - left, height: bottom - top } : null;
+}
+
 /**
  * Max-alpha "capsule" from (ax, ay) to (bx, by): alpha depends on the distance to the segment, so a
  * stroke is one continuous shape with a smooth soft edge (no ripples from discrete dabs) and repeated
@@ -223,7 +338,10 @@ export function createStroke(settings: BrushSettings, zoom: number, level = curr
   let originY = 0;
   let width = 0;
   let height = 0;
-  let mask = new Uint8ClampedArray();
+  let coverage = createStrokeCoverage(0);
+  let mask = coverage.value;
+  /** Path length drawn so far, in raster px. */
+  let pathLength = 0;
   let closed = false;
   let previous: StrokePoint | null = null;
   let contentBounds: StrokeRasterRect | null = null;
@@ -260,7 +378,7 @@ export function createStroke(settings: BrushSettings, zoom: number, level = curr
 
     const nextWidth = next.right - next.left;
     const nextHeight = next.bottom - next.top;
-    const nextMask = new Uint8ClampedArray(nextWidth * nextHeight);
+    const nextCoverage = createStrokeCoverage(nextWidth * nextHeight);
     const nextPreview = document.createElement("canvas");
     nextPreview.width = nextWidth;
     nextPreview.height = nextHeight;
@@ -268,7 +386,13 @@ export function createStroke(settings: BrushSettings, zoom: number, level = curr
       const xOffset = bounds.left - next.left;
       const yOffset = bounds.top - next.top;
       for (let row = 0; row < height; row += 1) {
-        nextMask.set(mask.subarray(row * width, (row + 1) * width), (row + yOffset) * nextWidth + xOffset);
+        const from = row * width;
+        const to = (row + yOffset) * nextWidth + xOffset;
+        nextCoverage.value.set(coverage.value.subarray(from, from + width), to);
+        nextCoverage.base.set(coverage.base.subarray(from, from + width), to);
+        nextCoverage.pass.set(coverage.pass.subarray(from, from + width), to);
+        nextCoverage.position.set(coverage.position.subarray(from, from + width), to);
+        nextCoverage.blend.set(coverage.blend.subarray(from, from + width), to);
       }
       nextPreview.getContext("2d")?.drawImage(preview, xOffset, yOffset);
       preview.width = 0;
@@ -278,7 +402,8 @@ export function createStroke(settings: BrushSettings, zoom: number, level = curr
     originY = next.top;
     width = nextWidth;
     height = nextHeight;
-    mask = nextMask;
+    coverage = nextCoverage;
+    mask = coverage.value;
     preview = nextPreview;
     bounds = next;
   }
@@ -288,10 +413,15 @@ export function createStroke(settings: BrushSettings, zoom: number, level = curr
     const radius = Math.max(0.5, baseDiameter / 2);
     ensureBounds(from, radius);
     ensureBounds(to, radius);
-    const dirty = accumulateSegmentMaxAlpha(
-      mask, width, height,
+    const startLength = pathLength;
+    pathLength += Math.hypot(to.x - from.x, to.y - from.y);
+    const dirty = accumulateStrokeSegment(
+      coverage, width, height,
       from.x - originX, from.y - originY, to.x - originX, to.y - originY,
-      radius, safeSettings.hardness,
+      startLength, pathLength, radius, safeSettings.hardness,
+      // Neighbouring pieces touch a pixel again within ~1 radius of path; a return from further away
+      // is another pass (fully composited after ~4.5 radii).
+      Math.max(4, radius * 1.5),
     );
     return dirty ? { x: dirty.x + originX, y: dirty.y + originY, width: dirty.width, height: dirty.height } : null;
   }
@@ -378,7 +508,8 @@ export function createStroke(settings: BrushSettings, zoom: number, level = curr
       closed = true;
       preview.width = 0;
       preview.height = 0;
-      mask = new Uint8ClampedArray();
+      coverage = createStrokeCoverage(0);
+      mask = coverage.value;
       bounds = null;
       contentBounds = null;
       lastDirtyRect = null;

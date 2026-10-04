@@ -397,6 +397,8 @@ type PendingBoardMove =
     const boardEl = boardElement;
 
     function onScaleModePointerDown(event: PointerEvent): void {
+      // Draw mode owns the pointer (drawing/drawInput.ts): never select or move board objects.
+      if (tool.active === "draw") return;
       const gesture = scaleModeGesture;
       if (!gesture) return;
 
@@ -419,6 +421,7 @@ type PendingBoardMove =
     }
 
     function onAltNodePointerDown(event: PointerEvent): void {
+      if (tool.active === "draw") return;
       if (event.button !== 0 || event.isPrimary === false || activeGesture || grabGesture || zoneGrabGesture) return;
       const target = event.target instanceof Element ? event.target : null;
       if (!target || target.closest(".selection-context-pick, [data-create-menu]")) return;
@@ -453,6 +456,7 @@ type PendingBoardMove =
     }
 
     function onPointerDown(event: PointerEvent): void {
+      if (tool.active === "draw") return;
       if (suppressZoneResizeExitPointerId === event.pointerId) return;
       const target = event.target instanceof Element ? event.target : null;
 
@@ -796,6 +800,7 @@ type PendingBoardMove =
     }
 
     function onClick(event: MouseEvent): void {
+      if (tool.active === "draw") return;
       if (suppressZoneResizeExitClickUntil > performance.now()) {
         suppressZoneResizeExitClickUntil = 0;
         event.preventDefault();
@@ -844,6 +849,7 @@ type PendingBoardMove =
     }
 
     function onDoubleClick(event: MouseEvent): void {
+      if (tool.active === "draw") return;
       if (shouldSuppressAltNodeActivationClick(suppressAltNodeClickUntil, performance.now(), event.detail)) {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -1015,6 +1021,7 @@ type PendingBoardMove =
     }
 
     function onZoneResizePointerDown(event: PointerEvent): void {
+      if (tool.active === "draw") return;
       const activeId = zoneMode.resizeZoneId;
       if (!activeId || (event.button !== 0 && event.button !== 2)) return;
       const target = event.target instanceof Element ? event.target : null;

@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   accumulateDabMaxAlpha,
   accumulateSegmentMaxAlpha,
+  accumulateStrokeSegment,
   brushWorldWidth,
+  createStrokeCoverage,
   interpolateStrokePoints,
   sourceOverAlpha,
 } from "../src/drawing/brush";
@@ -126,5 +128,31 @@ describe("drawing core", () => {
     expect(edgeRow[0]).toBeGreaterThan(0);
     expect(edgeRow[0]).toBeLessThan(255);
     expect(new Set(edgeRow).size).toBe(1);
+  });
+
+  it("does not build up while holding still but composites a later pass smoothly where a stroke crosses itself", () => {
+    const size = 80;
+    const radius = 12;
+    const window = radius * 1.5;
+    const single = createStrokeCoverage(size * size);
+    accumulateStrokeSegment(single, size, size, 0, 40, 80, 40, 0, 80, radius, 0.1, window);
+    const once = single.value.slice();
+    // Holding still at the end: zero-length pieces at the same path length.
+    accumulateStrokeSegment(single, size, size, 80, 40, 80, 40, 80, 80, radius, 0.1, window);
+    expect(single.value).toEqual(once);
+
+    // Same stroke, later crossing it vertically (far along the path).
+    accumulateStrokeSegment(single, size, size, 40, 0, 40, 80, 400, 480, radius, 0.1, window);
+    const horizontalOnly = createStrokeCoverage(size * size);
+    accumulateStrokeSegment(horizontalOnly, size, size, 0, 40, 80, 40, 0, 80, radius, 0.1, window);
+    const verticalOnly = createStrokeCoverage(size * size);
+    accumulateStrokeSegment(verticalOnly, size, size, 40, 0, 40, 80, 0, 80, radius, 0.1, window);
+    // No crease: around the crossing every pixel is at least as strong as either line alone.
+    for (let y = 25; y < 55; y += 1) {
+      for (let x = 25; x < 55; x += 1) {
+        const offset = y * size + x;
+        expect(single.value[offset]).toBeGreaterThanOrEqual(Math.max(horizontalOnly.value[offset]!, verticalOnly.value[offset]!));
+      }
+    }
   });
 });

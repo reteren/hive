@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { camera, pointer, viewport } from "../board/camera.svelte";
   import { worldToScreen } from "../board/cameraMath";
-  import { drawingTools } from "./tools.svelte";
+  import { brushHint, drawingTools } from "./tools.svelte";
   import { drawCursorDiameter } from "./settings";
   import { attachDrawInput } from "./drawInput";
   import { eyedropper } from "./eyedropper.svelte";
@@ -38,11 +38,23 @@
     };
   });
 
+  // The wheel hint stays for a moment after the last adjustment.
+  let hintVisible = $state(false);
+  $effect(() => {
+    if (brushHint.revision === 0) return;
+    hintVisible = true;
+    const timer = setTimeout(() => { hintVisible = false; }, 900);
+    return () => clearTimeout(timer);
+  });
+
   let cursorStyle = $derived(screenPoint
     ? `left:${boardOrigin.x + screenPoint.x}px;top:${boardOrigin.y + screenPoint.y}px;--draw-cursor-size:${cursorSize}px`
     : "");
 </script>
 
+{#if screenPoint && hintVisible && !eyedropper.active}
+  <div class="brush-hint" style={cursorStyle} data-brush-hint>{brushHint.text}</div>
+{/if}
 {#if screenPoint && eyedropper.active}
   <div class="eyedropper-preview" style={cursorStyle} data-eyedropper aria-live="polite">
     <span class="eyedropper-swatch" class:empty={!eyedropper.color} style:background={eyedropper.color ?? "transparent"}></span>
@@ -126,5 +138,19 @@
 
   .eyedropper-swatch.empty {
     background: repeating-conic-gradient(#555 0 25%, #333 0 50%) 0 0 / 8px 8px !important;
+  }
+  .brush-hint {
+    position: fixed;
+    z-index: 10001;
+    padding: 4px 8px;
+    border: 1px solid rgb(255 255 255 / 18%);
+    border-radius: 6px;
+    background: #1e1e1e;
+    box-shadow: 0 4px 14px rgb(0 0 0 / 45%);
+    color: #e8e8e8;
+    font: 12px/1 system-ui, sans-serif;
+    white-space: nowrap;
+    pointer-events: none;
+    transform: translate(calc(var(--draw-cursor-size) / 2 + 10px), calc(var(--draw-cursor-size) / 2 + 6px));
   }
 </style>
