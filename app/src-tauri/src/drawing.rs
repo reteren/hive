@@ -51,9 +51,14 @@ pub fn drawing_load(state: State<'_, ProjectState>) -> Result<DrawingLoadRespons
     })
 }
 
+/// Raw PNG bytes (an ArrayBuffer on the JS side, not a JSON number array: loading a big drawing
+/// used to spend most of its time serialising tiles as numbers).
 #[tauri::command]
-pub fn drawing_read_tile(state: State<'_, ProjectState>, key: String) -> Result<Vec<u8>, String> {
-    read_tile_at(&active_project_root(&state)?, &key)
+pub fn drawing_read_tile(
+    state: State<'_, ProjectState>,
+    key: String,
+) -> Result<tauri::ipc::Response, String> {
+    read_tile_at(&active_project_root(&state)?, &key).map(tauri::ipc::Response::new)
 }
 
 #[tauri::command]

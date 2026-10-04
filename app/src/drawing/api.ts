@@ -26,7 +26,7 @@ export async function drawingLoad(): Promise<DrawingLoadResult> {
 }
 
 export async function drawingReadTile(key: TileKey): Promise<Uint8Array<ArrayBuffer>> {
-  if (isTauri()) return ownedPng(Uint8Array.from(await invoke<number[]>("drawing_read_tile", { key })));
+  if (isTauri()) return new Uint8Array(await invoke<ArrayBuffer>("drawing_read_tile", { key }));
   const png = browserTiles.get(key);
   if (!png) throw new Error(`Drawing tile ${key} is missing.`);
   return ownedPng(png);

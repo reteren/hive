@@ -1,5 +1,6 @@
 import { record, type HistoryCommand } from "../history/history.svelte";
 import { drawingStore } from "./tileStore.svelte";
+import { requireDrawingGpu, type BlendKind, type DrawQuad, type DrawingGpu, type GpuTexture, type TexRect } from "./gpu/glEngine";
 import {
   DRAW_TILE_SIZE_PX,
   levelPxPerUnit,
@@ -9,7 +10,7 @@ import {
   type TileSnapshot,
   type WorldRect,
 } from "./types";
-import { clipRasterDataToSelection, createSelectionCoverageSampler, type SelectionClipMask } from "./selectionClip";
+import type { SelectionClipMask } from "./selectionClip";
 
 export interface DrawingHistoryExtras {
   undo(): void;
@@ -23,7 +24,7 @@ export function waitForDrawingHistoryRestore(): Promise<void> {
   return restoreQueue;
 }
 
-/** Record one already-applied drawing action with its compact before/after tile snapshots. */
+/** Record one already-applied drawing action with its before/after tile copies. */
 export function pushDrawingHistory(
   label: string,
   before: TileSnapshot,
@@ -65,16 +66,146 @@ export function affectedTileKeys(rect: WorldRect, level: number, kind: LevelPain
   return [...new Set([...drawingStore.keysInRect(rect, true, level), ...finer])];
 }
 
+/** One GPU-resident piece of an operation source, positioned in raster px of the source level. */
+export interface RasterPiece {
+  texture: WebGLTexture;
+  texWidth: number;
+  texHeight: number;
+  /** Part of the texture that holds the piece, in texture px. */
+  texRect: TexRect;
+  /** Raster px (source level) of texRect's top-left corner. */
+  x: number;
+  y: number;
+}
+
 /**
- * Apply a level-L raster source to the drawing:
+ * Pixels an operation paints with, already on the GPU: "rgba" pieces are straight colour stored
+ * premultiplied; "mask" pieces carry coverage in red and are tinted with `color`.
+ */
+export interface GpuRasterSource {
+  level: number;
+  mode: "rgba" | "mask";
+  /** Straight 0..1 colour for mask sources. */
+  color: [number, number, number];
+  pieces: RasterPiece[];
+  /** Raster rect (source level) covering every piece. */
+  bounds: TexRect;
+  /** Make the pieces sampleable at coarser scales (mip chains). */
+  prepare(gpu: DrawingGpu): void;
+}
+
+export type RasterSourceInput = HTMLCanvasElement | ImageData | GpuRasterSource;
+
+function isGpuSource(source: RasterSourceInput): source is GpuRasterSource {
+  return typeof (source as GpuRasterSource).pieces === "object" && Array.isArray((source as GpuRasterSource).pieces);
+}
+
+/** Upload a CPU image as a one-piece source (straight colour, premultiplied on upload). */
+function uploadSource(gpu: DrawingGpu, image: HTMLCanvasElement | ImageData, rasterX: number, rasterY: number, level: number): { source: GpuRasterSource; texture: GpuTexture } {
+  const texture = gpu.uploadImage(image);
+  return {
+    texture,
+    source: {
+      level,
+      mode: "rgba",
+      color: [1, 1, 1],
+      pieces: [{ texture: texture.tex, texWidth: texture.width, texHeight: texture.height, texRect: { x: 0, y: 0, width: texture.width, height: texture.height }, x: rasterX, y: rasterY }],
+      bounds: { x: rasterX, y: rasterY, width: texture.width, height: texture.height },
+      prepare(engine) { engine.ensureMips(texture); },
+    },
+  };
+}
+
+const selectionTextures = new WeakMap<SelectionClipMask, WebGLTexture>();
+
+/** The selection mask as an R8 texture (cached per selection object). */
+export function selectionMaskTexture(gpu: DrawingGpu, selection: SelectionClipMask): WebGLTexture {
+  const cached = selectionTextures.get(selection);
+  if (cached) return cached;
+  const texture = gpu.createMaskTexture(selection.width, selection.height, selection.mask);
+  selectionTextures.set(selection, texture);
+  return texture;
+}
+
+/** The selection itself as a white mask source (cut / delete the selected area). */
+function selectionAsSource(gpu: DrawingGpu, selection: SelectionClipMask): GpuRasterSource {
+  const texture = selectionMaskTexture(gpu, selection);
+  return {
+    level: selection.level,
+    mode: "mask",
+    color: [1, 1, 1],
+    pieces: [{ texture, texWidth: selection.width, texHeight: selection.height, texRect: { x: 0, y: 0, width: selection.width, height: selection.height }, x: selection.x, y: selection.y }],
+    bounds: { x: selection.x, y: selection.y, width: selection.width, height: selection.height },
+    prepare() {},
+  };
+}
+
+/**
+ * Quads that put `source` into the tile `key` (tile-local px), optionally clipped by a selection.
+ * Source px at level S map to tile px at level T by 2^(S−T).
+ */
+export function quadsForTile(
+  gpu: DrawingGpu,
+  source: GpuRasterSource,
+  key: TileKey,
+  opacity: number,
+  selection: SelectionClipMask | null | undefined,
+): DrawQuad[] {
+  const parsed = parseTileKey(key);
+  if (!parsed) return [];
+  const scale = 2 ** (source.level - parsed.level);
+  const tileX = parsed.col * DRAW_TILE_SIZE_PX;
+  const tileY = parsed.row * DRAW_TILE_SIZE_PX;
+  const color: [number, number, number, number] = source.mode === "mask"
+    ? [source.color[0] * opacity, source.color[1] * opacity, source.color[2] * opacity, opacity]
+    : [opacity, opacity, opacity, opacity];
+  const clipTexture = selection ? selectionMaskTexture(gpu, selection) : null;
+  const quads: DrawQuad[] = [];
+  for (const piece of source.pieces) {
+    const dst = {
+      x: piece.x * scale - tileX,
+      y: piece.y * scale - tileY,
+      width: piece.texRect.width * scale,
+      height: piece.texRect.height * scale,
+    };
+    if (dst.x >= DRAW_TILE_SIZE_PX || dst.y >= DRAW_TILE_SIZE_PX || dst.x + dst.width <= 0 || dst.y + dst.height <= 0) continue;
+    let clip: DrawQuad["clip"] = null;
+    if (selection && clipTexture) {
+      // Destination rect in selection-level raster px, relative to the mask origin.
+      const toSelection = 2 ** (parsed.level - selection.level);
+      clip = {
+        texture: clipTexture,
+        width: selection.width,
+        height: selection.height,
+        rect: {
+          x: (dst.x + tileX) * toSelection - selection.x,
+          y: (dst.y + tileY) * toSelection - selection.y,
+          width: dst.width * toSelection,
+          height: dst.height * toSelection,
+        },
+      };
+    }
+    quads.push({
+      dst,
+      src: { texture: piece.texture, width: piece.texWidth, height: piece.texHeight, rect: piece.texRect },
+      mode: source.mode,
+      color,
+      clip,
+    });
+  }
+  return quads;
+}
+
+/**
+ * Apply a level-L raster source to the drawing, entirely on the GPU:
  * - paint: source-over into level L, and source-atop into existing finer tiles so newer paint covers
  *   older detail exactly where that detail exists (finer levels are displayed above coarser ones);
  * - erase: destination-out from existing tiles of every level;
  * - under: destination-over into level L only (fill fringe beneath antialiased stroke edges).
- * Other levels get the source scaled by the GPU; there is no per-pixel JS work. Returns touched keys.
+ * `selectionMaskOnly` paints the selection area itself (cut / delete). Returns touched keys.
  */
 export function applyAcrossLevels(
-  source: HTMLCanvasElement,
+  input: RasterSourceInput,
   rasterX: number,
   rasterY: number,
   level: number,
@@ -83,257 +214,104 @@ export function applyAcrossLevels(
   selection?: SelectionClipMask | null,
   selectionMaskOnly = false,
 ): TileKey[] {
-  if (!Number.isSafeInteger(rasterX) || !Number.isSafeInteger(rasterY) || source.width < 1 || source.height < 1) return [];
   const opacity = Math.min(1, Math.max(0, Number.isFinite(alpha) ? alpha : 0));
   if (opacity === 0) return [];
-  const rect = rasterRectToWorld(rasterX, rasterY, source.width, source.height, level);
-  const touched: TileKey[] = [];
-  const apply = (keys: readonly TileKey[], mode: GlobalCompositeOperation): void => {
-    if (!selection) {
-      touched.push(...drawTiles(keys, source, rasterX, rasterY, level, mode, opacity));
-      return;
-    }
-    const byLevel = new Map<number, TileKey[]>();
-    for (const key of keys) {
-      const parsed = parseTileKey(key);
-      if (!parsed) continue;
-      const group = byLevel.get(parsed.level) ?? [];
-      group.push(key);
-      byLevel.set(parsed.level, group);
-    }
-    for (const [targetLevel, targetKeys] of byLevel) {
-      // Rasterize into each bounded destination tile before clipping. This avoids large full-size
-      // temporary canvases when a coarse stroke must also update existing fine pyramid tiles.
-      touched.push(...drawClippedTiles(
-        targetKeys,
-        source,
-        rasterX,
-        rasterY,
-        level,
-        targetLevel,
-        mode,
-        opacity,
-        selection,
-        selectionMaskOnly,
-      ));
-    }
-  };
-  if (kind === "erase") {
-    apply(drawingStore.existingKeysInRect(rect), "destination-out");
-  } else if (kind === "under") {
-    apply(drawingStore.keysInRect(rect, true, level), "destination-over");
+  const gpu = requireDrawingGpu();
+  let uploaded: GpuTexture | null = null;
+  let source: GpuRasterSource;
+  if (selectionMaskOnly && selection) {
+    source = selectionAsSource(gpu, selection);
+  } else if (isGpuSource(input)) {
+    source = input;
   } else {
-    // Finer tiles first: they must not see the coarse tiles this call is about to create.
-    const finer = drawingStore.existingKeysInRect(rect).filter((key) => (parseTileKey(key)?.level ?? level) < level);
-    apply(finer, "source-atop");
-    apply(drawingStore.keysInRect(rect, true, level), "source-over");
+    if (!Number.isSafeInteger(rasterX) || !Number.isSafeInteger(rasterY) || input.width < 1 || input.height < 1) return [];
+    ({ source, texture: uploaded } = uploadSource(gpu, input, rasterX, rasterY, level));
   }
-  const keys = [...new Set(touched)];
-  // Paint only adds alpha (source-atop keeps it), so only erasing can leave a tile empty.
-  drawingStore.commit(keys, kind === "erase");
-  return keys;
-}
-
-function drawTiles(
-  keys: readonly TileKey[],
-  source: HTMLCanvasElement,
-  rasterX: number,
-  rasterY: number,
-  sourceLevel: number,
-  mode: GlobalCompositeOperation,
-  opacity: number,
-): TileKey[] {
-  const create = mode === "source-over" || mode === "destination-over";
-  const done: TileKey[] = [];
-  for (const key of keys) {
-    const parsed = parseTileKey(key);
-    const tile = parsed ? drawingStore.tile(key, create) : null;
-    if (!parsed || !tile) continue;
-    const context = tile.getContext("2d");
-    if (!context) throw new Error(`Could not paint drawing tile ${key}.`);
-    // Source px (level sourceLevel) → tile px (level parsed.level).
-    const scale = 2 ** (sourceLevel - parsed.level);
-    context.save();
-    context.globalCompositeOperation = mode;
-    context.globalAlpha = opacity;
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = "high";
-    context.drawImage(
-      source,
-      rasterX * scale - parsed.col * DRAW_TILE_SIZE_PX,
-      rasterY * scale - parsed.row * DRAW_TILE_SIZE_PX,
-      source.width * scale,
-      source.height * scale,
-    );
-    context.restore();
-    done.push(key);
-  }
-  return done;
-}
-
-function drawClippedTiles(
-  keys: readonly TileKey[],
-  source: HTMLCanvasElement,
-  rasterX: number,
-  rasterY: number,
-  sourceLevel: number,
-  targetLevel: number,
-  mode: GlobalCompositeOperation,
-  opacity: number,
-  selection: SelectionClipMask,
-  selectionMaskOnly: boolean,
-): TileKey[] {
-  const create = mode === "source-over" || mode === "destination-over";
-  const scratch = document.createElement("canvas");
-  scratch.width = DRAW_TILE_SIZE_PX;
-  scratch.height = DRAW_TILE_SIZE_PX;
-  const scratchContext = scratch.getContext("2d", { willReadFrequently: true });
-  if (!scratchContext) throw new Error("Could not prepare a clipped drawing tile.");
-  const coverageAt = selectionMaskOnly
-    ? createSelectionCoverageSampler(selection, targetLevel, DRAW_TILE_SIZE_PX * DRAW_TILE_SIZE_PX)
-    : null;
-  const done: TileKey[] = [];
+  const clip = selectionMaskOnly ? null : selection ?? null;
   try {
-    for (const key of keys) {
-      const parsed = parseTileKey(key);
-      const tile = parsed ? drawingStore.tile(key, create) : null;
-      if (!parsed || !tile) continue;
-      scratchContext.setTransform(1, 0, 0, 1, 0, 0);
-      scratchContext.globalAlpha = 1;
-      scratchContext.globalCompositeOperation = "source-over";
-      scratchContext.clearRect(0, 0, scratch.width, scratch.height);
-      if (selectionMaskOnly && coverageAt) {
-        const image = scratchContext.createImageData(DRAW_TILE_SIZE_PX, DRAW_TILE_SIZE_PX);
-        const tileX = parsed.col * DRAW_TILE_SIZE_PX;
-        const tileY = parsed.row * DRAW_TILE_SIZE_PX;
-        for (let y = 0; y < DRAW_TILE_SIZE_PX; y += 1) {
-          for (let x = 0; x < DRAW_TILE_SIZE_PX; x += 1) {
-            image.data[(y * DRAW_TILE_SIZE_PX + x) * 4 + 3] =
-              Math.round(coverageAt(tileX + x, tileY + y) * 255);
-          }
-        }
-        scratchContext.putImageData(image, 0, 0);
-      } else {
-        const scale = 2 ** (sourceLevel - targetLevel);
-        scratchContext.imageSmoothingEnabled = true;
-        scratchContext.imageSmoothingQuality = "high";
-        scratchContext.drawImage(
-          source,
-          rasterX * scale - parsed.col * DRAW_TILE_SIZE_PX,
-          rasterY * scale - parsed.row * DRAW_TILE_SIZE_PX,
-          source.width * scale,
-          source.height * scale,
-        );
-        const image = scratchContext.getImageData(0, 0, DRAW_TILE_SIZE_PX, DRAW_TILE_SIZE_PX);
-        clipRasterDataToSelection(
-          image.data,
-          DRAW_TILE_SIZE_PX,
-          DRAW_TILE_SIZE_PX,
-          parsed.col * DRAW_TILE_SIZE_PX,
-          parsed.row * DRAW_TILE_SIZE_PX,
-          targetLevel,
-          selection,
-        );
-        scratchContext.putImageData(image, 0, 0);
+    source.prepare(gpu);
+    const rect = rasterRectToWorld(source.bounds.x, source.bounds.y, source.bounds.width, source.bounds.height, source.level);
+    const touched: TileKey[] = [];
+    const apply = (keys: readonly TileKey[], blend: BlendKind, create: boolean): void => {
+      for (const key of keys) {
+        const quads = quadsForTile(gpu, source, key, opacity, clip);
+        if (!quads.length) continue;
+        const tile = drawingStore.texture(key, create);
+        if (!tile) continue;
+        gpu.drawInto(tile, quads, blend);
+        touched.push(key);
       }
-      const context = tile.getContext("2d");
-      if (!context) throw new Error(`Could not paint drawing tile ${key}.`);
-      context.save();
-      context.globalCompositeOperation = mode;
-      context.globalAlpha = opacity;
-      context.drawImage(scratch, 0, 0);
-      context.restore();
-      done.push(key);
+    };
+    if (kind === "erase") {
+      apply(drawingStore.existingKeysInRect(rect), "out", false);
+    } else if (kind === "under") {
+      apply(drawingStore.keysInRect(rect, true, source.level), "under", true);
+    } else {
+      // Finer tiles first: they must not see the coarse tiles this call is about to create.
+      const finer = drawingStore.existingKeysInRect(rect).filter((key) => (parseTileKey(key)?.level ?? source.level) < source.level);
+      apply(finer, "atop", false);
+      apply(drawingStore.keysInRect(rect, true, source.level), "over", true);
     }
+    const keys = [...new Set(touched)];
+    drawingStore.commit(keys);
+    return keys;
   } finally {
-    scratch.width = 0;
-    scratch.height = 0;
+    gpu.deleteTexture(uploaded);
   }
-  return done;
-}
-
-/** Composite a rasterized stroke/fill into one level's tiles (no cross-level effects) and commit. */
-export function paintIntoTiles(
-  source: HTMLCanvasElement,
-  rasterX: number,
-  rasterY: number,
-  mode: GlobalCompositeOperation,
-  alpha: number,
-  level = 0,
-): TileKey[] {
-  if (!Number.isSafeInteger(rasterX) || !Number.isSafeInteger(rasterY) || source.width < 1 || source.height < 1) return [];
-  const opacity = Math.min(1, Math.max(0, Number.isFinite(alpha) ? alpha : 0));
-  if (opacity === 0) return [];
-  const keys = drawingStore.keysInRect(rasterRectToWorld(rasterX, rasterY, source.width, source.height, level), true, level);
-  const done = drawTiles(keys, source, rasterX, rasterY, level, mode, opacity);
-  drawingStore.commit(done);
-  return done;
 }
 
 /**
- * Read what the user sees (all levels composited, coarsest first) as a level-L raster rectangle.
- * Fill and selection work on this, so they see the visible drawing at any zoom.
+ * Composite tiles into the scratch texture as a level-L raster rect and read it back (straight alpha).
+ * `onlyLevel` restricts it to one level's tiles; otherwise every level, coarsest first (what the user sees).
  */
-export function readCompositeRect(rasterX: number, rasterY: number, width: number, height: number, level = 0): ImageData {
+function readRect(rasterX: number, rasterY: number, width: number, height: number, level: number, onlyLevel: boolean): ImageData {
   validateRasterRect(rasterX, rasterY, width, height);
-  const keys = drawingStore.existingKeysInRect(rasterRectToWorld(rasterX, rasterY, width, height, level));
+  const rect = rasterRectToWorld(rasterX, rasterY, width, height, level);
+  const keys = onlyLevel ? drawingStore.keysInRect(rect, false, level) : drawingStore.existingKeysInRect(rect);
   if (keys.length === 0) return new ImageData(width, height);
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-  if (!context) throw new Error("Could not read the drawing.");
-  context.imageSmoothingEnabled = true;
-  context.imageSmoothingQuality = "high";
+  const gpu = requireDrawingGpu();
+  const scratch = gpu.scratchTexture(width, height);
+  gpu.clear(scratch, { x: 0, y: 0, width, height });
+  const quads: DrawQuad[] = [];
   for (const key of keys) {
     const parsed = parseTileKey(key);
-    const tile = drawingStore.tile(key, false);
+    const tile = drawingStore.texture(key, false);
     if (!parsed || !tile) continue;
-    // Tile px → level-L px.
+    gpu.ensureMips(tile);
     const scale = 2 ** (parsed.level - level);
-    context.drawImage(
-      tile,
-      parsed.col * DRAW_TILE_SIZE_PX * scale - rasterX,
-      parsed.row * DRAW_TILE_SIZE_PX * scale - rasterY,
-      DRAW_TILE_SIZE_PX * scale,
-      DRAW_TILE_SIZE_PX * scale,
-    );
+    quads.push({
+      dst: {
+        x: parsed.col * DRAW_TILE_SIZE_PX * scale - rasterX,
+        y: parsed.row * DRAW_TILE_SIZE_PX * scale - rasterY,
+        width: DRAW_TILE_SIZE_PX * scale,
+        height: DRAW_TILE_SIZE_PX * scale,
+      },
+      src: { texture: tile.tex, width: DRAW_TILE_SIZE_PX, height: DRAW_TILE_SIZE_PX, rect: { x: 0, y: 0, width: DRAW_TILE_SIZE_PX, height: DRAW_TILE_SIZE_PX } },
+      mode: "rgba",
+      color: [1, 1, 1, 1],
+    });
   }
-  const image = context.getImageData(0, 0, width, height);
-  canvas.width = 0;
-  canvas.height = 0;
+  gpu.drawInto(scratch, quads, "over");
+  const data = gpu.readStraight(scratch, { x: 0, y: 0, width, height });
+  const image = new ImageData(width, height);
+  image.data.set(data);
   return image;
 }
 
-/** Read a bounded raster rectangle from one level's tiles; absent tiles are transparent. */
-export function readRasterRect(rasterX: number, rasterY: number, width: number, height: number, level = 0): ImageData {
-  validateRasterRect(rasterX, rasterY, width, height);
-  const output = new ImageData(width, height);
-  const colStart = Math.floor(rasterX / DRAW_TILE_SIZE_PX);
-  const rowStart = Math.floor(rasterY / DRAW_TILE_SIZE_PX);
-  const colEnd = Math.floor((rasterX + width - 1) / DRAW_TILE_SIZE_PX);
-  const rowEnd = Math.floor((rasterY + height - 1) / DRAW_TILE_SIZE_PX);
-  for (let row = rowStart; row <= rowEnd; row += 1) {
-    for (let col = colStart; col <= colEnd; col += 1) {
-      const key = tileKey(col, row, level);
-      const tile = drawingStore.tile(key, false);
-      if (!tile) continue;
-      const context = tile.getContext("2d", { willReadFrequently: true });
-      if (!context) throw new Error(`Could not read drawing tile ${key}.`);
-      const left = Math.max(rasterX, col * DRAW_TILE_SIZE_PX);
-      const top = Math.max(rasterY, row * DRAW_TILE_SIZE_PX);
-      const right = Math.min(rasterX + width, (col + 1) * DRAW_TILE_SIZE_PX);
-      const bottom = Math.min(rasterY + height, (row + 1) * DRAW_TILE_SIZE_PX);
-      const chunk = context.getImageData(left - col * DRAW_TILE_SIZE_PX, top - row * DRAW_TILE_SIZE_PX, right - left, bottom - top);
-      copyRows(chunk.data, chunk.width, chunk.height, output.data, width, left - rasterX, top - rasterY);
-    }
-  }
-  return output;
+/** What the user sees (all levels composited, coarsest first) as a level-L raster rectangle. */
+export function readCompositeRect(rasterX: number, rasterY: number, width: number, height: number, level = 0): ImageData {
+  return readRect(rasterX, rasterY, width, height, level, false);
 }
 
-/** Write a raster rectangle across one level's tile boundaries, then prune tiles left transparent. */
+/** A bounded raster rectangle of one level's tiles; absent tiles are transparent. */
+export function readRasterRect(rasterX: number, rasterY: number, width: number, height: number, level = 0): ImageData {
+  return readRect(rasterX, rasterY, width, height, level, true);
+}
+
+/** Replace a raster rectangle across one level's tiles (straight-alpha pixels). */
 export function writeRasterRect(image: ImageData, rasterX: number, rasterY: number, level = 0): TileKey[] {
   validateRasterRect(rasterX, rasterY, image.width, image.height);
+  const gpu = requireDrawingGpu();
   const colStart = Math.floor(rasterX / DRAW_TILE_SIZE_PX);
   const rowStart = Math.floor(rasterY / DRAW_TILE_SIZE_PX);
   const colEnd = Math.floor((rasterX + image.width - 1) / DRAW_TILE_SIZE_PX);
@@ -346,12 +324,15 @@ export function writeRasterRect(image: ImageData, rasterX: number, rasterY: numb
       const top = Math.max(rasterY, row * DRAW_TILE_SIZE_PX);
       const right = Math.min(rasterX + image.width, (col + 1) * DRAW_TILE_SIZE_PX);
       const bottom = Math.min(rasterY + image.height, (row + 1) * DRAW_TILE_SIZE_PX);
-      const tile = drawingStore.tile(key, true);
-      const context = tile?.getContext("2d");
-      if (!tile || !context) throw new Error(`Could not write drawing tile ${key}.`);
-      const chunk = new ImageData(right - left, bottom - top);
-      copyRows(image.data, image.width, bottom - top, chunk.data, chunk.width, 0, 0, left - rasterX, right - left);
-      context.putImageData(chunk, left - col * DRAW_TILE_SIZE_PX, top - row * DRAW_TILE_SIZE_PX);
+      const tile = drawingStore.texture(key, true);
+      if (!tile) throw new Error(`Could not write drawing tile ${key}.`);
+      const width = right - left;
+      const chunk = new Uint8ClampedArray(width * (bottom - top) * 4);
+      for (let y = top; y < bottom; y += 1) {
+        const from = ((y - rasterY) * image.width + (left - rasterX)) * 4;
+        chunk.set(image.data.subarray(from, from + width * 4), (y - top) * width * 4);
+      }
+      gpu.writePixels(tile, left - col * DRAW_TILE_SIZE_PX, top - row * DRAW_TILE_SIZE_PX, width, bottom - top, chunk);
       changed.push(key);
     }
   }
@@ -369,24 +350,5 @@ function validateRasterRect(x: number, y: number, width: number, height: number)
   if (![x, y, width, height].every(Number.isSafeInteger) || width < 1 || height < 1 ||
     width > 4096 || height > 4096 || width * height > 16_777_216) {
     throw new RangeError("Drawing raster rectangle is invalid or too large.");
-  }
-}
-
-function copyRows(
-  source: Uint8ClampedArray,
-  sourceWidth: number,
-  rowCount: number,
-  target: Uint8ClampedArray,
-  targetWidth: number,
-  targetX: number,
-  targetY: number,
-  sourceX = 0,
-  copyWidth = sourceWidth - sourceX,
-): void {
-  const byteWidth = copyWidth * 4;
-  for (let row = 0; row < rowCount; row += 1) {
-    const sourceStart = (row * sourceWidth + sourceX) * 4;
-    const targetStart = ((targetY + row) * targetWidth + targetX) * 4;
-    target.set(source.subarray(sourceStart, sourceStart + byteWidth), targetStart);
   }
 }

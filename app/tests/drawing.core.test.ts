@@ -8,26 +8,8 @@ import {
   interpolateStrokePoints,
   sourceOverAlpha,
 } from "../src/drawing/brush";
-import { createDrawingTileStore, type DrawingCanvasAdapter } from "../src/drawing/tileStore.svelte";
+import { isRgbaTransparent, tileKeysInRect } from "../src/drawing/tileStore.svelte";
 import { drawLevelForZoom, levelPxPerUnit, levelTileUnits, parseTileKey, tileKey, type TileKey } from "../src/drawing/types";
-
-interface FakeCanvas extends HTMLCanvasElement {
-  pixels: Uint8ClampedArray;
-}
-
-function fakeCanvasAdapter(): DrawingCanvasAdapter {
-  return {
-    createCanvas: () => ({ width: 512, height: 512, pixels: new Uint8ClampedArray(512 * 512 * 4) } as unknown as FakeCanvas),
-    pixels: (canvas) => (canvas as FakeCanvas).pixels,
-    async encode(canvas) {
-      const copy = (canvas as FakeCanvas).pixels.slice();
-      return new Blob([copy.buffer as ArrayBuffer], { type: "application/octet-stream" });
-    },
-    async restore(canvas, blob) {
-      (canvas as FakeCanvas).pixels.set(new Uint8Array(await blob.arrayBuffer()));
-    },
-  };
-}
 
 describe("drawing core", () => {
   it("keeps the brush width in screen px while board width changes with zoom", () => {
@@ -58,34 +40,27 @@ describe("drawing core", () => {
     expect(secondStroke).toBeGreaterThan(firstStroke);
   });
 
-  it("round-trips snapshots and prunes a fully transparent tile", async () => {
-    const store = createDrawingTileStore(fakeCanvasAdapter());
-    const tile = store.tile("-2:3", true) as unknown as FakeCanvas;
-    tile.pixels[3] = 200;
-    store.commit(["-2:3"]);
-    const before = await store.snapshot(["-2:3"]);
-    expect(before.get("-2:3")).toBeInstanceOf(Blob);
-
-    tile.pixels.fill(0);
-    store.commit(["-2:3"]);
-    expect(store.tile("-2:3", false)).toBeNull();
-    expect(store.allKeys()).toEqual([]);
-
-    await store.restore(before);
-    expect(store.allKeys()).toEqual(["-2:3"]);
-    expect((store.tile("-2:3", false) as unknown as FakeCanvas).pixels[3]).toBe(200);
-    expect(store.keysInRect({ x: -51.2, y: 76.8, width: 25.6, height: 25.6 })).toEqual(["-2:3"] satisfies TileKey[]);
+  it("finds tile keys of a level inside a world rect and detects empty tiles", () => {
+    const all = () => true;
+    expect(tileKeysInRect({ x: -51, y: 77, width: 25, height: 25 }, 0, all)).toEqual(["-2:3"] satisfies TileKey[]);
+    expect(tileKeysInRect({ x: 1, y: 1, width: 2, height: 2 }, 3, all)).toEqual(["3:0:0"]);
+    expect(tileKeysInRect({ x: 0, y: 0, width: 30, height: 1 }, 0, all)).toEqual(["0:0", "1:0"]);
+    expect(tileKeysInRect({ x: 0, y: 0, width: 30, height: 1 }, 0, (key) => key !== "0:0")).toEqual(["1:0"]);
+    expect(isRgbaTransparent(new Uint8ClampedArray(16))).toBe(true);
+    const pixels = new Uint8ClampedArray(16);
+    pixels[7] = 1;
+    expect(isRgbaTransparent(pixels)).toBe(false);
   });
 
-  it("picks a level with 1.5–3 raster px per device px at any zoom", () => {
+  it("picks a level with 1.33–2.67 raster px per device px at any zoom", () => {
     expect(drawLevelForZoom(1)).toBe(0);
     expect(drawLevelForZoom(0.05)).toBe(4);
     expect(drawLevelForZoom(8)).toBe(-3);
     for (const zoom of [0.05, 0.08, 0.1, 0.3, 0.5, 1, 1.7, 3]) {
       for (const dpr of [1, 1.25, 1.5, 2]) {
         const ratio = levelPxPerUnit(drawLevelForZoom(zoom, dpr)) / (10 * zoom * dpr);
-        expect(ratio).toBeGreaterThanOrEqual(1.5);
-        expect(ratio).toBeLessThan(3.0001);
+        expect(ratio).toBeGreaterThanOrEqual(1.33);
+        expect(ratio).toBeLessThan(2.6667);
       }
     }
   });
@@ -99,20 +74,6 @@ describe("drawing core", () => {
     expect(parseTileKey("9:1:2")).toBeNull();
     expect(levelTileUnits(0)).toBe(25.6);
     expect(levelTileUnits(2)).toBe(102.4);
-  });
-
-  it("lists levels coarsest first and finds existing tiles of every level", () => {
-    const store = createDrawingTileStore(fakeCanvasAdapter());
-    (store.tile("0:0", true) as unknown as FakeCanvas).pixels[3] = 1;
-    (store.tile("3:0:0", true) as unknown as FakeCanvas).pixels[3] = 1;
-    (store.tile("-1:5:5", true) as unknown as FakeCanvas).pixels[3] = 1;
-    store.commit(["0:0", "3:0:0", "-1:5:5"]);
-    expect(store.levels()).toEqual([3, 0, -1]);
-    expect(store.existingKeysInRect({ x: 1, y: 1, width: 2, height: 2 })).toEqual(["3:0:0", "0:0"]);
-    expect(store.keysInRect({ x: 1, y: 1, width: 2, height: 2 }, true, 3)).toEqual(["3:0:0"]);
-    (store.tile("3:0:0", false) as unknown as FakeCanvas).pixels.fill(0);
-    store.commit(["3:0:0"]);
-    expect(store.levels()).toEqual([0, -1]);
   });
 
   it("rasterizes a soft stroke as one continuous shape without ripples along its edge", () => {

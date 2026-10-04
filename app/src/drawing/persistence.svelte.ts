@@ -6,7 +6,6 @@ import {
   parseTileKey,
   type DrawingIndex,
   type TileKey,
-  type TileSnapshot,
 } from "./types";
 import { project } from "../project/project.svelte";
 
@@ -40,12 +39,9 @@ export function startDrawingPersistence(): () => void {
     const requestGeneration = generation;
     saveQueue = saveQueue.then(async () => {
       if (stopped || loading || requestGeneration !== generation || project.path !== projectPath) return;
-      const snapshot = await drawingTileStore.snapshot(keys);
+      const pngs = await drawingTileStore.exportPngs(keys);
       if (stopped || requestGeneration !== generation || project.path !== projectPath) return;
-      const changes: DrawingTileChange[] = await Promise.all(keys.map(async (key) => {
-        const blob = snapshot.get(key);
-        return { key, png: blob ? new Uint8Array(await blob.arrayBuffer()) : null };
-      }));
+      const changes: DrawingTileChange[] = keys.map((key) => ({ key, png: pngs.get(key) ?? null }));
       const index = makeIndex(drawingTileStore.allKeys());
       await drawingSave(changes, index);
     }).catch((error: unknown) => {
@@ -63,7 +59,7 @@ export function startDrawingPersistence(): () => void {
     saveTimer = undefined;
     try {
       // Clear before awaiting the new project's disk state so old tiles never flash under it.
-      await drawingTileStore.replaceFromSnapshot(new Map());
+      await drawingTileStore.replaceFromPngs(new Map());
       const result = await drawingLoad();
       if (stopped || requestGeneration !== generation || project.path !== path) return;
       const index = result.index;
@@ -86,7 +82,7 @@ export function startDrawingPersistence(): () => void {
         return [key, new Blob([bytes], { type: "image/png" })] as const;
       }));
       if (stopped || requestGeneration !== generation || project.path !== path) return;
-      await drawingTileStore.replaceFromSnapshot(new Map(entries) as TileSnapshot);
+      await drawingTileStore.replaceFromPngs(new Map(entries));
       const loadedKeys = new Set(drawingTileStore.allKeys());
       for (const key of uniqueKeys) if (!loadedKeys.has(key)) pendingKeys.add(key);
     } catch (error) {
@@ -108,7 +104,7 @@ export function startDrawingPersistence(): () => void {
         generation += 1;
         loading = false;
         pendingKeys.clear();
-        void drawingTileStore.replaceFromSnapshot(new Map());
+        void drawingTileStore.replaceFromPngs(new Map());
       }
     });
   });

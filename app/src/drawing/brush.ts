@@ -3,7 +3,9 @@ import {
   levelPxPerUnit,
   type BrushSettings,
 } from "./types";
-export { paintIntoTiles, readRasterRect, writeRasterRect } from "./history";
+import { requireDrawingGpu, STROKE_SEGMENTS_PER_PASS, type StrokeStateTile } from "./gpu/glEngine";
+import type { GpuRasterSource, RasterPiece } from "./history";
+export { readRasterRect, writeRasterRect } from "./history";
 
 export interface StrokePoint {
   x: number;
@@ -11,11 +13,16 @@ export interface StrokePoint {
 }
 
 export interface FinishedStroke {
-  source: HTMLCanvasElement;
+  /** The stroke coverage on the GPU, tinted with the brush colour. */
+  source: GpuRasterSource;
   rasterX: number;
   rasterY: number;
+  width: number;
+  height: number;
   /** Pyramid level of the raster coordinates. */
   level: number;
+  /** Read the stroke back as a colour × coverage canvas (image erasing needs a CPU mask). */
+  toCanvas(): HTMLCanvasElement;
 }
 
 /** Input points closer than this (raster px) to the previous one are ignored. */
@@ -68,9 +75,6 @@ export function smoothStrokeSamples(p0: StrokePoint, p1: StrokePoint, p2: Stroke
   return samples;
 }
 
-/** Stroke raster cap (~2 screens at the working level); a longer stroke is clipped, never an error. */
-const MAX_STROKE_SIDE = 8192;
-const MAX_STROKE_PIXELS = 16_777_216;
 
 export interface StrokeRasterRect {
   x: number;
@@ -81,13 +85,16 @@ export interface StrokeRasterRect {
 
 export interface DrawStroke {
   add(world: StrokePoint, pressure?: number): void;
-  /** Live stroke canvas; replaced by a larger one when the stroke grows. */
-  readonly preview: HTMLCanvasElement;
   readonly level: number;
   readonly pixelsPerUnit: number;
-  readonly rasterX: number;
-  readonly rasterY: number;
+  /** Straight 0..1 brush colour. */
+  readonly color: [number, number, number];
+  /** Raster rect changed by the last add(). */
   readonly lastDirtyRect: StrokeRasterRect | null;
+  /** Raster rect of everything drawn so far. */
+  readonly bounds: StrokeRasterRect | null;
+  /** Live GPU coverage pieces (for the on-screen preview). */
+  pieces(): RasterPiece[];
   finish(): FinishedStroke | null;
   dispose(): void;
 }
@@ -364,11 +371,27 @@ export function accumulateDabMaxAlpha(
   return changed ? { x: left, y: top, width: right - left, height: bottom - top } : null;
 }
 
+/** Stroke tiles: the live stroke state is kept in tile-aligned pieces at the working level. */
+const STROKE_TILE = 512;
+
+/** Brush geometry in raster px of the stroke level (shared by the shader and the CPU reference). */
+export function brushShape(diameter: number, hardness: number): { radius: number; core: number; edge: number; passWindow: number } {
+  const radius = Math.max(0.5, diameter / 2);
+  const hard = Math.min(1, Math.max(0, hardness));
+  // Keep at least a one-pixel antialiased rim, even for a fully hard brush.
+  const core = Math.max(0, Math.min(radius * hard, radius - 1));
+  // Neighbouring pieces touch a pixel again within ~1 radius of path; a return from further away is
+  // another pass (fully composited after ~4.5 radii).
+  return { radius, core, edge: Math.max(radius - core, 1e-6), passWindow: Math.max(4, radius * 1.5) };
+}
+
 /**
- * Create a max-alpha raster stroke at a pyramid level (by default the working level for `zoom`, so
- * the raster is 1.5–3 px per device px and the cost does not depend on how far the board is zoomed out).
+ * Create a soft-brush stroke at a pyramid level (by default the working level for `zoom`). The path
+ * is smoothed on the CPU; every pixel is computed by the drawing GPU (gpu/glEngine.ts STROKE_SHADER),
+ * one pass per pointer event over just that event's bounding box.
  */
 export function createStroke(settings: BrushSettings, zoom: number, level = currentDrawLevel(zoom)): DrawStroke {
+  const gpu = requireDrawingGpu();
   const safeSettings = {
     color: /^#[\da-f]{6}$/i.test(settings.color) ? settings.color : "#e8e8e8",
     size: clamp(settings.size, 1, 400, 10),
@@ -377,163 +400,116 @@ export function createStroke(settings: BrushSettings, zoom: number, level = curr
   };
   const pixelsPerUnit = levelPxPerUnit(level);
   const baseDiameter = brushWorldWidth(safeSettings.size, zoom) * pixelsPerUnit;
-  const red = Number.parseInt(safeSettings.color.slice(1, 3), 16);
-  const green = Number.parseInt(safeSettings.color.slice(3, 5), 16);
-  const blue = Number.parseInt(safeSettings.color.slice(5, 7), 16);
-  let preview = document.createElement("canvas");
-  preview.width = 1;
-  preview.height = 1;
-
-  let originX = 0;
-  let originY = 0;
-  let width = 0;
-  let height = 0;
-  let coverage = createStrokeCoverage(0);
-  let mask = coverage.value;
+  const shape = brushShape(baseDiameter, safeSettings.hardness);
+  const color: [number, number, number] = [
+    Number.parseInt(safeSettings.color.slice(1, 3), 16) / 255,
+    Number.parseInt(safeSettings.color.slice(3, 5), 16) / 255,
+    Number.parseInt(safeSettings.color.slice(5, 7), 16) / 255,
+  ];
+  const tiles = new Map<string, { col: number; row: number; state: StrokeStateTile }>();
   /** Path length drawn so far, in raster px. */
   let pathLength = 0;
   let closed = false;
   let contentBounds: StrokeRasterRect | null = null;
   let lastDirtyRect: StrokeRasterRect | null = null;
-  let bounds: { left: number; top: number; right: number; bottom: number } | null = null;
-
-  function fits(w: number, h: number): boolean {
-    return w >= 1 && h >= 1 && w <= MAX_STROKE_SIDE && h <= MAX_STROKE_SIDE && w * h <= MAX_STROKE_PIXELS;
-  }
-
-  /** Grow the stroke raster to contain a dab. Never throws: past the size cap the dab is clipped. */
-  function ensureBounds(point: StrokePoint, radius: number): void {
-    const needLeft = Math.floor(point.x - radius - 1);
-    const needTop = Math.floor(point.y - radius - 1);
-    const needRight = Math.ceil(point.x + radius + 1);
-    const needBottom = Math.ceil(point.y + radius + 1);
-    if (bounds && needLeft >= bounds.left && needTop >= bounds.top && needRight <= bounds.right && needBottom <= bounds.bottom) return;
-
-    const margin = Math.max(256, Math.ceil(radius * 2));
-    const grow = (extra: number) => ({
-      left: Math.min(bounds?.left ?? Infinity, needLeft - extra),
-      top: Math.min(bounds?.top ?? Infinity, needTop - extra),
-      right: Math.max(bounds?.right ?? -Infinity, needRight + extra),
-      bottom: Math.max(bounds?.bottom ?? -Infinity, needBottom + extra),
-    });
-    let next = grow(Math.max(margin, Math.ceil(Math.max(width, height) / 2)));
-    if (!fits(next.right - next.left, next.bottom - next.top)) next = grow(0);
-    if (!fits(next.right - next.left, next.bottom - next.top)) {
-      if (bounds) return;
-      // A single dab bigger than the cap: keep the centred part.
-      const half = Math.floor(Math.min(MAX_STROKE_SIDE, Math.sqrt(MAX_STROKE_PIXELS)) / 2);
-      next = { left: Math.floor(point.x) - half, top: Math.floor(point.y) - half, right: Math.floor(point.x) + half, bottom: Math.floor(point.y) + half };
-    }
-
-    const nextWidth = next.right - next.left;
-    const nextHeight = next.bottom - next.top;
-    const nextCoverage = createStrokeCoverage(nextWidth * nextHeight);
-    const nextPreview = document.createElement("canvas");
-    nextPreview.width = nextWidth;
-    nextPreview.height = nextHeight;
-    if (bounds) {
-      const xOffset = bounds.left - next.left;
-      const yOffset = bounds.top - next.top;
-      for (let row = 0; row < height; row += 1) {
-        const from = row * width;
-        const to = (row + yOffset) * nextWidth + xOffset;
-        nextCoverage.value.set(coverage.value.subarray(from, from + width), to);
-        nextCoverage.base.set(coverage.base.subarray(from, from + width), to);
-        nextCoverage.pass.set(coverage.pass.subarray(from, from + width), to);
-        nextCoverage.position.set(coverage.position.subarray(from, from + width), to);
-        nextCoverage.blend.set(coverage.blend.subarray(from, from + width), to);
-      }
-      nextPreview.getContext("2d")?.drawImage(preview, xOffset, yOffset);
-      preview.width = 0;
-      preview.height = 0;
-    }
-    originX = next.left;
-    originY = next.top;
-    width = nextWidth;
-    height = nextHeight;
-    coverage = nextCoverage;
-    mask = coverage.value;
-    preview = nextPreview;
-    bounds = next;
-  }
-
-  /** One continuous piece of the stroke from `from` to `to` (a dot when they are equal). */
-  function segment(from: StrokePoint, to: StrokePoint): StrokeRasterRect | null {
-    const radius = Math.max(0.5, baseDiameter / 2);
-    ensureBounds(from, radius);
-    ensureBounds(to, radius);
-    const startLength = pathLength;
-    pathLength += Math.hypot(to.x - from.x, to.y - from.y);
-    const dirty = accumulateStrokeSegment(
-      coverage, width, height,
-      from.x - originX, from.y - originY, to.x - originX, to.y - originY,
-      startLength, pathLength, radius, safeSettings.hardness,
-      // Neighbouring pieces touch a pixel again within ~1 radius of path; a return from further away
-      // is another pass (fully composited after ~4.5 radii).
-      Math.max(4, radius * 1.5),
-    );
-    return dirty ? { x: dirty.x + originX, y: dirty.y + originY, width: dirty.width, height: dirty.height } : null;
-  }
-
-  /** Colour the changed part of the mask into the preview canvas (one putImageData per pointer event). */
-  function flush(rect: StrokeRasterRect): void {
-    const context = preview.getContext("2d");
-    if (!context) return;
-    const left = rect.x - originX;
-    const top = rect.y - originY;
-    const image = context.createImageData(rect.width, rect.height);
-    const data = image.data;
-    for (let y = 0; y < rect.height; y += 1) {
-      let maskOffset = (top + y) * width + left;
-      let offset = y * rect.width * 4;
-      for (let x = 0; x < rect.width; x += 1, maskOffset += 1, offset += 4) {
-        const alpha = mask[maskOffset]!;
-        if (alpha === 0) continue;
-        data[offset] = red;
-        data[offset + 1] = green;
-        data[offset + 2] = blue;
-        data[offset + 3] = alpha;
-      }
-    }
-    context.putImageData(image, left, top);
-  }
-
+  /** Segments of the current pointer event: ax, ay, bx, by + start/end path length. */
+  let pendingSegments: number[] = [];
+  let pendingLengths: number[] = [];
   /** Last raster input points; the curve between the two middle ones is drawn once the next one is known. */
   let inputs: StrokePoint[] = [];
 
-  /** Draw a straight piece list from `from` through `samples`, splitting long pieces to keep scans small. */
+  function segment(from: StrokePoint, to: StrokePoint): void {
+    const startLength = pathLength;
+    pathLength += Math.hypot(to.x - from.x, to.y - from.y);
+    pendingSegments.push(from.x, from.y, to.x, to.y);
+    pendingLengths.push(startLength, pathLength);
+  }
+
+  /** Straight pieces from `from` through `samples`. */
   function drawThrough(from: StrokePoint, samples: readonly StrokePoint[]): void {
     let start = from;
     for (const target of samples) {
-      const pieces = Math.max(1, Math.ceil(Math.hypot(target.x - start.x, target.y - start.y) / Math.max(16, baseDiameter)));
-      const origin = start;
-      for (let index = 1; index <= pieces; index += 1) {
-        const end = index === pieces ? target : {
-          x: origin.x + (target.x - origin.x) * index / pieces,
-          y: origin.y + (target.y - origin.y) * index / pieces,
-        };
-        const changed = segment(start, end);
-        if (changed) lastDirtyRect = unionRects(lastDirtyRect, changed);
-        start = end;
+      segment(start, target);
+      start = target;
+    }
+  }
+
+  function tileFor(col: number, row: number): StrokeStateTile {
+    const key = `${col}:${row}`;
+    let tile = tiles.get(key);
+    if (!tile) {
+      tile = { col, row, state: gpu.createStrokeState(STROKE_TILE) };
+      tiles.set(key, tile);
+    }
+    return tile.state;
+  }
+
+  /** Run the pending segments on the GPU over their bounding box. */
+  function flushSegments(): void {
+    const count = pendingLengths.length / 2;
+    if (count === 0) return;
+    const segments = pendingSegments;
+    const lengths = pendingLengths;
+    pendingSegments = [];
+    pendingLengths = [];
+    const segmentData = new Float32Array(STROKE_SEGMENTS_PER_PASS * 4);
+    const lengthData = new Float32Array(STROKE_SEGMENTS_PER_PASS * 2);
+    for (let first = 0; first < count; first += STROKE_SEGMENTS_PER_PASS) {
+      const n = Math.min(STROKE_SEGMENTS_PER_PASS, count - first);
+      let left = Infinity;
+      let top = Infinity;
+      let right = -Infinity;
+      let bottom = -Infinity;
+      for (let index = first; index < first + n; index += 1) {
+        const o = index * 4;
+        left = Math.min(left, segments[o]!, segments[o + 2]!);
+        right = Math.max(right, segments[o]!, segments[o + 2]!);
+        top = Math.min(top, segments[o + 1]!, segments[o + 3]!);
+        bottom = Math.max(bottom, segments[o + 1]!, segments[o + 3]!);
+      }
+      const box = {
+        x: Math.floor(left - shape.radius - 1),
+        y: Math.floor(top - shape.radius - 1),
+        right: Math.ceil(right + shape.radius + 1),
+        bottom: Math.ceil(bottom + shape.radius + 1),
+      };
+      const dirty = { x: box.x, y: box.y, width: box.right - box.x, height: box.bottom - box.y };
+      lastDirtyRect = unionRects(lastDirtyRect, dirty);
+      contentBounds = unionRects(contentBounds, dirty);
+      for (let col = Math.floor(box.x / STROKE_TILE); col <= Math.floor((box.right - 1) / STROKE_TILE); col += 1) {
+        for (let row = Math.floor(box.y / STROKE_TILE); row <= Math.floor((box.bottom - 1) / STROKE_TILE); row += 1) {
+          const originX = col * STROKE_TILE;
+          const originY = row * STROKE_TILE;
+          const x0 = Math.max(0, box.x - originX);
+          const y0 = Math.max(0, box.y - originY);
+          const x1 = Math.min(STROKE_TILE, box.right - originX);
+          const y1 = Math.min(STROKE_TILE, box.bottom - originY);
+          if (x1 <= x0 || y1 <= y0) continue;
+          // Positions relative to the tile keep float precision far from the board origin.
+          for (let index = 0; index < n; index += 1) {
+            const o = (first + index) * 4;
+            segmentData[index * 4] = segments[o]! - originX;
+            segmentData[index * 4 + 1] = segments[o + 1]! - originY;
+            segmentData[index * 4 + 2] = segments[o + 2]! - originX;
+            segmentData[index * 4 + 3] = segments[o + 3]! - originY;
+            lengthData[index * 2] = lengths[(first + index) * 2]!;
+            lengthData[index * 2 + 1] = lengths[(first + index) * 2 + 1]!;
+          }
+          gpu.strokePass(tileFor(col, row), { x: 0, y: 0 }, { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }, segmentData, lengthData, n, shape);
+        }
       }
     }
   }
 
-  /** The curve p1 → p2 of the input polyline (p0 / p3 are its neighbours). */
-  function drawCurve(p0: StrokePoint, p1: StrokePoint, p2: StrokePoint, p3: StrokePoint): void {
-    drawThrough(p1, smoothStrokeSamples(p0, p1, p2, p3));
-  }
-
   function add(world: StrokePoint, _pressure = 0.5): void {
-    // Pressure is intentionally ignored in R10.1: the configured screen diameter is fixed per stroke.
+    // Pressure is intentionally ignored: the configured screen diameter is fixed per stroke.
     if (closed || !Number.isFinite(world.x) || !Number.isFinite(world.y)) return;
     lastDirtyRect = null;
     const raster = { x: world.x * pixelsPerUnit, y: world.y * pixelsPerUnit };
     const last = inputs.at(-1);
     if (!last) {
       inputs = [raster];
-      const changed = segment(raster, raster);
-      if (changed) lastDirtyRect = changed;
+      segment(raster, raster);
     } else {
       // Sub-pixel jitter would only bend the curve's tangents; a resting pointer adds nothing.
       if (Math.hypot(raster.x - last.x, raster.y - last.y) < MIN_INPUT_STEP) return;
@@ -542,14 +518,11 @@ export function createStroke(settings: BrushSettings, zoom: number, level = curr
       // drawn as a smooth curve one point behind the pointer (the tail is drawn by finish()).
       if (inputs.length >= 3) {
         const n = inputs.length;
-        drawCurve(inputs[n - 4] ?? inputs[n - 3]!, inputs[n - 3]!, inputs[n - 2]!, inputs[n - 1]!);
+        drawThrough(inputs[n - 3]!, smoothStrokeSamples(inputs[n - 4] ?? inputs[n - 3]!, inputs[n - 3]!, inputs[n - 2]!, inputs[n - 1]!));
         inputs = inputs.slice(-3);
       }
     }
-    if (lastDirtyRect) {
-      contentBounds = unionRects(contentBounds, lastDirtyRect);
-      flush(lastDirtyRect);
-    }
+    flushSegments();
   }
 
   /** Draw the last input piece, which waits for a following point while the pointer is down. */
@@ -558,52 +531,89 @@ export function createStroke(settings: BrushSettings, zoom: number, level = curr
     if (n < 2) return;
     lastDirtyRect = null;
     const p2 = inputs[n - 1]!;
-    drawCurve(inputs[n - 3] ?? inputs[n - 2]!, inputs[n - 2]!, p2, p2);
+    drawThrough(inputs[n - 2]!, smoothStrokeSamples(inputs[n - 3] ?? inputs[n - 2]!, inputs[n - 2]!, p2, p2));
     inputs = [p2];
-    if (lastDirtyRect) {
-      contentBounds = unionRects(contentBounds, lastDirtyRect);
-      flush(lastDirtyRect);
-    }
+    flushSegments();
+  }
+
+  function pieces(): RasterPiece[] {
+    return [...tiles.values()].map(({ col, row, state }) => ({
+      texture: state.current.state,
+      texWidth: STROKE_TILE,
+      texHeight: STROKE_TILE,
+      texRect: { x: 0, y: 0, width: STROKE_TILE, height: STROKE_TILE },
+      x: col * STROKE_TILE,
+      y: row * STROKE_TILE,
+    }));
   }
 
   return {
     add,
-    get preview() { return preview; },
     level,
     pixelsPerUnit,
-    get rasterX() { return originX; },
-    get rasterY() { return originY; },
+    color,
     get lastDirtyRect() { return lastDirtyRect; },
+    get bounds() { return contentBounds; },
+    pieces,
     finish() {
       if (closed) return null;
       drawTail();
       closed = true;
       if (!contentBounds) return null;
-      const source = document.createElement("canvas");
-      source.width = contentBounds.width;
-      source.height = contentBounds.height;
-      const sourceContext = source.getContext("2d");
-      if (!sourceContext) throw new Error("Could not crop a drawing stroke.");
-      sourceContext.drawImage(
-        preview,
-        contentBounds.x - originX,
-        contentBounds.y - originY,
-        contentBounds.width,
-        contentBounds.height,
-        0,
-        0,
-        contentBounds.width,
-        contentBounds.height,
-      );
-      return { source, rasterX: contentBounds.x, rasterY: contentBounds.y, level };
+      const bounds = contentBounds;
+      const source: GpuRasterSource = {
+        level,
+        mode: "mask",
+        color,
+        pieces: pieces(),
+        bounds,
+        prepare(engine) {
+          for (const tile of tiles.values()) engine.ensureStrokeMips(tile.state);
+        },
+      };
+      return {
+        source,
+        rasterX: bounds.x,
+        rasterY: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        level,
+        toCanvas() {
+          const canvas = document.createElement("canvas");
+          canvas.width = bounds.width;
+          canvas.height = bounds.height;
+          const context = canvas.getContext("2d");
+          if (!context) throw new Error("Could not read the brush stroke.");
+          const image = context.createImageData(bounds.width, bounds.height);
+          const red = Math.round(color[0] * 255);
+          const green = Math.round(color[1] * 255);
+          const blue = Math.round(color[2] * 255);
+          for (const { col, row, state } of tiles.values()) {
+            const x0 = Math.max(bounds.x, col * STROKE_TILE);
+            const y0 = Math.max(bounds.y, row * STROKE_TILE);
+            const x1 = Math.min(bounds.x + bounds.width, (col + 1) * STROKE_TILE);
+            const y1 = Math.min(bounds.y + bounds.height, (row + 1) * STROKE_TILE);
+            if (x1 <= x0 || y1 <= y0) continue;
+            const coverage = gpu.readStrokeCoverage(state, { x: x0 - col * STROKE_TILE, y: y0 - row * STROKE_TILE, width: x1 - x0, height: y1 - y0 });
+            for (let y = y0; y < y1; y += 1) {
+              for (let x = x0; x < x1; x += 1) {
+                const offset = ((y - bounds.y) * bounds.width + (x - bounds.x)) * 4;
+                image.data[offset] = red;
+                image.data[offset + 1] = green;
+                image.data[offset + 2] = blue;
+                image.data[offset + 3] = coverage[(y - y0) * (x1 - x0) + (x - x0)]!;
+              }
+            }
+          }
+          context.putImageData(image, 0, 0);
+          return canvas;
+        },
+      };
     },
     dispose() {
       closed = true;
-      preview.width = 0;
-      preview.height = 0;
-      coverage = createStrokeCoverage(0);
-      mask = coverage.value;
-      bounds = null;
+      for (const tile of tiles.values()) gpu.deleteStrokeState(tile.state);
+      tiles.clear();
       contentBounds = null;
       lastDirtyRect = null;
     },

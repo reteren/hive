@@ -2,160 +2,120 @@
   import { onMount } from "svelte";
   import { camera, viewport } from "../board/camera.svelte";
   import { PX_PER_UNIT } from "../board/cameraMath";
-  import { drawingStrokePreview } from "./stroke.svelte";
+  import { drawingStrokePreview, previewStroke } from "./stroke.svelte";
   import { startDrawingPersistence } from "./persistence.svelte";
   import { drawingTileStore, tileWorldOrigin } from "./tileStore.svelte";
-  import { levelTileUnits } from "./types";
+  import { drawingSelection } from "./selection.svelte";
+  import { selectionMaskTexture } from "./history";
+  import { drawingGpu, type DrawQuad } from "./gpu/glEngine";
+  import { DRAW_TILE_SIZE_PX, levelPxPerUnit, levelTileUnits } from "./types";
 
   /*
-   * The drawing is composited into ONE viewport-sized canvas in device pixels instead of one CSS-scaled
-   * element per tile: CSS lays tiles out in board units before the camera scale, so the browser rounded
-   * their positions/sizes there and a committed stroke visibly shifted, shrank and showed seams on the
-   * tile grid. Here every tile edge is mapped to device px and rounded the same way for both neighbours.
+   * The whole drawing is drawn by the GPU into one viewport canvas: one textured quad per visible tile
+   * (mipmapped, so zoomed-out views stay cheap and smooth) plus the live stroke. It re-renders in the
+   * same Svelte flush as the board transform — not on a later animation frame — so the drawing stays
+   * locked to the grid while the camera moves.
    */
-  let surface = $state<HTMLCanvasElement | null>(null);
-  let previewSurface = $state<HTMLCanvasElement | null>(null);
-  let tilesDirty = true;
-  let previewDirty = true;
-  let frame = 0;
+  let host = $state<HTMLDivElement | null>(null);
+  const gpu = drawingGpu();
 
-  function schedule(): void {
-    if (frame) return;
-    frame = requestAnimationFrame(render);
+  function render(): void {
+    if (!gpu || gpu.isLost || viewport.width <= 0 || viewport.height <= 0) return;
+    const ratio = window.devicePixelRatio || 1;
+    const { width, height } = gpu.fitCanvas(viewport.width, viewport.height, ratio);
+    // Device px per world unit, and the device px of world (0,0).
+    const scale = camera.zoom * PX_PER_UNIT * ratio;
+    const originX = (viewport.width / 2) * ratio - camera.x * scale;
+    const originY = (viewport.height / 2) * ratio - camera.y * scale;
+    const view = { x: -originX / scale, y: -originY / scale, width: width / scale, height: height / scale };
+    const quads: DrawQuad[] = [];
+    // Coarsest level first: finer detail is drawn on top.
+    for (const level of drawingTileStore.levels()) {
+      const margin = levelTileUnits(level) * 0.01;
+      const keys = drawingTileStore.keysInRect({ x: view.x - margin, y: view.y - margin, width: view.width + margin * 2, height: view.height + margin * 2 }, false, level);
+      for (const key of keys) {
+        const origin = tileWorldOrigin(key);
+        const tile = drawingTileStore.texture(key, false);
+        if (!origin || !tile) continue;
+        gpu.ensureMips(tile);
+        quads.push({
+          dst: { x: originX + origin.x * scale, y: originY + origin.y * scale, width: origin.size * scale, height: origin.size * scale },
+          src: { texture: tile.tex, width: DRAW_TILE_SIZE_PX, height: DRAW_TILE_SIZE_PX, rect: { x: 0, y: 0, width: DRAW_TILE_SIZE_PX, height: DRAW_TILE_SIZE_PX } },
+          mode: "rgba",
+          color: [1, 1, 1, 1],
+        });
+      }
+    }
+    const stroke = previewStroke();
+    if (stroke) {
+      const ppu = levelPxPerUnit(stroke.level);
+      const opacity = drawingStrokePreview.opacity;
+      const tint = drawingStrokePreview.erase ? [1, 1, 1] : stroke.color;
+      const selection = drawingSelection.area;
+      const clipTexture = selection ? selectionMaskTexture(gpu, selection) : null;
+      for (const piece of stroke.pieces()) {
+        const dst = {
+          x: originX + (piece.x / ppu) * scale,
+          y: originY + (piece.y / ppu) * scale,
+          width: (piece.texRect.width / ppu) * scale,
+          height: (piece.texRect.height / ppu) * scale,
+        };
+        if (dst.x > width || dst.y > height || dst.x + dst.width < 0 || dst.y + dst.height < 0) continue;
+        let clip: DrawQuad["clip"] = null;
+        if (selection && clipTexture) {
+          const toSelection = 2 ** (stroke.level - selection.level);
+          clip = {
+            texture: clipTexture,
+            width: selection.width,
+            height: selection.height,
+            rect: { x: piece.x * toSelection - selection.x, y: piece.y * toSelection - selection.y, width: piece.texRect.width * toSelection, height: piece.texRect.height * toSelection },
+          };
+        }
+        quads.push({
+          dst,
+          src: { texture: piece.texture, width: piece.texWidth, height: piece.texHeight, rect: piece.texRect },
+          mode: "mask",
+          color: [tint[0]! * opacity, tint[1]! * opacity, tint[2]! * opacity, opacity],
+          clip,
+        });
+      }
+    }
+    gpu.drawToScreen(quads);
   }
 
   $effect(() => {
-    // Everything the tile picture depends on.
+    // Everything the picture depends on; rendering here keeps it in the board's own frame.
     void camera.x;
     void camera.y;
     void camera.zoom;
     void viewport.width;
     void viewport.height;
     void drawingTileStore.revision;
-    tilesDirty = true;
-    previewDirty = true;
-    schedule();
-  });
-
-  $effect(() => {
     void drawingStrokePreview.revision;
-    void drawingStrokePreview.source;
-    previewDirty = true;
-    schedule();
+    void drawingSelection.area;
+    render();
   });
-
-  function deviceRatio(): number {
-    return window.devicePixelRatio || 1;
-  }
-
-  /** Fit a canvas backing store to the viewport in device px; returns true when it was resized. */
-  function fit(canvas: HTMLCanvasElement, ratio: number): boolean {
-    const width = Math.max(1, Math.round(viewport.width * ratio));
-    const height = Math.max(1, Math.round(viewport.height * ratio));
-    if (canvas.width === width && canvas.height === height) return false;
-    canvas.width = width;
-    canvas.height = height;
-    return true;
-  }
-
-  function render(): void {
-    frame = 0;
-    if (!surface || !previewSurface || viewport.width <= 0 || viewport.height <= 0) return;
-    const ratio = deviceRatio();
-    if (fit(surface, ratio)) tilesDirty = true;
-    if (fit(previewSurface, ratio)) previewDirty = true;
-    // Device px per world unit, and the device px of world (0,0).
-    const scale = camera.zoom * PX_PER_UNIT * ratio;
-    const originX = (viewport.width / 2) * ratio - camera.x * scale;
-    const originY = (viewport.height / 2) * ratio - camera.y * scale;
-    if (tilesDirty) {
-      tilesDirty = false;
-      drawTiles(surface, scale, originX, originY);
-    }
-    if (previewDirty) {
-      previewDirty = false;
-      drawPreview(previewSurface, scale, originX, originY);
-    }
-  }
-
-  function drawTiles(canvas: HTMLCanvasElement, scale: number, originX: number, originY: number): void {
-    const context = canvas.getContext("2d");
-    if (!context) return;
-    context.setTransform(1, 0, 0, 1, 0, 0);
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = "high";
-    const view = {
-      x: -originX / scale,
-      y: -originY / scale,
-      width: canvas.width / scale,
-      height: canvas.height / scale,
-    };
-    // Coarsest level first: finer detail is drawn on top.
-    for (const level of drawingTileStore.levels()) {
-      const margin = levelTileUnits(level) * 0.01;
-      const keys = drawingTileStore.keysInRect({
-        x: view.x - margin,
-        y: view.y - margin,
-        width: view.width + margin * 2,
-        height: view.height + margin * 2,
-      }, false, level);
-      for (const key of keys) {
-        const origin = tileWorldOrigin(key);
-        const tile = drawingTileStore.tile(key, false);
-        if (!origin || !tile) continue;
-        const left = Math.round(originX + origin.x * scale);
-        const top = Math.round(originY + origin.y * scale);
-        const right = Math.round(originX + (origin.x + origin.size) * scale);
-        const bottom = Math.round(originY + (origin.y + origin.size) * scale);
-        context.drawImage(tile, left, top, Math.max(1, right - left), Math.max(1, bottom - top));
-      }
-    }
-  }
-
-  function drawPreview(canvas: HTMLCanvasElement, scale: number, originX: number, originY: number): void {
-    const context = canvas.getContext("2d");
-    if (!context) return;
-    context.setTransform(1, 0, 0, 1, 0, 0);
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    const source = drawingStrokePreview.source;
-    if (!source || source.width < 1 || source.height < 1) return;
-    const ppu = drawingStrokePreview.pixelsPerUnit;
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = "high";
-    context.globalAlpha = drawingStrokePreview.opacity;
-    // Same mapping as the tiles it will be painted into (raster px → world → device px).
-    context.drawImage(
-      source,
-      originX + (drawingStrokePreview.rasterX / ppu) * scale,
-      originY + (drawingStrokePreview.rasterY / ppu) * scale,
-      (source.width / ppu) * scale,
-      (source.height / ppu) * scale,
-    );
-    context.globalAlpha = 1;
-  }
 
   onMount(() => {
+    if (gpu && host) host.prepend(gpu.canvas);
     const stopPersistence = startDrawingPersistence();
-    const onResolutionChange = () => {
-      tilesDirty = true;
-      previewDirty = true;
-      schedule();
-    };
+    const onResolutionChange = () => render();
     window.addEventListener("resize", onResolutionChange);
+    const stopRestored = gpu?.onContextRestored(() => {
+      // Every texture is gone with the old context: reload the window state from the saved project.
+      console.warn("The drawing GPU context was restored; reloading the drawing.");
+      window.location.reload();
+    });
     return () => {
       stopPersistence();
+      stopRestored?.();
       window.removeEventListener("resize", onResolutionChange);
-      if (frame) cancelAnimationFrame(frame);
-      frame = 0;
+      gpu?.canvas.remove();
     };
   });
 </script>
 
-<div class="drawing-layer" aria-hidden="true" data-drawing-layer>
-  <canvas bind:this={surface} class="drawing-surface" data-drawing-surface></canvas>
-  <canvas bind:this={previewSurface} class="drawing-surface" data-drawing-preview></canvas>
-</div>
+<div class="drawing-layer" aria-hidden="true" data-drawing-layer bind:this={host}></div>
 
 <style>
   .drawing-layer {
@@ -165,7 +125,7 @@
     pointer-events: none;
   }
 
-  .drawing-surface {
+  .drawing-layer :global(.drawing-surface) {
     position: absolute;
     inset: 0;
     display: block;

@@ -6,7 +6,7 @@
  * photos, flood fill, lasso cut/move of a piece of a stroke, spray, blur, smudge (R10.2–R10.7).
  *
  * - LEVELS (resolution pyramid): level L has levelPxPerUnit(L) = DRAW_PX_PER_UNIT / 2^L raster px per
- *   world unit. Every gesture works at the level that matches the current zoom (drawLevelForZoom: 1–2
+ *   world unit. Every gesture works at the level that matches the current zoom (drawLevelForZoom: 1.33–2.67
  *   raster px per device px), so a stroke costs the same at zoom 0.05 as at zoom 1. A tile is always
  *   DRAW_TILE_SIZE_PX square, so it covers levelTileUnits(L) = DRAW_TILE_SIZE_PX / levelPxPerUnit(L) u.
  *   Display order: coarser levels below finer ones. Painting at L is source-over at L and source-atop on
@@ -29,6 +29,9 @@
  * UNDO: every user action (one stroke, one fill, one selection move/delete) is ONE history entry holding
  * the before/after content of only the touched tiles.
  */
+import type { GpuTexture } from "./gpu/glEngine";
+import type { TileCopy } from "./tileStore.svelte";
+
 export const DRAW_PX_PER_UNIT = 20;
 export const DRAW_TILE_SIZE_PX = 512;
 export const DRAW_TILE_SIZE_UNITS = DRAW_TILE_SIZE_PX / DRAW_PX_PER_UNIT;
@@ -55,7 +58,7 @@ export function levelTileUnits(level: number): number {
  */
 export function drawLevelForZoom(zoom: number, devicePixelRatio = 1): number {
   const density = (Number.isFinite(zoom) && zoom > 0 ? zoom : 1) * (Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1);
-  // 1.5–3 raster px per device px: crisp after a little zooming in, cheap enough for big brushes.
+  // 1.33–2.67 raster px per device px: stays crisp after zooming in a little; the GPU makes it cheap.
   const level = Math.floor(Math.log2(DRAW_PX_PER_UNIT / (15 * density)) + 1e-9);
   return Math.min(DRAW_MAX_LEVEL, Math.max(DRAW_MIN_LEVEL, level));
 }
@@ -91,28 +94,29 @@ export const DEFAULT_BRUSH: BrushSettings = { color: "#e8e8e8", size: 10, opacit
 /** World rectangle in units. */
 export interface WorldRect { x: number; y: number; width: number; height: number }
 
-/** Snapshot of tiles for undo: null = tile absent. Stored as encoded PNG blobs to keep memory sane. */
-export type TileSnapshot = Map<TileKey, Blob | null>;
+/** Snapshot of tiles for undo: null = tile absent. GPU copies, demoted to compressed RAM when old. */
+export type TileSnapshot = Map<TileKey, TileCopy | null>;
 
 /**
  * The tile store API (implemented by TASK CORE in src/drawing/tileStore.svelte.ts). Everything that
  * paints (brush, eraser, fill, selection, later spray/effects) goes through this.
  */
 export interface DrawingTileStore {
-  /** Tile canvas, creating an empty one when `create`. Coordinates of the canvas are tile-local px. */
-  tile(key: TileKey, create: boolean): HTMLCanvasElement | null;
+  has(key: TileKey): boolean;
+  /** Tile texture on the drawing GPU, creating an empty one when `create`. Texel row 0 = raster top row. */
+  texture(key: TileKey, create: boolean): GpuTexture | null;
   /** Keys of one level's tiles intersecting a world rect (existing only unless `includeMissing`); level 0 by default. */
   keysInRect(rect: WorldRect, includeMissing?: boolean, level?: number): TileKey[];
   /** Existing tiles of every level that intersect a world rect, coarsest level first. */
   existingKeysInRect(rect: WorldRect): TileKey[];
   /** Levels that currently hold tiles, coarsest first. */
   levels(): number[];
-  /** Encode current content of the given tiles (for undo "before"/"after"). */
+  /** Copy the current content of the given tiles (for undo "before"/"after"). */
   snapshot(keys: readonly TileKey[]): Promise<TileSnapshot>;
   /** Replace tile contents from a snapshot (undo/redo); deletes tiles mapped to null. */
   restore(snapshot: TileSnapshot): Promise<void>;
-  /** Mark tiles changed: repaint on screen + schedule save; fully transparent tiles are dropped. */
-  commit(keys: readonly TileKey[], mayBecomeEmpty?: boolean): void;
+  /** Mark tiles changed: repaint on screen + schedule save (empty tiles are dropped while saving). */
+  commit(keys: readonly TileKey[]): void;
   /** Bumps on any visible change (Svelte-reactive) so layers re-render. */
   readonly revision: number;
 }

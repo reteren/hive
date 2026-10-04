@@ -2,6 +2,8 @@ import { registerCommand } from "../commands/registry.svelte";
 import { tool } from "../tools/tool.svelte";
 import { clearSelection } from "../selection/selection.svelte";
 import { deactivateDrawInput } from "./drawInput";
+import { drawingGpu } from "./gpu/glEngine";
+import { showLinkStatus } from "../links-in-text/contextMenu.svelte";
 import "./brush";
 import "./eraser";
 import "./fill";
@@ -12,6 +14,10 @@ export function toggleDrawMode(): void {
     deactivateDrawInput();
     tool.active = "select";
   } else {
+    if (!drawingGpu()) {
+      showLinkStatus("Drawing needs GPU acceleration (WebGL2), which is unavailable on this system.");
+      return;
+    }
     // Node selection handles would sit on top of the canvas and swallow strokes/selections.
     clearSelection();
     tool.active = "draw";

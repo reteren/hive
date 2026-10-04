@@ -136,9 +136,11 @@
         return;
       }
 
+      // Read the GPU stroke back now: the stroke's textures are released right after.
+      const mask = finished.toCanvas();
       const operation = commitQueue.then(() => eraseImageStroke(
         noteId,
-        finished.source,
+        mask,
         finished.rasterX,
         finished.rasterY,
         1,
@@ -148,10 +150,10 @@
       void operation.catch((error: unknown) => {
         reportImportError(error instanceof Error ? error.message : String(error));
       }).finally(() => {
-        current.dispose();
-        finished.source.width = 0;
-        finished.source.height = 0;
+        mask.width = 0;
+        mask.height = 0;
       });
+      current.dispose();
     }
 
     function onPointerCancel(event: PointerEvent): void {
