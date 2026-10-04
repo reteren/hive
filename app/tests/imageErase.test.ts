@@ -9,7 +9,7 @@ import type { ImageRef } from "../src/attachments/types";
 import { erasePhotoCopyOnWrite } from "../src/drawing/photoErase";
 import { hasVisibleAlpha } from "../src/attachments/imageTransparency";
 import { drawingTools } from "../src/drawing/tools.svelte";
-import { finishImageErase, enterImageErase, eraseImageStroke, imageErase } from "../src/attachments/imageErase.svelte";
+import { finishImageErase, enterImageErase, imageErase } from "../src/attachments/imageErase.svelte";
 import { clear, history, redo, undo } from "../src/history/history.svelte";
 import { board, replaceBoard } from "../src/model/board.svelte";
 import type { Note } from "../src/model/note";
@@ -50,23 +50,6 @@ beforeEach(() => {
 });
 
 describe("image erase mode", () => {
-  it("copies the attachment on erase and restores the original reference with Undo", async () => {
-    replaceBoard([imageNote("photo")]);
-    vi.mocked(erasePhotoCopyOnWrite).mockResolvedValue(erased);
-    const mask = {} as HTMLCanvasElement;
-
-    await expect(eraseImageStroke("photo", mask, -20, 40, 1, 20)).resolves.toBe(true);
-
-    expect(erasePhotoCopyOnWrite).toHaveBeenCalledWith(board.notes.photo, mask, -20, 40, 1, 20);
-    expect(board.notes.photo?.image).toEqual(erased);
-    expect(history.entries).toHaveLength(1);
-
-    undo();
-    expect(board.notes.photo?.image).toEqual(original);
-    redo();
-    expect(board.notes.photo?.image).toEqual(erased);
-  });
-
   it("only enters erase mode for still image notes and hides Erase for GIFs", () => {
     replaceBoard([
       imageNote("still"),

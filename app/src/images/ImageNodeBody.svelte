@@ -5,6 +5,7 @@
   import { attachmentIsFullyTransparent } from "../attachments/imageTransparency";
   import type { ImageRef } from "../attachments/types";
   import { clampImageOpacity } from "./imageLogic";
+  import { eraseSessionCanvas } from "../attachments/imageErase.svelte";
 
   let { image, selected, name, noteId, flipX, flipY }: {
     image?: ImageRef;
@@ -16,6 +17,24 @@
   } = $props();
   let opacity = $derived(clampImageOpacity(board.notes[noteId]?.opacity ?? 1));
   let fullyTransparent = $state(false);
+  /** While the picture is being erased, its working canvas is shown instead (live, no reloads). */
+  let eraseCanvas = $derived(eraseSessionCanvas(noteId));
+
+  function mountCanvas(host: HTMLElement, canvas: HTMLCanvasElement): { update(next: HTMLCanvasElement): void; destroy(): void } {
+    let current = canvas;
+    current.classList.add("image-node-picture");
+    host.append(current);
+    return {
+      update(next) {
+        if (next === current) return;
+        current.remove();
+        current = next;
+        current.classList.add("image-node-picture");
+        host.append(current);
+      },
+      destroy() { current.remove(); },
+    };
+  }
 
   $effect(() => {
     const currentImage = image;
@@ -49,6 +68,8 @@
         fit="fill"
       />
     </div>
+  {:else if image && eraseCanvas}
+    <div class="image-node-picture-viewport image-node-erasing" style:transform={`scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`} style:opacity={opacity} use:mountCanvas={eraseCanvas}></div>
   {:else if image}
     <div class="image-node-picture-viewport" style:transform={`scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`} style:opacity={opacity}>
       <AttachmentImage
@@ -64,6 +85,14 @@
 </div>
 
 <style>
+  .image-node-erasing :global(canvas) {
+    display: block;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    user-select: none;
+  }
+
   .image-node-body {
     position: relative;
     width: 100%;

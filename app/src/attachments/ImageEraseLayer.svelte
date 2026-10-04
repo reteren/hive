@@ -2,35 +2,27 @@
   import { cachedClientRect } from "../board/boardRect";
   import { onMount } from "svelte";
   import { camera, setPointerScreen, viewport } from "../board/camera.svelte";
-  import { screenToWorld, worldToScreen } from "../board/cameraMath";
+  import { screenToWorld } from "../board/cameraMath";
   import { board } from "../model/board.svelte";
-  import { createStroke, type DrawStroke } from "../drawing/brush";
   import { drawingTools } from "../drawing/tools.svelte";
-  import { levelPxPerUnit, type BrushSettings } from "../drawing/types";
-  import { isErasablePhoto, photoEraseGeometry, worldPointToPhotoPixel } from "../drawing/photoErase";
-  import { reportImportError } from "./service";
-  import { imageErase, finishImageErase, eraseImageStroke } from "./imageErase.svelte";
+  import { isErasablePhoto } from "../drawing/photoErase";
+  import {
+    beginImageEraseStroke,
+    endImageEraseStroke,
+    extendImageEraseStroke,
+    finishImageErase,
+    imageErase,
+    redoImageEraseStroke,
+    undoImageEraseStroke,
+  } from "./imageErase.svelte";
   import { tool } from "../tools/tool.svelte";
 
   let boardElement: HTMLElement | null = null;
   let boardOrigin = $state({ x: 0, y: 0 });
-  let stroke: DrawStroke | null = null;
-  let strokeSettings: BrushSettings | null = null;
-  let strokeNoteId: string | null = null;
   let activePointerId: number | null = null;
-  let commitQueue = Promise.resolve();
+  let stroking = false;
 
   let activeNote = $derived(imageErase.noteId ? board.notes[imageErase.noteId] : null);
-  let geometry = $derived(activeNote ? photoEraseGeometry(activeNote) : null);
-  let hintPosition = $derived.by(() => {
-    if (!geometry || typeof window === "undefined") return null;
-    const point = worldToScreen(camera, viewport, { x: geometry.x, y: geometry.y });
-    return {
-      x: Math.max(8, Math.min(window.innerWidth - 186, boardOrigin.x + point.x)),
-      y: Math.max(8, boardOrigin.y + point.y - 30),
-    };
-  });
-
   $effect(() => {
     if (imageErase.noteId && tool.active !== "draw") {
       finishImageErase();
@@ -79,10 +71,8 @@
     }
 
     function cancelStroke(): void {
-      stroke?.dispose();
-      stroke = null;
-      strokeSettings = null;
-      strokeNoteId = null;
+      if (stroking) endImageEraseStroke();
+      stroking = false;
     }
 
     function onPointerDown(event: PointerEvent): void {
@@ -96,16 +86,8 @@
       activePointerId = event.pointerId;
       if (event.target instanceof Element && event.target.closest("[data-selection-ignore]")) return;
 
-      const noteId = imageErase.noteId;
-      const note = board.notes[noteId];
-      const targetGeometry = note ? photoEraseGeometry(note) : null;
-      const point = worldPoint(event);
-      if (!targetGeometry || !worldPointToPhotoPixel(point, targetGeometry)) return;
-
-      strokeSettings = { ...drawingTools.brush };
-      strokeNoteId = noteId;
-      stroke = createStroke({ ...strokeSettings, color: "#ffffff" }, camera.zoom);
-      stroke.add(point, pointerPressure(event));
+      // Erasing shows on the picture right away; the file is written once, when the mode ends.
+      stroking = beginImageEraseStroke(imageErase.noteId, worldPoint(event), camera.zoom);
     }
 
     function onPointerMove(event: PointerEvent): void {
@@ -114,47 +96,16 @@
 
       if (activePointerId !== event.pointerId) return;
       consume(event);
-      if (!stroke) return;
-      stroke.add(worldPoint(event), pointerPressure(event));
+      if (!stroking) return;
+      for (const sample of event.getCoalescedEvents?.() ?? [event]) extendImageEraseStroke(worldPoint(sample));
     }
 
     function onPointerUp(event: PointerEvent): void {
       if (activePointerId !== event.pointerId) return;
       consume(event);
-      const current = stroke;
-      const settings = strokeSettings;
-      const noteId = strokeNoteId;
-      const point = worldPoint(event);
-      current?.add(point, pointerPressure(event));
-      const finished = current?.finish();
+      if (stroking) extendImageEraseStroke(worldPoint(event));
       activePointerId = null;
-      stroke = null;
-      strokeSettings = null;
-      strokeNoteId = null;
-
-      if (!current || !settings || !noteId || !finished) {
-        current?.dispose();
-        return;
-      }
-
-      // Read the GPU stroke back now: the stroke's textures are released right after.
-      const mask = finished.toCanvas();
-      const operation = commitQueue.then(() => eraseImageStroke(
-        noteId,
-        mask,
-        finished.rasterX,
-        finished.rasterY,
-        1,
-        levelPxPerUnit(finished.level),
-      ));
-      commitQueue = operation.then(() => undefined, () => undefined);
-      void operation.catch((error: unknown) => {
-        reportImportError(error instanceof Error ? error.message : String(error));
-      }).finally(() => {
-        mask.width = 0;
-        mask.height = 0;
-      });
-      current.dispose();
+      cancelStroke();
     }
 
     function onPointerCancel(event: PointerEvent): void {
@@ -184,7 +135,14 @@
         finishImageErase();
         return;
       }
-      if (["KeyB", "KeyF", "KeyM", "KeyL", "KeyP"].includes(event.code) &&
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && (event.code === "KeyZ" || event.code === "KeyY")) {
+        // Inside the mode Undo/Redo step through strokes on the picture.
+        consume(event);
+        if (event.code === "KeyY" || event.shiftKey) redoImageEraseStroke();
+        else undoImageEraseStroke();
+        return;
+      }
+      if (["KeyB", "KeyF", "KeyM", "KeyL", "KeyP", "KeyT"].includes(event.code) &&
         !event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) consume(event);
     }
 
@@ -219,31 +177,4 @@
     };
   });
 
-  function pointerPressure(event: PointerEvent): number {
-    return event.pointerType !== "pen" || !Number.isFinite(event.pressure) || event.pressure <= 0
-      ? 0.5
-      : Math.min(1, Math.max(0, event.pressure));
-  }
 </script>
-
-{#if imageErase.noteId && hintPosition}
-  <div class="image-erase-hint" style={`left:${hintPosition.x}px;top:${hintPosition.y}px`} data-image-erase-hint>
-    Erasing image · Esc to finish
-  </div>
-{/if}
-
-<style>
-  .image-erase-hint {
-    position: fixed;
-    z-index: 10002;
-    padding: 5px 8px;
-    border: 1px solid rgb(255 190 78 / 52%);
-    border-radius: 5px;
-    background: rgb(27 25 21 / 94%);
-    box-shadow: 0 3px 12px rgb(0 0 0 / 38%);
-    color: #ffe0a1;
-    font: 11px/1.2 system-ui, sans-serif;
-    white-space: nowrap;
-    pointer-events: none;
-  }
-</style>
