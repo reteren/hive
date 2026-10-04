@@ -1,19 +1,17 @@
 <script lang="ts">
   import { camera, viewport } from "../board/camera.svelte";
-  import { PX_PER_UNIT, screenToWorld } from "../board/cameraMath";
+  import { PX_PER_UNIT } from "../board/cameraMath";
   import { levelPxPerUnit } from "./types";
   import {
     drawingSelection,
-    resizeSelectionArea,
+    clearDrawingSelection,
     selectionBoundsWorldPixels,
     type DrawingSelectionArea,
     type RasterPoint,
-    type SelectionHandle,
   } from "./selection.svelte";
 
   // Loading the overlay also registers SELECT's DrawToolHandler implementations.
   let floatingCanvas = $state<HTMLCanvasElement | null>(null);
-  let resizeGesture: { pointerId: number; handle: SelectionHandle; area: DrawingSelectionArea } | null = null;
 
   const worldTransform = $derived(
     `translate(${viewport.width / 2}px, ${viewport.height / 2}px) ` +
@@ -24,7 +22,8 @@
     ? { x: drawingSelection.floatingAt.x - area.x, y: drawingSelection.floatingAt.y - area.y }
     : { x: 0, y: 0 });
   const areaBounds = $derived(area ? selectionBoundsWorldPixels(area) : null);
-  const handleSize = $derived(8 / camera.zoom);
+  const clearButtonSize = $derived(20 / camera.zoom);
+  const clearButtonFontSize = $derived(16 / camera.zoom);
   const selectionPath = $derived(area ? pathForArea(area, displayOffset) : null);
   const previewPath = $derived(drawingSelection.preview
     ? pathForPreview(drawingSelection.preview.tool, drawingSelection.preview.points, drawingSelection.preview.level)
@@ -71,53 +70,10 @@
     return `M ${points[0]!.x} ${points[0]!.y} ${points.slice(1).map((point) => `L ${point.x} ${point.y}`).join(" ")}${close ? " Z" : ""}`;
   }
 
-  function onHandleDown(event: PointerEvent, handle: SelectionHandle): void {
-    if (event.button !== 0 || !area) return;
-    event.preventDefault();
-    event.stopPropagation();
-    resizeGesture = { pointerId: event.pointerId, handle, area };
-    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-  }
-
-  function onHandleMove(event: PointerEvent): void {
-    const gesture = resizeGesture;
-    if (!gesture || gesture.pointerId !== event.pointerId || !drawingSelection.area) return;
-    const board = document.querySelector<HTMLElement>(".board");
-    if (!board) return;
-    const rect = board.getBoundingClientRect();
-    const world = screenToWorld(camera, viewport, { x: event.clientX - rect.left, y: event.clientY - rect.top });
-    const ppu = levelPxPerUnit(gesture.area.level);
-    drawingSelection.area = resizeSelectionArea(gesture.area, gesture.handle, { x: world.x * ppu, y: world.y * ppu });
-    drawingSelection.revision += 1;
-  }
-
-  function onHandleUp(event: PointerEvent): void {
-    if (resizeGesture?.pointerId !== event.pointerId) return;
-    resizeGesture = null;
-    if ((event.currentTarget as HTMLElement).hasPointerCapture(event.pointerId)) {
-      (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
-    }
-    event.preventDefault();
-    event.stopPropagation();
-  }
-
-  function onHandleCancel(event: PointerEvent): void {
-    const gesture = resizeGesture;
-    if (!gesture || gesture.pointerId !== event.pointerId) return;
-    resizeGesture = null;
-    drawingSelection.area = gesture.area;
-    drawingSelection.revision += 1;
-  }
-
-  function handlePosition(handle: SelectionHandle): { x: number; y: number } {
-    const bounds = areaBounds;
-    if (!bounds) return { x: 0, y: 0 };
-    const dx = handle.includes("w") ? bounds.left : bounds.left + bounds.width;
-    const dy = handle.includes("n") ? bounds.top : bounds.top + bounds.height;
-    return { x: dx - handleSize / 2, y: dy - handleSize / 2 };
-  }
-
-  const handles: readonly SelectionHandle[] = ["nw", "ne", "sw", "se"];
+  const clearButtonPosition = $derived(areaBounds ? {
+    left: areaBounds.left + areaBounds.width - clearButtonSize / 2,
+    top: areaBounds.top - clearButtonSize / 2,
+  } : { left: 0, top: 0 });
 </script>
 
 <div class="drawing-selection-overlay" data-drawing-selection-overlay>
@@ -132,26 +88,20 @@
         <path d={selectionPath} class="selection-dash" />
       </svg>
       {#if !drawingSelection.floatingAt && areaBounds}
-        {#each handles as handle (handle)}
-          {@const position = handlePosition(handle)}
-          <button
-            class="selection-handle"
-            type="button"
-            data-draw-overlay-control
-            data-selection-ignore
-            data-selection-handle={handle}
-            aria-label={`Resize selection ${handle}`}
-            style:left={`${position.x}px`}
-            style:top={`${position.y}px`}
-            style:width={`${handleSize}px`}
-            style:height={`${handleSize}px`}
-            onpointerdown={(event) => onHandleDown(event, handle)}
-            onpointermove={onHandleMove}
-            onpointerup={onHandleUp}
-            onpointercancel={onHandleCancel}
-            onlostpointercapture={onHandleCancel}
-          ></button>
-        {/each}
+        <button
+          class="selection-clear"
+          type="button"
+          data-draw-overlay-control
+          data-selection-clear
+          aria-label="Clear selection (Esc)"
+          title="Clear selection (Esc)"
+          style:left={`${clearButtonPosition.left}px`}
+          style:top={`${clearButtonPosition.top}px`}
+          style:width={`${clearButtonSize}px`}
+          style:height={`${clearButtonSize}px`}
+          style:font-size={`${clearButtonFontSize}px`}
+          onclick={clearDrawingSelection}
+        >×</button>
       {/if}
     {/if}
     {#if drawingSelection.floating && drawingSelection.floatingAt}
@@ -174,9 +124,12 @@
   .selection-outline { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
   .selection-dash { fill: none; stroke: #fff; stroke-width: 1px; stroke-dasharray: 4px 3px; animation: selection-march 450ms linear infinite; vector-effect: non-scaling-stroke; }
   .selection-floating { position: absolute; display: block; pointer-events: none; image-rendering: auto; }
-  .selection-handle { position: absolute; z-index: 1; box-sizing: border-box; min-width: 0; min-height: 0; padding: 0; transform-origin: center; border: 1px solid #191919; border-radius: 2px; background: #fff; box-shadow: 0 0 0 1px rgb(255 255 255 / 80%); pointer-events: auto; cursor: nwse-resize; touch-action: none; }
-  .selection-handle[data-selection-handle="ne"], .selection-handle[data-selection-handle="sw"] { cursor: nesw-resize; }
-  .selection-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .selection-clear { position: absolute; z-index: 1; box-sizing: border-box; min-width: 0; min-height: 0; padding: 0; display: grid; place-items: center; transform-origin: center; border: 1px solid #2b2111; border-radius: 50%; background: var(--accent); color: #21180a; font-family: system-ui, sans-serif; font-weight: 700; line-height: 1; box-shadow: 0 1px 5px rgb(0 0 0 / 50%); pointer-events: auto; cursor: pointer; }
+  .selection-clear:hover { filter: brightness(1.12); }
+  .selection-clear:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   @keyframes selection-march { to { stroke-dashoffset: -7px; } }
   :global(html[data-reduce-motion="true"]) .selection-dash { animation: none; }
+  :global(html[data-drawing-mode="true"][data-selection-move-hover="true"] .board) { cursor: move !important; }
+  :global(html[data-selection-move-hover="true"] [data-draw-cursor]),
+  :global(html[data-selection-move-hover="true"] [data-draw-reticle]) { visibility: hidden; }
 </style>

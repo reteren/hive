@@ -5,6 +5,8 @@ import { affectedTileKeys, applyAcrossLevels, pushDrawingHistory, rasterRectToWo
 import { drawingStore } from "./tileStore.svelte";
 import { registerDrawTool } from "./toolRegistry";
 import type { DrawPointerEvent, DrawToolHandler } from "./types";
+import { drawingSelection } from "./selection.svelte";
+import { createSelectionCoverageSampler, type SelectionClipMask } from "./selectionClip";
 
 export const DEFAULT_FILL_TOLERANCE = 24;
 /** Fill window side at the working level (~1–2 screens); an open result is retried at coarser levels. */
@@ -36,6 +38,8 @@ interface FillOptions {
   /** Global drawing-raster origin of the supplied window. */
   rasterX?: number;
   rasterY?: number;
+  level?: number;
+  selection?: SelectionClipMask | null;
 }
 
 /** A tile-aligned, bounded raster window centered near the requested global pixel. */
@@ -74,6 +78,18 @@ export function prepareFloodFill(
   const alphaSeed = seed[3]!;
   const total = width * height;
   const mask = new Uint8Array(total);
+  const clipCoverage = options.selection ? new Uint8Array(total) : null;
+  if (options.selection && clipCoverage) {
+    const rasterX = options.rasterX ?? 0;
+    const rasterY = options.rasterY ?? 0;
+    const level = options.level ?? 0;
+    const coverageAt = createSelectionCoverageSampler(options.selection, level, total);
+    for (let row = 0; row < height; row += 1) {
+      for (let column = 0; column < width; column += 1) {
+        clipCoverage[row * width + column] = Math.round(coverageAt(rasterX + column, rasterY + row) * 255);
+      }
+    }
+  }
   let minX = width;
   let minY = height;
   let maxX = -1;
@@ -81,6 +97,7 @@ export function prepareFloodFill(
 
   const matches = (pixel: number): boolean => {
     if (mask[pixel]) return false;
+    if (clipCoverage && clipCoverage[pixel] === 0) return false;
     const offset = pixel * 4;
     const alpha = source[offset + 3]!;
     if (alphaSeed === 0) return alpha === 0;
@@ -144,6 +161,7 @@ export function prepareFloodFill(
           const ny = py + dy;
           if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
           const neighbor = ny * width + nx;
+          if (clipCoverage && clipCoverage[neighbor] === 0) continue;
           const alpha = source[neighbor * 4 + 3]!;
           if (!mask[neighbor] && alpha > 0 && alpha < 255 && !fringe[neighbor]) {
             fringe[neighbor] = 1;
@@ -287,7 +305,7 @@ export function settingsForFill(settings: BrushSettings): Pick<FillOptions, "col
 
 /** Fill is a click tool; a drag gesture is ignored to avoid accidental bucket actions. */
 export function createFillHandler(getSettings: () => BrushSettings = () => drawingTools.brush): DrawToolHandler {
-  let pressed: { client: { x: number; y: number }; world: { x: number; y: number }; zoom: number; settings: BrushSettings } | null = null;
+  let pressed: { client: { x: number; y: number }; world: { x: number; y: number }; zoom: number; settings: BrushSettings; selection: typeof drawingSelection.area } | null = null;
   let committing = false;
   const clickThresholdPx = 4;
 
@@ -298,7 +316,7 @@ export function createFillHandler(getSettings: () => BrushSettings = () => drawi
   return {
     down(event: DrawPointerEvent) {
       if (committing) return;
-      pressed = { client: { ...event.client }, world: { ...event.world }, zoom: event.zoom, settings: { ...getSettings() } };
+      pressed = { client: { ...event.client }, world: { ...event.world }, zoom: event.zoom, settings: { ...getSettings() }, selection: drawingSelection.area };
     },
     move() {},
     up(event: DrawPointerEvent) {
@@ -306,7 +324,7 @@ export function createFillHandler(getSettings: () => BrushSettings = () => drawi
       pressed = null;
       if (!click || Math.hypot(event.client.x - click.client.x, event.client.y - click.client.y) > clickThresholdPx) return;
       committing = true;
-      void fillAt(click.world, click.settings, currentDrawLevel(click.zoom))
+      void fillAt(click.world, click.settings, click.selection?.level ?? currentDrawLevel(click.zoom), click.selection)
         .catch((error: unknown) => showLinkStatus(error instanceof Error ? error.message : String(error)))
         .finally(() => { committing = false; });
     },
@@ -321,7 +339,7 @@ export function registerFillTool(): () => void {
 
 export const unregisterFillTool = registerFillTool();
 
-async function fillAt(world: { x: number; y: number }, settings: BrushSettings, workingLevel: number): Promise<void> {
+async function fillAt(world: { x: number; y: number }, settings: BrushSettings, workingLevel: number, selection: typeof drawingSelection.area): Promise<void> {
   const lastLevel = Math.min(DRAW_MAX_LEVEL, workingLevel + FILL_EXTRA_LEVELS);
   for (let level = workingLevel; level <= lastLevel; level += 1) {
     const point = fillRasterPoint(world, level);
@@ -336,18 +354,24 @@ async function fillAt(world: { x: number; y: number }, settings: BrushSettings, 
       source.height,
       point.x - window.x,
       point.y - window.y,
-      { ...settingsForFill(settings), rasterX: window.x, rasterY: window.y },
+      {
+        ...settingsForFill(settings),
+        rasterX: window.x,
+        rasterY: window.y,
+        level,
+        selection,
+      },
     );
     // A shape larger than the window looks open here: look again at half the resolution.
     if (result.status === "open") continue;
     if (result.status !== "filled" || !result.image) return;
-    await commitFill(result.image, level);
+    await commitFill(result.image, level, selection);
     return;
   }
   showLinkStatus("Fill needs a closed shape");
 }
 
-async function commitFill(image: NonNullable<FloodFillResult["image"]>, level: number): Promise<void> {
+async function commitFill(image: NonNullable<FloodFillResult["image"]>, level: number, selection: SelectionClipMask | null): Promise<void> {
   const rect = rasterRectToWorld(image.rasterX, image.rasterY, image.width, image.height, level);
   const keys = affectedTileKeys(rect, level, "paint");
   if (keys.length === 0) return;
@@ -356,8 +380,8 @@ async function commitFill(image: NonNullable<FloodFillResult["image"]>, level: n
   const fringe = canvasFromRgba(image.fringe, image.width, image.height);
   try {
     const changed = [
-      ...applyAcrossLevels(region, image.rasterX, image.rasterY, level, "paint", 1),
-      ...applyAcrossLevels(fringe, image.rasterX, image.rasterY, level, "under", 1),
+      ...applyAcrossLevels(region, image.rasterX, image.rasterY, level, "paint", 1, selection),
+      ...applyAcrossLevels(fringe, image.rasterX, image.rasterY, level, "under", 1, selection),
     ];
     const after = await drawingStore.snapshot([...new Set([...keys, ...changed])]);
     pushDrawingHistory("Fill", before, after);

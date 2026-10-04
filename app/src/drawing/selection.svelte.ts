@@ -1,5 +1,5 @@
 import { camera, viewport } from "../board/camera.svelte";
-import { currentDrawLevel, levelPxPerUnit, type DrawPointerEvent, type DrawTool, type TileKey, type TileSnapshot, type WorldRect, worldToRaster } from "./types";
+import { currentDrawLevel, levelPxPerUnit, type DrawPointerEvent, type DrawTool, type DrawToolHandler, type TileKey, type TileSnapshot, type WorldRect, worldToRaster } from "./types";
 import { drawingStore } from "./tileStore.svelte";
 import { affectedTileKeys, applyAcrossLevels, pushDrawingHistory, rasterRectToWorld, readCompositeRect } from "./history";
 import { registerDrawTool } from "./toolRegistry";
@@ -110,6 +110,106 @@ export function selectionContains(area: DrawingSelectionArea, point: RasterPoint
   const x = Math.floor(point.x) - area.x;
   const y = Math.floor(point.y) - area.y;
   return x >= 0 && y >= 0 && x < area.width && y < area.height && area.mask[y * area.width + x] !== 0;
+}
+
+function distanceToSegment(point: RasterPoint, start: RasterPoint, end: RasterPoint): number {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+  const t = lengthSquared > 0
+    ? Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared))
+    : 0;
+  return Math.hypot(point.x - (start.x + t * dx), point.y - (start.y + t * dy));
+}
+
+/** True when the pointer is within the screen-space move band around the current outline. */
+export function isDrawingSelectionBorder(event: DrawPointerEvent, bandPx = 6): boolean {
+  const area = drawingSelection.area;
+  if (!area || drawingSelection.floatingAt) return false;
+  const ppu = levelPxPerUnit(area.level);
+  const point = { x: event.world.x * ppu, y: event.world.y * ppu };
+  const pixelsPerRasterPx = event.zoom * PX_PER_UNIT / ppu;
+  const maxDistance = Math.max(0, bandPx) / Math.max(Number.EPSILON, pixelsPerRasterPx);
+  const outline = area.outline;
+  for (let index = 0; index < outline.length; index += 1) {
+    const start = outline[index]!;
+    const end = outline[(index + 1) % outline.length]!;
+    if (distanceToSegment(point, start, end) <= maxDistance) return true;
+  }
+  return false;
+}
+
+/** Start an existing selection move from the shared draw-input router, for every active sub-tool. */
+export function beginSelectionBorderMove(event: DrawPointerEvent): boolean {
+  if (!isDrawingSelectionBorder(event) || activeGesture) return false;
+  return beginMove(event);
+}
+
+/** The active selection edge has its own gesture route even when another draw sub-tool is selected. */
+export const selectionMoveHandler: DrawToolHandler = {
+  down() {},
+  move: moveActiveGesture,
+  up: finishActiveGesture,
+  cancel: cancelActiveGesture,
+  deactivate: deactivateSelectionGesture,
+};
+
+/** Selection commands are mode-wide, so Delete/Esc/C/V work with any drawing sub-tool active. */
+export function handleDrawingSelectionKey(event: KeyboardEvent): boolean {
+  if (event.defaultPrevented || event.isComposing || event.repeat) return false;
+  if (event.key === "Escape") {
+    if (drawingSelection.preview?.tool === "select-polygon") {
+      drawingSelection.preview = null;
+      updateState();
+      return true;
+    }
+    const gesture = activeGesture;
+    if (gesture?.kind === "move" && gesture.started) {
+      void commitMove(gesture).finally(clearSelection);
+      return true;
+    }
+    if (gesture?.kind === "move") {
+      void cancelMove(gesture).finally(clearSelection);
+      return true;
+    }
+    const hadState = Boolean(gesture || drawingSelection.area || drawingSelection.preview);
+    if (gesture) {
+      activeGesture = null;
+      drawingSelection.preview = null;
+      updateState();
+    }
+    clearSelection();
+    return hadState;
+  }
+  if (activeGesture?.completion) return false;
+  if (event.key === "Enter" && drawingSelection.preview?.tool === "select-polygon") {
+    void selectPixels("select-polygon", drawingSelection.preview.points, drawingSelection.preview.level);
+    return true;
+  }
+  if (event.key === "Delete" || event.key === "Backspace") {
+    if (!drawingSelection.area) return false;
+    void deleteCurrentSelection();
+    return true;
+  }
+  if (event.ctrlKey && event.code === "KeyC") {
+    if (!drawingSelection.area) return false;
+    copyCurrentSelection();
+    return true;
+  }
+  if (event.ctrlKey && event.code === "KeyV") {
+    if (!clipboard) return false;
+    void pasteClipboard(cursorWorld);
+    return true;
+  }
+  return false;
+}
+
+/** Clear selection UI and cancel any unfinished selection gesture without changing pixels. */
+export function clearDrawingSelection(): void {
+  const gesture = activeGesture;
+  if (gesture?.kind === "move" && !gesture.cancelled) void cancelMove(gesture);
+  else if (gesture) activeGesture = null;
+  clearSelection();
 }
 
 /** Resize the selection geometry only. The drawing pixels remain at their original coordinates. */
@@ -360,7 +460,7 @@ function cutMask(area: DrawingSelectionArea): TileKey[] {
   for (let pixel = 0; pixel < area.mask.length; pixel += 1) image.data[pixel * 4 + 3] = area.mask[pixel]!;
   context.putImageData(image, 0, 0);
   try {
-    return applyAcrossLevels(canvas, area.x, area.y, area.level, "erase", 1);
+    return applyAcrossLevels(canvas, area.x, area.y, area.level, "erase", 1, area, true);
   } finally {
     canvas.width = 0;
     canvas.height = 0;
@@ -431,16 +531,16 @@ function prepareMove(area: DrawingSelectionArea): Promise<PreparedMove> {
   }));
 }
 
-function beginMove(event: DrawPointerEvent): void {
+function beginMove(event: DrawPointerEvent): boolean {
   const area = drawingSelection.area;
-  if (!area) return;
+  if (!area) return false;
   const point = readPoint(event, area.level);
   let prepared: Promise<PreparedMove>;
   try {
     prepared = prepareMove(area);
   } catch (error) {
     console.error("Could not read the drawing selection", error);
-    return;
+    return false;
   }
   void prepared.catch((error: unknown) => console.error("Could not snapshot the drawing selection", error));
   activeGesture = {
@@ -453,6 +553,7 @@ function beginMove(event: DrawPointerEvent): void {
     copy: event.ctrl,
     prepared,
   };
+  return true;
 }
 
 function startFloating(gesture: SelectionGesture): void {
@@ -589,24 +690,17 @@ async function deleteCurrentSelection(): Promise<void> {
   const area = drawingSelection.area;
   if (!area) return;
   const keys = affectedTileKeys(areaWorldRect(area, area.level), area.level, "erase");
-  if (keys.length === 0) {
-    clearSelection();
-    return;
-  }
+  if (keys.length === 0) return;
   let before: TileSnapshot | null = null;
   let mutationStarted = false;
   try {
     const selected = copySelectionPixels(readVisible(area, area.level), area.mask);
-    if (!hasVisiblePixels(selected)) {
-      clearSelection();
-      return;
-    }
+    if (!hasVisiblePixels(selected)) return;
     before = await drawingStore.snapshot(keys);
     mutationStarted = true;
     cutMask(area);
     const after = await drawingStore.snapshot(keys);
     pushDrawingHistory("Delete selection", before, after);
-    clearSelection();
   } catch (error) {
     if (mutationStarted && before) {
       await drawingStore.restore(before).catch((restoreError: unknown) => {
@@ -701,12 +795,12 @@ function createHandler(tool: SelectionTool) {
       cursorWorld = { ...event.world };
       const area = drawingSelection.area;
       if (area) {
-        if (selectionContains(area, readPoint(event, area.level))) {
+        if (isDrawingSelectionBorder(event)) {
           beginMove(event);
-        } else {
-          clearSelection();
+          return;
         }
-        return;
+        // A selection-tool drag always starts a replacement selection unless it starts on the edge.
+        clearSelection();
       }
       if (tool === "select-polygon" && drawingSelection.preview?.tool === "select-polygon") {
         addPolygonPoint(tool, event);
@@ -731,122 +825,83 @@ function createHandler(tool: SelectionTool) {
       drawingSelection.preview = { tool, points: [point], level };
       updateState();
     },
-    move(event: DrawPointerEvent) {
-      cursorWorld = { ...event.world };
-      const gesture = activeGesture;
-      if (!gesture || gesture.completion) return;
-      gesture.last = readPoint(event, gesture.level);
-      gesture.lastClient = { ...event.client };
-      if (gesture.kind === "move") {
-        if (!gesture.started && Math.hypot(
-          gesture.lastClient.x - gesture.startClient.x,
-          gesture.lastClient.y - gesture.startClient.y,
-        ) >= DRAG_THRESHOLD_PX) {
-          gesture.started = true;
-          startFloating(gesture);
-        }
-        const area = drawingSelection.area;
-        if (gesture.started && area) {
-          drawingSelection.floatingAt = {
-            x: area.x + Math.round(gesture.last.x - gesture.start.x),
-            y: area.y + Math.round(gesture.last.y - gesture.start.y),
-          };
-          updateState();
-        }
-        return;
-      }
-
-      const points = gesture.tool === "select-rect"
-        ? [gesture.start, gesture.last]
-        : appendDistinct(gesture.points ?? [], gesture.last);
-      gesture.points = points;
-      drawingSelection.preview = { tool: gesture.tool!, points, level: gesture.level };
-      updateState();
-    },
-    up(event: DrawPointerEvent) {
-      const gesture = activeGesture;
-      if (!gesture || gesture.completion) return;
-      gesture.last = readPoint(event, gesture.level);
-      if (gesture.kind === "move") {
-        if (gesture.started) void commitMove(gesture);
-        else activeGesture = null;
-        return;
-      }
-      activeGesture = null;
-      void selectPixels(gesture.tool!, gesture.tool === "select-rect"
-        ? [gesture.start, gesture.last]
-        : appendDistinct(gesture.points ?? [], gesture.last), gesture.level);
-    },
-    cancel() {
-      const gesture = activeGesture;
-      if (gesture?.completion) return;
-      if (gesture?.kind === "move") void cancelMove(gesture);
-      else {
-        activeGesture = null;
-        drawingSelection.preview = null;
-        updateState();
-      }
-    },
-    key(event: KeyboardEvent): boolean {
-      if (event.defaultPrevented || event.isComposing) return false;
-      if (event.repeat) return false;
-      if (event.key === "Escape") {
-        if (drawingSelection.preview?.tool === "select-polygon") {
-          drawingSelection.preview = null;
-          updateState();
-          return true;
-        }
-        const gesture = activeGesture;
-        if (gesture?.kind === "move" && gesture.started) {
-          void commitMove(gesture).finally(clearSelection);
-          return true;
-        }
-        if (gesture?.kind === "move") {
-          void cancelMove(gesture).finally(clearSelection);
-          return true;
-        }
-        const hadState = Boolean(gesture || drawingSelection.area || drawingSelection.preview);
-        if (gesture) {
-          activeGesture = null;
-          drawingSelection.preview = null;
-          updateState();
-        }
-        clearSelection();
-        // Nothing to drop: let Esc leave draw mode.
-        return hadState;
-      }
-      if (activeGesture?.completion) return false;
-      if (event.key === "Enter" && drawingSelection.preview?.tool === "select-polygon") {
-        void selectPixels("select-polygon", drawingSelection.preview.points, drawingSelection.preview.level);
-        return true;
-      }
-      if (event.key === "Delete" || event.key === "Backspace") {
-        if (!drawingSelection.area) return false;
-        void deleteCurrentSelection();
-        return true;
-      }
-      if (event.ctrlKey && event.code === "KeyC") {
-        if (!drawingSelection.area) return false;
-        void copyCurrentSelection();
-        return true;
-      }
-      if (event.ctrlKey && event.code === "KeyV") {
-        if (!clipboard) return false;
-        void pasteClipboard(cursorWorld);
-        return true;
-      }
-      return false;
-    },
-    deactivate() {
-      const gesture = activeGesture;
-      if (gesture?.kind === "move" && gesture.started) void commitMove(gesture);
-      else if (gesture) {
-        activeGesture = null;
-        drawingSelection.preview = null;
-        updateState();
-      }
-    },
+    move: moveActiveGesture,
+    up: finishActiveGesture,
+    cancel: cancelActiveGesture,
+    key: handleDrawingSelectionKey,
+    deactivate: deactivateSelectionGesture,
   };
+}
+
+function moveActiveGesture(event: DrawPointerEvent): void {
+  cursorWorld = { ...event.world };
+  const gesture = activeGesture;
+  if (!gesture || gesture.completion) return;
+  gesture.last = readPoint(event, gesture.level);
+  gesture.lastClient = { ...event.client };
+  if (gesture.kind === "move") {
+    if (!gesture.started && Math.hypot(
+      gesture.lastClient.x - gesture.startClient.x,
+      gesture.lastClient.y - gesture.startClient.y,
+    ) >= DRAG_THRESHOLD_PX) {
+      gesture.started = true;
+      startFloating(gesture);
+    }
+    const area = drawingSelection.area;
+    if (gesture.started && area) {
+      drawingSelection.floatingAt = {
+        x: area.x + Math.round(gesture.last.x - gesture.start.x),
+        y: area.y + Math.round(gesture.last.y - gesture.start.y),
+      };
+      updateState();
+    }
+    return;
+  }
+
+  const points = gesture.tool === "select-rect"
+    ? [gesture.start, gesture.last]
+    : appendDistinct(gesture.points ?? [], gesture.last);
+  gesture.points = points;
+  drawingSelection.preview = { tool: gesture.tool!, points, level: gesture.level };
+  updateState();
+}
+
+function finishActiveGesture(event: DrawPointerEvent): void {
+  const gesture = activeGesture;
+  if (!gesture || gesture.completion) return;
+  gesture.last = readPoint(event, gesture.level);
+  if (gesture.kind === "move") {
+    if (gesture.started) void commitMove(gesture);
+    else activeGesture = null;
+    return;
+  }
+  activeGesture = null;
+  void selectPixels(gesture.tool!, gesture.tool === "select-rect"
+    ? [gesture.start, gesture.last]
+    : appendDistinct(gesture.points ?? [], gesture.last), gesture.level);
+}
+
+function cancelActiveGesture(): void {
+  const gesture = activeGesture;
+  if (gesture?.completion) return;
+  if (gesture?.kind === "move") void cancelMove(gesture);
+  else {
+    activeGesture = null;
+    drawingSelection.preview = null;
+    updateState();
+  }
+}
+
+function deactivateSelectionGesture(): void {
+  const gesture = activeGesture;
+  if (gesture?.kind === "move" && !gesture.cancelled) {
+    if (gesture.started) void commitMove(gesture);
+    else void cancelMove(gesture);
+  } else if (gesture) {
+    activeGesture = null;
+    drawingSelection.preview = null;
+    updateState();
+  }
 }
 
 for (const tool of SELECTION_TOOLS) registerDrawTool(tool, createHandler(tool));

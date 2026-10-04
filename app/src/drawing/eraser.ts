@@ -1,11 +1,12 @@
 import { reportImportError } from "../attachments/service";
-import { board, updateNote } from "../model/board.svelte";
 import { drawingTools } from "./tools.svelte";
 import { createStroke, type DrawStroke } from "./brush";
 import { affectedTileKeys, applyAcrossLevels, pushDrawingHistory, rasterRectToWorld, readCompositeRect } from "./history";
 import { hideStrokePreview, showStrokePreview } from "./stroke.svelte";
 import { drawingStore } from "./tileStore.svelte";
 import { registerDrawTool } from "./toolRegistry";
+import { drawingSelection } from "./selection.svelte";
+import { createSelectionCoverageSampler } from "./selectionClip";
 import {
   levelPxPerUnit,
   type BrushSettings,
@@ -13,29 +14,12 @@ import {
   type DrawToolHandler,
   type TileSnapshot,
 } from "./types";
-import {
-  erasablePhotosInRasterRect,
-  ERASER_GIF_TOOLTIP,
-  eraserCompositeOptions,
-  rasterMaskTouchesPhoto,
-  type PhotoEraseGeometry,
-  type RasterRect,
-} from "./photoErase";
-import { erasePhotoCopyOnWrite } from "./photoErase";
+import { ERASER_GIF_TOOLTIP, eraserCompositeOptions } from "./photoErase";
 
 export { ERASER_GIF_TOOLTIP, eraserCompositeOptions } from "./photoErase";
 
 /** Translucent live mark of the eraser path (the real erase lands on pointer-up as one Undo step). */
 const ERASER_PREVIEW_OPACITY = 0.45;
-
-/** The overlay badge used by toolbar/help UI; never route non-image objects into the photo path. */
-export function erasablePhotoTargets(
-  notes: Iterable<import("../model/note").Note>,
-  stroke: RasterRect,
-  pixelsPerUnit?: number,
-): { note: import("../model/note").Note; geometry: PhotoEraseGeometry }[] {
-  return erasablePhotosInRasterRect(notes, stroke, pixelsPerUnit);
-}
 
 export function createEraserHandler(getSettings: () => BrushSettings = () => drawingTools.brush): DrawToolHandler {
   let stroke: DrawStroke | null = null;
@@ -107,8 +91,7 @@ async function commitErase(
   level: number,
   settings: BrushSettings,
 ): Promise<void> {
-  const pixelsPerUnit = levelPxPerUnit(level);
-  const rect = { x: rasterX, y: rasterY, width: source.width, height: source.height };
+  const selection = drawingSelection.area;
   const worldRect = rasterRectToWorld(rasterX, rasterY, source.width, source.height, level);
   let sourcePixels: Uint8ClampedArray | null = null;
   const maskPixels = (): Uint8ClampedArray => {
@@ -119,47 +102,22 @@ async function commitErase(
     return sourcePixels;
   };
   const eraseDrawing = drawingStore.existingKeysInRect(worldRect).length > 0 &&
-    maskOverlapsVisibleDrawing(maskPixels, source.width, source.height, rasterX, rasterY, level);
+    maskOverlapsVisibleDrawing(maskPixels, source.width, source.height, rasterX, rasterY, level, selection);
+  if (!eraseDrawing) return;
 
-  const photos = erasablePhotoTargets(Object.values(board.notes), rect, pixelsPerUnit)
-    .filter(({ geometry }) => rasterMaskTouchesPhoto(maskPixels(), source.width, source.height, rasterX, rasterY, geometry, pixelsPerUnit));
-  const photoUpdates = await Promise.all(photos.map(async ({ note }) => ({
-    note,
-    before: note.image!,
-    after: await erasePhotoCopyOnWrite(note, source, rasterX, rasterY, settings.opacity, pixelsPerUnit),
-  })));
-  const changedPhotos = photoUpdates.filter((item): item is typeof item & { after: NonNullable<typeof item.after> } => item.after !== null);
-  if (!eraseDrawing && changedPhotos.length === 0) return;
-
-  const tileKeys = eraseDrawing ? affectedTileKeys(worldRect, level, "erase") : [];
-  const before: TileSnapshot = tileKeys.length ? await drawingStore.snapshot(tileKeys) : new Map();
-  let after: TileSnapshot = before;
-  if (eraseDrawing) {
-    const options = eraserCompositeOptions(settings);
-    try {
-      applyAcrossLevels(source, rasterX, rasterY, level, "erase", options.opacity);
-      after = await drawingStore.snapshot(tileKeys);
-    } catch (error) {
-      await drawingStore.restore(before);
-      throw error;
-    }
+  const tileKeys = affectedTileKeys(worldRect, level, "erase");
+  const before: TileSnapshot = await drawingStore.snapshot(tileKeys);
+  let after: TileSnapshot;
+  const options = eraserCompositeOptions(settings);
+  try {
+    applyAcrossLevels(source, rasterX, rasterY, level, "erase", options.opacity, selection);
+    after = await drawingStore.snapshot(tileKeys);
+  } catch (error) {
+    await drawingStore.restore(before);
+    throw error;
   }
 
-  for (const { note, after: nextImage } of changedPhotos) {
-    updateNote(note.id, { image: nextImage });
-  }
-  pushDrawingHistory("Erase", before, after, changedPhotos.length ? {
-    undo() {
-      for (const { note, before: oldImage } of changedPhotos) {
-        if (board.notes[note.id]?.type === "image") updateNote(note.id, { image: oldImage });
-      }
-    },
-    redo() {
-      for (const { note, after: nextImage } of changedPhotos) {
-        if (board.notes[note.id]?.type === "image") updateNote(note.id, { image: nextImage! });
-      }
-    },
-  } : undefined);
+  pushDrawingHistory("Erase", before, after);
 }
 
 /** Does the eraser mask cover any visible drawing pixel? (Avoids empty "Erase" Undo steps.) */
@@ -170,6 +128,7 @@ function maskOverlapsVisibleDrawing(
   rasterX: number,
   rasterY: number,
   level: number,
+  selection: typeof drawingSelection.area,
 ): boolean {
   let drawing: Uint8ClampedArray;
   try {
@@ -179,8 +138,13 @@ function maskOverlapsVisibleDrawing(
     return true;
   }
   const alpha = mask();
-  for (let offset = 3; offset < drawing.length; offset += 4) {
-    if (drawing[offset]! > 0 && alpha[offset]! > 0) return true;
+  const coverageAt = selection ? createSelectionCoverageSampler(selection, level, width * height) : null;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const offset = (y * width + x) * 4;
+      const clip = coverageAt?.(rasterX + x, rasterY + y) ?? 1;
+      if (drawing[offset + 3]! > 0 && alpha[offset + 3]! * clip > 0) return true;
+    }
   }
   return false;
 }

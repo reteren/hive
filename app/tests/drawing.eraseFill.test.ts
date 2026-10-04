@@ -17,6 +17,7 @@ import {
   photoMaskTransform,
   worldPointToPhotoPixel,
 } from "../src/drawing/photoErase";
+import eraserSource from "../src/drawing/eraser.ts?raw";
 import "../src/drawing/eraser";
 import { drawToolHandler } from "../src/drawing/toolRegistry";
 
@@ -180,8 +181,12 @@ describe("Photo eraser mapping", () => {
     ], { x: 250, y: 450, width: 20, height: 20 }).map(({ note: target }) => target.id)).toEqual(["image-1"]);
     expect(eraserCompositeOptions({ color: "#abcdef", size: 12, opacity: 0.35, hardness: 0.5 })).toEqual({
       mode: "destination-out",
-      opacity: 0.35,
+      opacity: 1,
     });
-    expect(ERASER_GIF_TOOLTIP).toBe("Eraser does not affect GIFs.");
+    expect(ERASER_GIF_TOOLTIP).toBe("Erases drawings only. Right-click an image → Erase for pictures.");
+  });
+
+  it("keeps the drawing eraser independent from image attachments", () => {
+    expect(eraserSource).not.toMatch(/erasePhotoCopyOnWrite|rasterMaskTouchesPhoto|board\.notes|updateNote/);
   });
 });

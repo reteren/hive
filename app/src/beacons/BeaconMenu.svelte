@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tool } from "../tools/tool.svelte";
   import { onMount } from "svelte";
   import { camera, viewport } from "../board/camera.svelte";
   import { screenToWorld, type Point } from "../board/cameraMath";
@@ -52,6 +53,8 @@
   onMount(() => {
     function onMeContextMenu(event: MouseEvent): void {
       if (!(event.target instanceof Element) || !event.target.closest('[data-beacon-id="me"]')) return;
+      // In draw mode the right button is the eyedropper; drawInput swallows the context menu.
+      if (tool.active === "draw") return;
       event.preventDefault();
       event.stopImmediatePropagation();
       closeLinkContextMenu();

@@ -9,6 +9,7 @@ import {
   type TileSnapshot,
   type WorldRect,
 } from "./types";
+import { clipRasterDataToSelection, createSelectionCoverageSampler, type SelectionClipMask } from "./selectionClip";
 
 export interface DrawingHistoryExtras {
   undo(): void;
@@ -79,21 +80,53 @@ export function applyAcrossLevels(
   level: number,
   kind: LevelPaintKind,
   alpha = 1,
+  selection?: SelectionClipMask | null,
+  selectionMaskOnly = false,
 ): TileKey[] {
   if (!Number.isSafeInteger(rasterX) || !Number.isSafeInteger(rasterY) || source.width < 1 || source.height < 1) return [];
   const opacity = Math.min(1, Math.max(0, Number.isFinite(alpha) ? alpha : 0));
   if (opacity === 0) return [];
   const rect = rasterRectToWorld(rasterX, rasterY, source.width, source.height, level);
   const touched: TileKey[] = [];
+  const apply = (keys: readonly TileKey[], mode: GlobalCompositeOperation): void => {
+    if (!selection) {
+      touched.push(...drawTiles(keys, source, rasterX, rasterY, level, mode, opacity));
+      return;
+    }
+    const byLevel = new Map<number, TileKey[]>();
+    for (const key of keys) {
+      const parsed = parseTileKey(key);
+      if (!parsed) continue;
+      const group = byLevel.get(parsed.level) ?? [];
+      group.push(key);
+      byLevel.set(parsed.level, group);
+    }
+    for (const [targetLevel, targetKeys] of byLevel) {
+      // Rasterize into each bounded destination tile before clipping. This avoids large full-size
+      // temporary canvases when a coarse stroke must also update existing fine pyramid tiles.
+      touched.push(...drawClippedTiles(
+        targetKeys,
+        source,
+        rasterX,
+        rasterY,
+        level,
+        targetLevel,
+        mode,
+        opacity,
+        selection,
+        selectionMaskOnly,
+      ));
+    }
+  };
   if (kind === "erase") {
-    touched.push(...drawTiles(drawingStore.existingKeysInRect(rect), source, rasterX, rasterY, level, "destination-out", opacity));
+    apply(drawingStore.existingKeysInRect(rect), "destination-out");
   } else if (kind === "under") {
-    touched.push(...drawTiles(drawingStore.keysInRect(rect, true, level), source, rasterX, rasterY, level, "destination-over", opacity));
+    apply(drawingStore.keysInRect(rect, true, level), "destination-over");
   } else {
     // Finer tiles first: they must not see the coarse tiles this call is about to create.
     const finer = drawingStore.existingKeysInRect(rect).filter((key) => (parseTileKey(key)?.level ?? level) < level);
-    touched.push(...drawTiles(finer, source, rasterX, rasterY, level, "source-atop", opacity));
-    touched.push(...drawTiles(drawingStore.keysInRect(rect, true, level), source, rasterX, rasterY, level, "source-over", opacity));
+    apply(finer, "source-atop");
+    apply(drawingStore.keysInRect(rect, true, level), "source-over");
   }
   const keys = [...new Set(touched)];
   // Paint only adds alpha (source-atop keeps it), so only erasing can leave a tile empty.
@@ -134,6 +167,87 @@ function drawTiles(
     );
     context.restore();
     done.push(key);
+  }
+  return done;
+}
+
+function drawClippedTiles(
+  keys: readonly TileKey[],
+  source: HTMLCanvasElement,
+  rasterX: number,
+  rasterY: number,
+  sourceLevel: number,
+  targetLevel: number,
+  mode: GlobalCompositeOperation,
+  opacity: number,
+  selection: SelectionClipMask,
+  selectionMaskOnly: boolean,
+): TileKey[] {
+  const create = mode === "source-over" || mode === "destination-over";
+  const scratch = document.createElement("canvas");
+  scratch.width = DRAW_TILE_SIZE_PX;
+  scratch.height = DRAW_TILE_SIZE_PX;
+  const scratchContext = scratch.getContext("2d", { willReadFrequently: true });
+  if (!scratchContext) throw new Error("Could not prepare a clipped drawing tile.");
+  const coverageAt = selectionMaskOnly
+    ? createSelectionCoverageSampler(selection, targetLevel, DRAW_TILE_SIZE_PX * DRAW_TILE_SIZE_PX)
+    : null;
+  const done: TileKey[] = [];
+  try {
+    for (const key of keys) {
+      const parsed = parseTileKey(key);
+      const tile = parsed ? drawingStore.tile(key, create) : null;
+      if (!parsed || !tile) continue;
+      scratchContext.setTransform(1, 0, 0, 1, 0, 0);
+      scratchContext.globalAlpha = 1;
+      scratchContext.globalCompositeOperation = "source-over";
+      scratchContext.clearRect(0, 0, scratch.width, scratch.height);
+      if (selectionMaskOnly && coverageAt) {
+        const image = scratchContext.createImageData(DRAW_TILE_SIZE_PX, DRAW_TILE_SIZE_PX);
+        const tileX = parsed.col * DRAW_TILE_SIZE_PX;
+        const tileY = parsed.row * DRAW_TILE_SIZE_PX;
+        for (let y = 0; y < DRAW_TILE_SIZE_PX; y += 1) {
+          for (let x = 0; x < DRAW_TILE_SIZE_PX; x += 1) {
+            image.data[(y * DRAW_TILE_SIZE_PX + x) * 4 + 3] =
+              Math.round(coverageAt(tileX + x, tileY + y) * 255);
+          }
+        }
+        scratchContext.putImageData(image, 0, 0);
+      } else {
+        const scale = 2 ** (sourceLevel - targetLevel);
+        scratchContext.imageSmoothingEnabled = true;
+        scratchContext.imageSmoothingQuality = "high";
+        scratchContext.drawImage(
+          source,
+          rasterX * scale - parsed.col * DRAW_TILE_SIZE_PX,
+          rasterY * scale - parsed.row * DRAW_TILE_SIZE_PX,
+          source.width * scale,
+          source.height * scale,
+        );
+        const image = scratchContext.getImageData(0, 0, DRAW_TILE_SIZE_PX, DRAW_TILE_SIZE_PX);
+        clipRasterDataToSelection(
+          image.data,
+          DRAW_TILE_SIZE_PX,
+          DRAW_TILE_SIZE_PX,
+          parsed.col * DRAW_TILE_SIZE_PX,
+          parsed.row * DRAW_TILE_SIZE_PX,
+          targetLevel,
+          selection,
+        );
+        scratchContext.putImageData(image, 0, 0);
+      }
+      const context = tile.getContext("2d");
+      if (!context) throw new Error(`Could not paint drawing tile ${key}.`);
+      context.save();
+      context.globalCompositeOperation = mode;
+      context.globalAlpha = opacity;
+      context.drawImage(scratch, 0, 0);
+      context.restore();
+      done.push(key);
+    }
+  } finally {
+    scratch.width = 0;
+    scratch.height = 0;
   }
   return done;
 }

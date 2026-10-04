@@ -7,6 +7,13 @@ import { beginEyedropper, cancelEyedropper, finishEyedropper, moveEyedropper } f
 import type { DrawPointerEvent, DrawTool, DrawToolHandler } from "./types";
 import { tool } from "../tools/tool.svelte";
 import { overview } from "../overview/overview.svelte";
+import {
+  beginSelectionBorderMove,
+  clearDrawingSelection,
+  handleDrawingSelectionKey,
+  isDrawingSelectionBorder,
+  selectionMoveHandler,
+} from "./selection.svelte";
 
 export type DrawShortcut =
   | { kind: "tool"; tool: DrawTool }
@@ -58,6 +65,11 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
     event.stopImmediatePropagation();
   }
 
+  function setSelectionMoveHover(active: boolean): void {
+    if (active) document.documentElement.dataset.selectionMoveHover = "true";
+    else delete document.documentElement.dataset.selectionMoveHover;
+  }
+
   function pointerEvent(event: PointerEvent): DrawPointerEvent {
     const bounds = boardElement.getBoundingClientRect();
     const local = { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
@@ -107,39 +119,60 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
   }
 
   function onPointerDown(event: PointerEvent): void {
-    if (tool.active !== "draw" || isDrawOverlayControl(event.target)) return;
+    if (tool.active !== "draw") return;
+    if (isDrawOverlayControl(event.target)) {
+      setSelectionMoveHover(false);
+      return;
+    }
     if (overview.active) {
+      setSelectionMoveHover(false);
       consume(event);
       return;
     }
     if (event.button === 2) {
       // Right button = eyedropper while held; release confirms the colour into the brush.
+      setSelectionMoveHover(false);
       consume(event);
       if (gesturePointerId !== null) return;
       eyedropperPointerId = event.pointerId;
       const point = pointerEvent(event);
-      beginEyedropper(point, boardElement, event);
+      const usesCaptureOverlay = beginEyedropper(point, boardElement, event);
+      if (!usesCaptureOverlay) {
+        try {
+          boardElement.setPointerCapture(event.pointerId);
+        } catch {
+          // The pointer may already have been cancelled by the platform.
+        }
+      }
       return;
     }
     if (event.button !== 0) return;
 
+    setSelectionMoveHover(false);
     consume(event);
     cancelGesture();
     const handler = refreshHandler();
     gesturePointerId = event.pointerId;
     gestureTool = drawingTools.active;
-    gestureHandler = handler;
     try {
       boardElement.setPointerCapture(event.pointerId);
     } catch {
       // The pointer may already have been cancelled by the platform.
     }
     const point = pointerEvent(event);
-    handler?.down(point);
+    if (beginSelectionBorderMove(point)) {
+      gestureHandler = selectionMoveHandler;
+      setSelectionMoveHover(true);
+    }
+    else {
+      gestureHandler = handler;
+      handler?.down(point);
+    }
   }
 
   function onPointerMove(event: PointerEvent): void {
     if (overview.active) {
+      setSelectionMoveHover(false);
       if (eyedropperPointerId === event.pointerId) {
         consume(event);
         eyedropperPointerId = null;
@@ -157,12 +190,21 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
       moveEyedropper(point);
       return;
     }
-    if (gesturePointerId !== event.pointerId) return;
+    if (gesturePointerId !== event.pointerId) {
+      if (tool.active === "draw" && !overview.active && !isDrawOverlayControl(event.target)) {
+        setSelectionMoveHover(isDrawingSelectionBorder(pointerEvent(event)));
+      } else {
+        setSelectionMoveHover(false);
+      }
+      return;
+    }
     consume(event);
     if (tool.active !== "draw" || gestureTool !== drawingTools.active) {
+      setSelectionMoveHover(false);
       cancelGesture();
       return;
     }
+    setSelectionMoveHover(gestureHandler === selectionMoveHandler);
     const point = pointerEvent(event);
     gestureHandler?.move(point);
   }
@@ -183,19 +225,23 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
     if (eyedropperPointerId === event.pointerId && event.button === 2) {
       consume(event);
       eyedropperPointerId = null;
+      if (boardElement.hasPointerCapture(event.pointerId)) boardElement.releasePointerCapture(event.pointerId);
       const point = pointerEvent(event);
       if (tool.active === "draw") void finishEyedropper(point);
       else cancelEyedropper();
       return;
     }
     if (gesturePointerId !== event.pointerId) return;
+    setSelectionMoveHover(false);
     consume(event);
     const handler = gestureHandler;
     const shouldCommit = tool.active === "draw" && gestureTool === drawingTools.active;
+    const wasSelectionMove = handler === selectionMoveHandler;
     const point = pointerEvent(event);
     clearGesture(true);
     if (shouldCommit) handler?.up(point);
     else handler?.cancel();
+    setSelectionMoveHover(shouldCommit && (wasSelectionMove || isDrawingSelectionBorder(point)));
   }
 
   function onPointerCancel(event: PointerEvent): void {
@@ -206,12 +252,18 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
     }
     if (gesturePointerId !== event.pointerId) return;
     consume(event);
+    setSelectionMoveHover(false);
     cancelGesture();
   }
 
   function onLostPointerCapture(event: PointerEvent): void {
     if (gesturePointerId !== event.pointerId) return;
+    setSelectionMoveHover(false);
     cancelGesture();
+  }
+
+  function onPointerLeave(): void {
+    if (gesturePointerId === null) setSelectionMoveHover(false);
   }
 
   function onContextMenu(event: MouseEvent): void {
@@ -245,6 +297,7 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
 
   function onWindowBlur(): void {
     cancelGesture();
+    setSelectionMoveHover(false);
     eyedropperPointerId = null;
     cancelEyedropper();
   }
@@ -259,6 +312,11 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
     const handler = refreshHandler();
     if (event.code !== "Escape" && (isDrawOverlayControl(event.target) || isTextEditingTarget(event.target) ||
       isTextEditingTarget(document.activeElement))) return;
+
+    if (handleDrawingSelectionKey(event)) {
+      consume(event);
+      return;
+    }
 
     if (event.code === "Escape" && !event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
       if (eyedropperPointerId !== null) {
@@ -299,6 +357,7 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
   boardElement.addEventListener("pointerup", onPointerUp, true);
   boardElement.addEventListener("pointercancel", onPointerCancel, true);
   boardElement.addEventListener("lostpointercapture", onLostPointerCapture, true);
+  boardElement.addEventListener("pointerleave", onPointerLeave, true);
   boardElement.addEventListener("contextmenu", onContextMenu, true);
   boardElement.addEventListener("wheel", onWheel, { capture: true, passive: false });
   window.addEventListener("keydown", onKeyDown, true);
@@ -308,9 +367,11 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
 
   return () => {
     cancelGesture();
+    setSelectionMoveHover(false);
     eyedropperPointerId = null;
     cancelEyedropper();
     selectedHandler?.deactivate?.();
+    clearDrawingSelection();
     selectedTool = null;
     selectedHandler = undefined;
     if (inputBoard === boardElement) inputBoard = null;
@@ -319,6 +380,7 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
     boardElement.removeEventListener("pointerup", onPointerUp, true);
     boardElement.removeEventListener("pointercancel", onPointerCancel, true);
     boardElement.removeEventListener("lostpointercapture", onLostPointerCapture, true);
+    boardElement.removeEventListener("pointerleave", onPointerLeave, true);
     boardElement.removeEventListener("contextmenu", onContextMenu, true);
     boardElement.removeEventListener("wheel", onWheel, true);
     window.removeEventListener("keydown", onKeyDown, true);
@@ -327,9 +389,11 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
 }
 
 /** Stop an in-progress gesture and let selection handlers commit their pending state on mode exit. */
-export function deactivateDrawInput(): void {
+export function deactivateDrawInput(clearSelection = true): void {
   cancelGesture();
   selectedHandler?.deactivate?.();
+  clearSelectionHover();
+  if (clearSelection) clearDrawingSelection();
   selectedTool = null;
   selectedHandler = undefined;
 }
@@ -337,8 +401,12 @@ export function deactivateDrawInput(): void {
 /** Switch subtools only after the previous handler has cancelled/committed its transient state. */
 export function selectDrawingSubtool(next: DrawTool): void {
   if (drawingTools.active === next) return;
-  deactivateDrawInput();
+  deactivateDrawInput(false);
   setActiveDrawTool(next);
+}
+
+function clearSelectionHover(): void {
+  if (typeof document !== "undefined") delete document.documentElement.dataset.selectionMoveHover;
 }
 
 function cancelGesture(): void {

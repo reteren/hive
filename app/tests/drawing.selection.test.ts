@@ -2,11 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { drawToolHandler } from "../src/drawing/toolRegistry";
 import {
   buildSelectionArea,
+  beginSelectionBorderMove,
+  clearDrawingSelection,
   copySelectionPixels,
   deleteSelectionPixels,
   drawingSelection,
+  isDrawingSelectionBorder,
   moveSelectionPixels,
   resizeSelectionArea,
+  selectionMoveHandler,
   type RasterPixels,
 } from "../src/drawing/selection.svelte";
 import type { DrawPointerEvent } from "../src/drawing/types";
@@ -197,16 +201,39 @@ describe("drawing selection", () => {
     expect(pixel(pixels.data, 4, 1, 1)).toEqual([220, 20, 10, 255]);
   });
 
-  it("commits and deselects when the user clicks outside the current area", () => {
+  it("starts a replacement selection when a selection tool drag begins away from the border", () => {
     const handler = drawToolHandler("select-rect")!;
     handler.down(pointer(0.5, 0.5, 10, 10));
     handler.move(pointer(3.5, 3.5, 30, 30));
     handler.up(pointer(3.5, 3.5, 30, 30));
     expect(drawingSelection.area).not.toBeNull();
 
-    handler.down(pointer(6.5, 6.5, 60, 60));
-    handler.up(pointer(6.5, 6.5, 60, 60));
-    expect(drawingSelection.area).toBeNull();
+    const previousArea = drawingSelection.area!;
+    const replacementStart = pointer(100, 100, 100, 100);
+    expect(isDrawingSelectionBorder(replacementStart)).toBe(false);
+    handler.down(replacementStart);
+    handler.move(pointer(102, 102, 120, 120));
+    handler.up(pointer(102, 102, 120, 120));
+    expect(drawingSelection.area).not.toBe(previousArea);
+    expect(drawingSelection.area?.x).toBeGreaterThan(previousArea.x + previousArea.width);
+  });
+
+  it("replaces a selection when a new gesture starts in its interior", () => {
+    const handler = drawToolHandler("select-rect")!;
+    handler.down(pointer(0.5, 0.5, 10, 10));
+    handler.move(pointer(60.5, 60.5, 610, 610));
+    handler.up(pointer(60.5, 60.5, 610, 610));
+    const previousArea = drawingSelection.area!;
+    const replacementStart = pointer(30.5, 30.5, 310, 310);
+    expect(isDrawingSelectionBorder(replacementStart)).toBe(false);
+
+    handler.down(replacementStart);
+    handler.move(pointer(32.5, 32.5, 330, 330));
+    handler.up(pointer(32.5, 32.5, 330, 330));
+
+    expect(drawingSelection.area).not.toBe(previousArea);
+    expect(drawingSelection.area?.x).toBeGreaterThan(previousArea.x);
+    expect(drawingSelection.area?.y).toBeGreaterThan(previousArea.y);
   });
 
   it("moves only selected pixels, supports copy, and leaves other pixels intact", () => {
@@ -254,6 +281,22 @@ describe("drawing selection", () => {
     expect(pixel(harness.pixels, 8, 5, 0)).toEqual([0, 0, 255, 255]);
   });
 
+  it("starts a border move through the shared handler with one undo", async () => {
+    putPixel(harness.pixels, 8, 1, 0, [255, 0, 0, 255]);
+    selectRectangle();
+    const start = pointer(1.5, 0.5, 100, 10);
+    expect(isDrawingSelectionBorder(start)).toBe(true);
+    expect(beginSelectionBorderMove(start)).toBe(true);
+
+    selectionMoveHandler.move(pointer(3.5, 0.5, 104, 10));
+    selectionMoveHandler.up(pointer(3.5, 0.5, 104, 10));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(pixel(harness.pixels, 8, 3, 0)).toEqual([255, 0, 0, 255]);
+    expect(harness.commands).toHaveLength(1);
+    expect(harness.commands[0]?.label).toBe("Move selection");
+  });
+
   it("copies by Ctrl-drag and records one undo action", async () => {
     putPixel(harness.pixels, 8, 1, 0, [255, 0, 0, 255]);
     const handler = selectRectangle()!;
@@ -290,6 +333,19 @@ describe("drawing selection", () => {
     handler.key?.(key("Delete", "Delete"));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(pixel(harness.pixels, 8, 1, 0)).toEqual([0, 0, 0, 0]);
+    expect(drawingSelection.area).not.toBeNull();
     expect(harness.commands.map(({ label }) => label)).toEqual(["Paste selection", "Delete selection"]);
+  });
+
+  it("clears the selection UI without changing pixels", () => {
+    putPixel(harness.pixels, 8, 1, 0, [255, 0, 0, 255]);
+    selectRectangle();
+    const before = new Uint8ClampedArray(harness.pixels);
+
+    clearDrawingSelection();
+
+    expect(drawingSelection.area).toBeNull();
+    expect(harness.pixels).toEqual(before);
+    expect(harness.commands).toHaveLength(0);
   });
 });

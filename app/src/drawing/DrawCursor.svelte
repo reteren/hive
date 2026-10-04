@@ -64,7 +64,8 @@
     <span class="eyedropper-hex">{eyedropper.color ?? "—"}</span>
   </div>
 {/if}
-{#if screenPoint}
+<!-- The eyedropper reads the real screen pixel under the hotspot, so the brush cursor steps aside. -->
+{#if screenPoint && !eyedropper.active}
   {#if drawingTools.active === "fill"}
     <svg class="draw-cursor draw-cursor-fill" style={cursorStyle} viewBox="0 0 24 24" data-draw-cursor data-tool="fill" aria-hidden="true">
       <path d="M7 3.8 17.3 14l-4.1 1.1-1.1 4.1L1.8 9z" />
