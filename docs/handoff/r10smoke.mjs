@@ -48,9 +48,9 @@ await ev(`(async()=>{const c=await import('/src/board/camera.svelte.ts');c.camer
 await shot("r10-strokes");
 // undo / redo
 const n0 = await tiles();
-await key("z", "KeyZ", 90, 2); await wait(300);
+await key("z", "KeyZ", 90, 2); await wait(1000);
 const n1 = await tiles();
-await key("z", "KeyZ", 90, 3); await wait(300);
+await key("z", "KeyZ", 90, 10); await wait(1000);
 console.log("2 undo tiles", n0, "->", n1, "redo ->", await tiles());
 // eraser across stroke 1
 await key("e", "KeyE", 69);
@@ -62,7 +62,7 @@ await key("b", "KeyB", 66);
 await ev(`(async()=>{const d=await import('/src/drawing/tools.svelte.ts');d.setBrushSettings({opacity:1,size:6,color:'#40a0ff'})})()`);
 await stroke([[800, 380], [950, 380], [950, 520], [800, 520], [800, 380]].flatMap((p, i, a) => i ? line(a[i - 1][0], a[i - 1][1], p[0], p[1], 15).slice(1) : [p]));
 await key("f", "KeyF", 70);
-await mouse("mouseMoved", 875, 450); await mouse("mousePressed", 875, 450, 1); await mouse("mouseReleased", 875, 450, 0); await wait(800);
+await mouse("mouseMoved", 875, 450); await mouse("mousePressed", 875, 450, 1); await mouse("mouseReleased", 875, 450, 0); await wait(2000);
 console.log("4 fill inside closed: alpha center", await alphaAt(875, 450), "outside", await alphaAt(1000, 450));
 await mouse("mouseMoved", 1100, 200); await mouse("mousePressed", 1100, 200, 1); await mouse("mouseReleased", 1100, 200, 0); await wait(800);
 console.log("4 fill on empty board: alpha", await alphaAt(1100, 200), "| hint:", await ev(`[...document.querySelectorAll('[role=status],[role=alert],[class*=hint],[class*=toast]')].map(e=>e.textContent.trim()).filter(t=>/fill|closed/i.test(t)).join(' | ')||'none'`));

@@ -3,6 +3,7 @@ import { camera, setPointerScreen, viewport } from "../board/camera.svelte";
 import { isTextEditingTarget } from "../commands/focus";
 import { drawingTools, adjustBrushSize, setActiveDrawTool } from "./tools.svelte";
 import { drawToolHandler } from "./toolRegistry";
+import { beginEyedropper, cancelEyedropper, finishEyedropper, moveEyedropper } from "./eyedropper.svelte";
 import type { DrawPointerEvent, DrawTool, DrawToolHandler } from "./types";
 import { tool } from "../tools/tool.svelte";
 
@@ -37,6 +38,7 @@ let gesturePointerId: number | null = null;
 let gestureTool: DrawTool | null = null;
 let gestureHandler: DrawToolHandler | undefined;
 let inputBoard: HTMLElement | null = null;
+let eyedropperPointerId: number | null = null;
 
 /** Attach draw-mode capture handlers to the board while preserving pan and zoom inputs. */
 export function attachDrawInput(boardElement: HTMLElement): () => void {
@@ -97,7 +99,17 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
   function onPointerDown(event: PointerEvent): void {
     if (tool.active !== "draw" || isDrawOverlayControl(event.target)) return;
     if (event.button === 2) {
+      // Right button = eyedropper while held; release confirms the colour into the brush.
       consume(event);
+      if (gesturePointerId !== null) return;
+      eyedropperPointerId = event.pointerId;
+      try {
+        boardElement.setPointerCapture(event.pointerId);
+      } catch {
+        // The pointer may already have been cancelled by the platform.
+      }
+      const point = pointerEvent(event);
+      beginEyedropper(point.world, point.zoom);
       return;
     }
     if (event.button !== 0) return;
@@ -118,6 +130,12 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
   }
 
   function onPointerMove(event: PointerEvent): void {
+    if (eyedropperPointerId === event.pointerId && gesturePointerId === null) {
+      consume(event);
+      const point = pointerEvent(event);
+      moveEyedropper(point.world, point.zoom);
+      return;
+    }
     if (gesturePointerId !== event.pointerId) return;
     consume(event);
     if (tool.active !== "draw" || gestureTool !== drawingTools.active) {
@@ -129,6 +147,14 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
   }
 
   function onPointerUp(event: PointerEvent): void {
+    if (eyedropperPointerId === event.pointerId && event.button === 2) {
+      consume(event);
+      eyedropperPointerId = null;
+      if (boardElement.hasPointerCapture(event.pointerId)) boardElement.releasePointerCapture(event.pointerId);
+      if (tool.active === "draw") finishEyedropper();
+      else cancelEyedropper();
+      return;
+    }
     if (gesturePointerId !== event.pointerId) return;
     consume(event);
     const handler = gestureHandler;
@@ -140,6 +166,11 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
   }
 
   function onPointerCancel(event: PointerEvent): void {
+    if (eyedropperPointerId === event.pointerId) {
+      eyedropperPointerId = null;
+      cancelEyedropper();
+      return;
+    }
     if (gesturePointerId !== event.pointerId) return;
     consume(event);
     cancelGesture();
@@ -157,6 +188,8 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
 
   function onWindowBlur(): void {
     cancelGesture();
+    eyedropperPointerId = null;
+    cancelEyedropper();
   }
 
   function onKeyDown(event: KeyboardEvent): void {
@@ -209,6 +242,8 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
 
   return () => {
     cancelGesture();
+    eyedropperPointerId = null;
+    cancelEyedropper();
     selectedHandler?.deactivate?.();
     selectedTool = null;
     selectedHandler = undefined;

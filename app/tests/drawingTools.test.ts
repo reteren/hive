@@ -5,12 +5,9 @@ import { tool } from "../src/tools/tool.svelte";
 import { drawCursorDiameter } from "../src/drawing/settings";
 import { drawShortcutForKey } from "../src/drawing/drawInput";
 import {
-  applyBrushPreset,
-  deleteBrushPreset,
   drawingPreferencesSnapshot,
   drawingTools,
   loadDrawingPreferences,
-  saveBrushPreset,
   setActiveDrawTool,
   setBrushSettings,
 } from "../src/drawing/tools.svelte";
@@ -60,21 +57,15 @@ describe("drawing tools", () => {
     expect(drawCursorDiameter(900)).toBe(400);
   });
 
-  it("saves, applies, deletes, and persists brush presets with view settings", () => {
+  it("persists brush settings with view settings and ignores removed presets", () => {
     setBrushSettings({ color: "#123456", size: 72, opacity: 0.65, hardness: 0.3 });
-    const preset = saveBrushPreset("Marker");
-    expect(preset).toMatchObject({ name: "Marker", color: "#123456", size: 72, opacity: 0.65, hardness: 0.3 });
-    expect(saveBrushPreset(" ")).toBeNull();
-
     const serialized = serializeViewSettings({
       ...DEFAULT_VIEW_SETTINGS,
       drawing: drawingPreferencesSnapshot(),
     });
-    loadDrawingPreferences(parseViewSettings(serialized, DEFAULT_VIEW_SETTINGS).drawing);
     setBrushSettings({ size: 12, color: "#eeeeee" });
-    expect(applyBrushPreset(preset!.id)).toBe(true);
+    loadDrawingPreferences(parseViewSettings(serialized, DEFAULT_VIEW_SETTINGS).drawing);
     expect(drawingTools.brush).toMatchObject({ color: "#123456", size: 72, opacity: 0.65, hardness: 0.3 });
-    expect(deleteBrushPreset(preset!.id)).toBe(true);
-    expect(drawingTools.presets).toEqual([]);
+    expect(drawingPreferencesSnapshot()).toEqual({ brush: drawingTools.brush });
   });
 });

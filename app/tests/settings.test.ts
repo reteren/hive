@@ -18,7 +18,6 @@ describe("view settings serialization", () => {
       zones: { brushSize: 240 },
       drawing: {
         brush: { color: "#336699", size: 42, opacity: 0.75, hardness: 0.4 },
-        presets: [{ id: "soft", name: "Soft", color: "#336699", size: 42, opacity: 0.75, hardness: 0.4 }],
       },
       keyOverrides: { "view.home": ["Ctrl+Alt+KeyH"], "edit.undo": [] },
       transferHintsShown: 3,
@@ -120,7 +119,7 @@ describe("view settings serialization", () => {
     expect(parseViewSettings('{"zones":{"brushSize":"large"}}', DEFAULT_VIEW_SETTINGS).zones.brushSize).toBe(60);
   });
 
-  it("persists brush settings and validates drawing presets", () => {
+  it("persists brush settings and drops the removed presets field", () => {
     const settings = {
       ...DEFAULT_VIEW_SETTINGS,
       drawing: {
@@ -135,7 +134,6 @@ describe("view settings serialization", () => {
     const parsed = parseViewSettings(saved, DEFAULT_VIEW_SETTINGS);
     expect(parsed.drawing).toEqual({
       brush: { color: "#123abc", size: 400, opacity: 0.73, hardness: 0 },
-      presets: [{ id: "soft", name: "Soft", color: "#aabbcc", size: 20, opacity: 0.5, hardness: 0.25 }],
     });
   });
 

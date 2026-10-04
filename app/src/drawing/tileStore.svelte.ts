@@ -1,3 +1,4 @@
+import { encodeRgbaPng } from "./png";
 import {
   DRAW_TILE_SIZE_PX,
   levelTileUnits,
@@ -67,12 +68,12 @@ export const browserDrawingCanvasAdapter: DrawingCanvasAdapter = {
     return context.getImageData(0, 0, DRAW_TILE_SIZE_PX, DRAW_TILE_SIZE_PX).data;
   },
   encode(canvas) {
-    return new Promise((resolve, reject) => {
-      canvas.toBlob((blob) => {
-        if (blob) resolve(blob);
-        else reject(new Error("Could not encode a drawing tile as PNG."));
-      }, "image/png");
-    });
+    // Read the pixels now (pins the snapshot to this moment) and encode them without the canvas:
+    // canvas.toBlob of a GPU canvas only resolves with a later rendered frame (see png.ts).
+    const context = canvas.getContext("2d");
+    if (!context) return Promise.reject(new Error("Could not read a drawing tile canvas."));
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+    return encodeRgbaPng(pixels.data, pixels.width, pixels.height);
   },
   async restore(canvas, blob) {
     const bitmap = await createImageBitmap(blob);

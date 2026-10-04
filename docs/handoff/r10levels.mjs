@@ -43,6 +43,7 @@ await ev(`(async()=>{const b=await import('/src/model/board.svelte.ts');const h=
 await zoom(0.05); await tool("brush"); await brush({ size: 20, opacity: 1, hardness: 0.85, color: "#e8e8e8" });
 const h0 = await historyLength();
 await drag(line(350, 200, 1150, 260, 40));
+for (let i = 0; i < 20 && (await historyLength()) === h0; i++) await wait(100);
 console.log("1 zoom 0.05 brush: on line", await alpha(750, 230), "off", await alpha(750, 330), "| history +", (await historyLength()) - h0, "| worst move", worstMove, "ms | levels", await levels());
 
 // 2. far zoomed out: big closed square, fill inside

@@ -1,17 +1,12 @@
-import { DEFAULT_BRUSH, type BrushPreset, type BrushSettings } from "./types";
+import { DEFAULT_BRUSH, type BrushSettings } from "./types";
 
 export interface DrawingPreferences {
   brush: BrushSettings;
-  presets: BrushPreset[];
 }
 
 export const DEFAULT_DRAWING_PREFERENCES: DrawingPreferences = {
   brush: { ...DEFAULT_BRUSH },
-  presets: [],
 };
-
-const MAX_PRESETS = 32;
-const MAX_PRESET_NAME = 40;
 
 /** Validate user supplied settings while keeping all supported values usable. */
 export function normalizeBrushSettings(value: unknown, fallback: BrushSettings = DEFAULT_BRUSH): BrushSettings {
@@ -24,32 +19,10 @@ export function normalizeBrushSettings(value: unknown, fallback: BrushSettings =
   };
 }
 
-/** Keep only valid, uniquely named presets, in their saved order. */
-export function normalizeBrushPresets(value: unknown): BrushPreset[] {
-  if (!Array.isArray(value)) return [];
-  const ids = new Set<string>();
-  const presets: BrushPreset[] = [];
-  for (const candidate of value) {
-    if (!isRecord(candidate) || typeof candidate.id !== "string" || candidate.id.length === 0 ||
-      candidate.id.length > 200 || ids.has(candidate.id) || typeof candidate.name !== "string") continue;
-    const name = candidate.name.trim().slice(0, MAX_PRESET_NAME);
-    if (!name) continue;
-    const settings = normalizeBrushSettings(candidate);
-    if (!isHexColor(candidate.color) || !isFiniteNumber(candidate.size) ||
-      !isFiniteNumber(candidate.opacity) || !isFiniteNumber(candidate.hardness)) continue;
-    presets.push({ id: candidate.id, name, ...settings });
-    ids.add(candidate.id);
-    if (presets.length >= MAX_PRESETS) break;
-  }
-  return presets;
-}
-
 export function normalizeDrawingPreferences(value: unknown, fallback = DEFAULT_DRAWING_PREFERENCES): DrawingPreferences {
   const source = isRecord(value) ? value : {};
-  return {
-    brush: normalizeBrushSettings(source.brush, fallback.brush),
-    presets: source.presets === undefined ? fallback.presets.map((preset) => ({ ...preset })) : normalizeBrushPresets(source.presets),
-  };
+  // Brush presets were removed; an old `presets` field in saved settings is ignored.
+  return { brush: normalizeBrushSettings(source.brush, fallback.brush) };
 }
 
 /** Brush diameters are CSS screen pixels and intentionally do not depend on camera zoom. */

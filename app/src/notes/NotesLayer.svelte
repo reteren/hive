@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tool } from "../tools/tool.svelte";
   import { noteMenuItemsForContext } from "./noteMenu";
   import "../tasks/taskActions.svelte";
   import { onMount } from "svelte";
@@ -51,6 +52,8 @@
       // The board owns context menus for notes and blank space. Suppress the browser menu
       // before checking feature surfaces so no node body can leak Chrome's native menu.
       event.preventDefault();
+      // In draw mode the right button is the eyedropper (drawing/drawInput.ts), never a board menu.
+      if (tool.active === "draw") return;
       closeGifContextMenu();
       // Feature surfaces with their own right-click menu (e.g. a Tierlist row label) handle it themselves.
       if (target.closest("[data-own-context-menu]")) return;

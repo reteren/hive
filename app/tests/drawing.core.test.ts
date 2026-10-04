@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   accumulateDabMaxAlpha,
+  accumulateSegmentMaxAlpha,
   brushWorldWidth,
   interpolateStrokePoints,
   sourceOverAlpha,
@@ -110,5 +111,20 @@ describe("drawing core", () => {
     (store.tile("3:0:0", false) as unknown as FakeCanvas).pixels.fill(0);
     store.commit(["3:0:0"]);
     expect(store.levels()).toEqual([0, -1]);
+  });
+
+  it("rasterizes a soft stroke as one continuous shape without ripples along its edge", () => {
+    const width = 120;
+    const height = 40;
+    const mask = new Uint8ClampedArray(width * height);
+    accumulateSegmentMaxAlpha(mask, width, height, 10, 20, 110, 20, 12, 0.1);
+    const onePass = mask.slice();
+    accumulateSegmentMaxAlpha(mask, width, height, 10, 20, 110, 20, 12, 0.1);
+    expect(mask).toEqual(onePass);
+    // Row 6 px from the centre line: the soft edge has the same alpha everywhere along the stroke.
+    const edgeRow = [...mask.subarray(26 * width + 20, 26 * width + 100)];
+    expect(edgeRow[0]).toBeGreaterThan(0);
+    expect(edgeRow[0]).toBeLessThan(255);
+    expect(new Set(edgeRow).size).toBe(1);
   });
 });

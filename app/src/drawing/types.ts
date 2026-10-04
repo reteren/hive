@@ -86,11 +86,6 @@ export interface BrushSettings {
   hardness: number;
 }
 
-export interface BrushPreset extends BrushSettings {
-  id: string;
-  name: string;
-}
-
 export const DEFAULT_BRUSH: BrushSettings = { color: "#e8e8e8", size: 10, opacity: 1, hardness: 0.85 };
 
 /** World rectangle in units. */

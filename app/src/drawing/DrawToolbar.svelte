@@ -4,13 +4,7 @@
   import { tool } from "../tools/tool.svelte";
   import DrawCursor from "./DrawCursor.svelte";
   import { selectDrawingSubtool } from "./drawInput";
-  import {
-    applyBrushPreset,
-    deleteBrushPreset,
-    drawingTools,
-    saveBrushPreset,
-    setBrushSettings,
-  } from "./tools.svelte";
+  import { drawingTools, setBrushSettings } from "./tools.svelte";
   import type { DrawTool } from "./types";
 
   const toolOptions: { id: DrawTool; label: string; key: string }[] = [
@@ -23,7 +17,6 @@
   ];
   const palette = ["#e8e8e8", "#f2c14e", "#e4572e", "#52a675", "#4a90e2", "#b07ac5", "#252525"];
 
-  let presetName = $state("");
   let colorDraft = $state(drawingTools.brush.color);
   let isDrawing = $derived(tool.active === "draw");
   let opacitySlider = $derived(Math.round((drawingTools.brush.opacity - 0.05) / 0.95 * 100));
@@ -48,11 +41,6 @@
   function commitColor(): void {
     if (/^#[0-9a-f]{6}$/i.test(colorDraft)) setBrushSettings({ color: colorDraft });
     else colorDraft = drawingTools.brush.color;
-  }
-
-  function savePreset(): void {
-    const saved = saveBrushPreset(presetName);
-    if (saved) presetName = "";
   }
 </script>
 
@@ -157,24 +145,6 @@
         tooltip={(value) => `${Math.round(value)}%`}
       />
     </label>
-
-    <div class="preset-controls">
-      <label class="sr-only" for="draw-preset-name">Preset name</label>
-      <input id="draw-preset-name" type="text" maxlength="40" placeholder="Preset name" bind:value={presetName} />
-      <button type="button" disabled={!presetName.trim() || drawingTools.presets.length >= 32} onclick={savePreset}>Save</button>
-    </div>
-    {#if drawingTools.presets.length > 0}
-      <ul class="preset-list" aria-label="Brush presets">
-        {#each drawingTools.presets as preset (preset.id)}
-          <li>
-            <button type="button" class="preset-name" title={`Apply ${preset.name}`} onclick={() => applyBrushPreset(preset.id)}>
-              <span class="preset-swatch" style={`--swatch:${preset.color}`}></span>{preset.name}
-            </button>
-            <button type="button" class="delete-preset" aria-label={`Delete ${preset.name}`} onclick={() => deleteBrushPreset(preset.id)}>×</button>
-          </li>
-        {/each}
-      </ul>
-    {/if}
   </aside>
   <DrawCursor />
 {/if}
@@ -200,12 +170,12 @@
     scrollbar-width: thin;
   }
 
-  header, .field > span, .size-control, .preset-controls, .preset-list li, .preset-name {
+  header, .field > span, .size-control {
     display: flex;
     align-items: center;
   }
 
-  header, .field > span, .preset-list li { justify-content: space-between; }
+  header, .field > span { justify-content: space-between; }
   header { font-size: 12px; }
 
   button, input { font: inherit; }
@@ -255,7 +225,7 @@
   .field > span { color: var(--text-dim, #bcbcbc); }
   .field strong { color: var(--text, #ededed); font-variant-numeric: tabular-nums; }
 
-  .hex-input, .preset-controls input, .number-input {
+  .hex-input, .number-input {
     min-width: 0;
     border: 1px solid var(--border, #454545);
     border-radius: 3px;
@@ -267,7 +237,7 @@
   .hex-input { width: 82px; font-family: var(--mono-font, monospace); }
   .color-palette { display: flex; gap: 5px; }
   .color-palette button { width: 19px; height: 19px; padding: 2px; }
-  .color-palette button::before, .preset-swatch {
+  .color-palette button::before {
     display: block;
     width: 100%;
     height: 100%;
@@ -279,16 +249,7 @@
   .size-control { gap: 9px; }
   .size-control :global(.media-slider) { flex: 1; }
   .number-input { width: 52px; padding: 3px 4px; }
-  .preset-controls { gap: 5px; }
-  .preset-controls input { flex: 1; }
-  .preset-controls button { padding: 4px 8px; }
   button:disabled { opacity: 0.5; cursor: default; }
-  .preset-list { display: grid; max-height: 112px; gap: 4px; overflow: auto; margin: 0; padding: 0; list-style: none; }
-  .preset-list li { gap: 4px; }
-  .preset-name { flex: 1; justify-content: flex-start; gap: 7px; min-width: 0; padding: 4px 6px; text-align: left; }
-  .preset-swatch { width: 12px; height: 12px; flex: 0 0 auto; border: 1px solid rgb(255 255 255 / 25%); }
-  .delete-preset { width: 24px; height: 24px; font-size: 14px; }
-  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 
   @media (max-width: 320px) {
     .draw-toolbar { left: 34px; width: calc(100vw - 46px); }

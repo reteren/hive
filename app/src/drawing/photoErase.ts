@@ -1,6 +1,7 @@
 import { attachmentUrl, importImageFile } from "../attachments/service";
 import type { ImageRef } from "../attachments/types";
 import { normalizeNoteScale, type Note } from "../model/note";
+import { encodeRgbaPng } from "./png";
 import { DRAW_PX_PER_UNIT, type BrushSettings } from "./types";
 
 export const ERASER_GIF_TOOLTIP = "Eraser does not affect GIFs.";
@@ -178,7 +179,8 @@ export async function erasePhotoCopyOnWrite(
     const canvas = document.createElement("canvas");
     canvas.width = geometry.naturalWidth;
     canvas.height = geometry.naturalHeight;
-    const context = canvas.getContext("2d");
+    // CPU-backed: toBlob of a GPU canvas waits for the next rendered frame.
+    const context = canvas.getContext("2d", { willReadFrequently: true });
     if (!context) throw new Error("Could not prepare the erased image.");
     context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     context.save();
@@ -200,10 +202,9 @@ export async function erasePhotoCopyOnWrite(
 }
 
 function canvasPng(canvas: HTMLCanvasElement): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-      else reject(new Error("Could not encode the erased image as PNG."));
-    }, "image/png");
-  });
+  // Not canvas.toBlob: it waits for a rendered frame / idle time in Chromium (see png.ts).
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return Promise.reject(new Error("Could not encode the erased image as PNG."));
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+  return encodeRgbaPng(pixels.data, pixels.width, pixels.height);
 }

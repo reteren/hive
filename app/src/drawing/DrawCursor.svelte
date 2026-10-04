@@ -5,6 +5,7 @@
   import { drawingTools } from "./tools.svelte";
   import { drawCursorDiameter } from "./settings";
   import { attachDrawInput } from "./drawInput";
+  import { eyedropper } from "./eyedropper.svelte";
 
   let boardOrigin = $state({ x: 0, y: 0 });
   let screenPoint = $derived(pointer.world ? worldToScreen(camera, viewport, pointer.world) : null);
@@ -42,6 +43,12 @@
     : "");
 </script>
 
+{#if screenPoint && eyedropper.active}
+  <div class="eyedropper-preview" style={cursorStyle} data-eyedropper aria-live="polite">
+    <span class="eyedropper-swatch" class:empty={!eyedropper.color} style:background={eyedropper.color ?? "transparent"}></span>
+    <span class="eyedropper-hex">{eyedropper.color ?? "—"}</span>
+  </div>
+{/if}
 {#if screenPoint}
   {#if drawingTools.active === "fill"}
     <svg class="draw-cursor draw-cursor-fill" style={cursorStyle} viewBox="0 0 24 24" data-draw-cursor data-tool="fill" aria-hidden="true">
@@ -93,4 +100,31 @@
   }
 
   :global(html[data-drawing-mode="true"] .board) { cursor: none !important; }
+  .eyedropper-preview {
+    position: fixed;
+    z-index: 10001;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px 4px 4px;
+    border: 1px solid rgb(255 255 255 / 18%);
+    border-radius: 6px;
+    background: #1e1e1e;
+    box-shadow: 0 4px 14px rgb(0 0 0 / 45%);
+    color: #e8e8e8;
+    font: 12px/1 ui-monospace, "Cascadia Mono", Consolas, monospace;
+    pointer-events: none;
+    transform: translate(14px, 14px);
+  }
+
+  .eyedropper-swatch {
+    width: 22px;
+    height: 22px;
+    border: 1px solid rgb(255 255 255 / 35%);
+    border-radius: 4px;
+  }
+
+  .eyedropper-swatch.empty {
+    background: repeating-conic-gradient(#555 0 25%, #333 0 50%) 0 0 / 8px 8px !important;
+  }
 </style>

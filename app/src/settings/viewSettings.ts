@@ -75,7 +75,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
   history: { limit: DEFAULT_HISTORY_LIMIT },
   accessibility: { reduceAnimations: systemPrefersReducedMotion() },
   zones: { brushSize: BRUSH_MIN * 3 },
-  drawing: { brush: { ...DEFAULT_DRAWING_PREFERENCES.brush }, presets: [] },
+  drawing: { brush: { ...DEFAULT_DRAWING_PREFERENCES.brush } },
   keyOverrides: {},
   transferHintsShown: 0,
   fitWidthToText: true,

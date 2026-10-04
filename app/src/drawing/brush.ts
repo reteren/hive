@@ -75,6 +75,73 @@ export function interpolateStrokePoints(points: readonly StrokePoint[], spacing:
   return result;
 }
 
+/**
+ * Max-alpha "capsule" from (ax, ay) to (bx, by): alpha depends on the distance to the segment, so a
+ * stroke is one continuous shape with a smooth soft edge (no ripples from discrete dabs) and repeated
+ * passes within one gesture never build up.
+ */
+export function accumulateSegmentMaxAlpha(
+  mask: Uint8ClampedArray,
+  width: number,
+  height: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  radius: number,
+  hardness: number,
+): { x: number; y: number; width: number; height: number } | null {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || mask.length !== width * height) {
+    throw new RangeError("Stroke mask dimensions do not match its buffer.");
+  }
+  if (![ax, ay, bx, by, radius, hardness].every(Number.isFinite) || radius <= 0) return null;
+
+  const left = Math.max(0, Math.floor(Math.min(ax, bx) - radius - 1));
+  const top = Math.max(0, Math.floor(Math.min(ay, by) - radius - 1));
+  const right = Math.min(width, Math.ceil(Math.max(ax, bx) + radius + 1));
+  const bottom = Math.min(height, Math.ceil(Math.max(ay, by) + radius + 1));
+  if (right <= left || bottom <= top) return null;
+
+  const hard = Math.min(1, Math.max(0, hardness));
+  // Keep at least a one-pixel antialiased rim, even for a fully hard brush.
+  const coreRadius = Math.max(0, Math.min(radius * hard, radius - 1));
+  const edgeWidth = Math.max(radius - coreRadius, 1e-6);
+  const radiusSquared = radius * radius;
+  const coreSquared = coreRadius * coreRadius;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lengthSquared = dx * dx + dy * dy;
+  let changed = false;
+  for (let y = top; y < bottom; y += 1) {
+    const py = y + 0.5 - ay;
+    for (let x = left; x < right; x += 1) {
+      const px = x + 0.5 - ax;
+      // Distance to the segment: project onto it and clamp to the end points.
+      const t = lengthSquared > 0 ? Math.min(1, Math.max(0, (px * dx + py * dy) / lengthSquared)) : 0;
+      const ox = px - t * dx;
+      const oy = py - t * dy;
+      const distanceSquared = ox * ox + oy * oy;
+      if (distanceSquared > radiusSquared) continue;
+      const offset = y * width + x;
+      if (distanceSquared <= coreSquared) {
+        if (mask[offset] !== 255) {
+          mask[offset] = 255;
+          changed = true;
+        }
+        continue;
+      }
+      if (mask[offset] === 255) continue;
+      const edge = Math.min(1, Math.max(0, (Math.sqrt(distanceSquared) - coreRadius) / edgeWidth));
+      const alpha = Math.round(255 * (1 - edge * edge * (3 - 2 * edge)));
+      if (alpha > mask[offset]!) {
+        mask[offset] = alpha;
+        changed = true;
+      }
+    }
+  }
+  return changed ? { x: left, y: top, width: right - left, height: bottom - top } : null;
+}
+
 /** Max-alpha accumulation makes repeated dabs in one gesture behave like a single pass. */
 export function accumulateDabMaxAlpha(
   mask: Uint8ClampedArray,
@@ -216,10 +283,16 @@ export function createStroke(settings: BrushSettings, zoom: number, level = curr
     bounds = next;
   }
 
-  function dab(point: StrokePoint): StrokeRasterRect | null {
+  /** One continuous piece of the stroke from `from` to `to` (a dot when they are equal). */
+  function segment(from: StrokePoint, to: StrokePoint): StrokeRasterRect | null {
     const radius = Math.max(0.5, baseDiameter / 2);
-    ensureBounds(point, radius);
-    const dirty = accumulateDabMaxAlpha(mask, width, height, point.x - originX, point.y - originY, radius, safeSettings.hardness);
+    ensureBounds(from, radius);
+    ensureBounds(to, radius);
+    const dirty = accumulateSegmentMaxAlpha(
+      mask, width, height,
+      from.x - originX, from.y - originY, to.x - originX, to.y - originY,
+      radius, safeSettings.hardness,
+    );
     return dirty ? { x: dirty.x + originX, y: dirty.y + originY, width: dirty.width, height: dirty.height } : null;
   }
 
@@ -251,21 +324,20 @@ export function createStroke(settings: BrushSettings, zoom: number, level = curr
     if (closed || !Number.isFinite(world.x) || !Number.isFinite(world.y)) return;
     lastDirtyRect = null;
     const raster = { x: world.x * pixelsPerUnit, y: world.y * pixelsPerUnit };
-    if (!previous) {
-      lastDirtyRect = dab(raster);
-      previous = raster;
-    } else {
-      const distance = Math.hypot(raster.x - previous.x, raster.y - previous.y);
-      // Dense dabs (10% of the diameter) so the edge of a stroke is smooth instead of scalloped.
-      const spacing = Math.max(0.5, baseDiameter * 0.1);
-      const steps = Math.max(1, Math.ceil(distance / spacing));
-      for (let index = 1; index <= steps; index += 1) {
-        const ratio = index / steps;
-        const changed = dab({ x: previous.x + (raster.x - previous.x) * ratio, y: previous.y + (raster.y - previous.y) * ratio });
-        if (changed) lastDirtyRect = unionRects(lastDirtyRect, changed);
-      }
-      previous = raster;
+    const from = previous ?? raster;
+    // Long jumps are split so each piece only scans a small box around itself.
+    const pieces = Math.max(1, Math.ceil(Math.hypot(raster.x - from.x, raster.y - from.y) / Math.max(16, baseDiameter)));
+    let start = from;
+    for (let index = 1; index <= pieces; index += 1) {
+      const end = index === pieces ? raster : {
+        x: from.x + (raster.x - from.x) * index / pieces,
+        y: from.y + (raster.y - from.y) * index / pieces,
+      };
+      const changed = segment(start, end);
+      if (changed) lastDirtyRect = unionRects(lastDirtyRect, changed);
+      start = end;
     }
+    previous = raster;
     if (lastDirtyRect) {
       contentBounds = unionRects(contentBounds, lastDirtyRect);
       flush(lastDirtyRect);
