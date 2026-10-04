@@ -1,0 +1,55 @@
+// debug 22 part 2: line/draw sub-tools unfold under their hotbar button; draw panel has no tool grid.
+import { writeFileSync } from "node:fs";
+const OUT = "C:/Users/reteren/AppData/Local/Temp/claude";
+const page = (await fetch(`http://localhost:9334/json/list`).then((r) => r.json())).find((t) => t.type === "page" && t.url.includes("1450"));
+const ws = new WebSocket(page.webSocketDebuggerUrl); let id = 0; const pending = new Map(); const errors = [];
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.method === "Runtime.exceptionThrown") errors.push(m.params.exceptionDetails.exception?.description?.slice(0, 220)); if (pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+await new Promise((r) => (ws.onopen = r));
+const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+await send("Runtime.enable");
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const ev = async (expression) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); return r.result?.result?.value ?? r.result?.exceptionDetails?.exception?.description; };
+const mouse = (type, x, y) => send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" ? "none" : "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: type === "mouseMoved" ? 0 : 1 });
+const click = async (x, y) => { await mouse("mouseMoved", x, y); await mouse("mousePressed", x, y); await mouse("mouseReleased", x, y); await wait(300); };
+const key = async (k, code, vk, modifiers = 0) => { await send("Input.dispatchKeyEvent", { type: "keyDown", key: k, code, windowsVirtualKeyCode: vk, modifiers }); await send("Input.dispatchKeyEvent", { type: "keyUp", key: k, code, windowsVirtualKeyCode: vk, modifiers }); await wait(250); };
+const shot = async (n) => writeFileSync(`${OUT}/${n}.png`, Buffer.from((await send("Page.captureScreenshot", { format: "png" })).result.data, "base64"));
+// debug 23 p.3: draw eraser leaves images alone; RMB image → Erase mode erases only that image, Esc exits, Undo restores.
+const drag = async (pts, button = "left") => { const bs = button === "left" ? 1 : 2; await mouse("mouseMoved", pts[0][0], pts[0][1]); await send("Input.dispatchMouseEvent", { type: "mousePressed", x: pts[0][0], y: pts[0][1], button, buttons: bs, clickCount: 1 }); for (const [x, y] of pts.slice(1)) { await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y, button, buttons: bs }); await wait(12); } const l = pts.at(-1); await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: l[0], y: l[1], button, buttons: 0, clickCount: 1 }); await wait(1200); };
+const line = (x1, y1, x2, y2, n = 20) => Array.from({ length: n + 1 }, (_, i) => [x1 + (x2 - x1) * i / n, y1 + (y2 - y1) * i / n]);
+const rect = (sel) => ev(`(()=>{const e=document.querySelector(${JSON.stringify(sel)});if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height}})()`);
+const file = (id) => ev(`(async()=>(await import('/src/model/board.svelte.ts')).board.notes['${id}']?.image?.file)()`);
+await send("Page.reload"); await wait(2500);
+await ev(`window.__png=async()=>{const cv=document.createElement('canvas');cv.width=300;cv.height=150;const x=cv.getContext('2d');x.fillStyle='#3a6ea5';x.fillRect(0,0,300,150);const b=await new Promise(r=>cv.toBlob(r,'image/png'));return new File([b],'photo.png',{type:'image/png'})};window.__gif=()=>new File([Uint8Array.from(atob('R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=='),c=>c.charCodeAt(0))],'anim.gif',{type:'image/gif'});1`);
+await ev(`(async()=>{const h=await import('/src/history/history.svelte.ts');const a=await import('/src/images/imageActions.ts');await a.importImageFiles([await __png()],{x:-15,y:-10});await a.importImageFiles([__gif()],{x:25,y:-10});h.clear();return 1})()`);
+await wait(1200);
+const ids = await ev(`[...document.querySelectorAll('article[data-kind=image]')].map(a=>a.dataset.noteId+(a.querySelector('[data-gif-file]')?':gif':':png'))`);
+const png = ids.find((s) => s.endsWith(":png")).split(":")[0], gif = ids.find((s) => s.endsWith(":gif")).split(":")[0];
+const r = await rect(`[data-note-id="${png}"]`);
+console.log("images", ids, r);
+const f0 = await file(png);
+// 1 draw eraser over the PNG
+await mouse("mouseMoved", 700, 600); await key("d", "KeyD", 68, 2); await key("e", "KeyE", 69);
+await drag(line(r.x - 20, r.y + r.h / 2, r.x + r.w + 20, r.y + r.h / 2));
+console.log("1 draw eraser: image file unchanged:", (await file(png)) === f0);
+await key("d", "KeyD", 68, 2);
+// 2 RMB menus
+const menuItems = async (id) => { const b = await rect(`[data-note-id="${id}"]`); await mouse("mouseMoved", b.x + b.w / 2, b.y + b.h / 2); await send("Input.dispatchMouseEvent", { type: "mousePressed", x: b.x + b.w / 2, y: b.y + b.h / 2, button: "right", buttons: 2, clickCount: 1 }); await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: b.x + b.w / 2, y: b.y + b.h / 2, button: "right", buttons: 0, clickCount: 1 }); await wait(400); return ev(`[...document.querySelectorAll('[role=menu] [role=menuitem], [role=menu] button')].map(b=>b.textContent.trim()).filter(Boolean)`); };
+console.log("2 gif menu:", (await menuItems(gif)).join(" | ")); await key("Escape", "Escape", 27);
+const pngMenu = await menuItems(png);
+console.log("2 png menu:", pngMenu.join(" | "));
+const er = await ev(`(()=>{const b=[...document.querySelectorAll('[role=menu] [role=menuitem], [role=menu] button')].find(b=>b.textContent.trim().startsWith('Erase'));if(!b)return null;const r=b.getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()`);
+await click(er[0], er[1]); await wait(400);
+console.log("3 erase mode hint:", await ev(`document.querySelector('[data-image-erase-hint]')?.textContent.trim()`), "| tool", await ev(`(async()=>(await import('/src/tools/tool.svelte.ts')).tool.active)()`));
+await shot("d23-erase-mode");
+await drag(line(r.x + 20, r.y + 20, r.x + r.w - 20, r.y + r.h - 20));
+const f1 = await file(png);
+console.log("3 stroke inside: file changed:", f1 !== f0);
+await drag(line(r.x + r.w + 60, r.y, r.x + r.w + 200, r.y + 100));
+console.log("3 stroke outside: file same:", (await file(png)) === f1, "| drawing tiles", await ev(`(async()=>(await import('/src/drawing/tileStore.svelte.ts')).drawingTileStore.allKeys().length)()`));
+await shot("d23-erased");
+await key("Escape", "Escape", 27);
+console.log("4 Esc: hint gone", await ev(`!document.querySelector('[data-image-erase-hint]')`), "| tool", await ev(`(async()=>(await import('/src/tools/tool.svelte.ts')).tool.active)()`));
+await key("z", "KeyZ", 90, 2); await wait(600);
+console.log("5 Undo restores original file:", (await file(png)) === f0);
+console.log("errors:", errors);
+process.exit(0);

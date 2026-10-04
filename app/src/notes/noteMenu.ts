@@ -56,7 +56,7 @@ export function noteMenuItemsForContext(
   const target = gifTarget?.noteId === noteId ? gifTarget : null;
 
   if (note?.type === "image") {
-    const allowed = new Set(["notes.copyLink", "image.opacity", "archive.note", ...UNIVERSAL_MENU_IDS]);
+    const allowed = new Set(["notes.copyLink", "image.erase", "image.opacity", "archive.note", ...UNIVERSAL_MENU_IDS]);
     if (note.image?.mime === "image/gif" && target?.kind === "board") {
       allowed.add("attachments.toggleGif");
     }

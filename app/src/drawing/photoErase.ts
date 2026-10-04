@@ -4,18 +4,16 @@ import { normalizeNoteScale, type Note } from "../model/note";
 import { encodeRgbaPng } from "./png";
 import { DRAW_PX_PER_UNIT, type BrushSettings } from "./types";
 
-export const ERASER_GIF_TOOLTIP = "Eraser does not affect GIFs.";
+export const ERASER_GIF_TOOLTIP = "Erases drawings only. Right-click an image → Erase for pictures.";
 
 export interface EraserCompositeOptions {
   mode: "destination-out";
   opacity: number;
 }
 
-export function eraserCompositeOptions(settings: BrushSettings): EraserCompositeOptions {
-  return {
-    mode: "destination-out",
-    opacity: Math.max(0, Math.min(1, Number.isFinite(settings.opacity) ? settings.opacity : 0)),
-  };
+/** The eraser always removes at full strength (debug 23 p.6); only size and hardness come from the brush. */
+export function eraserCompositeOptions(_settings: BrushSettings): EraserCompositeOptions {
+  return { mode: "destination-out", opacity: 1 };
 }
 
 export interface PhotoEraseGeometry {

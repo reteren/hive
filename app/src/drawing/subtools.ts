@@ -11,7 +11,7 @@ export interface DrawSubtoolInfo {
 /** Draw sub-tools in hotbar order; they appear under the Draw button only while draw mode is on. */
 export const DRAW_SUBTOOLS: readonly DrawSubtoolInfo[] = [
   { id: "brush", label: "Brush", key: "KeyB" },
-  { id: "eraser", label: "Eraser", key: "KeyE", hint: "Eraser does not affect GIFs." },
+  { id: "eraser", label: "Eraser", key: "KeyE", hint: "Erases drawings only. Right-click an image → Erase for pictures." },
   { id: "fill", label: "Fill", key: "KeyF" },
   { id: "select-rect", label: "Select rectangle", key: "KeyM" },
   { id: "select-lasso", label: "Lasso", key: "KeyL" },

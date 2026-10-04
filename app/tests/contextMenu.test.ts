@@ -7,6 +7,7 @@ import { menuShortcutLabel } from "../src/commands/menuShortcut";
 import { runZoneMenuAction, selectNoteForMenuAction } from "../src/commands/objectMenu";
 import { resetAllCommandKeyOverrides, setCommandKeyOverrides } from "../src/commands/registry.svelte";
 import { noteMenuItems, noteMenuItemsForContext } from "../src/notes/noteMenu";
+import "../src/attachments/imageErase.svelte";
 import { closeGifContextMenu, openGifContextMenu, setGifStopped } from "../src/attachments/gifPlayback.svelte";
 import { takeZoneMoveRequest, zoneMode } from "../src/zones/zoneMode.svelte";
 import { tool } from "../src/tools/tool.svelte";
@@ -70,9 +71,10 @@ describe("board object context menus", () => {
 
     const imageItems = noteMenuItemsForContext("photo");
     expect(imageItems.map((item) => item.id)).toEqual([
-      "notes.copyLink", "image.opacity", "archive.note", "object.scale", "object.grab", "object.delete",
+      "notes.copyLink", "image.opacity", "image.erase", "archive.note", "object.scale", "object.grab", "object.delete",
     ]);
     expect(imageItems[0]?.label("photo")).toBe("Copy link to image");
+    expect(imageItems[2]?.label("photo")).toBe("Erase");
     expect(imageItems.some((item) => item.id === "task.toggleFlag")).toBe(false);
     expect(imageItems.some((item) => item.id === "notes.addPlus" || item.id === "notes.addMinus")).toBe(false);
   });

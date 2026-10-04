@@ -2,6 +2,7 @@
   import { board } from "../model/board.svelte";
   import AttachmentImage from "../attachments/AttachmentImage.svelte";
   import GifView from "../attachments/GifView.svelte";
+  import { attachmentIsFullyTransparent } from "../attachments/imageTransparency";
   import type { ImageRef } from "../attachments/types";
   import { clampImageOpacity } from "./imageLogic";
 
@@ -14,9 +15,28 @@
     flipY?: true;
   } = $props();
   let opacity = $derived(clampImageOpacity(board.notes[noteId]?.opacity ?? 1));
+  let fullyTransparent = $state(false);
+
+  $effect(() => {
+    const currentImage = image;
+    fullyTransparent = false;
+    if (!currentImage || currentImage.mime === "image/gif") return;
+
+    let current = true;
+    void attachmentIsFullyTransparent(currentImage).then((isTransparent) => {
+      if (current && image?.file === currentImage.file) fullyTransparent = isTransparent;
+    });
+    return () => { current = false; };
+  });
 </script>
 
 <div class="image-node-body" role="group" aria-label={name} ondragstart={(event) => event.preventDefault()}>
+  <div
+    class="image-node-frame-outline"
+    class:visible={selected || fullyTransparent}
+    data-image-frame-outline
+    aria-hidden="true"
+  ></div>
   {#if image?.mime === "image/gif"}
     <div class="image-node-picture-viewport" style:transform={`scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`} style:opacity={opacity}>
       <GifView
@@ -52,6 +72,23 @@
     min-height: 0;
     overflow: hidden;
     border-radius: inherit;
+  }
+
+  .image-node-frame-outline {
+    position: absolute;
+    z-index: 2;
+    inset: 1px;
+    border: 1px dashed rgb(255 255 255 / 88%);
+    border-radius: 2px;
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 72%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 100ms ease-out;
+  }
+
+  .image-node-frame-outline.visible,
+  .image-node-body:hover .image-node-frame-outline {
+    opacity: 1;
   }
 
   .image-node-picture-viewport {
