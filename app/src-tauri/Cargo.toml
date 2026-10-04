@@ -1,6 +1,6 @@
 [package]
 name = "hive"
-version = "1.5.7"
+version = "1.5.8"
 description = "Spatial board for notes and tasks"
 license = "MIT"
 authors = ["reteren"]
