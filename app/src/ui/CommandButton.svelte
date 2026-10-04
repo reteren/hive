@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import { formatKey } from "../commands/keys";
   import { getCommand, runCommand } from "../commands/registry.svelte";
   import Tooltip from "./Tooltip.svelte";
@@ -9,12 +10,19 @@
     labelOverride,
     className = "",
     secondaryHint,
+    tooltipLabel,
+    tooltipBindings,
+    icon,
   } = $props<{
     commandId: string;
     showLabel?: boolean;
     labelOverride?: string;
     className?: string;
     secondaryHint?: string;
+    tooltipLabel?: string;
+    tooltipBindings?: string[];
+    /** Replaces the built-in icon (drawn in the same 20×20 viewBox). */
+    icon?: Snippet;
   }>();
 
   let command = $derived(getCommand(commandId));
@@ -40,12 +48,15 @@
     if (id === "grid.stepUp") return "step-up";
     if (id === "grid.stepDown") return "step-down";
     if (id === "select.move") return "move";
+    if (id === "tool.select") return "pointer";
+    if (id === "tool.zone") return "zone";
+    if (id === "tool.draw") return "draw";
     return "command";
   }
 </script>
 
 {#if command}
-  <Tooltip label={command.label} bindings={command.keys} secondaryHint={secondaryHint}>
+  <Tooltip label={tooltipLabel ?? command.label} bindings={tooltipBindings ?? command.keys} secondaryHint={secondaryHint}>
     <button
       type="button"
       class="command-button {className}"
@@ -57,7 +68,9 @@
       onclick={() => runCommand(commandId)}
     >
       <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-        {#if iconName === "home"}
+        {#if icon}
+          {@render icon()}
+        {:else if iconName === "home"}
           <path d="m2.8 9 7.2-6 7.2 6v7.4a.8.8 0 0 1-.8.8h-4.2v-5H7.8v5H3.6a.8.8 0 0 1-.8-.8z" />
         {:else if iconName === "zoom-in"}
           <circle cx="8.5" cy="8.5" r="5.3" />
@@ -90,6 +103,13 @@
           <path d="m4.5 8 5.5 5 5.5-5M10 4v9" />
         {:else if iconName === "move"}
           <path d="M10 3v14M3 10h14M7.5 5.5 10 3l2.5 2.5M7.5 14.5 10 17l2.5-2.5M5.5 7.5 3 10l2.5 2.5M14.5 7.5 17 10l-2.5 2.5" />
+        {:else if iconName === "pointer"}
+          <path d="M5 2.8v12.6l3.4-3.2 2.3 5.1 2.2-1-2.3-5h4.6z" />
+        {:else if iconName === "zone"}
+          <path d="M3.5 6.5 7 3.2l6.8 1.3 3 4.6-1.6 6.3-6.4 1.5-4.8-3.4z" stroke-dasharray="2.2 1.6" />
+        {:else if iconName === "draw"}
+          <path d="m12.8 3.6 3.6 3.6-8.6 8.6-4.4.8.8-4.4z" />
+          <path d="m11.2 5.2 3.6 3.6" />
         {:else}
           <circle cx="10" cy="10" r="6.5" />
           <path d="M10 6.5v7M6.5 10h7" />

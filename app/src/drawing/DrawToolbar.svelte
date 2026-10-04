@@ -1,20 +1,9 @@
 <script lang="ts">
   import MediaSlider from "../media-ui/MediaSlider.svelte";
-  import Tooltip from "../ui/Tooltip.svelte";
   import { tool } from "../tools/tool.svelte";
   import DrawCursor from "./DrawCursor.svelte";
-  import { selectDrawingSubtool } from "./drawInput";
   import { drawingTools, setBrushSettings } from "./tools.svelte";
-  import type { DrawTool } from "./types";
 
-  const toolOptions: { id: DrawTool; label: string; key: string }[] = [
-    { id: "brush", label: "Brush", key: "B" },
-    { id: "eraser", label: "Eraser", key: "E" },
-    { id: "fill", label: "Fill", key: "F" },
-    { id: "select-rect", label: "Select rect", key: "M" },
-    { id: "select-lasso", label: "Lasso", key: "L" },
-    { id: "select-polygon", label: "Polygon", key: "P" },
-  ];
   const palette = ["#e8e8e8", "#f2c14e", "#e4572e", "#52a675", "#4a90e2", "#b07ac5", "#252525"];
 
   let colorDraft = $state(drawingTools.brush.color);
@@ -51,24 +40,6 @@
       <button type="button" class="close-button" aria-label="Exit drawing mode" onclick={() => { tool.active = "select"; }}>×</button>
     </header>
 
-    <div class="draw-tool-grid" role="group" aria-label="Drawing mode">
-      {#each toolOptions as option (option.id)}
-        <Tooltip
-          label={option.label}
-          bindings={[`Key${option.key}`]}
-          secondaryHint={option.id === "eraser" ? "Eraser does not affect GIFs." : undefined}
-        >
-          <button
-            type="button"
-            class:active={drawingTools.active === option.id}
-            aria-pressed={drawingTools.active === option.id}
-            onclick={() => selectDrawingSubtool(option.id)}
-          >
-            <span>{option.label}</span><kbd>{option.key}</kbd>
-          </button>
-        </Tooltip>
-      {/each}
-    </div>
 
     <label class="field color-field">
       <span>Color</span>
@@ -188,7 +159,7 @@
     cursor: pointer;
   }
 
-  button:hover, button.active, button[aria-pressed="true"] {
+  button:hover, button[aria-pressed="true"] {
     border-color: #a7a7a7;
     background: #3b3b3b;
   }
@@ -200,27 +171,7 @@
 
   .close-button { width: 22px; height: 22px; font-size: 16px; line-height: 1; }
 
-  .draw-tool-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 4px;
-  }
 
-  .draw-tool-grid button {
-    display: flex;
-    min-width: 0;
-    min-height: 29px;
-    align-items: center;
-    justify-content: space-between;
-    gap: 3px;
-    padding: 4px 5px;
-    text-align: left;
-  }
-
-  .draw-tool-grid :global(.tooltip-trigger) { width: 100%; }
-  .draw-tool-grid :global(.tooltip-trigger button) { width: 100%; }
-
-  kbd { color: #bdbdbd; font-size: 9px; }
   .field { display: grid; gap: 5px; }
   .field > span { color: var(--text-dim, #bcbcbc); }
   .field strong { color: var(--text, #ededed); font-variant-numeric: tabular-nums; }

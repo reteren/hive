@@ -6,9 +6,13 @@ import type { LineShape } from "../links/shapes";
  */
 export type ToolId = "select" | "line-strong" | "line-weak" | "zone" | "draw";
 
-export const tool: { active: ToolId; lineShape: LineShape } = $state({
+export type LineToolId = Extract<ToolId, "line-strong" | "line-weak">;
+
+/** `lastLine` is the line sub-tool the Line button re-enters (strong by default). */
+export const tool: { active: ToolId; lineShape: LineShape; lastLine: LineToolId } = $state({
   active: "select",
   lineShape: "base",
+  lastLine: "line-strong",
 });
 
 export function isLineTool(id: ToolId = tool.active): boolean {
