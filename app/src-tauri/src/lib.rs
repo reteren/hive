@@ -5,6 +5,7 @@ mod export;
 mod overhive;
 mod project;
 mod quick_input_shortcut;
+mod screen_pixel;
 mod settings;
 mod source;
 mod spellcheck;
@@ -192,6 +193,7 @@ pub fn run() {
             drawing::drawing_load,
             drawing::drawing_read_tile,
             drawing::drawing_save,
+            screen_pixel::sample_screen_pixel,
             export::export_project,
             export::import_project_zip,
             export::project_storage_stats,
