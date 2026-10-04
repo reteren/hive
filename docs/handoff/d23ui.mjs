@@ -1,0 +1,33 @@
+// debug 22 part 2: line/draw sub-tools unfold under their hotbar button; draw panel has no tool grid.
+import { writeFileSync } from "node:fs";
+const OUT = "C:/Users/reteren/AppData/Local/Temp/claude";
+const page = (await fetch(`http://localhost:9334/json/list`).then((r) => r.json())).find((t) => t.type === "page" && t.url.includes("1450"));
+const ws = new WebSocket(page.webSocketDebuggerUrl); let id = 0; const pending = new Map(); const errors = [];
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.method === "Runtime.exceptionThrown") errors.push(m.params.exceptionDetails.exception?.description?.slice(0, 220)); if (pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+await new Promise((r) => (ws.onopen = r));
+const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+await send("Runtime.enable");
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const ev = async (expression) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); return r.result?.result?.value ?? r.result?.exceptionDetails?.exception?.description; };
+const mouse = (type, x, y) => send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" ? "none" : "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: type === "mouseMoved" ? 0 : 1 });
+const click = async (x, y) => { await mouse("mouseMoved", x, y); await mouse("mousePressed", x, y); await mouse("mouseReleased", x, y); await wait(300); };
+const key = async (k, code, vk, modifiers = 0) => { await send("Input.dispatchKeyEvent", { type: "keyDown", key: k, code, windowsVirtualKeyCode: vk, modifiers }); await send("Input.dispatchKeyEvent", { type: "keyUp", key: k, code, windowsVirtualKeyCode: vk, modifiers }); await wait(250); };
+const shot = async (n) => writeFileSync(`${OUT}/${n}.png`, Buffer.from((await send("Page.captureScreenshot", { format: "png" })).result.data, "base64"));
+// debug 23 p.7/8/9: reticle for tiny brushes, accent dividers around sub-tools, Z zone icon.
+await send("Page.reload"); await wait(2500);
+await mouse("mouseMoved", 600, 400); await key("d", "KeyD", 68, 2); await wait(500);
+await ev(`(async()=>{(await import('/src/drawing/tools.svelte.ts')).setBrushSettings({size:1})})()`);
+await mouse("mouseMoved", 610, 410); await wait(300);
+console.log("reticle:", await ev(`!!document.querySelector('[data-draw-reticle]')`), "dividers:", await ev(`document.querySelectorAll('.left-toolbar .divider').length`), await ev(`getComputedStyle(document.querySelector('.left-toolbar .divider.end')).backgroundColor`));
+await key("e", "KeyE", 69); await wait(200);
+console.log("eraser opacity slider hidden:", await ev(`![...document.querySelectorAll('[data-draw-toolbar] .field span')].some(s=>s.textContent.startsWith('Opacity'))`));
+await key("b", "KeyB", 66);
+await send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
+const clip = { x: 0, y: 60, width: 60, height: 420, scale: 3 };
+writeFileSync(`${OUT}/d23-bar.png`, Buffer.from((await send("Page.captureScreenshot", { format: "png", clip })).result.data, "base64"));
+await mouse("mouseMoved", 700, 500); await wait(300);
+const rr = await ev(`(()=>{const r=document.querySelector('[data-draw-reticle]').getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()`);
+console.log("reticle centre", rr);
+writeFileSync(`${OUT}/d23-reticle.png`, Buffer.from((await send("Page.captureScreenshot", { format: "png", clip: { x: rr[0] - 30, y: rr[1] - 30, width: 60, height: 60, scale: 6 } })).result.data, "base64"));
+console.log("errors:", errors);
+process.exit(0);

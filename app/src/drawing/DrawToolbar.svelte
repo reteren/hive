@@ -66,18 +66,20 @@
       </div>
     </label>
 
-    <label class="field slider-field">
-      <span>Opacity <strong>{Math.round(drawingTools.brush.opacity * 100)}%</strong></span>
-      <MediaSlider
-        value={opacitySlider}
-        max={100}
-        step={1}
-        label="Brush opacity"
-        oninput={updateOpacity}
-        onchange={updateOpacity}
-        tooltip={(value) => `${Math.round((0.05 + value / 100 * 0.95) * 100)}%`}
-      />
-    </label>
+    {#if drawingTools.active !== "eraser"}
+      <label class="field slider-field">
+        <span>Opacity <strong>{Math.round(drawingTools.brush.opacity * 100)}%</strong></span>
+        <MediaSlider
+          value={opacitySlider}
+          max={100}
+          step={1}
+          label="Brush opacity"
+          oninput={updateOpacity}
+          onchange={updateOpacity}
+          tooltip={(value) => `${Math.round((0.05 + value / 100 * 0.95) * 100)}%`}
+        />
+      </label>
+    {/if}
 
     <label class="field slider-field">
       <span>Hardness <strong>{Math.round(drawingTools.brush.hardness * 100)}%</strong></span>

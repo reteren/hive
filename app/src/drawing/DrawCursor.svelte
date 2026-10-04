@@ -10,6 +10,9 @@
   let boardOrigin = $state({ x: 0, y: 0 });
   let screenPoint = $derived(pointer.world ? worldToScreen(camera, viewport, pointer.world) : null);
   let cursorSize = $derived(drawCursorDiameter(drawingTools.brush.size));
+  /** Below this diameter the circle alone gets lost on the board, so four short ticks frame it. */
+  const RETICLE_BELOW_PX = 12;
+  let reticleGap = $derived(cursorSize / 2 + 3);
 
   onMount(() => {
     const board = document.querySelector<HTMLElement>(".board");
@@ -68,6 +71,16 @@
       <path d="m14.6 6.3 3.2-3.2M16.5 17.5h.01M19.4 14.6h.01M20 20h.01" />
     </svg>
   {:else}
+    {#if cursorSize < RETICLE_BELOW_PX}
+      <svg class="draw-reticle" style={cursorStyle} viewBox="-16 -16 32 32" data-draw-reticle aria-hidden="true">
+        {#each [0, 90, 180, 270] as angle (angle)}
+          <g transform={`rotate(${angle})`}>
+            <line class="reticle-halo" x1={reticleGap} y1="0" x2={reticleGap + 5} y2="0" />
+            <line class="reticle-tick" x1={reticleGap} y1="0" x2={reticleGap + 5} y2="0" />
+          </g>
+        {/each}
+      </svg>
+    {/if}
     <span
       class="draw-cursor"
       class:eraser={drawingTools.active === "eraser"}
@@ -94,6 +107,30 @@
     border-radius: 50%;
     box-shadow: inset 0 0 0 1px #fff;
     pointer-events: none;
+  }
+
+  .draw-reticle {
+    position: fixed;
+    z-index: 30;
+    left: 0;
+    top: 0;
+    width: 32px;
+    height: 32px;
+    overflow: visible;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+
+  .reticle-halo {
+    stroke: rgb(17 17 17 / 85%);
+    stroke-width: 3;
+    stroke-linecap: round;
+  }
+
+  .reticle-tick {
+    stroke: rgb(255 255 255 / 92%);
+    stroke-width: 1;
+    stroke-linecap: round;
   }
 
   .draw-cursor.eraser {

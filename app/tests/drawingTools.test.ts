@@ -90,4 +90,15 @@ describe("drawing tools", () => {
     stepBrushSetting("size", 400);
     expect(drawingTools.brush.size).toBe(400);
   });
+
+  it("does not let the wheel change opacity while the eraser is active", () => {
+    setBrushSettings({ opacity: 0.5, hardness: 0.5 });
+    const previous = drawingTools.active;
+    drawingTools.active = "eraser";
+    stepBrushSetting("opacity", 3);
+    expect(drawingTools.brush.opacity).toBe(0.5);
+    stepBrushSetting("hardness", 2);
+    expect(drawingTools.brush.hardness).toBe(0.6);
+    drawingTools.active = previous;
+  });
 });

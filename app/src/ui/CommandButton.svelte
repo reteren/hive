@@ -106,7 +106,8 @@
         {:else if iconName === "pointer"}
           <path d="M5 2.8v12.6l3.4-3.2 2.3 5.1 2.2-1-2.3-5h4.6z" />
         {:else if iconName === "zone"}
-          <path d="M3.5 6.5 7 3.2l6.8 1.3 3 4.6-1.6 6.3-6.4 1.5-4.8-3.4z" stroke-dasharray="2.2 1.6" />
+          <rect x="3" y="3" width="14" height="14" rx="1.5" />
+          <path d="M7.2 7h5.6l-5.6 6h5.6" />
         {:else if iconName === "draw"}
           <path d="m12.8 3.6 3.6 3.6-8.6 8.6-4.4.8.8-4.4z" />
           <path d="m11.2 5.2 3.6 3.6" />

@@ -38,6 +38,8 @@ export type BrushWheelSetting = "size" | "opacity" | "hardness";
 /** Ctrl / Alt / Shift + mouse wheel in draw mode: size ~10% per notch, opacity and hardness 5% per notch. */
 export function stepBrushSetting(setting: BrushWheelSetting, notches: number): void {
   if (!Number.isFinite(notches) || notches === 0) return;
+  // The eraser always erases at full strength; only its size and hardness are adjustable.
+  if (setting === "opacity" && drawingTools.active === "eraser") return;
   const brush = drawingTools.brush;
   if (setting === "size") {
     const scaled = Math.round(brush.size * 1.1 ** notches);
@@ -55,6 +57,11 @@ export const brushHint = $state({ text: "", revision: 0 });
 
 export function showBrushHint(setting: BrushWheelSetting): void {
   const brush = drawingTools.brush;
+  if (setting === "opacity" && drawingTools.active === "eraser") {
+    brushHint.text = "Eraser opacity is always 100%";
+    brushHint.revision += 1;
+    return;
+  }
   brushHint.text = setting === "size" ? `Size ${brush.size} px`
     : setting === "opacity" ? `Opacity ${Math.round(brush.opacity * 100)}%`
       : `Hardness ${Math.round(brush.hardness * 100)}%`;

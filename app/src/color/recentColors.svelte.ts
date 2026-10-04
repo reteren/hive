@@ -9,19 +9,19 @@ function load(): string[] {
     if (!Array.isArray(parsed)) return [];
     return parsed.map((item) => (typeof item === "string" ? normalizeHex(item) : null))
       .filter((item): item is string => item !== null)
-      .slice(0, RECENT_COLOR_LIMIT);
+      .slice(-RECENT_COLOR_LIMIT);
   } catch {
     return [];
   }
 }
 
-/** Last picked colours, shared by every HEX palette in the app (newest first). */
+/** Last picked colours shared by every HEX palette, oldest first: a new colour enters on the right and the oldest drops off the left. */
 export const recentColors = $state({ list: load() });
 
 export function pushRecentColor(color: string): void {
   const hex = normalizeHex(color);
   if (!hex) return;
-  recentColors.list = [hex, ...recentColors.list.filter((item) => item !== hex)].slice(0, RECENT_COLOR_LIMIT);
+  recentColors.list = [...recentColors.list.filter((item) => item !== hex), hex].slice(-RECENT_COLOR_LIMIT);
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(recentColors.list));
   } catch {

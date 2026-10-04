@@ -63,6 +63,7 @@
           {/if}
         </SubtoolButton>
       {/each}
+      <span class="divider end" aria-hidden="true"></span>
     </div>
   {/if}
   <CommandButton commandId="tool.zone" />
@@ -98,6 +99,7 @@
           {/if}
         </SubtoolButton>
       {/each}
+      <span class="divider end" aria-hidden="true"></span>
     </div>
   {/if}
 </nav>
@@ -122,15 +124,20 @@
     flex-direction: column;
     align-items: center;
     gap: 2px;
-    padding-bottom: 3px;
   }
 
   .divider {
     width: 18px;
     height: 1px;
     margin: 1px 0 3px;
-    background: var(--border);
+    border-radius: 1px;
+    background: var(--accent);
     animation: divider-in 160ms ease-out backwards;
+  }
+
+  .divider.end {
+    margin: 3px 0 1px;
+    animation-delay: 140ms;
   }
 
   @keyframes divider-in {

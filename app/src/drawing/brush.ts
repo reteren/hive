@@ -18,6 +18,56 @@ export interface FinishedStroke {
   level: number;
 }
 
+/** Input points closer than this (raster px) to the previous one are ignored. */
+const MIN_INPUT_STEP = 0.75;
+/** Max direction change between neighbouring straight pieces of a smoothed stroke. */
+const MAX_TURN_PER_PIECE = (3 * Math.PI) / 180;
+
+/**
+ * Samples (after p1, ending exactly at p2) of the centripetal Catmull-Rom curve through p0..p3, dense
+ * enough that neighbouring pieces turn by ≤3°. Centripetal parametrisation never loops or overshoots
+ * on sharp turns.
+ */
+export function smoothStrokeSamples(p0: StrokePoint, p1: StrokePoint, p2: StrokePoint, p3: StrokePoint): StrokePoint[] {
+  const chord = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+  if (chord === 0) return [{ ...p2 }];
+  const inX = p2.x - p0.x;
+  const inY = p2.y - p0.y;
+  const outX = p3.x - p1.x;
+  const outY = p3.y - p1.y;
+  const turn = Math.abs(Math.atan2(inX * outY - inY * outX, inX * outX + inY * outY));
+  // The tangent can swing past the chord on both ends, hence the factor 2.
+  const count = Math.min(256, Math.max(1, Math.ceil((2 * turn) / MAX_TURN_PER_PIECE), Math.ceil(chord / 64)));
+  if (count === 1 || !(turn > 1e-4)) return [{ ...p2 }];
+
+  const knot = (a: StrokePoint, b: StrokePoint) => Math.max(1e-3, Math.sqrt(Math.hypot(b.x - a.x, b.y - a.y)));
+  const t0 = 0;
+  const t1 = t0 + knot(p0, p1);
+  const t2 = t1 + knot(p1, p2);
+  const t3 = t2 + knot(p2, p3);
+  const lerp = (a: StrokePoint, b: StrokePoint, ta: number, tb: number, t: number): StrokePoint => {
+    const span = tb - ta;
+    const u = span > 0 ? (t - ta) / span : 0;
+    return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u };
+  };
+  const samples: StrokePoint[] = [];
+  for (let index = 1; index <= count; index += 1) {
+    if (index === count) {
+      samples.push({ ...p2 });
+      break;
+    }
+    const t = t1 + (t2 - t1) * (index / count);
+    const a1 = lerp(p0, p1, t0, t1, t);
+    const a2 = lerp(p1, p2, t1, t2, t);
+    const a3 = lerp(p2, p3, t2, t3, t);
+    const b1 = lerp(a1, a2, t0, t2, t);
+    const b2 = lerp(a2, a3, t1, t3, t);
+    const point = lerp(b1, b2, t1, t2, t);
+    samples.push(Number.isFinite(point.x) && Number.isFinite(point.y) ? point : lerp(p1, p2, t1, t2, t));
+  }
+  return samples;
+}
+
 /** Stroke raster cap (~2 screens at the working level); a longer stroke is clipped, never an error. */
 const MAX_STROKE_SIDE = 8192;
 const MAX_STROKE_PIXELS = 16_777_216;
@@ -343,7 +393,6 @@ export function createStroke(settings: BrushSettings, zoom: number, level = curr
   /** Path length drawn so far, in raster px. */
   let pathLength = 0;
   let closed = false;
-  let previous: StrokePoint | null = null;
   let contentBounds: StrokeRasterRect | null = null;
   let lastDirtyRect: StrokeRasterRect | null = null;
   let bounds: { left: number; top: number; right: number; bottom: number } | null = null;
@@ -449,25 +498,68 @@ export function createStroke(settings: BrushSettings, zoom: number, level = curr
     context.putImageData(image, left, top);
   }
 
+  /** Last raster input points; the curve between the two middle ones is drawn once the next one is known. */
+  let inputs: StrokePoint[] = [];
+
+  /** Draw a straight piece list from `from` through `samples`, splitting long pieces to keep scans small. */
+  function drawThrough(from: StrokePoint, samples: readonly StrokePoint[]): void {
+    let start = from;
+    for (const target of samples) {
+      const pieces = Math.max(1, Math.ceil(Math.hypot(target.x - start.x, target.y - start.y) / Math.max(16, baseDiameter)));
+      const origin = start;
+      for (let index = 1; index <= pieces; index += 1) {
+        const end = index === pieces ? target : {
+          x: origin.x + (target.x - origin.x) * index / pieces,
+          y: origin.y + (target.y - origin.y) * index / pieces,
+        };
+        const changed = segment(start, end);
+        if (changed) lastDirtyRect = unionRects(lastDirtyRect, changed);
+        start = end;
+      }
+    }
+  }
+
+  /** The curve p1 → p2 of the input polyline (p0 / p3 are its neighbours). */
+  function drawCurve(p0: StrokePoint, p1: StrokePoint, p2: StrokePoint, p3: StrokePoint): void {
+    drawThrough(p1, smoothStrokeSamples(p0, p1, p2, p3));
+  }
+
   function add(world: StrokePoint, _pressure = 0.5): void {
     // Pressure is intentionally ignored in R10.1: the configured screen diameter is fixed per stroke.
     if (closed || !Number.isFinite(world.x) || !Number.isFinite(world.y)) return;
     lastDirtyRect = null;
     const raster = { x: world.x * pixelsPerUnit, y: world.y * pixelsPerUnit };
-    const from = previous ?? raster;
-    // Long jumps are split so each piece only scans a small box around itself.
-    const pieces = Math.max(1, Math.ceil(Math.hypot(raster.x - from.x, raster.y - from.y) / Math.max(16, baseDiameter)));
-    let start = from;
-    for (let index = 1; index <= pieces; index += 1) {
-      const end = index === pieces ? raster : {
-        x: from.x + (raster.x - from.x) * index / pieces,
-        y: from.y + (raster.y - from.y) * index / pieces,
-      };
-      const changed = segment(start, end);
-      if (changed) lastDirtyRect = unionRects(lastDirtyRect, changed);
-      start = end;
+    const last = inputs.at(-1);
+    if (!last) {
+      inputs = [raster];
+      const changed = segment(raster, raster);
+      if (changed) lastDirtyRect = changed;
+    } else {
+      // Sub-pixel jitter would only bend the curve's tangents; a resting pointer adds nothing.
+      if (Math.hypot(raster.x - last.x, raster.y - last.y) < MIN_INPUT_STEP) return;
+      inputs.push(raster);
+      // Soft brushes show every corner of a polyline as a crease on its inner side, so the input is
+      // drawn as a smooth curve one point behind the pointer (the tail is drawn by finish()).
+      if (inputs.length >= 3) {
+        const n = inputs.length;
+        drawCurve(inputs[n - 4] ?? inputs[n - 3]!, inputs[n - 3]!, inputs[n - 2]!, inputs[n - 1]!);
+        inputs = inputs.slice(-3);
+      }
     }
-    previous = raster;
+    if (lastDirtyRect) {
+      contentBounds = unionRects(contentBounds, lastDirtyRect);
+      flush(lastDirtyRect);
+    }
+  }
+
+  /** Draw the last input piece, which waits for a following point while the pointer is down. */
+  function drawTail(): void {
+    const n = inputs.length;
+    if (n < 2) return;
+    lastDirtyRect = null;
+    const p2 = inputs[n - 1]!;
+    drawCurve(inputs[n - 3] ?? inputs[n - 2]!, inputs[n - 2]!, p2, p2);
+    inputs = [p2];
     if (lastDirtyRect) {
       contentBounds = unionRects(contentBounds, lastDirtyRect);
       flush(lastDirtyRect);
@@ -484,6 +576,7 @@ export function createStroke(settings: BrushSettings, zoom: number, level = curr
     get lastDirtyRect() { return lastDirtyRect; },
     finish() {
       if (closed) return null;
+      drawTail();
       closed = true;
       if (!contentBounds) return null;
       const source = document.createElement("canvas");

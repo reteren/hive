@@ -156,3 +156,37 @@ describe("drawing core", () => {
     }
   });
 });
+
+describe("smoothed stroke path (debug 23 p.1)", () => {
+  it("turns at most a few degrees between pieces, ends exactly at p2 and never overshoots a sharp turn", async () => {
+    const { smoothStrokeSamples } = await import("../src/drawing/brush");
+    const p0 = { x: 0, y: 0 };
+    const p1 = { x: 40, y: 0 };
+    const p2 = { x: 40, y: 40 };
+    const p3 = { x: 0, y: 40 };
+    const samples = smoothStrokeSamples(p0, p1, p2, p3);
+    expect(samples.at(-1)).toEqual(p2);
+    const path = [p1, ...samples];
+    let maxTurn = 0;
+    for (let index = 2; index < path.length; index += 1) {
+      const a = Math.atan2(path[index - 1]!.y - path[index - 2]!.y, path[index - 1]!.x - path[index - 2]!.x);
+      const b = Math.atan2(path[index]!.y - path[index - 1]!.y, path[index]!.x - path[index - 1]!.x);
+      maxTurn = Math.max(maxTurn, Math.abs(Math.atan2(Math.sin(b - a), Math.cos(b - a))));
+    }
+    expect(maxTurn * 180 / Math.PI).toBeLessThanOrEqual(4.5);
+    for (const point of samples) {
+      expect(point.x).toBeGreaterThanOrEqual(39);
+      expect(point.x).toBeLessThanOrEqual(52);
+      expect(point.y).toBeGreaterThanOrEqual(-0.5);
+      expect(point.y).toBeLessThanOrEqual(40.5);
+    }
+  });
+
+  it("keeps straight input straight and survives repeated points", async () => {
+    const { smoothStrokeSamples } = await import("../src/drawing/brush");
+    expect(smoothStrokeSamples({ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 20, y: 0 }, { x: 30, y: 0 })).toEqual([{ x: 20, y: 0 }]);
+    const samples = smoothStrokeSamples({ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 10, y: 10 }, { x: 10, y: 10 });
+    expect(samples.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y))).toBe(true);
+    expect(samples.at(-1)).toEqual({ x: 10, y: 10 });
+  });
+});
