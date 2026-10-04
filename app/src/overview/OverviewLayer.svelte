@@ -10,8 +10,17 @@
   import { beaconEditor } from "../beacons/beaconActions.svelte";
   import { zoneMode } from "../zones/zoneMode.svelte";
   import { camera } from "../board/camera.svelte";
+  import { tool } from "../tools/tool.svelte";
   import { overview, setOverviewActive } from "./overview.svelte";
-  import { isAltOnlyCandidate, overviewTextFits } from "./overviewLogic";
+  import {
+    beginAltOverviewGesture,
+    consumeDrawAltWheel,
+    endAltOverviewGesture,
+    isAltOnlyCandidate,
+    overviewTextFits,
+    shouldShowAltOverview,
+    type AltOverviewGesture,
+  } from "./overviewLogic";
 
   $effect(() => {
     if (!overview.active) return;
@@ -20,15 +29,19 @@
 
   const PAN_CODES = new Set(["KeyW", "KeyA", "KeyS", "KeyD"]);
 
+  function isDrawOverlayControl(target: EventTarget | null): boolean {
+    return target instanceof Element && target.closest("[data-draw-overlay-control]") !== null;
+  }
+
   onMount(() => {
     const pressedPointers = new Set<number>();
-    let altHeld = false;
+    let altGesture: AltOverviewGesture = endAltOverviewGesture();
     let activationFrame = 0;
 
     function cancelActivation(): void {
       if (activationFrame !== 0) cancelAnimationFrame(activationFrame);
       activationFrame = 0;
-      altHeld = false;
+      altGesture = endAltOverviewGesture();
       setOverviewActive(false);
     }
 
@@ -43,7 +56,9 @@
       if (selection.grabActive) return "grab";
       if (zoneMode.active === "move") return "zone move";
       if (zoneMode.resizeZoneId !== null) return "zone resize";
-      if (isTextEditingTarget(document.activeElement)) return "text field focused";
+      const activeElement = document.activeElement;
+      const focusedDrawControl = tool.active === "draw" && isDrawOverlayControl(activeElement);
+      if (isTextEditingTarget(activeElement) && !focusedDrawControl) return "text field focused";
       // Only real pop-up menus block. (The Mark as tag editor used to be listed here: it is part
       // of every Mark as node and open by default, so one Mark as on the board disabled Alt forever.)
       const open = document.querySelector(
@@ -67,7 +82,8 @@
         diagnose(`hook Alt down → blocked: ${blocker}`);
         return;
       }
-      altHeld = true;
+      if (altGesture.held && altGesture.wheelConsumed) return;
+      altGesture = beginAltOverviewGesture();
       setOverviewActive(true);
       diagnose("hook Alt down → overview on");
     }
@@ -81,8 +97,8 @@
         return;
       }
       if (event.repeat) return;
+      if (altGesture.held && altGesture.wheelConsumed) return;
 
-      altHeld = true;
       // Only the modifier state of THIS event counts: a remembered set of pressed keys goes stale
       // when a key-up never reaches the window (Space swallowed by the Inbox shortcut hook, Tab
       // after Alt+Tab) and then blocked the overview forever.
@@ -91,6 +107,7 @@
         return;
       }
 
+      altGesture = beginAltOverviewGesture();
       if (activationFrame !== 0) cancelAnimationFrame(activationFrame);
       // Switch immediately (no extra frame): the checks above already passed on this very key-down.
       setOverviewActive(true);
@@ -103,7 +120,13 @@
     function onPointerDown(event: PointerEvent): void {
       // Middle button = camera pan: allowed while looking at the overview.
       if (event.button === 1) return;
+      const drawBoardTarget = tool.active === "draw" && event.target instanceof Element && event.target.closest(".board") !== null;
       pressedPointers.add(event.pointerId);
+      if (overview.active && drawBoardTarget) {
+        // This click dismisses the overview; do not also turn it into the first drawing gesture.
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
       if (overview.active || activationFrame !== 0) cancelActivation();
     }
 
@@ -115,6 +138,15 @@
     // buttons proves nothing is pressed any more.
     function onPointerMove(event: PointerEvent): void {
       if (event.buttons === 0 && pressedPointers.size !== 0) pressedPointers.clear();
+    }
+
+    function onWheel(event: WheelEvent): void {
+      const next = consumeDrawAltWheel(altGesture, tool.active === "draw", event);
+      if (next === altGesture) return;
+      altGesture = next;
+      if (!overview.active || shouldShowAltOverview(altGesture)) return;
+      setOverviewActive(false);
+      diagnose("Alt + wheel in draw mode → overview off; brush opacity remains available");
     }
 
     function onBlur(): void {
@@ -140,6 +172,7 @@
     window.addEventListener("pointerup", onPointerEnd, true);
     window.addEventListener("pointercancel", onPointerEnd, true);
     window.addEventListener("pointermove", onPointerMove, true);
+    window.addEventListener("wheel", onWheel, true);
     window.addEventListener("blur", onBlur);
 
     return () => {
@@ -151,6 +184,7 @@
       window.removeEventListener("pointerup", onPointerEnd, true);
       window.removeEventListener("pointercancel", onPointerEnd, true);
       window.removeEventListener("pointermove", onPointerMove, true);
+      window.removeEventListener("wheel", onWheel, true);
       window.removeEventListener("blur", onBlur);
       if (activationFrame !== 0) cancelAnimationFrame(activationFrame);
       setOverviewActive(false);
@@ -162,4 +196,11 @@
 
 <style>
   .overview-input-layer { display: none; }
+
+  :global(body[data-alt-overview="true"] [data-draw-cursor]),
+  :global(body[data-alt-overview="true"] [data-draw-reticle]),
+  :global(body[data-alt-overview="true"] [data-brush-hint]),
+  :global(body[data-alt-overview="true"] [data-eyedropper]) {
+    visibility: hidden;
+  }
 </style>

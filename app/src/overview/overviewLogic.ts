@@ -105,6 +105,35 @@ export function isAltOnlyCandidate(event: Pick<KeyboardEvent, "key" | "code" | "
     event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey && !event.repeat;
 }
 
+export interface AltOverviewGesture {
+  held: boolean;
+  wheelConsumed: boolean;
+}
+
+export function beginAltOverviewGesture(): AltOverviewGesture {
+  return { held: true, wheelConsumed: false };
+}
+
+/** Alt + wheel belongs to the drawing brush while draw mode is active. */
+export function consumeDrawAltWheel(
+  gesture: AltOverviewGesture,
+  drawMode: boolean,
+  event: Pick<WheelEvent, "altKey" | "ctrlKey" | "shiftKey" | "metaKey">,
+): AltOverviewGesture {
+  if (!gesture.held || gesture.wheelConsumed || !drawMode || !event.altKey || event.ctrlKey || event.shiftKey || event.metaKey) {
+    return gesture;
+  }
+  return { ...gesture, wheelConsumed: true };
+}
+
+export function shouldShowAltOverview(gesture: AltOverviewGesture): boolean {
+  return gesture.held && !gesture.wheelConsumed;
+}
+
+export function endAltOverviewGesture(): AltOverviewGesture {
+  return { held: false, wheelConsumed: false };
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

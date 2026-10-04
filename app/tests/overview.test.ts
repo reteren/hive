@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  beginAltOverviewGesture,
+  consumeDrawAltWheel,
+  endAltOverviewGesture,
   isAltOnlyCandidate,
   overviewFontSize,
   overviewLabelFor,
   overviewTextFits,
   overviewZoneFontSize,
   overviewZoneLabel,
+  shouldShowAltOverview,
 } from "../src/overview/overviewLogic";
 
 describe("overview labels", () => {
@@ -53,6 +57,34 @@ describe("Alt overview activation", () => {
     expect(isAltOnlyCandidate(event({ metaKey: true }))).toBe(false);
     expect(isAltOnlyCandidate(event({ repeat: true }))).toBe(false);
     expect(isAltOnlyCandidate(event({ key: "s", code: "KeyS" }))).toBe(false);
+  });
+
+  it("keeps a held Alt tap as overview, then yields Alt+wheel to brush opacity in draw mode", () => {
+    const tap = beginAltOverviewGesture();
+    expect(shouldShowAltOverview(tap)).toBe(true);
+    expect(shouldShowAltOverview(endAltOverviewGesture())).toBe(false);
+
+    const altWheel = consumeDrawAltWheel(tap, true, {
+      altKey: true,
+      ctrlKey: false,
+      shiftKey: false,
+      metaKey: false,
+    });
+    expect(altWheel.wheelConsumed).toBe(true);
+    expect(shouldShowAltOverview(altWheel)).toBe(false);
+
+    expect(shouldShowAltOverview(consumeDrawAltWheel(tap, false, {
+      altKey: true,
+      ctrlKey: false,
+      shiftKey: false,
+      metaKey: false,
+    }))).toBe(true);
+    expect(shouldShowAltOverview(consumeDrawAltWheel(tap, true, {
+      altKey: true,
+      ctrlKey: true,
+      shiftKey: false,
+      metaKey: false,
+    }))).toBe(true);
   });
 });
 

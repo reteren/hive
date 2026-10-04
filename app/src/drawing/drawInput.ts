@@ -6,6 +6,7 @@ import { drawToolHandler } from "./toolRegistry";
 import { beginEyedropper, cancelEyedropper, finishEyedropper, moveEyedropper } from "./eyedropper.svelte";
 import type { DrawPointerEvent, DrawTool, DrawToolHandler } from "./types";
 import { tool } from "../tools/tool.svelte";
+import { overview } from "../overview/overview.svelte";
 
 export type DrawShortcut =
   | { kind: "tool"; tool: DrawTool }
@@ -107,18 +108,17 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
 
   function onPointerDown(event: PointerEvent): void {
     if (tool.active !== "draw" || isDrawOverlayControl(event.target)) return;
+    if (overview.active) {
+      consume(event);
+      return;
+    }
     if (event.button === 2) {
       // Right button = eyedropper while held; release confirms the colour into the brush.
       consume(event);
       if (gesturePointerId !== null) return;
       eyedropperPointerId = event.pointerId;
-      try {
-        boardElement.setPointerCapture(event.pointerId);
-      } catch {
-        // The pointer may already have been cancelled by the platform.
-      }
       const point = pointerEvent(event);
-      beginEyedropper(point.world, point.zoom);
+      beginEyedropper(point, boardElement, event);
       return;
     }
     if (event.button !== 0) return;
@@ -139,10 +139,22 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
   }
 
   function onPointerMove(event: PointerEvent): void {
+    if (overview.active) {
+      if (eyedropperPointerId === event.pointerId) {
+        consume(event);
+        eyedropperPointerId = null;
+        cancelEyedropper();
+      }
+      if (gesturePointerId === event.pointerId) {
+        consume(event);
+        cancelGesture();
+      }
+      return;
+    }
     if (eyedropperPointerId === event.pointerId && gesturePointerId === null) {
       consume(event);
       const point = pointerEvent(event);
-      moveEyedropper(point.world, point.zoom);
+      moveEyedropper(point);
       return;
     }
     if (gesturePointerId !== event.pointerId) return;
@@ -156,11 +168,23 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
   }
 
   function onPointerUp(event: PointerEvent): void {
+    if (overview.active) {
+      if (eyedropperPointerId === event.pointerId) {
+        consume(event);
+        eyedropperPointerId = null;
+        cancelEyedropper();
+      }
+      if (gesturePointerId === event.pointerId) {
+        consume(event);
+        cancelGesture();
+      }
+      return;
+    }
     if (eyedropperPointerId === event.pointerId && event.button === 2) {
       consume(event);
       eyedropperPointerId = null;
-      if (boardElement.hasPointerCapture(event.pointerId)) boardElement.releasePointerCapture(event.pointerId);
-      if (tool.active === "draw") finishEyedropper();
+      const point = pointerEvent(event);
+      if (tool.active === "draw") void finishEyedropper(point);
       else cancelEyedropper();
       return;
     }
@@ -230,11 +254,19 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
       deactivateDrawInput();
       return;
     }
+    // Leave the Alt modifier alone for OverviewLayer; drawing shortcuts must not consume it.
+    if (event.key === "Alt" || event.code === "AltLeft" || event.code === "AltRight") return;
     const handler = refreshHandler();
     if (event.code !== "Escape" && (isDrawOverlayControl(event.target) || isTextEditingTarget(event.target) ||
       isTextEditingTarget(document.activeElement))) return;
 
     if (event.code === "Escape" && !event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
+      if (eyedropperPointerId !== null) {
+        eyedropperPointerId = null;
+        cancelEyedropper();
+        consume(event);
+        return;
+      }
       // First Esc lets the active tool finish its own state (commit a floating selection, close a
       // polygon); only an Esc the tool does not need leaves draw mode. The tool sees the event before
       // it is consumed, since handlers ignore already-handled (defaultPrevented) keys.
