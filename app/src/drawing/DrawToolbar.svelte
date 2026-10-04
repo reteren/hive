@@ -1,19 +1,14 @@
 <script lang="ts">
   import MediaSlider from "../media-ui/MediaSlider.svelte";
+  import HexColorPicker from "../color/HexColorPicker.svelte";
   import { tool } from "../tools/tool.svelte";
   import DrawCursor from "./DrawCursor.svelte";
   import { drawingTools, setBrushSettings } from "./tools.svelte";
 
-  const palette = ["#e8e8e8", "#f2c14e", "#e4572e", "#52a675", "#4a90e2", "#b07ac5", "#252525"];
 
-  let colorDraft = $state(drawingTools.brush.color);
   let isDrawing = $derived(tool.active === "draw");
   let opacitySlider = $derived(Math.round((drawingTools.brush.opacity - 0.05) / 0.95 * 100));
   let hardnessSlider = $derived(Math.round(drawingTools.brush.hardness * 100));
-
-  $effect(() => {
-    colorDraft = drawingTools.brush.color;
-  });
 
   function updateSize(value: number): void {
     setBrushSettings({ size: value + 1 });
@@ -27,10 +22,6 @@
     setBrushSettings({ hardness: value / 100 });
   }
 
-  function commitColor(): void {
-    if (/^#[0-9a-f]{6}$/i.test(colorDraft)) setBrushSettings({ color: colorDraft });
-    else colorDraft = drawingTools.brush.color;
-  }
 </script>
 
 {#if isDrawing}
@@ -41,29 +32,13 @@
     </header>
 
 
-    <label class="field color-field">
+    <div class="field">
       <span>Color</span>
-      <input
-        class="hex-input"
-        type="text"
-        maxlength="7"
-        spellcheck="false"
-        aria-label="Brush color hex"
-        bind:value={colorDraft}
-        onchange={commitColor}
+      <HexColorPicker
+        value={drawingTools.brush.color}
+        label="Brush colour"
+        oninput={(color) => setBrushSettings({ color })}
       />
-    </label>
-    <div class="color-palette" role="group" aria-label="Color palette">
-      {#each palette as color (color)}
-        <button
-          type="button"
-          class:selected={drawingTools.brush.color === color}
-          style={`--swatch:${color}`}
-          aria-label={`Set brush color ${color}`}
-          aria-pressed={drawingTools.brush.color === color}
-          onclick={() => setBrushSettings({ color })}
-        ></button>
-      {/each}
     </div>
 
     <label class="field slider-field">
@@ -159,7 +134,7 @@
     cursor: pointer;
   }
 
-  button:hover, button[aria-pressed="true"] {
+  button:hover {
     border-color: #a7a7a7;
     background: #3b3b3b;
   }
@@ -176,7 +151,7 @@
   .field > span { color: var(--text-dim, #bcbcbc); }
   .field strong { color: var(--text, #ededed); font-variant-numeric: tabular-nums; }
 
-  .hex-input, .number-input {
+  .number-input {
     min-width: 0;
     border: 1px solid var(--border, #454545);
     border-radius: 3px;
@@ -184,19 +159,6 @@
     color: var(--text, #ededed);
     background: #1b1b1b;
   }
-
-  .hex-input { width: 82px; font-family: var(--mono-font, monospace); }
-  .color-palette { display: flex; gap: 5px; }
-  .color-palette button { width: 19px; height: 19px; padding: 2px; }
-  .color-palette button::before {
-    display: block;
-    width: 100%;
-    height: 100%;
-    border-radius: 2px;
-    background: var(--swatch);
-    content: "";
-  }
-  .color-palette button.selected { outline: 1px solid #fff; outline-offset: 1px; }
   .size-control { gap: 9px; }
   .size-control :global(.media-slider) { flex: 1; }
   .number-input { width: 52px; padding: 3px 4px; }

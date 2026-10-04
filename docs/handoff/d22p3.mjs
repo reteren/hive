@@ -1,0 +1,80 @@
+// debug 22 part 2: line/draw sub-tools unfold under their hotbar button; draw panel has no tool grid.
+import { writeFileSync } from "node:fs";
+const OUT = "C:/Users/reteren/AppData/Local/Temp/claude";
+const page = (await fetch(`http://localhost:9334/json/list`).then((r) => r.json())).find((t) => t.type === "page" && t.url.includes("1450"));
+const ws = new WebSocket(page.webSocketDebuggerUrl); let id = 0; const pending = new Map(); const errors = [];
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.method === "Runtime.exceptionThrown") errors.push(m.params.exceptionDetails.exception?.description?.slice(0, 220)); if (pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+await new Promise((r) => (ws.onopen = r));
+const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+await send("Runtime.enable");
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const ev = async (expression) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); return r.result?.result?.value ?? r.result?.exceptionDetails?.exception?.description; };
+const mouse = (type, x, y) => send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" ? "none" : "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: type === "mouseMoved" ? 0 : 1 });
+const click = async (x, y) => { await mouse("mouseMoved", x, y); await mouse("mousePressed", x, y); await mouse("mouseReleased", x, y); await wait(300); };
+const key = async (k, code, vk, modifiers = 0) => { await send("Input.dispatchKeyEvent", { type: "keyDown", key: k, code, windowsVirtualKeyCode: vk, modifiers }); await send("Input.dispatchKeyEvent", { type: "keyUp", key: k, code, windowsVirtualKeyCode: vk, modifiers }); await wait(250); };
+const shot = async (n) => writeFileSync(`${OUT}/${n}.png`, Buffer.from((await send("Page.captureScreenshot", { format: "png" })).result.data, "base64"));
+// debug 22 part 3: one HEX palette (SV square, hue, HEX field, recent colours) in draw, zone, beacon, Mark as.
+const drag = async (x1, y1, x2, y2) => { await mouse("mouseMoved", x1, y1); await send("Input.dispatchMouseEvent", { type: "mousePressed", x: x1, y: y1, button: "left", buttons: 1, clickCount: 1 }); for (let i = 1; i <= 8; i++) await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: x1 + (x2 - x1) * i / 8, y: y1 + (y2 - y1) * i / 8, button: "left", buttons: 1 }); await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: x2, y: y2, button: "left", buttons: 0, clickCount: 1 }); await wait(300); };
+const rect = (sel) => ev(`(()=>{const e=document.querySelector(${JSON.stringify(sel)});if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height}})()`);
+const hist = () => ev(`(async()=>{const h=await import('/src/history/history.svelte.ts');return h.history.entries.length+':'+(h.history.entries.at(-1)?.label??'')})()`);
+await send("Page.reload"); await wait(2500);
+await ev(`(async()=>{const b=await import('/src/model/board.svelte.ts');const z=await import('/src/model/zones.svelte.ts');const g=await import('/src/model/zone.ts');const cam=await import('/src/board/camera.svelte.ts');const h=await import('/src/history/history.svelte.ts');try{localStorage.removeItem('hive.recentColors')}catch{};cam.camera.x=0;cam.camera.y=0;cam.camera.zoom=1;const n=Date.now();z.addZone({id:'z1',name:'Zone A',color:'#6a9fd4',parts:[g.rectContour(-60,-30,40,30)],holes:[],createdAt:n});b.addNote({id:'bc',type:'beacon',name:'Hub',text:'',x:30,y:-30,width:7.2,height:7.2,color:'#c85a5a',createdAt:n+1});b.addNote({id:'mk',type:'markas',name:'Mark as',text:'',x:30,y:5,width:30,height:null,createdAt:n+2});h.clear();return 1})()`);
+await wait(600);
+// 1 draw panel
+await mouse("mouseMoved", 700, 600); await key("d", "KeyD", 68, 2); await wait(400);
+let r = await rect('[data-draw-toolbar] .sv-area');
+console.log("1 draw picker", !!r);
+await drag(r.x + 5, r.y + 5, r.x + r.w * 0.8, r.y + r.h * 0.3);
+console.log("1 brush colour after drag:", await ev(`(async()=>(await import('/src/drawing/tools.svelte.ts')).drawingTools.brush.color)()`), "recent", await ev(`document.querySelectorAll('[data-draw-toolbar] .recent-swatch').length`));
+await shot("d22p3-draw");
+await key("d", "KeyD", 68, 2);
+// 2 zone: RMB on zone → Change color → drag → outside click keeps, one Undo entry
+const zc = await ev(`(async()=>{const cam=await import('/src/board/camera.svelte.ts');const cm=await import('/src/board/cameraMath.ts');const b=document.querySelector('.board').getBoundingClientRect();const p=cm.worldToScreen(cam.camera,cam.viewport,{x:-40,y:-15});return [p.x+b.left,p.y+b.top]})()`);
+await mouse("mouseMoved", zc[0], zc[1]);
+await send("Input.dispatchMouseEvent", { type: "mousePressed", x: zc[0], y: zc[1], button: "right", buttons: 2, clickCount: 1 });
+await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: zc[0], y: zc[1], button: "right", buttons: 0, clickCount: 1 }); await wait(400);
+console.log("2 zone menu:", await ev(`[...document.querySelectorAll('[data-zone-menu] button')].map(b=>b.textContent.trim()).join(' | ')`));
+const cc = await ev(`(()=>{const b=[...document.querySelectorAll('[data-zone-menu] button')].find(b=>b.textContent.trim()==='Change color');const r=b.getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()`);
+await click(cc[0], cc[1]);
+r = await rect('[data-zone-menu] .sv-area');
+const h0 = await hist();
+await mouse("mouseMoved", r.x + 10, r.y + 10); await send("Input.dispatchMouseEvent", { type: "mousePressed", x: r.x + 10, y: r.y + 10, button: "left", buttons: 1, clickCount: 1 });
+await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: r.x + r.w * 0.9, y: r.y + 20, button: "left", buttons: 1 }); await wait(150);
+console.log("2 zone colour mid-drag (live):", await ev(`(async()=>(await import('/src/model/zones.svelte.ts')).zones.byId.z1.color)()`), "history", await hist());
+await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: r.x + r.w * 0.9, y: r.y + 20, button: "left", buttons: 0, clickCount: 1 }); await wait(200);
+await shot("d22p3-zone");
+await click(900, 700); await wait(300);
+console.log("2 after close:", await ev(`(async()=>(await import('/src/model/zones.svelte.ts')).zones.byId.z1.color)()`), "menu", await ev(`!!document.querySelector('[data-zone-menu]')`), "history", h0, "->", await hist());
+await key("z", "KeyZ", 90, 2); await wait(300);
+console.log("2 undo →", await ev(`(async()=>(await import('/src/model/zones.svelte.ts')).zones.byId.z1.color)()`));
+// 3 beacon: Change color, drag, Esc reverts; again + Done keeps
+await ev(`(async()=>{(await import('/src/beacons/beaconActions.svelte.ts')).openBeaconEditor('bc','color')})()`); await wait(400);
+r = await rect('[data-beacon-editor] .hue-bar');
+await drag(r.x + 2, r.y + 5, r.x + r.w * 0.6, r.y + 5);
+const live = await ev(`(async()=>(await import('/src/model/board.svelte.ts')).board.notes.bc.color)()`);
+await key("Escape", "Escape", 27);
+console.log("3 beacon live", live, "→ Esc", await ev(`(async()=>(await import('/src/model/board.svelte.ts')).board.notes.bc.color)()`), "editor", await ev(`!!document.querySelector('[data-beacon-editor]')`));
+await ev(`(async()=>{(await import('/src/beacons/beaconActions.svelte.ts')).openBeaconEditor('bc','color')})()`); await wait(400);
+r = await rect('[data-beacon-editor] .hue-bar');
+await drag(r.x + 2, r.y + 5, r.x + r.w * 0.4, r.y + 5);
+await shot("d22p3-beacon");
+const done = await ev(`(()=>{const b=[...document.querySelectorAll('[data-beacon-editor] button')].find(b=>b.textContent.trim()==='Done');const r=b.getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()`);
+await click(done[0], done[1]);
+console.log("3 Done:", await ev(`(async()=>(await import('/src/model/board.svelte.ts')).board.notes.bc.color)()`), "history", await hist());
+// 4 Mark as: Color button unfolds the palette and grows the node
+const mkH = () => ev(`Math.round(document.querySelector('[data-note-id="mk"]').getBoundingClientRect().height)`);
+const h1 = await mkH();
+const tg = await rect('[data-note-id="mk"] [data-markas-color-toggle]');
+if (!tg) { const c = await rect('[data-note-id="mk"] [data-markas-collapse]'); await click(c.x + c.w / 2, c.y + c.h / 2); }
+const t2 = await rect('[data-note-id="mk"] [data-markas-color-toggle]');
+await click(t2.x + t2.w / 2, t2.y + t2.h / 2);
+const h2 = await mkH();
+r = await rect('[data-note-id="mk"] .sv-area');
+await drag(r.x + r.w * 0.5, r.y + 5, r.x + r.w * 0.9, r.y + 10);
+console.log("4 markas height", h1, "→", h2, "picker", !!r, "toggle text", await ev(`document.querySelector('[data-markas-color-toggle]').textContent.trim()`));
+await shot("d22p3-markas");
+await click(t2.x + t2.w / 2, t2.y + t2.h / 2);
+console.log("4 folded:", await mkH(), "picker", await ev(`!!document.querySelector('[data-note-id="mk"] .sv-area')`));
+console.log("5 recent:", await ev(`localStorage.getItem('hive.recentColors')`));
+console.log("errors:", errors);
+process.exit(0);

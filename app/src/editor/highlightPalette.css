@@ -1,0 +1,43 @@
+/* Highlight palette (Ctrl+Shift+H) is mounted in <body>, so it is styled globally rather than by the editor theme. */
+.hive-highlight-palette {
+  position: fixed;
+  z-index: 900;
+  display: flex;
+  width: 214px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px 8px;
+  border: 1px solid #505050;
+  border-radius: 4px;
+  background-color: var(--bg-panel);
+  box-shadow: 0 3px 10px rgb(0 0 0 / 55%);
+}
+
+.hive-highlight-title {
+  padding-right: 2px;
+  color: var(--text-dim);
+  font-family: var(--ui-font);
+  font-size: 11px;
+}
+
+.hive-highlight-swatch {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid rgb(0 0 0 / 45%);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.hive-highlight-swatch:hover,
+.hive-highlight-swatch:focus-visible {
+  transform: scale(1.12);
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+}
+
+.hive-highlight-picker {
+  flex-basis: 100%;
+  padding-top: 4px;
+}

@@ -86,16 +86,8 @@
   font: inherit;
 }
 .beacon-editor input[aria-invalid="true"] { border-color: #d87a75; }
-.beacon-palette { display: flex; gap: 7px; margin-bottom: 9px; }
-.beacon-swatch {
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: 2px solid transparent;
-  border-radius: 50%;
-  cursor: pointer;
-}
-.beacon-swatch[aria-pressed="true"] { border-color: white; }
+.beacon-editor:focus { outline: none; }
+.beacon-editor-title { display: block; margin-bottom: 8px; color: #bdbdbd; font-size: 11px; }
 .beacon-editor-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 9px; }
 .beacon-editor-actions button {
   padding: 4px 8px;

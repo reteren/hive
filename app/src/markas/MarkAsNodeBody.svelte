@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { CustomMark } from "../model/nodeData";
+  import HexColorPicker from "../color/HexColorPicker.svelte";
   import { MARKAS_PALETTE } from "./markasLogic";
   import { removeMarkAsTag, saveMarkAsTag, setCustomMarkFrame } from "./markasActions.svelte";
   import { isMarkAsEditorCollapsed, toggleMarkAsEditor } from "./markasUi.svelte";
@@ -12,6 +13,8 @@
   let draftText = $state("");
   let draftColor = $state<string>(MARKAS_PALETTE[0]);
   let error = $state("");
+  /** The Color button unfolds the HEX palette inside the node; pressing it again folds it. */
+  let colorOpen = $state(false);
   let textInput = $state<HTMLInputElement | null>(null);
 
   const HEX = /^#[0-9a-f]{6}$/i;
@@ -60,7 +63,7 @@
   <div class="markas-head">
     <ul class="markas-tags" aria-label="Tags">
       {#each marks as mark (mark.id)}
-        <li class="markas-tag" class:editing={editingId === mark.id} style:--tag-color={mark.color}>
+        <li class="markas-tag" class:editing={editingId === mark.id} style:--tag-color={editingId === mark.id ? draftColor : mark.color}>
           <button type="button" class="markas-tag-label" title="Edit tag" onclick={() => editMark(mark)}>
             <span class="markas-dot" aria-hidden="true"></span>
             <span class="markas-tag-text">{mark.text}</span>
@@ -111,29 +114,26 @@
 
       <div class="markas-field">
         <span class="markas-field-name">Color</span>
-        <div class="markas-colors">
-          {#each MARKAS_PALETTE as color (color)}
-            <button
-              type="button"
-              class="markas-swatch"
-              class:selected={draftColor.toLowerCase() === color}
-              style:--tag-color={color}
-              aria-label={`Color ${color}`}
-              aria-pressed={draftColor.toLowerCase() === color}
-              onpointerdown={(event) => event.preventDefault()}
-              onclick={() => { draftColor = color; }}
-            ></button>
-          {/each}
-          <label class="markas-custom-color" title="Custom color" style:--tag-color={HEX.test(draftColor) ? draftColor : "#888888"}>
-            <input
-              type="color"
-              value={HEX.test(draftColor) ? draftColor : MARKAS_PALETTE[0]}
-              aria-label="Custom color"
-              oninput={(event) => { draftColor = event.currentTarget.value; }}
-            />
-          </label>
-        </div>
+        <button
+          type="button"
+          class="markas-color-toggle"
+          class:open={colorOpen}
+          style:--tag-color={HEX.test(draftColor) ? draftColor : "#888888"}
+          aria-expanded={colorOpen}
+          data-markas-color-toggle
+          onpointerdown={(event) => event.preventDefault()}
+          onclick={() => { colorOpen = !colorOpen; }}
+        >
+          <span class="markas-dot" aria-hidden="true"></span>
+          <span class="markas-color-code">{draftColor}</span>
+          <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 4l2.5 2.5L7.5 4" /></svg>
+        </button>
       </div>
+      {#if colorOpen}
+        <div class="markas-picker" data-markas-picker>
+          <HexColorPicker value={draftColor} label="Tag colour" oninput={(color) => { draftColor = color; }} />
+        </div>
+      {/if}
 
       <div class="markas-footer">
         <label class="markas-frame" title="Colour the frame of the note this Mark as is inserted in or linked to">
@@ -300,46 +300,25 @@
 
   .markas-text:focus { border-color: var(--accent); outline: none; }
 
-  .markas-colors {
+  .markas-color-toggle {
     display: flex;
-    flex-wrap: wrap;
+    min-width: 0;
     align-items: center;
-    gap: 5px;
-  }
-
-  .markas-swatch,
-  .markas-custom-color {
-    width: 14px;
-    height: 14px;
-    flex: 0 0 auto;
-    padding: 0;
-    border: 1px solid color-mix(in srgb, var(--tag-color) 70%, #fff);
-    border-radius: 50%;
-    background: var(--tag-color);
+    gap: 6px;
+    padding: 3px 6px;
+    border: 1px solid #454545;
+    border-radius: 3px;
+    background: #1a1a1a;
+    color: #ddd;
+    font: inherit;
     cursor: pointer;
   }
 
-  .markas-swatch.selected {
-    box-shadow: 0 0 0 2px #1f1f1f, 0 0 0 3px #eee;
-  }
-
-  /* Custom colour: a rainbow ring around the current custom colour; the native picker is invisible on top. */
-  .markas-custom-color {
-    position: relative;
-    border: 2px solid transparent;
-    background:
-      linear-gradient(var(--tag-color), var(--tag-color)) padding-box,
-      conic-gradient(#e58b83, #e5bd67, #91bd81, #70b7b4, #78a8d2, #aa8bd2, #d58bae, #e58b83) border-box;
-  }
-
-  .markas-custom-color input {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    opacity: 0;
-    cursor: pointer;
-  }
+  .markas-color-toggle:hover, .markas-color-toggle.open { border-color: #777; }
+  .markas-color-toggle .markas-color-code { flex: 1; font-family: var(--mono-font, monospace); text-align: left; }
+  .markas-color-toggle svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.4; transition: transform 140ms ease; }
+  .markas-color-toggle.open svg { transform: rotate(180deg); }
+  .markas-picker { padding: 2px 0 2px; }
 
   .markas-footer {
     display: flex;

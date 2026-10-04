@@ -1,0 +1,30 @@
+import { normalizeHex } from "./hex";
+
+const STORAGE_KEY = "hive.recentColors";
+export const RECENT_COLOR_LIMIT = 10;
+
+function load(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((item) => (typeof item === "string" ? normalizeHex(item) : null))
+      .filter((item): item is string => item !== null)
+      .slice(0, RECENT_COLOR_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+/** Last picked colours, shared by every HEX palette in the app (newest first). */
+export const recentColors = $state({ list: load() });
+
+export function pushRecentColor(color: string): void {
+  const hex = normalizeHex(color);
+  if (!hex) return;
+  recentColors.list = [hex, ...recentColors.list.filter((item) => item !== hex)].slice(0, RECENT_COLOR_LIMIT);
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(recentColors.list));
+  } catch {
+    // Storage can be unavailable (private mode, tests); the list still works for this session.
+  }
+}

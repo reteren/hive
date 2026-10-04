@@ -1,4 +1,5 @@
 <script lang="ts">
+  import HexColorPicker from "../color/HexColorPicker.svelte";
   import { onMount, tick } from "svelte";
   import { flip } from "svelte/animate";
   import { get } from "svelte/store";
@@ -49,7 +50,6 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
   } from "./actions.svelte";
   import {
     areTierHintsDismissed,
-    DEFAULT_NEW_TIER_COLOR,
     markTierHintsDismissed,
     tierCardPreview,
     tierLabelTextColor,
@@ -127,7 +127,6 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
   let hoveredRowId: string | null = null;
   let failedYouTubeCardId = $state<string | null>(null);
 
-  const rowColors = ["#FF4B5C", "#FFB347", "#FFE66D", "#C3FF68", "#7DFFB3", "#5CD8FF", "#9F8BFF", DEFAULT_NEW_TIER_COLOR];
 
   onMount(() => registerDropTarget({
     ownerId: note.id,
@@ -232,7 +231,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
     event.preventDefault();
     event.stopPropagation();
     contextRowId = contextRowId === row.id ? null : row.id;
-    if (contextRowId) void tick().then(() => contextMenuElement?.querySelector<HTMLButtonElement>(".tier-swatch")?.focus());
+    if (contextRowId) void tick().then(() => contextMenuElement?.querySelector<HTMLElement>(".tier-picker [role=slider]")?.focus());
   }
 
   function beginRenameRow(row: TierRow, event: MouseEvent): void {
@@ -825,19 +824,12 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
         {#if contextRowId === row.id}
           <div class="tier-context-menu" data-selection-ignore role="menu" aria-label={`${row.name} tier options`} bind:this={contextMenuElement}>
             <span class="tier-menu-heading">Colour</span>
-            <div class="tier-palette">
-              {#each rowColors as color (color)}
-                <button
-                  class="tier-swatch"
-                  class:current={color.toLowerCase() === row.color.toLowerCase()}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={color.toLowerCase() === row.color.toLowerCase()}
-                  aria-label={`Set ${row.name} colour ${color}`}
-                  style:--swatch={color}
-                  onclick={() => { recolorTierlistRow(note.id, row.id, color); contextRowId = null; }}
-                ></button>
-              {/each}
+            <div class="tier-picker">
+              <HexColorPicker
+                value={row.color}
+                label={`${row.name} colour`}
+                onchange={(color) => { if (color.toLowerCase() !== row.color.toLowerCase()) recolorTierlistRow(note.id, row.id, color); }}
+              />
             </div>
             <button class="tier-menu-add-image" data-tier-add-image type="button" role="menuitem" onclick={() => { void addImageFromPicker(row.id); }}>
               Add image…
@@ -1101,9 +1093,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
   }
 
   .tier-menu-heading { color: #b7b9bf; font-size: 10px; }
-  .tier-palette { display: flex; flex-wrap: wrap; gap: 4px; }
-  .tier-swatch { width: 19px; height: 19px; padding: 0; border: 1px solid #ffffff50; border-radius: 50%; background: var(--swatch); cursor: pointer; }
-  .tier-swatch.current { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .tier-picker { width: 190px; }
   .tier-menu-delete { padding: 5px 6px; border: 1px solid #51545a; border-radius: 3px; color: #f0dada; background: #39282b; text-align: left; cursor: pointer; }
   .tier-menu-add-image { padding: 5px 6px; border: 1px solid #51545a; border-radius: 3px; color: #e2e2e4; background: #2b2d32; text-align: left; cursor: pointer; }
   .tier-menu-add-image:hover, .tier-menu-add-image:focus-visible { border-color: var(--accent); color: #f2d277; }

@@ -1,6 +1,9 @@
 import { Transaction } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
+import { mount, unmount } from "svelte";
 import { createHighlightChange, DEFAULT_HIGHLIGHT_COLOR } from "./highlight";
+import HexColorPicker from "../color/HexColorPicker.svelte";
+import "./highlightPalette.css";
 
 const paletteColors = [
   DEFAULT_HIGHLIGHT_COLOR,
@@ -11,6 +14,7 @@ const paletteColors = [
 ];
 
 const palettes = new WeakMap<EditorView, HTMLDivElement>();
+const pickers = new WeakMap<EditorView, Record<string, unknown>>();
 let lastColor = DEFAULT_HIGHLIGHT_COLOR;
 
 export function applyHighlightColor(view: EditorView, color: string): boolean {
@@ -31,7 +35,21 @@ export function applyHighlightColor(view: EditorView, color: string): boolean {
   return true;
 }
 
+function placePalette(view: EditorView, palette: HTMLElement): void {
+  const anchor = view.coordsAtPos(view.state.selection.main.from) ?? view.dom.getBoundingClientRect();
+  const size = palette.getBoundingClientRect();
+  const inset = 6;
+  const below = anchor.bottom + 6;
+  const top = below + size.height <= window.innerHeight - inset ? below : Math.max(inset, anchor.top - size.height - 6);
+  const left = Math.min(Math.max(inset, anchor.left), window.innerWidth - size.width - inset);
+  palette.style.left = `${left}px`;
+  palette.style.top = `${top}px`;
+}
+
 export function closeHighlightPalette(view: EditorView): void {
+  const picker = pickers.get(view);
+  if (picker) void unmount(picker);
+  pickers.delete(view);
   palettes.get(view)?.remove();
   palettes.delete(view);
 }
@@ -42,10 +60,12 @@ export function openHighlightPalette(view: EditorView): boolean {
 
   const palette = document.createElement("div");
   palette.className = "hive-highlight-palette";
+  palette.setAttribute("data-selection-ignore", "");
   palette.setAttribute("role", "toolbar");
   palette.setAttribute("aria-label", "Highlight color palette");
   palette.addEventListener("mousedown", (event) => {
-    event.preventDefault();
+    // The HEX field needs focus; everything else keeps the editor selection.
+    if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
     event.stopPropagation();
   });
   palette.addEventListener("click", (event) => event.stopPropagation());
@@ -81,8 +101,28 @@ export function openHighlightPalette(view: EditorView): boolean {
     palette.append(button);
   }
 
-  view.dom.append(palette);
+  const pickerHost = document.createElement("div");
+  pickerHost.className = "hive-highlight-picker";
+  palette.append(pickerHost);
+  const picker = mount(HexColorPicker, {
+    target: pickerHost,
+    props: {
+      value: lastColor,
+      label: "Highlight colour",
+      onchange: (color: string) => {
+        lastColor = color;
+        applyHighlightColor(view, color);
+        closeHighlightPalette(view);
+        view.focus();
+      },
+    },
+  });
+
+  // Lives in <body>: inside the note it was clipped by the node frame.
+  document.body.append(palette);
   palettes.set(view, palette);
+  pickers.set(view, picker);
+  placePalette(view, palette);
   palette.querySelector("button")?.focus();
   return true;
 }

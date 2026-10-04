@@ -69,7 +69,7 @@ registerNoteMenuItem({
 
 registerNoteMenuItem({
   id: "beacons.color",
-  label: () => "Beacon colour",
+  label: () => "Change color",
   order: 21,
   visible: (noteId) => board.notes[noteId]?.type === "beacon",
   run: (noteId) => openBeaconEditor(noteId, "color"),
@@ -84,7 +84,7 @@ registerCommand({
 
 registerCommand({
   id: "beacons.color",
-  label: "Beacon colour",
+  label: "Change beacon color",
   keys: [],
   run: () => editSelectedBeacon("color"),
 });

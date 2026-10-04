@@ -8,7 +8,10 @@
   import { zoneBounds, zoneNameEdge } from "../model/zone";
   import { zoneMovePreview } from "./zoneMovePreview.svelte";
   import { tool } from "../tools/tool.svelte";
-  import { deleteZone, recolorZone, renameZone, ZONE_COLORS } from "./commands";
+  import { deleteZone, recolorZone, renameZone } from "./commands";
+  import { updateZone } from "../model/zones.svelte";
+  import HexColorPicker from "../color/HexColorPicker.svelte";
+  import { liveColorSession, type LiveColorSession } from "../color/liveColor";
   import { startZoneMembershipSync } from "./membership.svelte";
   import { boardPopupStyle, dismissBoardPopup, fitBoardPopupAnchor } from "../ui/boardAnchor";
   import { getCommand } from "../commands/registry.svelte";
@@ -20,7 +23,7 @@
   import { lineInteraction } from "../links/interaction.svelte";
   import OverviewLayer from "../overview/OverviewLayer.svelte";
 
-  type Menu = { id: string; x: number; y: number; zoomAtOpen: number; rename: boolean };
+  type Menu = { id: string; x: number; y: number; zoomAtOpen: number; rename: boolean; color?: boolean };
   let layer: HTMLDivElement;
   let surface: HTMLElement | null = null;
   let menu = $state<Menu | null>(null);
@@ -76,6 +79,32 @@
       rename,
     };
     if (rename) void tick().then(() => { renameInput?.focus(); renameInput?.select(); });
+  }
+
+  let colorSession: LiveColorSession | null = null;
+
+  function startRecolor(): void {
+    const zone = menu ? zones.byId[menu.id] : undefined;
+    if (!menu || !zone) return;
+    const id = zone.id;
+    colorSession?.finish(true);
+    colorSession = liveColorSession(zone.color, (color) => updateZone(id, { color }), (color) => recolorZone(id, color));
+    menu.color = true;
+    void tick().then(() => layer.querySelector<HTMLElement>(".zone-color-popup")?.focus());
+  }
+
+  // Any way the colour popup closes (outside click, another menu) keeps the picked colour; Esc restores it.
+  $effect(() => {
+    if (!menu?.color && colorSession) {
+      colorSession.finish(true);
+      colorSession = null;
+    }
+  });
+
+  function cancelRecolor(): void {
+    colorSession?.finish(false);
+    colorSession = null;
+    menu = null;
   }
 
   function startRename(): void {
@@ -224,19 +253,27 @@
     <div class="zone-menu" data-zone-menu data-selection-ignore role="menu" aria-label="Zone actions"
       style={boardPopupStyle(camera, viewport, { x: menu.x, y: menu.y }, menu.zoomAtOpen)}
       use:dismissBoardPopup={{ close: () => { menu = null; }, escape: false }}>
-      {#if menu.rename}
+      {#if menu.color}
+        <div class="zone-color-popup" role="dialog" aria-label="Zone colour" tabindex="-1" onkeydown={(event) => {
+          if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); cancelRecolor(); }
+          else if (event.key === "Enter" && !(event.target instanceof HTMLInputElement)) { event.preventDefault(); menu = null; }
+        }}>
+          <span class="zone-color-title">{zones.byId[menu.id].name}</span>
+          <HexColorPicker
+            value={zones.byId[menu.id].color}
+            label="Zone colour"
+            oninput={(color) => colorSession?.preview(color)}
+            onchange={(color) => colorSession?.preview(color)}
+          />
+        </div>
+      {:else if menu.rename}
         <input bind:this={renameInput} bind:value={draftName} aria-label="Zone name" onkeydown={(event) => {
           if (event.code === "Enter") { event.preventDefault(); commitRename(); }
           else if (event.code === "Escape") { event.preventDefault(); menu = null; }
         }} onblur={commitRename} />
       {:else}
         <button type="button" role="menuitem" onclick={startRename}>Rename</button>
-        <div class="zone-colours" aria-label="Zone colour">
-          <span>Colour</span>
-          {#each ZONE_COLORS as color}
-            <button type="button" class="colour" style:background={color} aria-label={`Set zone colour ${color}`} onclick={() => { if (menu) recolorZone(menu.id, color); menu = null; }}></button>
-          {/each}
-        </div>
+        <button type="button" role="menuitem" onclick={startRecolor}>Change color</button>
         <div class="zone-menu-divider" role="separator"></div>
         <button class="zone-menu-command" type="button" role="menuitem" onclick={() => startUniversalZoneAction("scale")}>
           <span>Scale</span><span class="zone-menu-shortcut">{menuShortcutLabel("select.scale")}</span>
@@ -266,7 +303,6 @@
   .zone-menu-command:hover .zone-menu-shortcut { color: #c4c4c4; }
   .zone-menu-divider { height: 1px; margin: 2px 7px; background: #474747; }
   .zone-menu input { width: 100%; box-sizing: border-box; padding: 5px; border: 1px solid var(--accent); border-radius: 2px; color: var(--text); background: #202020; }
-  .zone-colours { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; }
-  .zone-colours span { flex-basis: 100%; color: var(--text-dim); font-size: 10px; }
-  .zone-colours .colour { width: 20px; height: 20px; border: 1px solid #ffffff70; border-radius: 3px; cursor: pointer; }
+  .zone-color-popup { display: grid; gap: 7px; padding: 4px; outline: none; }
+  .zone-color-title { overflow: hidden; color: var(--text-dim); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 </style>
