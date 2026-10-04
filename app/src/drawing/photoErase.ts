@@ -116,11 +116,15 @@ export function photoIntersectsRasterRect(
 }
 
 /** Keep only image notes whose world bounds intersect an eraser stroke; GIFs/other nodes are excluded. */
-export function erasablePhotosInRasterRect(notes: Iterable<Note>, rect: RasterRect): { note: Note; geometry: PhotoEraseGeometry }[] {
+export function erasablePhotosInRasterRect(
+  notes: Iterable<Note>,
+  rect: RasterRect,
+  pixelsPerUnit = DRAW_PX_PER_UNIT,
+): { note: Note; geometry: PhotoEraseGeometry }[] {
   const result: { note: Note; geometry: PhotoEraseGeometry }[] = [];
   for (const note of notes) {
     const geometry = photoEraseGeometry(note);
-    if (geometry && photoIntersectsRasterRect(geometry, rect)) result.push({ note, geometry });
+    if (geometry && photoIntersectsRasterRect(geometry, rect, pixelsPerUnit)) result.push({ note, geometry });
   }
   return result;
 }
@@ -158,6 +162,7 @@ export async function erasePhotoCopyOnWrite(
   rasterX: number,
   rasterY: number,
   opacity: number,
+  pixelsPerUnit = DRAW_PX_PER_UNIT,
 ): Promise<ImageRef | null> {
   const geometry = photoEraseGeometry(note);
   if (!geometry || !note.image) return null;
@@ -179,7 +184,7 @@ export async function erasePhotoCopyOnWrite(
     context.save();
     context.globalCompositeOperation = "destination-out";
     context.globalAlpha = Math.max(0, Math.min(1, opacity));
-    const transform = photoMaskTransform(geometry, rasterX, rasterY);
+    const transform = photoMaskTransform(geometry, rasterX, rasterY, pixelsPerUnit);
     context.setTransform(transform.a, 0, 0, transform.d, transform.e, transform.f);
     context.drawImage(sourceMask, 0, 0);
     context.restore();

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { camera, viewport } from "../board/camera.svelte";
   import { PX_PER_UNIT, screenToWorld } from "../board/cameraMath";
-  import { DRAW_PX_PER_UNIT } from "./types";
+  import { levelPxPerUnit } from "./types";
   import {
     drawingSelection,
     resizeSelectionArea,
@@ -26,7 +26,11 @@
   const areaBounds = $derived(area ? selectionBoundsWorldPixels(area) : null);
   const handleSize = $derived(8 / camera.zoom);
   const selectionPath = $derived(area ? pathForArea(area, displayOffset) : null);
-  const previewPath = $derived(drawingSelection.preview ? pathForPreview(drawingSelection.preview.tool, drawingSelection.preview.points) : null);
+  const previewPath = $derived(drawingSelection.preview
+    ? pathForPreview(drawingSelection.preview.tool, drawingSelection.preview.points, drawingSelection.preview.level)
+    : null);
+  /** Board px per raster px of the selection's level. */
+  const areaRatio = $derived(PX_PER_UNIT / levelPxPerUnit(area?.level ?? 0));
 
   $effect(() => {
     const canvas = floatingCanvas;
@@ -41,15 +45,15 @@
   });
 
   function pathForArea(value: DrawingSelectionArea, offset: RasterPoint): string {
-    const ratio = PX_PER_UNIT / DRAW_PX_PER_UNIT;
+    const ratio = PX_PER_UNIT / levelPxPerUnit(value.level);
     return pathFromPoints(value.outline.map((point) => ({
       x: (point.x + offset.x) * ratio,
       y: (point.y + offset.y) * ratio,
     })), true);
   }
 
-  function pathForPreview(tool: string, points: readonly RasterPoint[]): string {
-    const ratio = PX_PER_UNIT / DRAW_PX_PER_UNIT;
+  function pathForPreview(tool: string, points: readonly RasterPoint[], level: number): string {
+    const ratio = PX_PER_UNIT / levelPxPerUnit(level);
     if (tool === "select-rect" && points.length >= 2) {
       const first = points[0]!;
       const last = points.at(-1)!;
@@ -82,10 +86,8 @@
     if (!board) return;
     const rect = board.getBoundingClientRect();
     const world = screenToWorld(camera, viewport, { x: event.clientX - rect.left, y: event.clientY - rect.top });
-    drawingSelection.area = resizeSelectionArea(gesture.area, gesture.handle, {
-      x: world.x * DRAW_PX_PER_UNIT,
-      y: world.y * DRAW_PX_PER_UNIT,
-    });
+    const ppu = levelPxPerUnit(gesture.area.level);
+    drawingSelection.area = resizeSelectionArea(gesture.area, gesture.handle, { x: world.x * ppu, y: world.y * ppu });
     drawingSelection.revision += 1;
   }
 
@@ -157,10 +159,10 @@
         bind:this={floatingCanvas}
         class="selection-floating"
         data-selection-floating
-        style:left={`${drawingSelection.floatingAt.x * PX_PER_UNIT / DRAW_PX_PER_UNIT}px`}
-        style:top={`${drawingSelection.floatingAt.y * PX_PER_UNIT / DRAW_PX_PER_UNIT}px`}
-        style:width={`${drawingSelection.floating.width * PX_PER_UNIT / DRAW_PX_PER_UNIT}px`}
-        style:height={`${drawingSelection.floating.height * PX_PER_UNIT / DRAW_PX_PER_UNIT}px`}
+        style:left={`${drawingSelection.floatingAt.x * areaRatio}px`}
+        style:top={`${drawingSelection.floatingAt.y * areaRatio}px`}
+        style:width={`${drawingSelection.floating.width * areaRatio}px`}
+        style:height={`${drawingSelection.floating.height * areaRatio}px`}
       ></canvas>
     {/if}
   </div>

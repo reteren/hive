@@ -6,7 +6,7 @@ import {
   sourceOverAlpha,
 } from "../src/drawing/brush";
 import { createDrawingTileStore, type DrawingCanvasAdapter } from "../src/drawing/tileStore.svelte";
-import type { TileKey } from "../src/drawing/types";
+import { drawLevelForZoom, levelPxPerUnit, levelTileUnits, parseTileKey, tileKey, type TileKey } from "../src/drawing/types";
 
 interface FakeCanvas extends HTMLCanvasElement {
   pixels: Uint8ClampedArray;
@@ -72,5 +72,43 @@ describe("drawing core", () => {
     expect(store.allKeys()).toEqual(["-2:3"]);
     expect((store.tile("-2:3", false) as unknown as FakeCanvas).pixels[3]).toBe(200);
     expect(store.keysInRect({ x: -51.2, y: 76.8, width: 25.6, height: 25.6 })).toEqual(["-2:3"] satisfies TileKey[]);
+  });
+
+  it("picks a level with 1.5–3 raster px per device px at any zoom", () => {
+    expect(drawLevelForZoom(1)).toBe(0);
+    expect(drawLevelForZoom(0.05)).toBe(4);
+    expect(drawLevelForZoom(8)).toBe(-3);
+    for (const zoom of [0.05, 0.08, 0.1, 0.3, 0.5, 1, 1.7, 3]) {
+      for (const dpr of [1, 1.25, 1.5, 2]) {
+        const ratio = levelPxPerUnit(drawLevelForZoom(zoom, dpr)) / (10 * zoom * dpr);
+        expect(ratio).toBeGreaterThanOrEqual(1.5);
+        expect(ratio).toBeLessThan(3.0001);
+      }
+    }
+  });
+
+  it("keeps level-0 keys in the original format and adds a prefix for other levels", () => {
+    expect(tileKey(-2, 3)).toBe("-2:3");
+    expect(tileKey(-2, 3, 4)).toBe("4:-2:3");
+    expect(parseTileKey("-2:3")).toEqual({ col: -2, row: 3, level: 0 });
+    expect(parseTileKey("4:-2:3")).toEqual({ col: -2, row: 3, level: 4 });
+    expect(parseTileKey("0:1:2")).toBeNull();
+    expect(parseTileKey("9:1:2")).toBeNull();
+    expect(levelTileUnits(0)).toBe(25.6);
+    expect(levelTileUnits(2)).toBe(102.4);
+  });
+
+  it("lists levels coarsest first and finds existing tiles of every level", () => {
+    const store = createDrawingTileStore(fakeCanvasAdapter());
+    (store.tile("0:0", true) as unknown as FakeCanvas).pixels[3] = 1;
+    (store.tile("3:0:0", true) as unknown as FakeCanvas).pixels[3] = 1;
+    (store.tile("-1:5:5", true) as unknown as FakeCanvas).pixels[3] = 1;
+    store.commit(["0:0", "3:0:0", "-1:5:5"]);
+    expect(store.levels()).toEqual([3, 0, -1]);
+    expect(store.existingKeysInRect({ x: 1, y: 1, width: 2, height: 2 })).toEqual(["3:0:0", "0:0"]);
+    expect(store.keysInRect({ x: 1, y: 1, width: 2, height: 2 }, true, 3)).toEqual(["3:0:0"]);
+    (store.tile("3:0:0", false) as unknown as FakeCanvas).pixels.fill(0);
+    store.commit(["3:0:0"]);
+    expect(store.levels()).toEqual([0, -1]);
   });
 });

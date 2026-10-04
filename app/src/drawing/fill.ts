@@ -1,18 +1,31 @@
-import { DRAW_PX_PER_UNIT, DRAW_TILE_SIZE_PX, type BrushSettings } from "./types";
+import { DRAW_MAX_LEVEL, DRAW_TILE_SIZE_PX, currentDrawLevel, levelPxPerUnit, type BrushSettings } from "./types";
 import { showLinkStatus } from "../links-in-text/contextMenu.svelte";
 import { drawingTools } from "./tools.svelte";
-import { readRasterRect, writeRasterRect, pushDrawingHistory } from "./history";
+import { affectedTileKeys, applyAcrossLevels, pushDrawingHistory, rasterRectToWorld, readCompositeRect } from "./history";
 import { drawingStore } from "./tileStore.svelte";
 import { registerDrawTool } from "./toolRegistry";
 import type { DrawPointerEvent, DrawToolHandler } from "./types";
 
 export const DEFAULT_FILL_TOLERANCE = 24;
-export const FILL_WINDOW_PIXELS = DRAW_TILE_SIZE_PX * 8;
+/** Fill window side at the working level (~1–2 screens); an open result is retried at coarser levels. */
+export const FILL_WINDOW_PIXELS = DRAW_TILE_SIZE_PX * 4;
+const FILL_EXTRA_LEVELS = 3;
 
 export interface FloodFillResult {
   status: "filled" | "open" | "empty";
-  /** Tight, expanded crop to write back; absent unless status is "filled". */
-  image?: { data: Uint8ClampedArray; width: number; height: number; rasterX: number; rasterY: number };
+  /**
+   * Tight, expanded crop; absent unless status is "filled". `data` = source with the fill applied;
+   * `region` = only the filled pixels; `fringe` = fill colour under partially covered boundary pixels.
+   */
+  image?: {
+    data: Uint8ClampedArray;
+    region: Uint8ClampedArray;
+    fringe: Uint8ClampedArray;
+    width: number;
+    height: number;
+    rasterX: number;
+    rasterY: number;
+  };
   pixelsChanged: number;
 }
 
@@ -151,16 +164,22 @@ export function prepareFloodFill(
     const from = ((minY + row) * width + minX) * 4;
     crop.set(source.subarray(from, from + cropWidth * 4), row * cropWidth * 4);
   }
+  const regionLayer = new Uint8ClampedArray(crop.length);
+  const fringeLayer = new Uint8ClampedArray(crop.length);
   for (let py = regionTop; py <= regionBottom; py += 1) {
     for (let px = regionLeft; px <= regionRight; px += 1) {
       if (!mask[py * width + px]) continue;
-      writeColor(crop, ((py - minY) * cropWidth + px - minX) * 4, red, green, blue, fillAlpha);
+      const offset = ((py - minY) * cropWidth + px - minX) * 4;
+      writeColor(crop, offset, red, green, blue, fillAlpha);
+      writeColor(regionLayer, offset, red, green, blue, fillAlpha);
     }
   }
   for (let py = Math.max(0, regionTop - 1); py <= Math.min(height - 1, regionBottom + 1); py += 1) {
     for (let px = Math.max(0, regionLeft - 1); px <= Math.min(width - 1, regionRight + 1); px += 1) {
       if (!fringe[py * width + px]) continue;
-      destinationOver(crop, ((py - minY) * cropWidth + px - minX) * 4, red, green, blue, fillAlpha);
+      const offset = ((py - minY) * cropWidth + px - minX) * 4;
+      destinationOver(crop, offset, red, green, blue, fillAlpha);
+      writeColor(fringeLayer, offset, red, green, blue, fillAlpha);
     }
   }
 
@@ -168,6 +187,8 @@ export function prepareFloodFill(
     status: "filled",
     image: {
       data: crop,
+      region: regionLayer,
+      fringe: fringeLayer,
       width: cropWidth,
       height: cropHeight,
       rasterX: (options.rasterX ?? 0) + minX,
@@ -247,9 +268,10 @@ function clamp(value: number, min: number, max: number): number {
   return Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : min;
 }
 
-/** Convert a world-space click to global drawing-raster pixels for the fill window. */
-export function fillRasterPoint(world: { x: number; y: number }): { x: number; y: number } {
-  return { x: Math.floor(world.x * DRAW_PX_PER_UNIT), y: Math.floor(world.y * DRAW_PX_PER_UNIT) };
+/** Convert a world-space click to global drawing-raster pixels (at a level) for the fill window. */
+export function fillRasterPoint(world: { x: number; y: number }, level = 0): { x: number; y: number } {
+  const ppu = levelPxPerUnit(level);
+  return { x: Math.floor(world.x * ppu), y: Math.floor(world.y * ppu) };
 }
 
 /** Build the RGBA ImageData expected by writeRasterRect without requiring canvas APIs in logic tests. */
@@ -265,7 +287,7 @@ export function settingsForFill(settings: BrushSettings): Pick<FillOptions, "col
 
 /** Fill is a click tool; a drag gesture is ignored to avoid accidental bucket actions. */
 export function createFillHandler(getSettings: () => BrushSettings = () => drawingTools.brush): DrawToolHandler {
-  let pressed: { client: { x: number; y: number }; world: { x: number; y: number }; settings: BrushSettings } | null = null;
+  let pressed: { client: { x: number; y: number }; world: { x: number; y: number }; zoom: number; settings: BrushSettings } | null = null;
   let committing = false;
   const clickThresholdPx = 4;
 
@@ -276,7 +298,7 @@ export function createFillHandler(getSettings: () => BrushSettings = () => drawi
   return {
     down(event: DrawPointerEvent) {
       if (committing) return;
-      pressed = { client: { ...event.client }, world: { ...event.world }, settings: { ...getSettings() } };
+      pressed = { client: { ...event.client }, world: { ...event.world }, zoom: event.zoom, settings: { ...getSettings() } };
     },
     move() {},
     up(event: DrawPointerEvent) {
@@ -284,7 +306,7 @@ export function createFillHandler(getSettings: () => BrushSettings = () => drawi
       pressed = null;
       if (!click || Math.hypot(event.client.x - click.client.x, event.client.y - click.client.y) > clickThresholdPx) return;
       committing = true;
-      void fillAt(click.world, click.settings)
+      void fillAt(click.world, click.settings, currentDrawLevel(click.zoom))
         .catch((error: unknown) => showLinkStatus(error instanceof Error ? error.message : String(error)))
         .finally(() => { committing = false; });
     },
@@ -299,51 +321,63 @@ export function registerFillTool(): () => void {
 
 export const unregisterFillTool = registerFillTool();
 
-async function fillAt(world: { x: number; y: number }, settings: BrushSettings): Promise<void> {
-  const point = fillRasterPoint(world);
-  const window = fillWindowAt(point.x, point.y);
-  const worldRect = {
-    x: window.x / DRAW_PX_PER_UNIT,
-    y: window.y / DRAW_PX_PER_UNIT,
-    width: window.width / DRAW_PX_PER_UNIT,
-    height: window.height / DRAW_PX_PER_UNIT,
-  };
-  // Empty infinite space is necessarily open; avoid allocating a 4096² buffer when no tile exists.
-  if (drawingStore.keysInRect(worldRect, false).length === 0) {
-    showLinkStatus("Fill needs a closed shape");
+async function fillAt(world: { x: number; y: number }, settings: BrushSettings, workingLevel: number): Promise<void> {
+  const lastLevel = Math.min(DRAW_MAX_LEVEL, workingLevel + FILL_EXTRA_LEVELS);
+  for (let level = workingLevel; level <= lastLevel; level += 1) {
+    const point = fillRasterPoint(world, level);
+    const window = fillWindowAt(point.x, point.y);
+    // Empty infinite space is necessarily open; avoid allocating a window when nothing is drawn there.
+    if (drawingStore.existingKeysInRect(rasterRectToWorld(window.x, window.y, window.width, window.height, level)).length === 0) break;
+
+    const source = readCompositeRect(window.x, window.y, window.width, window.height, level);
+    const result = prepareFloodFill(
+      source.data,
+      source.width,
+      source.height,
+      point.x - window.x,
+      point.y - window.y,
+      { ...settingsForFill(settings), rasterX: window.x, rasterY: window.y },
+    );
+    // A shape larger than the window looks open here: look again at half the resolution.
+    if (result.status === "open") continue;
+    if (result.status !== "filled" || !result.image) return;
+    await commitFill(result.image, level);
     return;
   }
+  showLinkStatus("Fill needs a closed shape");
+}
 
-  const source = readRasterRect(window.x, window.y, window.width, window.height);
-  const result = prepareFloodFill(
-    source.data,
-    source.width,
-    source.height,
-    point.x - window.x,
-    point.y - window.y,
-    { ...settingsForFill(settings), rasterX: window.x, rasterY: window.y },
-  );
-  if (result.status === "open") {
-    showLinkStatus("Fill needs a closed shape");
-    return;
-  }
-  if (result.status !== "filled" || !result.image) return;
-
-  const image = result.image;
-  const keys = drawingStore.keysInRect({
-    x: image.rasterX / DRAW_PX_PER_UNIT,
-    y: image.rasterY / DRAW_PX_PER_UNIT,
-    width: image.width / DRAW_PX_PER_UNIT,
-    height: image.height / DRAW_PX_PER_UNIT,
-  }, true);
+async function commitFill(image: NonNullable<FloodFillResult["image"]>, level: number): Promise<void> {
+  const rect = rasterRectToWorld(image.rasterX, image.rasterY, image.width, image.height, level);
+  const keys = affectedTileKeys(rect, level, "paint");
   if (keys.length === 0) return;
   const before = await drawingStore.snapshot(keys);
-  writeRasterRect(toImageData(image), image.rasterX, image.rasterY);
+  const region = canvasFromRgba(image.region, image.width, image.height);
+  const fringe = canvasFromRgba(image.fringe, image.width, image.height);
   try {
-    const after = await drawingStore.snapshot(keys);
+    const changed = [
+      ...applyAcrossLevels(region, image.rasterX, image.rasterY, level, "paint", 1),
+      ...applyAcrossLevels(fringe, image.rasterX, image.rasterY, level, "under", 1),
+    ];
+    const after = await drawingStore.snapshot([...new Set([...keys, ...changed])]);
     pushDrawingHistory("Fill", before, after);
   } catch (error) {
     await drawingStore.restore(before);
     throw error;
+  } finally {
+    region.width = 0;
+    fringe.width = 0;
   }
+}
+
+function canvasFromRgba(data: Uint8ClampedArray, width: number, height: number): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Could not prepare the fill.");
+  const image = new ImageData(width, height);
+  image.data.set(data);
+  context.putImageData(image, 0, 0);
+  return canvas;
 }

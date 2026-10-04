@@ -32,41 +32,49 @@ vi.mock("../src/drawing/tileStore.svelte", () => ({
   },
 }));
 
-vi.mock("../src/drawing/brush", () => ({
-  readRasterRect(x: number, y: number, width: number, height: number) {
-    const data = new Uint8ClampedArray(width * height * 4);
-    for (let row = 0; row < height; row += 1) {
-      for (let column = 0; column < width; column += 1) {
-        const source = ((y + row) * 8 + x + column) * 4;
-        const target = (row * width + column) * 4;
-        data.set(harness.pixels.subarray(source, source + 4), target);
+vi.mock("../src/drawing/history", () => {
+  async function restore(snapshot: Map<string, Blob | null>) {
+    const blob = snapshot.values().next().value;
+    if (blob) harness.pixels.set(new Uint8Array(await blob.arrayBuffer()));
+  }
+  return {
+    readCompositeRect(x: number, y: number, width: number, height: number) {
+      const data = new Uint8ClampedArray(width * height * 4);
+      for (let row = 0; row < height; row += 1) {
+        for (let column = 0; column < width; column += 1) {
+          const source = ((y + row) * 8 + x + column) * 4;
+          const target = (row * width + column) * 4;
+          data.set(harness.pixels.subarray(source, source + 4), target);
+        }
       }
-    }
-    return { x, y, width, height, data };
-  },
-  writeRasterRect(image: { data: Uint8ClampedArray; width: number; height: number }, x: number, y: number) {
-    for (let row = 0; row < image.height; row += 1) {
-      for (let column = 0; column < image.width; column += 1) {
-        const source = (row * image.width + column) * 4;
-        const target = ((y + row) * 8 + x + column) * 4;
-        harness.pixels.set(image.data.subarray(source, source + 4), target);
+      return { x, y, width, height, data };
+    },
+    affectedTileKeys: () => ["0:0"],
+    rasterRectToWorld: (x: number, y: number, width: number, height: number) => ({ x, y, width, height }),
+    /** Single 8×8 level: paint copies opaque pixels, erase is destination-out by the source alpha. */
+    applyAcrossLevels(source: { width: number; height: number; pixels: Uint8ClampedArray }, x: number, y: number, _level: number, kind: string) {
+      for (let row = 0; row < source.height; row += 1) {
+        for (let column = 0; column < source.width; column += 1) {
+          const sourceOffset = (row * source.width + column) * 4;
+          const targetOffset = ((y + row) * 8 + x + column) * 4;
+          const alpha = source.pixels[sourceOffset + 3] ?? 0;
+          if (alpha === 0) continue;
+          if (kind === "erase") {
+            const remaining = Math.round((harness.pixels[targetOffset + 3] ?? 0) * (1 - alpha / 255));
+            if (remaining === 0) harness.pixels.fill(0, targetOffset, targetOffset + 4);
+            else harness.pixels[targetOffset + 3] = remaining;
+            continue;
+          }
+          harness.pixels.set(source.pixels.subarray(sourceOffset, sourceOffset + 4), targetOffset);
+        }
       }
-    }
-    return ["0:0"];
-  },
-  paintIntoTiles(source: { width: number; height: number; pixels: Uint8ClampedArray }, x: number, y: number) {
-    for (let row = 0; row < source.height; row += 1) {
-      for (let column = 0; column < source.width; column += 1) {
-        const sourceOffset = (row * source.width + column) * 4;
-        const targetOffset = ((y + row) * 8 + x + column) * 4;
-        const alpha = source.pixels[sourceOffset + 3] ?? 0;
-        if (alpha === 0) continue;
-        harness.pixels.set(source.pixels.subarray(sourceOffset, sourceOffset + 4), targetOffset);
-      }
-    }
-    return ["0:0"];
-  },
-}));
+      return ["0:0"];
+    },
+    pushDrawingHistory(label: string, before: Map<string, Blob | null>, after: Map<string, Blob | null>) {
+      harness.commands.push({ label, do() { void restore(after); }, undo() { void restore(before); } });
+    },
+  };
+});
 
 vi.mock("../src/history/history.svelte", () => ({
   record(command: { label: string; undo(): void; do(): void }) {
@@ -137,7 +145,12 @@ function testCanvasDocument(): Document {
         height: 0,
         pixels: new Uint8ClampedArray(),
         getContext() {
-          return { putImageData(image: TestImageData) { canvas.pixels = new Uint8ClampedArray(image.data); } };
+          return {
+            createImageData(width: number, height: number) {
+              return new TestImageData(new Uint8ClampedArray(width * height * 4), width, height);
+            },
+            putImageData(image: TestImageData) { canvas.pixels = new Uint8ClampedArray(image.data); },
+          };
         },
       };
       return canvas;

@@ -5,9 +5,14 @@
  * space. Raster (not vector) because the roadmap needs raster operations: eraser on drawings and
  * photos, flood fill, lasso cut/move of a piece of a stroke, spray, blur, smudge (R10.2–R10.7).
  *
- * - Density: DRAW_PX_PER_UNIT raster pixels per world unit (1 u = 10 px at zoom 1, so 20 px/u is
- *   crisp up to ~2× zoom). A tile covers DRAW_TILE_SIZE_PX px = DRAW_TILE_SIZE_PX / DRAW_PX_PER_UNIT u.
- * - Tile key "col:row": tile (col,row) covers world x in [col*T, (col+1)*T), y likewise, T = tile size in u.
+ * - LEVELS (resolution pyramid): level L has levelPxPerUnit(L) = DRAW_PX_PER_UNIT / 2^L raster px per
+ *   world unit. Every gesture works at the level that matches the current zoom (drawLevelForZoom: 1–2
+ *   raster px per device px), so a stroke costs the same at zoom 0.05 as at zoom 1. A tile is always
+ *   DRAW_TILE_SIZE_PX square, so it covers levelTileUnits(L) = DRAW_TILE_SIZE_PX / levelPxPerUnit(L) u.
+ *   Display order: coarser levels below finer ones. Painting at L is source-over at L and source-atop on
+ *   existing finer tiles (fresh paint covers older detail without doubling); erasing hits every level.
+ * - Tile key "col:row" (level 0, the original format) or "L:col:row" (level L ≠ 0): tile (col,row)
+ *   covers world x in [col*T, (col+1)*T), y likewise, T = levelTileUnits(L).
  * - Empty tiles are not stored. A tile that becomes fully transparent is deleted.
  * - Layer order (user default, not objected): above zones, BELOW links, beacons and nodes.
  *   Drawings never belong to zones or beacon coverage (ROADMAP M172).
@@ -17,7 +22,7 @@
  *   temporary stroke layer at max(alpha), then composited once on pointer-up with the stroke opacity).
  *   A NEW stroke over the same place adds up. Holding the pointer still adds nothing.
  *
- * PERSISTENCE (project folder): `drawing/tiles/<col>_<row>.png` (straight-alpha RGBA PNG, exactly
+ * PERSISTENCE (project folder): `drawing/tiles/<col>_<row>.png` (level 0) or `L<L>_<col>_<row>.png` (straight-alpha RGBA PNG, exactly
  * DRAW_TILE_SIZE_PX square) + `drawing/drawing.json` = DrawingIndex. Saved debounced after edits like
  * notes; included in backups/export like notes (not attachments: tiles are mutable).
  *
@@ -28,7 +33,37 @@ export const DRAW_PX_PER_UNIT = 20;
 export const DRAW_TILE_SIZE_PX = 512;
 export const DRAW_TILE_SIZE_UNITS = DRAW_TILE_SIZE_PX / DRAW_PX_PER_UNIT;
 
-export type TileKey = string; // "col:row", integers, may be negative
+export type TileKey = string; // "col:row" (level 0) or "L:col:row", integers, may be negative
+
+/** Finest and coarsest resolution levels (160 px/u … 0.3125 px/u). */
+export const DRAW_MIN_LEVEL = -3;
+export const DRAW_MAX_LEVEL = 6;
+
+/** Raster px per world unit at a pyramid level. */
+export function levelPxPerUnit(level: number): number {
+  return DRAW_PX_PER_UNIT / 2 ** level;
+}
+
+/** World units covered by one tile side at a pyramid level. */
+export function levelTileUnits(level: number): number {
+  return DRAW_TILE_SIZE_PX / levelPxPerUnit(level);
+}
+
+/**
+ * The level a gesture at this zoom works in: the coarsest one that still has at least one raster px
+ * per device px (screen px per unit = 10 × zoom × devicePixelRatio).
+ */
+export function drawLevelForZoom(zoom: number, devicePixelRatio = 1): number {
+  const density = (Number.isFinite(zoom) && zoom > 0 ? zoom : 1) * (Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1);
+  // 1.5–3 raster px per device px: crisp after a little zooming in, cheap enough for big brushes.
+  const level = Math.floor(Math.log2(DRAW_PX_PER_UNIT / (15 * density)) + 1e-9);
+  return Math.min(DRAW_MAX_LEVEL, Math.max(DRAW_MIN_LEVEL, level));
+}
+
+/** Working level for the current window (reads devicePixelRatio when available). */
+export function currentDrawLevel(zoom: number): number {
+  return drawLevelForZoom(zoom, typeof window === "undefined" ? 1 : window.devicePixelRatio || 1);
+}
 
 export interface DrawingIndex {
   version: 1;
@@ -71,30 +106,40 @@ export type TileSnapshot = Map<TileKey, Blob | null>;
 export interface DrawingTileStore {
   /** Tile canvas, creating an empty one when `create`. Coordinates of the canvas are tile-local px. */
   tile(key: TileKey, create: boolean): HTMLCanvasElement | null;
-  /** Keys of tiles intersecting a world rect (existing only unless `includeMissing`). */
-  keysInRect(rect: WorldRect, includeMissing?: boolean): TileKey[];
+  /** Keys of one level's tiles intersecting a world rect (existing only unless `includeMissing`); level 0 by default. */
+  keysInRect(rect: WorldRect, includeMissing?: boolean, level?: number): TileKey[];
+  /** Existing tiles of every level that intersect a world rect, coarsest level first. */
+  existingKeysInRect(rect: WorldRect): TileKey[];
+  /** Levels that currently hold tiles, coarsest first. */
+  levels(): number[];
   /** Encode current content of the given tiles (for undo "before"/"after"). */
   snapshot(keys: readonly TileKey[]): Promise<TileSnapshot>;
   /** Replace tile contents from a snapshot (undo/redo); deletes tiles mapped to null. */
   restore(snapshot: TileSnapshot): Promise<void>;
   /** Mark tiles changed: repaint on screen + schedule save; fully transparent tiles are dropped. */
-  commit(keys: readonly TileKey[]): void;
+  commit(keys: readonly TileKey[], mayBecomeEmpty?: boolean): void;
   /** Bumps on any visible change (Svelte-reactive) so layers re-render. */
   readonly revision: number;
 }
 
-export function tileKey(col: number, row: number): TileKey {
-  return `${col}:${row}`;
+export function tileKey(col: number, row: number, level = 0): TileKey {
+  return level === 0 ? `${col}:${row}` : `${level}:${col}:${row}`;
 }
 
-export function parseTileKey(key: TileKey): { col: number; row: number } | null {
-  const match = /^(-?\d+):(-?\d+)$/.exec(key);
-  return match ? { col: Number(match[1]), row: Number(match[2]) } : null;
+export function parseTileKey(key: TileKey): { col: number; row: number; level: number } | null {
+  const match = /^(?:(-?\d+):)?(-?\d+):(-?\d+)$/.exec(key);
+  if (!match) return null;
+  const level = match[1] === undefined ? 0 : Number(match[1]);
+  // Level 0 has exactly one spelling ("col:row") so a tile can never exist twice.
+  if (match[1] !== undefined && level === 0) return null;
+  if (!Number.isInteger(level) || level < DRAW_MIN_LEVEL || level > DRAW_MAX_LEVEL) return null;
+  return { col: Number(match[2]), row: Number(match[3]), level };
 }
 
-/** World point -> raster pixel (global, may be negative). */
-export function worldToRaster(x: number, y: number): { px: number; py: number } {
-  return { px: x * DRAW_PX_PER_UNIT, py: y * DRAW_PX_PER_UNIT };
+/** World point -> raster pixel (global, may be negative) at a pyramid level. */
+export function worldToRaster(x: number, y: number, level = 0): { px: number; py: number } {
+  const ppu = levelPxPerUnit(level);
+  return { px: x * ppu, py: y * ppu };
 }
 
 /**

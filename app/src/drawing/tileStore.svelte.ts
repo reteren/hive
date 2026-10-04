@@ -1,7 +1,6 @@
 import {
-  DRAW_PX_PER_UNIT,
   DRAW_TILE_SIZE_PX,
-  DRAW_TILE_SIZE_UNITS,
+  levelTileUnits,
   parseTileKey,
   tileKey,
   type DrawingTileStore,
@@ -23,8 +22,12 @@ export interface DrawingCanvasAdapter {
 export interface MutableDrawingTileStore extends DrawingTileStore {
   /** Replace all in-memory tiles without saving or recording Undo (project load). */
   replaceFromSnapshot(snapshot: TileSnapshot): Promise<void>;
-  /** List stored tile keys in stable row/column order. */
+  /** List stored tile keys in stable level/row/column order. */
   allKeys(): TileKey[];
+  /** Levels that currently hold tiles, coarsest first (the display/compositing order). */
+  levels(): number[];
+  /** Existing tiles of every level that intersect a world rect, coarsest level first. */
+  existingKeysInRect(rect: WorldRect): TileKey[];
   /** Keys whose backing canvases changed in the most recent revision. */
   readonly lastCommitKeys: readonly TileKey[];
   /** Called after a user commit with changed and remaining tile keys. */
@@ -89,6 +92,7 @@ export const browserDrawingCanvasAdapter: DrawingCanvasAdapter = {
 export function createDrawingTileStore(adapter: DrawingCanvasAdapter = browserDrawingCanvasAdapter): MutableDrawingTileStore {
   const state = $state({ revision: 0, lastCommitKeys: [] as TileKey[] });
   const tiles = new Map<TileKey, HTMLCanvasElement>();
+  const levelCounts = new Map<number, number>();
   let commitListener: DrawingCommitListener | null = null;
 
   function validKey(key: TileKey): boolean {
@@ -97,21 +101,70 @@ export function createDrawingTileStore(adapter: DrawingCanvasAdapter = browserDr
       Math.abs(parsed.col) <= MAX_TILE_COORDINATE && Math.abs(parsed.row) <= MAX_TILE_COORDINATE;
   }
 
+  function setTile(key: TileKey, canvas: HTMLCanvasElement): void {
+    if (!tiles.has(key)) {
+      const level = parseTileKey(key)!.level;
+      levelCounts.set(level, (levelCounts.get(level) ?? 0) + 1);
+    }
+    tiles.set(key, canvas);
+  }
+
+  function deleteTile(key: TileKey): void {
+    if (!tiles.delete(key)) return;
+    const level = parseTileKey(key)!.level;
+    const count = (levelCounts.get(level) ?? 1) - 1;
+    if (count > 0) levelCounts.set(level, count);
+    else levelCounts.delete(level);
+  }
+
+  function levels(): number[] {
+    return [...levelCounts.keys()].sort((a, b) => b - a);
+  }
+
+  function keysInRect(rect: WorldRect, includeMissing = false, level = 0): TileKey[] {
+    const x2 = rect.x + rect.width;
+    const y2 = rect.y + rect.height;
+    const left = Math.min(rect.x, x2);
+    const top = Math.min(rect.y, y2);
+    const right = Math.max(rect.x, x2);
+    const bottom = Math.max(rect.y, y2);
+    if (![left, top, right, bottom].every(Number.isFinite) || right <= left || bottom <= top) return [];
+
+    const size = levelTileUnits(level);
+    const firstCol = Math.floor(left / size);
+    const firstRow = Math.floor(top / size);
+    const lastCol = Math.ceil(right / size) - 1;
+    const lastRow = Math.ceil(bottom / size) - 1;
+    if (Math.abs(firstCol) > MAX_TILE_COORDINATE || Math.abs(lastCol) > MAX_TILE_COORDINATE ||
+      Math.abs(firstRow) > MAX_TILE_COORDINATE || Math.abs(lastRow) > MAX_TILE_COORDINATE ||
+      (lastCol - firstCol + 1) * (lastRow - firstRow + 1) > MAX_TILES_PER_RECT) return [];
+
+    const keys: TileKey[] = [];
+    for (let row = firstRow; row <= lastRow; row += 1) {
+      for (let col = firstCol; col <= lastCol; col += 1) {
+        const key = tileKey(col, row, level);
+        if (includeMissing || tiles.has(key)) keys.push(key);
+      }
+    }
+    return keys;
+  }
+
   function allKeys(): TileKey[] {
     return [...tiles.keys()].sort((left, right) => {
       const a = parseTileKey(left)!;
       const b = parseTileKey(right)!;
-      return a.row - b.row || a.col - b.col;
+      return b.level - a.level || a.row - b.row || a.col - b.col;
     });
   }
 
-  function commit(keys: readonly TileKey[]): void {
+  function commit(keys: readonly TileKey[], mayBecomeEmpty = true): void {
     const changedKeys = new Set<TileKey>();
     for (const key of keys) {
       if (!validKey(key)) continue;
       changedKeys.add(key);
       const canvas = tiles.get(key);
-      if (canvas && isRgbaTransparent(adapter.pixels(canvas))) tiles.delete(key);
+      // Reading a tile back from the GPU is the slow part of a commit; additive paint cannot empty it.
+      if (mayBecomeEmpty && canvas && isRgbaTransparent(adapter.pixels(canvas))) deleteTile(key);
     }
     if (!changedKeys.size) return;
     state.lastCommitKeys = [...changedKeys];
@@ -133,8 +186,8 @@ export function createDrawingTileStore(adapter: DrawingCanvasAdapter = browserDr
       return [key, canvas] as const;
     }));
     for (const [key, canvas] of prepared) {
-      if (canvas) tiles.set(key, canvas);
-      else tiles.delete(key);
+      if (canvas) setTile(key, canvas);
+      else deleteTile(key);
     }
   }
 
@@ -144,34 +197,12 @@ export function createDrawingTileStore(adapter: DrawingCanvasAdapter = browserDr
       const existing = tiles.get(key);
       if (existing || !create) return existing ?? null;
       const canvas = adapter.createCanvas();
-      tiles.set(key, canvas);
+      setTile(key, canvas);
       return canvas;
     },
-    keysInRect(rect: WorldRect, includeMissing = false) {
-      const x2 = rect.x + rect.width;
-      const y2 = rect.y + rect.height;
-      const left = Math.min(rect.x, x2);
-      const top = Math.min(rect.y, y2);
-      const right = Math.max(rect.x, x2);
-      const bottom = Math.max(rect.y, y2);
-      if (![left, top, right, bottom].every(Number.isFinite) || right <= left || bottom <= top) return [];
-
-      const firstCol = Math.floor(left / DRAW_TILE_SIZE_UNITS);
-      const firstRow = Math.floor(top / DRAW_TILE_SIZE_UNITS);
-      const lastCol = Math.ceil(right / DRAW_TILE_SIZE_UNITS) - 1;
-      const lastRow = Math.ceil(bottom / DRAW_TILE_SIZE_UNITS) - 1;
-      if (Math.abs(firstCol) > MAX_TILE_COORDINATE || Math.abs(lastCol) > MAX_TILE_COORDINATE ||
-        Math.abs(firstRow) > MAX_TILE_COORDINATE || Math.abs(lastRow) > MAX_TILE_COORDINATE ||
-        (lastCol - firstCol + 1) * (lastRow - firstRow + 1) > MAX_TILES_PER_RECT) return [];
-
-      const keys: TileKey[] = [];
-      for (let row = firstRow; row <= lastRow; row += 1) {
-        for (let col = firstCol; col <= lastCol; col += 1) {
-          const key = tileKey(col, row);
-          if (includeMissing || tiles.has(key)) keys.push(key);
-        }
-      }
-      return keys;
+    keysInRect,
+    existingKeysInRect(rect) {
+      return levels().flatMap((level) => keysInRect(rect, false, level));
     },
     async snapshot(keys) {
       const entries = await Promise.all([...new Set(keys)].map(async (key) => {
@@ -191,11 +222,12 @@ export function createDrawingTileStore(adapter: DrawingCanvasAdapter = browserDr
     async replaceFromSnapshot(snapshot) {
       await restoreEntries(snapshot);
       const keys = new Set([...tiles.keys(), ...snapshot.keys()]);
-      for (const key of keys) if (!snapshot.has(key)) tiles.delete(key);
+      for (const key of keys) if (!snapshot.has(key)) deleteTile(key);
       state.lastCommitKeys = [...keys];
       state.revision += 1;
     },
     allKeys,
+    levels,
     setCommitListener(listener) { commitListener = listener; },
   };
   return store;
@@ -206,10 +238,9 @@ export const drawingTileStore = createDrawingTileStore();
 export const drawingStore: DrawingTileStore = drawingTileStore;
 
 /** Convert a tile-local pixel coordinate to its world-space origin. */
-export function tileWorldOrigin(key: TileKey): { x: number; y: number } | null {
+export function tileWorldOrigin(key: TileKey): { x: number; y: number; size: number } | null {
   const parsed = parseTileKey(key);
-  return parsed ? {
-    x: parsed.col * DRAW_TILE_SIZE_PX / DRAW_PX_PER_UNIT,
-    y: parsed.row * DRAW_TILE_SIZE_PX / DRAW_PX_PER_UNIT,
-  } : null;
+  if (!parsed) return null;
+  const size = levelTileUnits(parsed.level);
+  return { x: parsed.col * size, y: parsed.row * size, size };
 }

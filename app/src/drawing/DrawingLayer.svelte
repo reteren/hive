@@ -6,106 +6,70 @@
   import { drawingStrokePreview } from "./stroke.svelte";
   import { startDrawingPersistence } from "./persistence.svelte";
   import { drawingTileStore, tileWorldOrigin } from "./tileStore.svelte";
-  import { DRAW_TILE_SIZE_UNITS, type TileKey } from "./types";
-
-  interface RasterCanvasParams {
-    key: string;
-    source: HTMLCanvasElement | null;
-    revision: number;
-    changedKeys: readonly string[];
-    rasterX?: number;
-    rasterY?: number;
-    dirtyRect?: { x: number; y: number; width: number; height: number } | null;
-  }
+  import { levelTileUnits, type TileKey } from "./types";
 
   interface VisibleTile {
     key: TileKey;
     source: HTMLCanvasElement;
     left: number;
     top: number;
+    size: number;
   }
 
   const transform = $derived(
     `translate(${viewport.width / 2}px, ${viewport.height / 2}px) scale(${camera.zoom * PX_PER_UNIT}) translate(${-camera.x}px, ${-camera.y}px)`,
   );
 
+  /** Tiles of every level in view, coarsest level first (finer detail is displayed on top). */
   const visibleTiles = $derived.by(() => {
     const revision = drawingTileStore.revision;
     void revision;
     if (viewport.width <= 0 || viewport.height <= 0) return [];
     const topLeft = screenToWorld(camera, viewport, { x: 0, y: 0 });
     const bottomRight = screenToWorld(camera, viewport, { x: viewport.width, y: viewport.height });
-    const margin = DRAW_TILE_SIZE_UNITS;
-    const keys = drawingTileStore.keysInRect({
-      x: Math.min(topLeft.x, bottomRight.x) - margin,
-      y: Math.min(topLeft.y, bottomRight.y) - margin,
-      width: Math.abs(bottomRight.x - topLeft.x) + margin * 2,
-      height: Math.abs(bottomRight.y - topLeft.y) + margin * 2,
-    });
-    return keys.flatMap((key): VisibleTile[] => {
-      const origin = tileWorldOrigin(key);
-      const source = drawingTileStore.tile(key, false);
-      return origin && source ? [{ key, source, left: origin.x, top: origin.y }] : [];
+    const view = {
+      x: Math.min(topLeft.x, bottomRight.x),
+      y: Math.min(topLeft.y, bottomRight.y),
+      width: Math.abs(bottomRight.x - topLeft.x),
+      height: Math.abs(bottomRight.y - topLeft.y),
+    };
+    return drawingTileStore.levels().flatMap((level) => {
+      const margin = levelTileUnits(level);
+      const keys = drawingTileStore.keysInRect({
+        x: view.x - margin,
+        y: view.y - margin,
+        width: view.width + margin * 2,
+        height: view.height + margin * 2,
+      }, false, level);
+      return keys.flatMap((key): VisibleTile[] => {
+        const origin = tileWorldOrigin(key);
+        const source = drawingTileStore.tile(key, false);
+        return origin && source ? [{ key, source, left: origin.x, top: origin.y, size: origin.size }] : [];
+      });
     });
   });
 
-  const renderRaster: Action<HTMLCanvasElement, RasterCanvasParams> = (canvas, initial) => {
-    let previousSource: HTMLCanvasElement | null = null;
-    let previousRevision = -1;
-    let previousRasterX: number | undefined;
-    let previousRasterY: number | undefined;
-    let previousWidth = 0;
-    let previousHeight = 0;
-
-    function update(params: RasterCanvasParams): void {
-      if (!params.source) {
-        if (canvas.width !== 1 || canvas.height !== 1) {
-          canvas.width = 1;
-          canvas.height = 1;
-        }
-        previousSource = null;
-        previousRevision = params.revision;
-        previousWidth = 0;
-        previousHeight = 0;
+  /**
+   * Show a canvas owned by the tile store / live stroke directly (no copy): paint lands on screen as
+   * soon as it is drawn, and a tile costs its memory once.
+   */
+  const mountCanvas: Action<HTMLElement, HTMLCanvasElement | null> = (node, initial) => {
+    function update(canvas: HTMLCanvasElement | null): void {
+      if (!canvas) {
+        node.replaceChildren();
         return;
       }
-      const sameBounds = previousWidth === params.source.width && previousHeight === params.source.height &&
-        previousRasterX === params.rasterX && previousRasterY === params.rasterY;
-      if (params.key === "preview" && params.source === previousSource && sameBounds && !params.dirtyRect) {
-        previousRevision = params.revision;
-        return;
-      }
-      if (params.key === "preview" && params.source === previousSource && sameBounds && params.dirtyRect) {
-        const context = canvas.getContext("2d");
-        if (context) {
-          const x = params.dirtyRect.x - (params.rasterX ?? 0);
-          const y = params.dirtyRect.y - (params.rasterY ?? 0);
-          context.drawImage(params.source, x, y, params.dirtyRect.width, params.dirtyRect.height,
-            x, y, params.dirtyRect.width, params.dirtyRect.height);
-        }
-        previousRevision = params.revision;
-        return;
-      }
-      if (params.source === previousSource && params.revision !== previousRevision && !params.changedKeys.includes(params.key)) {
-        previousRevision = params.revision;
-        return;
-      }
-      if (canvas.width !== params.source.width) canvas.width = params.source.width;
-      if (canvas.height !== params.source.height) canvas.height = params.source.height;
-      const context = canvas.getContext("2d");
-      if (!context) return;
-      context.clearRect(0, 0, canvas.width, canvas.height);
-      context.drawImage(params.source, 0, 0);
-      previousSource = params.source;
-      previousRevision = params.revision;
-      previousRasterX = params.rasterX;
-      previousRasterY = params.rasterY;
-      previousWidth = params.source.width;
-      previousHeight = params.source.height;
+      if (node.firstChild === canvas) return;
+      canvas.classList.add("drawing-canvas");
+      node.replaceChildren(canvas);
     }
-
     update(initial);
-    return { update };
+    return {
+      update,
+      destroy() {
+        node.replaceChildren();
+      },
+    };
   };
 
   onMount(startDrawingPersistence);
@@ -114,26 +78,28 @@
 <div class="drawing-layer" aria-hidden="true" data-drawing-layer>
   <div class="drawing-world" style:transform={transform}>
     {#each visibleTiles as tile (tile.key)}
-      <canvas
-        use:renderRaster={{ key: tile.key, source: tile.source, revision: drawingTileStore.revision, changedKeys: drawingTileStore.lastCommitKeys }}
+      <div
+        use:mountCanvas={tile.source}
         class="drawing-tile"
         data-drawing-tile={tile.key}
         style:left="{tile.left}px"
         style:top="{tile.top}px"
-        style:width="{DRAW_TILE_SIZE_UNITS}px"
-        style:height="{DRAW_TILE_SIZE_UNITS}px"
-      ></canvas>
+        style:width="{tile.size}px"
+        style:height="{tile.size}px"
+      ></div>
     {/each}
     {#if drawingStrokePreview.source}
-      <canvas
-        use:renderRaster={{ key: "preview", source: drawingStrokePreview.source, revision: drawingStrokePreview.revision, changedKeys: ["preview"], rasterX: drawingStrokePreview.rasterX, rasterY: drawingStrokePreview.rasterY, dirtyRect: drawingStrokePreview.dirtyRect }}
+      <div
+        use:mountCanvas={drawingStrokePreview.source}
         class="drawing-preview"
+        class:erase={drawingStrokePreview.erase}
         data-drawing-preview
-        style:left="{drawingStrokePreview.rasterX / 20}px"
-        style:top="{drawingStrokePreview.rasterY / 20}px"
-        style:width="{drawingStrokePreview.source.width / 20}px"
-        style:height="{drawingStrokePreview.source.height / 20}px"
-      ></canvas>
+        style:left="{drawingStrokePreview.rasterX / drawingStrokePreview.pixelsPerUnit}px"
+        style:top="{drawingStrokePreview.rasterY / drawingStrokePreview.pixelsPerUnit}px"
+        style:width="{drawingStrokePreview.source.width / drawingStrokePreview.pixelsPerUnit}px"
+        style:height="{drawingStrokePreview.source.height / drawingStrokePreview.pixelsPerUnit}px"
+        style:opacity={drawingStrokePreview.opacity}
+      ></div>
     {/if}
   </div>
 </div>
@@ -158,12 +124,18 @@
   .drawing-tile,
   .drawing-preview {
     position: absolute;
-    display: block;
-    max-width: none;
     pointer-events: none;
   }
 
   .drawing-preview {
     z-index: 1;
+  }
+
+  .drawing-layer :global(.drawing-canvas) {
+    display: block;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    pointer-events: none;
   }
 </style>

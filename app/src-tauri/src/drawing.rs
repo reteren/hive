@@ -14,6 +14,9 @@ const INDEX_FILE: &str = "drawing.json";
 const TILE_PX: u32 = 512;
 const PX_PER_UNIT: u32 = 20;
 const MAX_COORDINATE: i64 = 10_000_000;
+/// Resolution pyramid levels (see app/src/drawing/types.ts): level L has 20 / 2^L px per unit.
+const MIN_LEVEL: i64 = -3;
+const MAX_LEVEL: i64 = 6;
 const MAX_TILE_BYTES: usize = 4 * 1024 * 1024;
 const MAX_INDEX_BYTES: u64 = 8 * 1024 * 1024;
 const PNG_MAGIC: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
@@ -62,29 +65,49 @@ pub fn drawing_save(
     save_at(&active_project_root(&state)?, &changes, &index)
 }
 
-fn validate_key(key: &str) -> Result<(i64, i64), String> {
-    let (col, row) = key.split_once(':').ok_or("invalid drawing tile key")?;
+/// Tile key: "col:row" (level 0) or "level:col:row" (level != 0). Returns (level, col, row).
+fn validate_key(key: &str) -> Result<(i64, i64, i64), String> {
+    let parts: Vec<&str> = key.split(':').collect();
+    let (level, col, row) = match parts.as_slice() {
+        [col, row] => ("0", *col, *row),
+        [level, col, row] => (*level, *col, *row),
+        _ => return Err("invalid drawing tile key".to_string()),
+    };
+    let level = level
+        .parse::<i64>()
+        .map_err(|_| "invalid drawing tile level")?;
     let col = col
         .parse::<i64>()
         .map_err(|_| "invalid drawing tile column")?;
     let row = row.parse::<i64>().map_err(|_| "invalid drawing tile row")?;
-    if !(-MAX_COORDINATE..=MAX_COORDINATE).contains(&col)
+    let canonical = if level == 0 {
+        format!("{col}:{row}")
+    } else {
+        format!("{level}:{col}:{row}")
+    };
+    if !(MIN_LEVEL..=MAX_LEVEL).contains(&level)
+        || !(-MAX_COORDINATE..=MAX_COORDINATE).contains(&col)
         || !(-MAX_COORDINATE..=MAX_COORDINATE).contains(&row)
-        || format!("{col}:{row}") != key
+        || canonical != key
     {
         return Err(
             "drawing tile key is outside the allowed range or is not canonical".to_string(),
         );
     }
-    Ok((col, row))
+    Ok((level, col, row))
 }
 
 fn tile_path(root: &Path, key: &str) -> Result<PathBuf, String> {
-    let (col, row) = validate_key(key)?;
+    let (level, col, row) = validate_key(key)?;
+    let name = if level == 0 {
+        format!("{col}_{row}.png")
+    } else {
+        format!("L{level}_{col}_{row}.png")
+    };
     Ok(root
         .join(DRAWING_DIRECTORY)
         .join(TILES_DIRECTORY)
-        .join(format!("{col}_{row}.png")))
+        .join(name))
 }
 
 fn validate_index(index: &DrawingIndex) -> Result<(), String> {
@@ -381,9 +404,23 @@ mod tests {
 
     #[test]
     fn validates_canonical_bounded_keys_and_png_payloads() {
-        for key in ["0:0", "-10000000:10000000", "17:-4"] {
-            assert!(validate_key(key).is_ok());
+        for key in [
+            "0:0",
+            "-10000000:10000000",
+            "17:-4",
+            "3:1:-2",
+            "-3:0:0",
+            "6:-5:5",
+        ] {
+            assert!(validate_key(key).is_ok(), "{key}");
         }
+        assert_eq!(validate_key("4:-1:2"), Ok((4, -1, 2)));
+        assert!(tile_path(Path::new("p"), "4:-1:2")
+            .unwrap()
+            .ends_with("L4_-1_2.png"));
+        assert!(tile_path(Path::new("p"), "-1:2")
+            .unwrap()
+            .ends_with("-1_2.png"));
         for key in [
             "10000001:0",
             "0:-10000001",
@@ -392,12 +429,52 @@ mod tests {
             "01:0",
             "-0:0",
             "0/1:0",
+            "0:1:2",
+            "7:0:0",
+            "-4:0:0",
+            "1:2:3:4",
+            "01:2:3",
         ] {
             assert!(validate_key(key).is_err(), "{key}");
         }
         assert!(validate_png(&png()).is_ok());
         assert!(validate_png(b"not png").is_err());
         assert!(validate_png(&vec![0; MAX_TILE_BYTES + 1]).is_err());
+    }
+
+    #[test]
+    fn saves_and_loads_tiles_of_other_resolution_levels() {
+        let root = test_root("levels");
+        let tile = png();
+        save_at(
+            &root,
+            &[
+                DrawingTileChange {
+                    key: "4:-1:2".into(),
+                    png: Some(tile.clone()),
+                },
+                DrawingTileChange {
+                    key: "-1:2".into(),
+                    png: Some(tile.clone()),
+                },
+            ],
+            &index(&["4:-1:2", "-1:2"]),
+        )
+        .unwrap();
+        assert!(root.join("drawing/tiles/L4_-1_2.png").is_file());
+        assert!(root.join("drawing/tiles/-1_2.png").is_file());
+        assert_eq!(read_tile_at(&root, "4:-1:2").unwrap(), tile);
+        assert!(health_findings(&root).is_empty());
+        save_at(
+            &root,
+            &[DrawingTileChange {
+                key: "4:-1:2".into(),
+                png: None,
+            }],
+            &index(&["-1:2"]),
+        )
+        .unwrap();
+        assert!(!root.join("drawing/tiles/L4_-1_2.png").exists());
     }
 
     #[test]

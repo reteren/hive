@@ -139,9 +139,9 @@ describe("Drawing fill", () => {
     expect(getPixel(result.image!.data, result.image!.width, boundaryX, boundaryY)[3]).toBeGreaterThan(128);
   });
 
-  it("uses an eight-tile bounded window aligned to the raster tile grid", () => {
-    expect(FILL_WINDOW_PIXELS).toBe(4096);
-    expect(fillWindowAt(0, 0)).toEqual({ x: -2048, y: -2048, width: 4096, height: 4096 });
+  it("uses a four-tile bounded window aligned to the raster tile grid", () => {
+    expect(FILL_WINDOW_PIXELS).toBe(2048);
+    expect(fillWindowAt(0, 0)).toEqual({ x: -1024, y: -1024, width: 2048, height: 2048 });
     expect(Math.abs(fillWindowAt(600, -700).x % 512)).toBe(0);
     expect(Math.abs(fillWindowAt(600, -700).y % 512)).toBe(0);
   });

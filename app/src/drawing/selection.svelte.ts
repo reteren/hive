@@ -1,8 +1,7 @@
 import { camera, viewport } from "../board/camera.svelte";
-import { DRAW_PX_PER_UNIT, type DrawPointerEvent, type DrawTool, type TileKey, type TileSnapshot, type WorldRect, worldToRaster } from "./types";
+import { currentDrawLevel, levelPxPerUnit, type DrawPointerEvent, type DrawTool, type TileKey, type TileSnapshot, type WorldRect, worldToRaster } from "./types";
 import { drawingStore } from "./tileStore.svelte";
-import { paintIntoTiles, readRasterRect, writeRasterRect } from "./brush";
-import { pushDrawingHistory } from "./history";
+import { affectedTileKeys, applyAcrossLevels, pushDrawingHistory, rasterRectToWorld, readCompositeRect } from "./history";
 import { registerDrawTool } from "./toolRegistry";
 import { drawingTools } from "./tools.svelte";
 import { PX_PER_UNIT, screenToWorld } from "../board/cameraMath";
@@ -19,11 +18,14 @@ export interface DrawingSelectionArea extends PixelBounds {
   tool: SelectionTool;
   mask: Uint8Array;
   outline: RasterPoint[];
+  /** Pyramid level of the raster coordinates (the zoom the selection was made at). */
+  level: number;
 }
 
 interface SelectionGesture {
   kind: "shape" | "move";
   tool?: SelectionTool;
+  level: number;
   start: RasterPoint;
   last: RasterPoint;
   startClient: { x: number; y: number };
@@ -48,6 +50,7 @@ interface PreparedMove {
 
 interface ClipboardPixels extends RasterPixels {
   mask: Uint8Array;
+  level: number;
 }
 
 const DRAG_THRESHOLD_PX = 4;
@@ -58,7 +61,7 @@ const SELECTION_TOOLS: readonly SelectionTool[] = ["select-rect", "select-lasso"
 
 export const drawingSelection = $state({
   area: null as DrawingSelectionArea | null,
-  preview: null as { tool: SelectionTool; points: RasterPoint[] } | null,
+  preview: null as { tool: SelectionTool; points: RasterPoint[]; level: number } | null,
   floating: null as RasterPixels | null,
   floatingAt: null as RasterPoint | null,
   revision: 0,
@@ -66,10 +69,10 @@ export const drawingSelection = $state({
 
 let activeGesture: SelectionGesture | null = null;
 let clipboard: ClipboardPixels | null = null;
-let cursorRaster: RasterPoint | null = null;
+let cursorWorld: RasterPoint | null = null;
 
 /** Rasterize a rectangle, lasso, or polygon without depending on canvas APIs. */
-export function buildSelectionArea(tool: SelectionTool, points: readonly RasterPoint[]): DrawingSelectionArea | null {
+export function buildSelectionArea(tool: SelectionTool, points: readonly RasterPoint[], level = 0): DrawingSelectionArea | null {
   if (tool === "select-rect") {
     if (points.length < 2) return null;
     const x0 = Math.floor(Math.min(points[0]!.x, points.at(-1)!.x));
@@ -90,6 +93,7 @@ export function buildSelectionArea(tool: SelectionTool, points: readonly RasterP
       tool,
       mask,
       outline: [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }],
+      level,
     };
   }
 
@@ -99,7 +103,7 @@ export function buildSelectionArea(tool: SelectionTool, points: readonly RasterP
   if (!bounds) return null;
   const mask = rasterizePolygonMask(bounds, cleanPoints);
   if (!mask.some((value) => value !== 0)) return null;
-  return { ...bounds, tool, mask, outline: cleanPoints };
+  return { ...bounds, tool, mask, outline: cleanPoints, level };
 }
 
 export function selectionContains(area: DrawingSelectionArea, point: RasterPoint): boolean {
@@ -141,6 +145,7 @@ export function resizeSelectionArea(
   return {
     ...bounds,
     tool: area.tool,
+    level: area.level,
     mask,
     outline: area.outline.map((item) => ({
       x: bounds.x + (item.x - area.x) * scaleX,
@@ -319,19 +324,58 @@ function selectionSizeIsSafe(width: number, height: number): boolean {
     width <= MAX_SELECTION_DIMENSION && height <= MAX_SELECTION_DIMENSION && width * height <= MAX_SELECTION_PIXELS;
 }
 
-function readPoint(event: DrawPointerEvent): RasterPoint {
-  const point = worldToRaster(event.world.x, event.world.y);
+function readPoint(event: DrawPointerEvent, level: number): RasterPoint {
+  const point = worldToRaster(event.world.x, event.world.y, level);
   return { x: point.px, y: point.py };
 }
 
-function keysForArea(area: PixelBounds): TileKey[] {
-  const rect: WorldRect = {
-    x: area.x / DRAW_PX_PER_UNIT,
-    y: area.y / DRAW_PX_PER_UNIT,
-    width: area.width / DRAW_PX_PER_UNIT,
-    height: area.height / DRAW_PX_PER_UNIT,
+/** Level a new gesture works at: the existing selection's, otherwise the one matching the zoom. */
+function gestureLevel(event: DrawPointerEvent): number {
+  return drawingSelection.area?.level ?? currentDrawLevel(event.zoom);
+}
+
+function areaWorldRect(area: PixelBounds, level: number): WorldRect {
+  return rasterRectToWorld(area.x, area.y, area.width, area.height, level);
+}
+
+/** Visible drawing (all levels) inside an area, at the area's level. */
+function readVisible(area: PixelBounds, level: number): RasterPixels {
+  return {
+    x: area.x,
+    y: area.y,
+    width: area.width,
+    height: area.height,
+    data: new Uint8ClampedArray(readCompositeRect(area.x, area.y, area.width, area.height, level).data),
   };
-  return drawingStore.keysInRect(rect, true);
+}
+
+/** Remove the masked pixels from every level (the selection mask as a destination-out source). */
+function cutMask(area: DrawingSelectionArea): TileKey[] {
+  const canvas = document.createElement("canvas");
+  canvas.width = area.width;
+  canvas.height = area.height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Could not create a drawing selection mask.");
+  const image = context.createImageData(area.width, area.height);
+  for (let pixel = 0; pixel < area.mask.length; pixel += 1) image.data[pixel * 4 + 3] = area.mask[pixel]!;
+  context.putImageData(image, 0, 0);
+  try {
+    return applyAcrossLevels(canvas, area.x, area.y, area.level, "erase", 1);
+  } finally {
+    canvas.width = 0;
+    canvas.height = 0;
+  }
+}
+
+/** Paint pixels at a level like a brush (covers finer detail underneath). */
+function paintPixels(pixels: RasterPixels, level: number): TileKey[] {
+  const canvas = canvasFromPixels(pixels);
+  try {
+    return applyAcrossLevels(canvas, pixels.x, pixels.y, level, "paint", 1);
+  } finally {
+    canvas.width = 0;
+    canvas.height = 0;
+  }
 }
 
 function imageDataFromPixels(pixels: RasterPixels): ImageData {
@@ -359,12 +403,8 @@ function updateState(): void {
   drawingSelection.revision += 1;
 }
 
-function updateCursor(event: DrawPointerEvent): void {
-  cursorRaster = readPoint(event);
-}
-
-function selectPixels(tool: SelectionTool, points: readonly RasterPoint[]): void {
-  const area = buildSelectionArea(tool, points);
+function selectPixels(tool: SelectionTool, points: readonly RasterPoint[], level: number): void {
+  const area = buildSelectionArea(tool, points, level);
   drawingSelection.preview = null;
   if (!area) return;
   drawingSelection.area = area;
@@ -380,15 +420,8 @@ function appendDistinct(points: readonly RasterPoint[], next: RasterPoint): Rast
 }
 
 function prepareMove(area: DrawingSelectionArea): Promise<PreparedMove> {
-  const sourceKeys = keysForArea(area);
-  const source: RasterPixels = {
-    x: area.x,
-    y: area.y,
-    width: area.width,
-    height: area.height,
-    data: new Uint8ClampedArray(readRasterRect(area.x, area.y, area.width, area.height).data),
-  };
-  const split = splitPixelsByMask(source, area.mask);
+  const sourceKeys = affectedTileKeys(areaWorldRect(area, area.level), area.level, "erase");
+  const split = splitPixelsByMask(readVisible(area, area.level), area.mask);
   return drawingStore.snapshot(sourceKeys).then((before) => ({
     area,
     sourceKeys,
@@ -401,7 +434,7 @@ function prepareMove(area: DrawingSelectionArea): Promise<PreparedMove> {
 function beginMove(event: DrawPointerEvent): void {
   const area = drawingSelection.area;
   if (!area) return;
-  const point = readPoint(event);
+  const point = readPoint(event, area.level);
   let prepared: Promise<PreparedMove>;
   try {
     prepared = prepareMove(area);
@@ -412,6 +445,7 @@ function beginMove(event: DrawPointerEvent): void {
   void prepared.catch((error: unknown) => console.error("Could not snapshot the drawing selection", error));
   activeGesture = {
     kind: "move",
+    level: area.level,
     start: point,
     last: point,
     startClient: { ...event.client },
@@ -437,8 +471,7 @@ function startFloating(gesture: SelectionGesture): void {
     try {
       if (!gesture.copy) {
         cutAttempted = true;
-        const changed = writeRasterRect(imageDataFromPixels(prepared.remainder), prepared.area.x, prepared.area.y);
-        drawingStore.commit([...new Set([...prepared.sourceKeys, ...changed])]);
+        cutMask(prepared.area);
         gesture.didCut = true;
       }
       drawingSelection.floating = prepared.selected;
@@ -487,7 +520,7 @@ async function finishMove(gesture: SelectionGesture): Promise<void> {
       width: prepared.area.width,
       height: prepared.area.height,
     };
-    const destinationKeys = keysForArea(destination);
+    const destinationKeys = affectedTileKeys(areaWorldRect(destination, prepared.area.level), prepared.area.level, "paint");
     if (destinationKeys.length === 0) {
       if (gesture.didCut) await drawingStore.restore(prepared.before);
       mutationStarted = false;
@@ -496,17 +529,10 @@ async function finishMove(gesture: SelectionGesture): Promise<void> {
     const destinationBefore = await drawingStore.snapshot(destinationKeys);
     for (const [key, blob] of destinationBefore) if (!rollback.has(key)) rollback.set(key, blob);
 
-    const canvas = canvasFromPixels(prepared.selected);
-    let painted: TileKey[] = [];
     mutationStarted = true;
-    try {
-      painted = paintIntoTiles(canvas, destination.x, destination.y, "source-over", 1);
-    } finally {
-      canvas.width = 0;
-      canvas.height = 0;
-    }
+    const painted = paintPixels({ ...prepared.selected, x: destination.x, y: destination.y }, prepared.area.level);
     const changedKeys = [...new Set([...prepared.sourceKeys, ...destinationKeys, ...painted])];
-    drawingStore.commit(changedKeys);
+    for (const key of changedKeys) if (!rollback.has(key)) rollback.set(key, null);
     const after = await drawingStore.snapshot(changedKeys);
     pushDrawingHistory(gesture.copy ? "Copy selection" : "Move selection", rollback, after);
 
@@ -562,28 +588,22 @@ async function cancelMove(gesture: SelectionGesture): Promise<void> {
 async function deleteCurrentSelection(): Promise<void> {
   const area = drawingSelection.area;
   if (!area) return;
-  const keys = keysForArea(area);
-  if (keys.length === 0) return;
+  const keys = affectedTileKeys(areaWorldRect(area, area.level), area.level, "erase");
+  if (keys.length === 0) {
+    clearSelection();
+    return;
+  }
   let before: TileSnapshot | null = null;
   let mutationStarted = false;
   try {
-    before = await drawingStore.snapshot(keys);
-    const source: RasterPixels = {
-      x: area.x,
-      y: area.y,
-      width: area.width,
-      height: area.height,
-      data: new Uint8ClampedArray(readRasterRect(area.x, area.y, area.width, area.height).data),
-    };
-    const selected = copySelectionPixels(source, area.mask);
+    const selected = copySelectionPixels(readVisible(area, area.level), area.mask);
     if (!hasVisiblePixels(selected)) {
       clearSelection();
       return;
     }
+    before = await drawingStore.snapshot(keys);
     mutationStarted = true;
-    const remainder = deleteSelectionPixels(source, area.mask);
-    const changed = writeRasterRect(imageDataFromPixels(remainder), area.x, area.y);
-    drawingStore.commit([...new Set([...keys, ...changed])]);
+    cutMask(area);
     const after = await drawingStore.snapshot(keys);
     pushDrawingHistory("Delete selection", before, after);
     clearSelection();
@@ -601,43 +621,31 @@ function copyCurrentSelection(): void {
   const area = drawingSelection.area;
   if (!area) return;
   try {
-    const source: RasterPixels = {
-      x: area.x,
-      y: area.y,
-      width: area.width,
-      height: area.height,
-      data: new Uint8ClampedArray(readRasterRect(area.x, area.y, area.width, area.height).data),
-    };
-    const selected = copySelectionPixels(source, area.mask);
+    const selected = copySelectionPixels(readVisible(area, area.level), area.mask);
     if (!hasVisiblePixels(selected)) return;
-    clipboard = { ...selected, mask: new Uint8Array(area.mask) };
+    clipboard = { ...selected, mask: new Uint8Array(area.mask), level: area.level };
   } catch (error) {
     console.error("Could not copy the drawing selection", error);
   }
 }
 
-async function pasteClipboard(point: RasterPoint | null): Promise<void> {
-  if (!clipboard || !point) return;
-  const targetX = Math.floor(point.x);
-  const targetY = Math.floor(point.y);
+async function pasteClipboard(world: RasterPoint | null): Promise<void> {
+  if (!clipboard || !world) return;
+  const level = clipboard.level;
+  const point = worldToRaster(world.x, world.y, level);
+  const targetX = Math.floor(point.px);
+  const targetY = Math.floor(point.py);
   const pixels = { ...clipboard, x: targetX, y: targetY };
-  const keys = keysForArea(pixels);
+  const keys = affectedTileKeys(areaWorldRect(pixels, level), level, "paint");
   if (keys.length === 0) return;
   let before: TileSnapshot | null = null;
   let mutationStarted = false;
   try {
     before = await drawingStore.snapshot(keys);
-    const canvas = canvasFromPixels(pixels);
-    let painted: TileKey[] = [];
     mutationStarted = true;
-    try {
-      painted = paintIntoTiles(canvas, targetX, targetY, "source-over", 1);
-    } finally {
-      canvas.width = 0;
-      canvas.height = 0;
-    }
+    const painted = paintPixels(pixels, level);
     const changed = [...new Set([...keys, ...painted])];
-    drawingStore.commit(changed);
+    for (const key of changed) if (!before.has(key)) before.set(key, null);
     const after = await drawingStore.snapshot(changed);
     pushDrawingHistory("Paste selection", before, after);
     drawingSelection.area = {
@@ -646,6 +654,7 @@ async function pasteClipboard(point: RasterPoint | null): Promise<void> {
       width: pixels.width,
       height: pixels.height,
       tool: "select-rect",
+      level,
       mask: new Uint8Array(clipboard.mask),
       outline: [
         { x: targetX, y: targetY },
@@ -674,12 +683,14 @@ function clearSelection(): void {
 }
 
 function addPolygonPoint(gestureTool: SelectionTool, event: DrawPointerEvent): void {
-  const point = readPoint(event);
   const previous = drawingSelection.preview;
-  const points = previous?.tool === gestureTool ? appendDistinct(previous.points, point) : [point];
-  drawingSelection.preview = { tool: gestureTool, points };
-  cursorRaster = point;
-  if (event.detail >= 2) void selectPixels("select-polygon", points);
+  const continuing = previous?.tool === gestureTool;
+  const level = continuing ? previous.level : currentDrawLevel(event.zoom);
+  const point = readPoint(event, level);
+  const points = continuing ? appendDistinct(previous.points, point) : [point];
+  drawingSelection.preview = { tool: gestureTool, points, level };
+  cursorWorld = { ...event.world };
+  if (event.detail >= 2) void selectPixels("select-polygon", points, level);
   updateState();
 }
 
@@ -687,10 +698,10 @@ function createHandler(tool: SelectionTool) {
   return {
     down(event: DrawPointerEvent) {
       if (activeGesture?.completion) return;
-      cursorRaster = readPoint(event);
+      cursorWorld = { ...event.world };
       const area = drawingSelection.area;
       if (area) {
-        if (selectionContains(area, cursorRaster)) {
+        if (selectionContains(area, readPoint(event, area.level))) {
           beginMove(event);
         } else {
           clearSelection();
@@ -705,24 +716,26 @@ function createHandler(tool: SelectionTool) {
         addPolygonPoint(tool, event);
         return;
       }
-      const point = readPoint(event);
+      const level = gestureLevel(event);
+      const point = readPoint(event, level);
       activeGesture = {
         kind: "shape",
         tool,
+        level,
         start: point,
         last: point,
         startClient: { ...event.client },
         lastClient: { ...event.client },
         points: [point],
       };
-      drawingSelection.preview = { tool, points: [point] };
+      drawingSelection.preview = { tool, points: [point], level };
       updateState();
     },
     move(event: DrawPointerEvent) {
-      cursorRaster = readPoint(event);
+      cursorWorld = { ...event.world };
       const gesture = activeGesture;
       if (!gesture || gesture.completion) return;
-      gesture.last = readPoint(event);
+      gesture.last = readPoint(event, gesture.level);
       gesture.lastClient = { ...event.client };
       if (gesture.kind === "move") {
         if (!gesture.started && Math.hypot(
@@ -747,13 +760,13 @@ function createHandler(tool: SelectionTool) {
         ? [gesture.start, gesture.last]
         : appendDistinct(gesture.points ?? [], gesture.last);
       gesture.points = points;
-      drawingSelection.preview = { tool: gesture.tool!, points };
+      drawingSelection.preview = { tool: gesture.tool!, points, level: gesture.level };
       updateState();
     },
     up(event: DrawPointerEvent) {
       const gesture = activeGesture;
       if (!gesture || gesture.completion) return;
-      gesture.last = readPoint(event);
+      gesture.last = readPoint(event, gesture.level);
       if (gesture.kind === "move") {
         if (gesture.started) void commitMove(gesture);
         else activeGesture = null;
@@ -762,7 +775,7 @@ function createHandler(tool: SelectionTool) {
       activeGesture = null;
       void selectPixels(gesture.tool!, gesture.tool === "select-rect"
         ? [gesture.start, gesture.last]
-        : appendDistinct(gesture.points ?? [], gesture.last));
+        : appendDistinct(gesture.points ?? [], gesture.last), gesture.level);
     },
     cancel() {
       const gesture = activeGesture;
@@ -804,7 +817,7 @@ function createHandler(tool: SelectionTool) {
       }
       if (activeGesture?.completion) return false;
       if (event.key === "Enter" && drawingSelection.preview?.tool === "select-polygon") {
-        void selectPixels("select-polygon", drawingSelection.preview.points);
+        void selectPixels("select-polygon", drawingSelection.preview.points, drawingSelection.preview.level);
         return true;
       }
       if (event.key === "Delete" || event.key === "Backspace") {
@@ -819,7 +832,7 @@ function createHandler(tool: SelectionTool) {
       }
       if (event.ctrlKey && event.code === "KeyV") {
         if (!clipboard) return false;
-        void pasteClipboard(cursorRaster);
+        void pasteClipboard(cursorWorld);
         return true;
       }
       return false;
@@ -838,33 +851,26 @@ function createHandler(tool: SelectionTool) {
 
 for (const tool of SELECTION_TOOLS) registerDrawTool(tool, createHandler(tool));
 
-function rasterFromClient(clientX: number, clientY: number): RasterPoint | null {
+function worldFromClient(clientX: number, clientY: number): RasterPoint | null {
   const board = document.querySelector<HTMLElement>(".board");
   if (!board) return null;
   const bounds = board.getBoundingClientRect();
-  const world = screenToWorld(camera, viewport, { x: clientX - bounds.left, y: clientY - bounds.top });
-  const point = worldToRaster(world.x, world.y);
-  return { x: point.px, y: point.py };
+  return screenToWorld(camera, viewport, { x: clientX - bounds.left, y: clientY - bounds.top });
 }
 
 if (typeof window !== "undefined") {
   window.addEventListener("pointermove", (event) => {
     if (!SELECTION_TOOLS.includes(drawingTools.active as SelectionTool)) return;
-    const point = rasterFromClient(event.clientX, event.clientY);
-    if (point) cursorRaster = point;
+    const point = worldFromClient(event.clientX, event.clientY);
+    if (point) cursorWorld = point;
   }, true);
 }
 
-export function selectionAreaWorldRect(area: PixelBounds): WorldRect {
-  return {
-    x: area.x / DRAW_PX_PER_UNIT,
-    y: area.y / DRAW_PX_PER_UNIT,
-    width: area.width / DRAW_PX_PER_UNIT,
-    height: area.height / DRAW_PX_PER_UNIT,
-  };
+export function selectionAreaWorldRect(area: PixelBounds & { level?: number }): WorldRect {
+  return areaWorldRect(area, area.level ?? 0);
 }
 
-export function selectionBoundsWorldPixels(area: PixelBounds): { left: number; top: number; width: number; height: number } {
-  const ratio = PX_PER_UNIT / DRAW_PX_PER_UNIT;
+export function selectionBoundsWorldPixels(area: PixelBounds & { level?: number }): { left: number; top: number; width: number; height: number } {
+  const ratio = PX_PER_UNIT / levelPxPerUnit(area.level ?? 0);
   return { left: area.x * ratio, top: area.y * ratio, width: area.width * ratio, height: area.height * ratio };
 }

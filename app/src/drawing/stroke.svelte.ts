@@ -1,18 +1,40 @@
-import { DRAW_PX_PER_UNIT, type BrushSettings, type DrawPointerEvent, type WorldRect } from "./types";
+import type { BrushSettings, DrawPointerEvent } from "./types";
 import { createStroke, type DrawStroke, type StrokePoint, type StrokeRasterRect } from "./brush";
 import { drawingTools } from "./tools.svelte";
 import { registerDrawTool } from "./toolRegistry";
 import { drawingTileStore } from "./tileStore.svelte";
-import { paintIntoTiles, pushDrawingHistory, waitForDrawingHistoryRestore } from "./history";
+import { affectedTileKeys, applyAcrossLevels, pushDrawingHistory, rasterRectToWorld, waitForDrawingHistoryRestore } from "./history";
 
 /** Live, raster-positioned preview consumed by DrawingLayer. */
 export const drawingStrokePreview = $state({
   source: null as HTMLCanvasElement | null,
   rasterX: 0,
   rasterY: 0,
+  /** Raster px per world unit of the stroke's level. */
+  pixelsPerUnit: 20,
+  /** CSS opacity of the live stroke (the brush opacity; erasing shows a translucent mark). */
+  opacity: 1,
+  erase: false,
   dirtyRect: null as StrokeRasterRect | null,
   revision: 0,
 });
+
+/** Show a live stroke (brush or eraser) on the drawing layer. */
+export function showStrokePreview(stroke: DrawStroke, options: { opacity: number; erase?: boolean }): void {
+  drawingStrokePreview.source = stroke.preview;
+  drawingStrokePreview.rasterX = stroke.rasterX;
+  drawingStrokePreview.rasterY = stroke.rasterY;
+  drawingStrokePreview.pixelsPerUnit = stroke.pixelsPerUnit;
+  drawingStrokePreview.opacity = options.opacity;
+  drawingStrokePreview.erase = options.erase === true;
+  drawingStrokePreview.dirtyRect = stroke.lastDirtyRect;
+  drawingStrokePreview.revision += 1;
+}
+
+/** Hide the live stroke if it still belongs to this stroke (a newer one may already be drawing). */
+export function hideStrokePreview(stroke: DrawStroke): void {
+  if (drawingStrokePreview.source === stroke.preview) clearPreview();
+}
 
 let activeStroke: DrawStroke | null = null;
 let activeSettings: BrushSettings | null = null;
@@ -49,24 +71,20 @@ export async function endStroke(): Promise<void> {
     stroke.dispose();
     return;
   }
-  const rect: WorldRect = {
-    x: finished.rasterX / DRAW_PX_PER_UNIT,
-    y: finished.rasterY / DRAW_PX_PER_UNIT,
-    width: finished.source.width / DRAW_PX_PER_UNIT,
-    height: finished.source.height / DRAW_PX_PER_UNIT,
-  };
-  const keys = drawingTileStore.keysInRect(rect, true);
+  const rect = rasterRectToWorld(finished.rasterX, finished.rasterY, finished.source.width, finished.source.height, finished.level);
   const operation = commitQueue.then(async () => {
     let before: Awaited<ReturnType<typeof drawingTileStore.snapshot>> | null = null;
     let attemptedPaint = false;
     try {
       await waitForDrawingHistoryRestore();
+      // Keys are taken after earlier commits landed: a previous stroke may have created tiles here.
+      const keys = affectedTileKeys(rect, finished.level, "paint");
       before = await drawingTileStore.snapshot(keys);
       attemptedPaint = true;
-      const changed = paintIntoTiles(finished.source, finished.rasterX, finished.rasterY, "source-over", settings.opacity);
+      const changed = applyAcrossLevels(finished.source, finished.rasterX, finished.rasterY, finished.level, "paint", settings.opacity);
       // The live preview stays until the paint is in the tiles, so the stroke never blinks out after pointer-up.
       clearPreviewOf(stroke);
-      const after = await drawingTileStore.snapshot(keys);
+      const after = await drawingTileStore.snapshot([...new Set([...keys, ...changed])]);
       if (changed.length > 0) pushDrawingHistory("Draw", before, after);
     } catch (error) {
       if (before && attemptedPaint) await drawingTileStore.restore(before).catch((restoreError: unknown) => {
@@ -91,17 +109,12 @@ export function cancelStroke(): void {
 }
 
 function publishPreview(): void {
-  if (!activeStroke) return;
-  drawingStrokePreview.source = activeStroke.preview;
-  drawingStrokePreview.rasterX = activeStroke.rasterX;
-  drawingStrokePreview.rasterY = activeStroke.rasterY;
-  drawingStrokePreview.dirtyRect = activeStroke.lastDirtyRect;
-  drawingStrokePreview.revision += 1;
+  if (!activeStroke || !activeSettings) return;
+  showStrokePreview(activeStroke, { opacity: activeSettings.opacity });
 }
 
-/** Clear the preview only if it still shows this stroke (a newer stroke may already be drawing). */
 function clearPreviewOf(stroke: DrawStroke): void {
-  if (drawingStrokePreview.source === stroke.preview) clearPreview();
+  hideStrokePreview(stroke);
 }
 
 function clearPreview(): void {
