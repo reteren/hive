@@ -6,8 +6,30 @@ import {
   VIEW_SETTINGS_VERSION,
 } from "../src/settings/viewSettings";
 import { setReduceMotionDataset } from "../src/settings/motion";
+import { videoExceedsExternalThreshold, videoExternalThresholdBytes } from "../src/settings/videoThreshold";
 
 describe("view settings serialization", () => {
+  it("validates and persists the video external-link threshold, including Unlimited", () => {
+    expect(DEFAULT_VIEW_SETTINGS.videoExternalThresholdMb).toBe(20);
+    expect(parseViewSettings('{"videoExternalThresholdMb":125}', DEFAULT_VIEW_SETTINGS).videoExternalThresholdMb)
+      .toBe(125);
+    expect(parseViewSettings('{"videoExternalThresholdMb":null}', DEFAULT_VIEW_SETTINGS).videoExternalThresholdMb)
+      .toBeNull();
+
+    const unlimited = serializeViewSettings({ ...DEFAULT_VIEW_SETTINGS, videoExternalThresholdMb: null });
+    expect(parseViewSettings(unlimited, DEFAULT_VIEW_SETTINGS).videoExternalThresholdMb).toBeNull();
+    expect(videoExternalThresholdBytes(125)).toBe(125 * 1024 * 1024);
+    expect(videoExternalThresholdBytes(null)).toBe(0);
+    expect(videoExceedsExternalThreshold(20 * 1024 * 1024, 20)).toBe(false);
+    expect(videoExceedsExternalThreshold(20 * 1024 * 1024 + 1, 20)).toBe(true);
+    expect(videoExceedsExternalThreshold(Number.MAX_SAFE_INTEGER, null)).toBe(false);
+
+    for (const invalid of ['"125"', "0", "-1", "1.5", "1e400", "8589934592"]) {
+      const serialized = `{"videoExternalThresholdMb":${invalid}}`;
+      expect(parseViewSettings(serialized, DEFAULT_VIEW_SETTINGS).videoExternalThresholdMb).toBe(20);
+    }
+  });
+
   it("round-trips a versioned settings snapshot", () => {
     const settings = {
       camera: { x: 32.5, y: -80, zoom: 2.4 },
@@ -27,6 +49,7 @@ describe("view settings serialization", () => {
       backupIntervalMinutes: 15 as const,
       quickInputShortcut: "Ctrl+Shift+Space",
       skipCompletedTimerConfirmation: false,
+      videoExternalThresholdMb: 125,
     };
 
     const serialized = serializeViewSettings(settings);
@@ -101,6 +124,7 @@ describe("view settings serialization", () => {
       backupIntervalMinutes: 30,
       quickInputShortcut: DEFAULT_VIEW_SETTINGS.quickInputShortcut,
       skipCompletedTimerConfirmation: false,
+      videoExternalThresholdMb: 20,
     });
   });
 

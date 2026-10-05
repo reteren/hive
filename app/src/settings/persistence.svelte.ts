@@ -6,7 +6,14 @@ import { history as undoHistory, setHistoryLimit } from "../history/history.svel
 import { brushState, setBrushSize } from "../zones/brushState.svelte";
 import { getCommandKeyOverrides, setCommandKeyOverrides } from "../commands/registry.svelte";
 import { applyReduceMotionPreference } from "./motion";
-import { preferences, setFitWidthToText, setRecordInBackground, setReduceAnimations, setTransferHintsShown } from "./preferences.svelte";
+import {
+  preferences,
+  setFitWidthToText,
+  setRecordInBackground,
+  setReduceAnimations,
+  setTransferHintsShown,
+  setVideoExternalThresholdMb,
+} from "./preferences.svelte";
 import { backupSettings, setBackupInterval } from "../backup/backupSettings.svelte";
 import { quickInputShortcut, setQuickInputShortcutValue } from "./quickInputShortcut.svelte";
 import { setTimeCounters, timeCounters } from "../time/runtime.svelte";
@@ -142,6 +149,7 @@ function currentSettings(): ViewSettings {
     backupIntervalMinutes: backupSettings.interval,
     quickInputShortcut: quickInputShortcut.value,
     skipCompletedTimerConfirmation: timeEnablePreference.skipCompletedTimerConfirmation,
+    videoExternalThresholdMb: preferences.videoExternalThresholdMb,
   };
 }
 
@@ -169,4 +177,5 @@ function applySettings(settings: ViewSettings): void {
   setBackupInterval(settings.backupIntervalMinutes);
   setQuickInputShortcutValue(settings.quickInputShortcut);
   timeEnablePreference.skipCompletedTimerConfirmation = settings.skipCompletedTimerConfirmation ?? false;
+  setVideoExternalThresholdMb(settings.videoExternalThresholdMb);
 }

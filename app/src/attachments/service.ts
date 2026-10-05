@@ -2,6 +2,8 @@ import { convertFileSrc, invoke, isTauri } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { project } from "../project/project.svelte";
 import { showLinkStatus } from "../links-in-text/contextMenu.svelte";
+import { preferences } from "../settings/preferences.svelte";
+import { videoExceedsExternalThreshold, videoExternalThresholdBytes } from "../settings/videoThreshold";
 import {
   AUDIO_MIME_TYPES,
   IMAGE_MIME_TYPES,
@@ -71,6 +73,7 @@ export async function importImageFile(file: File): Promise<ImportResult> {
         bytes: Array.from(bytes),
         name: name ?? null,
         mime,
+        videoExternalThresholdBytes: videoExternalThresholdBytes(preferences.videoExternalThresholdMb),
       });
       return {
         ok: true,
@@ -102,7 +105,10 @@ export async function importImageFile(file: File): Promise<ImportResult> {
 export async function importImagePath(path: string): Promise<ImportResult> {
   if (!isTauri()) return { ok: false, error: "Importing an image path is available in the desktop app." };
   try {
-    const stored = await invoke<StoredAttachment>("attachment_import_path", { path });
+    const stored = await invoke<StoredAttachment>("attachment_import_path", {
+      path,
+      videoExternalThresholdBytes: videoExternalThresholdBytes(preferences.videoExternalThresholdMb),
+    });
     const directory = await invoke<string>("attachment_directory");
     const source = convertFileSrc(joinPath(directory, stored.file));
     const natural = await readNaturalSizeFromUrl(source);
@@ -126,7 +132,11 @@ export async function importMediaPath(path: string): Promise<MediaImportResult> 
   if (!isTauri()) return { ok: false, error: "Importing a file path is available in the desktop app." };
   try {
     const kindHint = mediaKindForPath(path);
-    const stored = await invoke<StoredAttachment>("attachment_import_path", { path, kindHint });
+    const stored = await invoke<StoredAttachment>("attachment_import_path", {
+      path,
+      kindHint,
+      videoExternalThresholdBytes: videoExternalThresholdBytes(preferences.videoExternalThresholdMb),
+    });
     const kind = stored.kind ?? kindHint;
     if (!kind || kind === "image") return { ok: false, error: "The selected file is not a supported media file." };
     return { ok: true, media: await makeMediaRef(stored, kind) };
@@ -150,8 +160,8 @@ export async function importMediaFile(file: File): Promise<MediaImportResult> {
     if (hintedKind && file.size > MEDIA_LIMIT_BYTES[hintedKind]) {
       return { ok: false, error: mediaLimitError(hintedKind) };
     }
-    if (hintedKind === "video" && file.size > 20 * 1024 * 1024) {
-      return { ok: false, error: "Videos larger than 20 MB must be imported from their file path in the desktop app." };
+    if (hintedKind === "video" && videoExceedsExternalThreshold(file.size, preferences.videoExternalThresholdMb)) {
+      return { ok: false, error: videoThresholdPathRequiredMessage() };
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
     return await importMediaBytes(bytes, file.name, file.type);
@@ -380,6 +390,9 @@ async function importMediaBytes(
   if (bytes.byteLength > MEDIA_LIMIT_BYTES[descriptor.kind]) {
     return { ok: false, error: `${descriptor.kind === "audio" || descriptor.kind === "video" ? "Media" : "File"} exceeds the ${descriptor.kind === "audio" || descriptor.kind === "video" ? "2 GB" : "200 MB"} limit.` };
   }
+  if (descriptor.kind === "video" && videoExceedsExternalThreshold(bytes.byteLength, preferences.videoExternalThresholdMb)) {
+    return { ok: false, error: videoThresholdPathRequiredMessage() };
+  }
   if (descriptor.kind === "text" && !isValidUtf8(bytes)) {
     return { ok: false, error: "Text files must be valid UTF-8." };
   }
@@ -392,6 +405,7 @@ async function importMediaBytes(
         name: safeName,
         mime: mimeHint || descriptor.mime,
         kindHint: descriptor.kind,
+        videoExternalThresholdBytes: videoExternalThresholdBytes(preferences.videoExternalThresholdMb),
       });
       const kind = stored.kind && stored.kind !== "image" ? stored.kind : descriptor.kind;
       return { ok: true, media: await makeMediaRef(stored, kind) };
@@ -404,6 +418,13 @@ async function importMediaBytes(
   } catch (error) {
     return { ok: false, error: errorMessage(error) };
   }
+}
+
+function videoThresholdPathRequiredMessage(): string {
+  const threshold = preferences.videoExternalThresholdMb;
+  return threshold === null
+    ? "This video must be imported from its file path."
+    : `Videos larger than ${threshold} MB must be imported from their file path in the desktop app.`;
 }
 
 function detectMediaDescriptor(

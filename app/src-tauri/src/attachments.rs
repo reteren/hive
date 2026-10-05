@@ -22,6 +22,7 @@ const ATTACHMENTS_DIRECTORY: &str = "attachments";
 const MAX_SMALL_ATTACHMENT_BYTES: u64 = 200 * 1024 * 1024;
 const MAX_LARGE_MEDIA_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 pub(crate) const LARGE_VIDEO_EXTERNAL_BYTES: u64 = 20 * 1024 * 1024;
+const UNLIMITED_VIDEO_EXTERNAL_THRESHOLD_BYTES: u64 = 0;
 const MAX_ATTACHMENT_NAME_UNITS: usize = 120;
 const STREAM_BUFFER_BYTES: usize = 64 * 1024;
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -138,6 +139,7 @@ pub fn attachment_import_bytes(
     name: Option<String>,
     mime: Option<String>,
     kind_hint: Option<String>,
+    video_external_threshold_bytes: Option<u64>,
 ) -> Result<AttachmentImport, String> {
     let root = project::active_project_root(&state)?;
     import_supported_bytes(
@@ -146,6 +148,7 @@ pub fn attachment_import_bytes(
         name.as_deref(),
         mime.as_deref(),
         kind_hint.as_deref(),
+        video_external_threshold_bytes,
     )
 }
 
@@ -155,9 +158,15 @@ pub fn attachment_import_path(
     state: State<'_, ProjectState>,
     path: String,
     kind_hint: Option<String>,
+    video_external_threshold_bytes: Option<u64>,
 ) -> Result<AttachmentImport, String> {
     let root = project::active_project_root(&state)?;
-    let imported = import_path_at(&root, Path::new(&path), kind_hint.as_deref())?;
+    let imported = import_path_at(
+        &root,
+        Path::new(&path),
+        kind_hint.as_deref(),
+        video_external_threshold_bytes,
+    )?;
     if let Some(external_path) = imported.external_path.as_deref() {
         allow_external_video_file(&app, Path::new(external_path))?;
     }
@@ -329,10 +338,6 @@ fn collect_external_video_paths(value: &Value, paths: &mut HashSet<PathBuf>) -> 
                             .get("mime")
                             .and_then(Value::as_str)
                             .is_some_and(|mime| mime.starts_with("video/"))
-                        && object
-                            .get("size")
-                            .and_then(Value::as_u64)
-                            .is_some_and(|size| size > LARGE_VIDEO_EXTERNAL_BYTES)
                     {
                         if let Ok(canonical) = fs::canonicalize(&path) {
                             if ensure_regular_attachment(&canonical).is_ok() {
@@ -372,6 +377,7 @@ fn import_path_at(
     root: &Path,
     source: &Path,
     kind_hint: Option<&str>,
+    video_external_threshold_bytes: Option<u64>,
 ) -> Result<AttachmentImport, String> {
     let metadata = fs::symlink_metadata(source)
         .map_err(|error| format!("could not read selected file: {error}"))?;
@@ -393,7 +399,9 @@ fn import_path_at(
     let descriptor = detect_media_descriptor(&prefix[..prefix_len], name, None, kind_hint)?;
     check_size(metadata.len(), &descriptor)?;
 
-    if descriptor.kind == "video" && metadata.len() > LARGE_VIDEO_EXTERNAL_BYTES {
+    if descriptor.kind == "video"
+        && should_externalize_video(metadata.len(), video_external_threshold_bytes)
+    {
         return Ok(AttachmentImport {
             file: readable_attachment_name(name.unwrap_or("Video"), Some(&descriptor.extension)),
             mime: descriptor.mime.to_string(),
@@ -496,12 +504,15 @@ fn import_supported_bytes(
     name: Option<&str>,
     mime_hint: Option<&str>,
     kind_hint: Option<&str>,
+    video_external_threshold_bytes: Option<u64>,
 ) -> Result<AttachmentImport, String> {
     let descriptor = detect_media_descriptor(bytes, name, mime_hint, kind_hint)?;
     check_size(bytes.len() as u64, &descriptor)?;
-    if descriptor.kind == "video" && bytes.len() as u64 > LARGE_VIDEO_EXTERNAL_BYTES {
+    if descriptor.kind == "video"
+        && should_externalize_video(bytes.len() as u64, video_external_threshold_bytes)
+    {
         return Err(
-            "Videos larger than 20 MB must be dropped or selected from their file path."
+            "Videos above the configured threshold must be imported from their file path."
                 .to_string(),
         );
     }
@@ -509,6 +520,14 @@ fn import_supported_bytes(
         return Err("Text file is not valid UTF-8.".to_string());
     }
     store_bytes_at(root, bytes, name, descriptor)
+}
+
+fn should_externalize_video(size_bytes: u64, threshold_bytes: Option<u64>) -> bool {
+    match threshold_bytes {
+        Some(UNLIMITED_VIDEO_EXTERNAL_THRESHOLD_BYTES) => false,
+        Some(threshold) => size_bytes > threshold,
+        None => size_bytes > LARGE_VIDEO_EXTERNAL_BYTES,
+    }
 }
 
 #[cfg(test)]
@@ -1059,10 +1078,12 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        check_size, detect_format, detect_media_descriptor, import_bytes_at, import_path_at,
+        check_size, detect_format, detect_media_descriptor, external_video_paths, import_bytes_at,
+        import_path_at,
         import_source_path_at, import_supported_bytes, readable_attachment_name,
-        validate_attachment_filename, MediaDescriptor, MAX_LARGE_MEDIA_BYTES,
-        MAX_SMALL_ATTACHMENT_BYTES,
+        should_externalize_video, validate_attachment_filename, MediaDescriptor,
+        LARGE_VIDEO_EXTERNAL_BYTES, MAX_LARGE_MEDIA_BYTES, MAX_SMALL_ATTACHMENT_BYTES,
+        UNLIMITED_VIDEO_EXTERNAL_THRESHOLD_BYTES,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -1178,7 +1199,8 @@ mod tests {
             &[0xc3, 0x28],
             Some("broken.py"),
             None,
-            None
+            None,
+            None,
         )
         .unwrap_err()
         .contains("UTF-8"));
@@ -1193,7 +1215,7 @@ mod tests {
         bytes.extend(std::iter::repeat(0x5a).take(192 * 1024));
         fs::write(&source, &bytes).expect("write source media");
 
-        let imported = import_path_at(&root, &source, Some("video")).expect("stream import");
+        let imported = import_path_at(&root, &source, Some("video"), None).expect("stream import");
 
         assert_eq!(imported.kind.as_deref(), Some("video"));
         assert_eq!(imported.file, "source.mp4");
@@ -1213,7 +1235,7 @@ mod tests {
         bytes.extend_from_slice("é".as_bytes());
         fs::write(&source, &bytes).expect("write text source");
 
-        let imported = import_path_at(&root, &source, None).expect("import split UTF-8 character");
+        let imported = import_path_at(&root, &source, None, None).expect("import split UTF-8 character");
 
         assert_eq!(imported.kind.as_deref(), Some("text"));
         assert_eq!(
@@ -1237,7 +1259,7 @@ mod tests {
             .expect("extend video file");
 
         let imported =
-            import_path_at(&root, &video, Some("video")).expect("import large video reference");
+            import_path_at(&root, &video, Some("video"), None).expect("import large video reference");
         assert_eq!(
             imported.external_path.as_deref(),
             Some(fs::canonicalize(&video).unwrap().to_str().unwrap())
@@ -1256,6 +1278,42 @@ mod tests {
         assert_eq!(
             readable_attachment_name("CON.backup.txt", None),
             "CON_backup.txt"
+        );
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn external_video_decision_respects_threshold_and_unlimited_mode() {
+        assert!(!should_externalize_video(99, Some(100)));
+        assert!(!should_externalize_video(100, Some(100)));
+        assert!(should_externalize_video(101, Some(100)));
+        assert!(!should_externalize_video(u64::MAX, Some(UNLIMITED_VIDEO_EXTERNAL_THRESHOLD_BYTES)));
+        assert!(!should_externalize_video(LARGE_VIDEO_EXTERNAL_BYTES, None));
+        assert!(should_externalize_video(LARGE_VIDEO_EXTERNAL_BYTES + 1, None));
+    }
+
+    #[test]
+    fn external_video_scope_restores_links_below_the_legacy_threshold() {
+        let root = test_root();
+        fs::create_dir_all(&root).expect("create project root");
+        let video = root.join("clip.mp4");
+        fs::write(&video, b"video").expect("write external video fixture");
+        let index = serde_json::json!({
+            "notes": [{
+                "media": {
+                    "kind": "video",
+                    "externalPath": video.to_string_lossy(),
+                    "mime": "video/mp4",
+                    "size": 5 * 1024 * 1024
+                }
+            }]
+        });
+        fs::write(root.join("board.json"), serde_json::to_vec(&index).unwrap())
+            .expect("write board index");
+
+        assert_eq!(
+            external_video_paths(&root).unwrap(),
+            vec![fs::canonicalize(&video).unwrap()]
         );
         fs::remove_dir_all(root).expect("remove fixture");
     }

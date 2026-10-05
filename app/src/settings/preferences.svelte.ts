@@ -1,10 +1,16 @@
 import { applyReduceMotionPreference, systemPrefersReducedMotion } from "./motion";
+import {
+  DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB,
+  normalizeVideoExternalThresholdMb,
+  type VideoExternalThresholdMb,
+} from "./videoThreshold";
 
 export const preferences = $state({
   reduceAnimations: systemPrefersReducedMotion(),
   transferHintsShown: 0,
   fitWidthToText: true,
   recordInBackground: false,
+  videoExternalThresholdMb: DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB as VideoExternalThresholdMb,
 });
 
 export function setTransferHintsShown(count: number): void {
@@ -26,6 +32,10 @@ export function setFitWidthToText(enabled: boolean): void {
 
 export function setRecordInBackground(enabled: boolean): void {
   preferences.recordInBackground = enabled;
+}
+
+export function setVideoExternalThresholdMb(value: unknown): void {
+  preferences.videoExternalThresholdMb = normalizeVideoExternalThresholdMb(value);
 }
 
 applyReduceMotionPreference(preferences.reduceAnimations);

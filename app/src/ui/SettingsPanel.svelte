@@ -12,7 +12,14 @@
   import { estimateJsonSize, formatStorageSize } from "../export/storage";
   import { exportCurrentProject, importProjectFromZip, refreshStorageStats } from "../export/actions";
   import { exportState } from "../export/exportState.svelte";
-  import { preferences, setFitWidthToText, setRecordInBackground, setReduceAnimations } from "../settings/preferences.svelte";
+  import {
+    preferences,
+    setFitWidthToText,
+    setRecordInBackground,
+    setReduceAnimations,
+    setVideoExternalThresholdMb,
+  } from "../settings/preferences.svelte";
+  import { DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB } from "../settings/videoThreshold";
   import { gifPlayback, setGifPlaybackMode } from "../attachments/gifPlayback.svelte";
   import { closeSettingsPanel, settingsPanel } from "../settings/settingsPanel.svelte";
   import QuickInputShortcutSetting from "../settings/QuickInputShortcutSetting.svelte";
@@ -21,6 +28,7 @@
   import Select from "./Select.svelte";
 
   let historyLimitDraft = $state(String(history.limit));
+  let videoThresholdDraft = $state(String(preferences.videoExternalThresholdMb ?? DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB));
   let closeButton = $state<HTMLButtonElement | null>(null);
   let confirmingEmptyTrash = $state(false);
   let emptyTrashCancelButton = $state<HTMLButtonElement | null>(null);
@@ -65,6 +73,34 @@
       historyLimitDraft = String(history.limit);
       input.blur();
     }
+  }
+
+  function changeVideoThreshold(event: Event): void {
+    if (!(event.currentTarget instanceof HTMLInputElement)) return;
+    setVideoExternalThresholdMb(event.currentTarget.valueAsNumber);
+    videoThresholdDraft = String(preferences.videoExternalThresholdMb ?? DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB);
+  }
+
+  function handleVideoThresholdKeydown(event: KeyboardEvent): void {
+    const input = event.currentTarget;
+    if (!(input instanceof HTMLInputElement)) return;
+    if (event.key === "Enter") {
+      input.blur();
+    } else if (event.key === "Escape") {
+      event.stopPropagation();
+      videoThresholdDraft = String(preferences.videoExternalThresholdMb ?? DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB);
+      input.blur();
+    }
+  }
+
+  function toggleUnlimitedVideoThreshold(event: Event): void {
+    if (!(event.currentTarget instanceof HTMLInputElement)) return;
+    if (event.currentTarget.checked) {
+      setVideoExternalThresholdMb(null);
+      return;
+    }
+    setVideoExternalThresholdMb(Number(videoThresholdDraft));
+    videoThresholdDraft = String(preferences.videoExternalThresholdMb ?? DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB);
   }
 
   function changeBackupInterval(value: string): void {
@@ -206,6 +242,41 @@
           <div class="storage-row">
             <span>Project folder</span>
             <span class="storage-value">{formatStorageSize(exportState.storageStats?.projectBytes ?? 0)}</span>
+          </div>
+          <div class="video-threshold-setting" data-video-threshold-setting>
+            <label for="settings-video-threshold">Keep videos outside the project when larger than</label>
+            <div class="video-threshold-controls">
+              <input
+                id="settings-video-threshold"
+                class="history-limit video-threshold-input"
+                type="number"
+                min="1"
+                step="1"
+                value={videoThresholdDraft}
+                disabled={preferences.videoExternalThresholdMb === null}
+                data-video-threshold-input
+                aria-label="Video external storage threshold in megabytes"
+                oninput={(event) => (videoThresholdDraft = event.currentTarget.value)}
+                onchange={changeVideoThreshold}
+                onkeydown={handleVideoThresholdKeydown}
+              />
+              <span>MB</span>
+              <label class="video-threshold-unlimited">
+                <input
+                  type="checkbox"
+                  checked={preferences.videoExternalThresholdMb === null}
+                  data-video-threshold-unlimited
+                  aria-label="Unlimited video threshold (always copy videos)"
+                  onchange={toggleUnlimitedVideoThreshold}
+                />
+                Unlimited
+              </label>
+            </div>
+            <p class="video-threshold-hint">
+              {preferences.videoExternalThresholdMb === null
+                ? "Unlimited copies every video into the project."
+                : "Larger videos are linked, not copied, so the project folder stays small."}
+            </p>
           </div>
           {#if exportState.storageError}
             <p class="storage-error" role="alert">{exportState.storageError}</p>
@@ -408,6 +479,41 @@
     font-family: var(--mono-font);
     font-size: 9px;
     text-align: right;
+  }
+
+  .video-threshold-setting {
+    display: grid;
+    gap: 5px;
+    margin: 7px 2px 9px;
+    color: var(--text-dim);
+    font-size: 10px;
+  }
+
+  .video-threshold-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .video-threshold-input {
+    width: 76px;
+  }
+
+  .video-threshold-unlimited {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 6px;
+  }
+
+  .video-threshold-unlimited input {
+    accent-color: var(--accent);
+  }
+
+  .video-threshold-hint {
+    margin: 0;
+    color: var(--text-dim);
+    font-size: 9px;
   }
 
   .storage-actions {

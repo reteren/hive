@@ -76,8 +76,7 @@ export function parseMediaRef(value: unknown): MediaRef | null {
   if (value.kind === "text" && !(extension in TEXT_FORMAT_LANGUAGES)) return null;
   if (value.kind === "audio" && !AUDIO_MIME_TYPES.includes(value.mime as (typeof AUDIO_MIME_TYPES)[number])) return null;
   if (value.kind === "video" && !VIDEO_MIME_TYPES.includes(value.mime as (typeof VIDEO_MIME_TYPES)[number])) return null;
-  if (value.externalPath !== undefined && (value.kind !== "video" || typeof value.externalPath !== "string" || !isAbsolutePath(value.externalPath) ||
-    (value.size as number) <= 20 * 1024 * 1024)) return null;
+  if (value.externalPath !== undefined && (value.kind !== "video" || typeof value.externalPath !== "string" || !isAbsolutePath(value.externalPath))) return null;
   if (value.duration !== undefined && (typeof value.duration !== "number" || !Number.isFinite(value.duration) || value.duration < 0)) return null;
   if (value.naturalWidth !== undefined && (!Number.isSafeInteger(value.naturalWidth) || (value.naturalWidth as number) <= 0)) return null;
   if (value.naturalHeight !== undefined && (!Number.isSafeInteger(value.naturalHeight) || (value.naturalHeight as number) <= 0)) return null;

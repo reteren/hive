@@ -8,8 +8,13 @@ import type { BackupInterval } from "../backup/backupSettings.svelte";
 import { DEFAULT_QUICK_INPUT_SHORTCUT, normalizeQuickInputShortcut } from "../quickInput/shortcutModel";
 import { normalizeGifPlaybackMode, type GifPlaybackMode } from "../attachments/gifPlayback.svelte";
 import { DEFAULT_DRAWING_PREFERENCES, normalizeDrawingPreferences, type DrawingPreferences } from "../drawing/settings";
+import {
+  DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB,
+  normalizeVideoExternalThresholdMb,
+  type VideoExternalThresholdMb,
+} from "./videoThreshold";
 
-export const VIEW_SETTINGS_VERSION = 14;
+export const VIEW_SETTINGS_VERSION = 15;
 
 export interface CameraSettings {
   minZoom: number;
@@ -53,6 +58,7 @@ export interface ViewSettings {
   backupIntervalMinutes: BackupInterval;
   quickInputShortcut: string;
   skipCompletedTimerConfirmation?: boolean;
+  videoExternalThresholdMb: VideoExternalThresholdMb;
 }
 
 /** App-wide Time totals. They belong to view settings, not to an individual project. */
@@ -84,6 +90,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
   backupIntervalMinutes: 30,
   quickInputShortcut: DEFAULT_QUICK_INPUT_SHORTCUT,
   skipCompletedTimerConfirmation: false,
+  videoExternalThresholdMb: DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB,
 };
 
 const MIN_ALLOWED_ZOOM_LIMIT = 0.001;
@@ -148,6 +155,10 @@ export function parseViewSettings(serialized: string | null | undefined, default
     backupIntervalMinutes: backupIntervalOrDefault(parsed.backupIntervalMinutes, defaults.backupIntervalMinutes),
     quickInputShortcut: normalizeQuickInputShortcut(parsed.quickInputShortcut) ?? defaults.quickInputShortcut,
     skipCompletedTimerConfirmation: booleanOrDefault(parsed.skipCompletedTimerConfirmation, defaults.skipCompletedTimerConfirmation ?? false),
+    videoExternalThresholdMb: normalizeVideoExternalThresholdMb(
+      parsed.videoExternalThresholdMb,
+      defaults.videoExternalThresholdMb,
+    ),
   };
 }
 
@@ -180,6 +191,10 @@ export function serializeViewSettings(settings: ViewSettings): string {
     backupIntervalMinutes: backupIntervalOrDefault(settings.backupIntervalMinutes, 30),
     quickInputShortcut: normalizeQuickInputShortcut(settings.quickInputShortcut) ?? DEFAULT_QUICK_INPUT_SHORTCUT,
     skipCompletedTimerConfirmation: settings.skipCompletedTimerConfirmation === true,
+    videoExternalThresholdMb: normalizeVideoExternalThresholdMb(
+      settings.videoExternalThresholdMb,
+      DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB,
+    ),
   });
 }
 
@@ -252,6 +267,10 @@ function cloneViewSettings(settings: ViewSettings): ViewSettings {
     backupIntervalMinutes: settings.backupIntervalMinutes,
     quickInputShortcut: settings.quickInputShortcut,
     skipCompletedTimerConfirmation: settings.skipCompletedTimerConfirmation ?? false,
+    videoExternalThresholdMb: normalizeVideoExternalThresholdMb(
+      settings.videoExternalThresholdMb,
+      DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB,
+    ),
   };
 }
 

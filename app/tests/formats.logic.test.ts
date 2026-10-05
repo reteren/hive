@@ -69,14 +69,15 @@ describe("PDF and Format nodes", () => {
     expect(minimumHeightForKind("pdf")).toBe(30);
   });
 
-  it("accepts a large video only when its external path is absolute", () => {
+  it("accepts external videos at any size only when their path is absolute", () => {
     const video: MediaRef = {
       file: "clip.mp4", mime: "video/mp4", size: 25 * 1024 * 1024, name: "clip.mp4", kind: "video",
       externalPath: "C:\\Videos\\clip.mp4",
     };
     expect(parseMediaRef(video)).toEqual(video);
     expect(parseMediaRef({ ...video, externalPath: "Videos/clip.mp4" })).toBeNull();
-    expect(parseMediaRef({ ...video, size: 10 * 1024 * 1024, externalPath: "C:\\Videos\\clip.mp4" })).toBeNull();
+    expect(parseMediaRef({ ...video, size: 10 * 1024 * 1024, externalPath: "C:\\Videos\\clip.mp4" }))
+      .toEqual({ ...video, size: 10 * 1024 * 1024 });
   });
 
   it("keeps the PDF zoom label in sync and renders canvas pages through PDF.js", () => {
