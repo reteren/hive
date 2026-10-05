@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildEditMenu, buildFileMenu, buildRecentMenu, normalizeRecentProjects, type MenuCommandItem, type RecentProject } from "../src/ui/menubar/menuModel";
+import { createHoverGraceTimer } from "../src/ui/menubar/hoverGraceTimer";
+
+afterEach(() => vi.useRealTimers());
 
 const project = (name: string, openedAt: number, exists = true, kind: RecentProject["kind"] = "folder"): RecentProject => ({
   path: `C:/projects/${name}`,
@@ -52,5 +55,23 @@ describe("menubar menu model", () => {
       { commandId: "dock.toggleTrash", buttonLabel: "Trash", shortcutCommandId: "ui.openTrash" },
       { commandId: "dock.toggleObjects", buttonLabel: "Objects", shortcutCommandId: "ui.toggleObjectsPanel" },
     ]);
+  });
+
+  it("closes a hovered submenu after a short grace period unless the pointer re-enters", () => {
+    vi.useFakeTimers();
+    const close = vi.fn();
+    const grace = createHoverGraceTimer(close);
+
+    grace.schedule();
+    vi.advanceTimersByTime(149);
+    expect(close).not.toHaveBeenCalled();
+
+    grace.cancel();
+    vi.advanceTimersByTime(1);
+    expect(close).not.toHaveBeenCalled();
+
+    grace.schedule();
+    vi.advanceTimersByTime(150);
+    expect(close).toHaveBeenCalledOnce();
   });
 });

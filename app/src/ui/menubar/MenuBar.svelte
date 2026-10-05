@@ -6,6 +6,7 @@
   import { dockVisibility } from "../dockVisibility.svelte";
   import { refreshRecentProjects, recentProjectsState } from "./recentProjects.svelte";
   import { buildEditMenu, buildFileMenu, type MenuCommandItem, type MenuItem } from "./menuModel";
+  import { createHoverGraceTimer } from "./hoverGraceTimer";
   import { setOpenRecentProject } from "../../project/commands";
 
   let { onOpenChange = () => {} } = $props<{ onOpenChange?: (open: boolean) => void }>();
@@ -16,6 +17,9 @@
   let recentOpen = $state(false);
   let fileTrigger: HTMLButtonElement;
   let editTrigger: HTMLButtonElement;
+  const recentCloseGrace = createHoverGraceTimer(() => {
+    closeRecentSubmenu();
+  });
 
   let fileItems = $derived(buildFileMenu(recentProjectsState.items, Boolean(project.path)));
   let editItems = $derived(buildEditMenu(dockVisibility));
@@ -26,7 +30,10 @@
       if (openMenu && event.target instanceof Node && !root.contains(event.target)) closeMenu();
     };
     document.addEventListener("pointerdown", closeFromOutside);
-    return () => document.removeEventListener("pointerdown", closeFromOutside);
+    return () => {
+      document.removeEventListener("pointerdown", closeFromOutside);
+      recentCloseGrace.cancel();
+    };
   });
 
   function commandTitle(id: string): string {
@@ -38,7 +45,7 @@
   async function open(menu: MenuName, focusFirst = false): Promise<void> {
     openMenu = menu;
     onOpenChange(true);
-    recentOpen = false;
+    closeRecentSubmenu();
     if (menu === "file") await refreshRecentProjects();
     if (focusFirst) {
       await tick();
@@ -55,12 +62,8 @@
     const previous = openMenu;
     openMenu = null;
     onOpenChange(false);
-    recentOpen = false;
+    closeRecentSubmenu();
     if (restoreTrigger) (previous === "edit" ? editTrigger : fileTrigger)?.focus();
-  }
-
-  function switchMenu(menu: MenuName): void {
-    if (openMenu) void open(menu);
   }
 
   function menuButtons(path: "main" | "recent"): HTMLButtonElement[] {
@@ -116,12 +119,12 @@
       focusEntry(path, event.key === "Home" ? 0 : buttons.length - 1);
     } else if (event.key === "ArrowRight" && current.dataset.submenu === "recent") {
       event.preventDefault();
-      recentOpen = true;
+      openRecentSubmenu();
       await tick();
       focusEntry("recent", 0);
     } else if (event.key === "ArrowLeft" && path === "recent") {
       event.preventDefault();
-      recentOpen = false;
+      closeRecentSubmenu();
       await tick();
       root.querySelector<HTMLButtonElement>('[data-submenu="recent"]')?.focus();
     }
@@ -139,14 +142,32 @@
 
   function activateMenuItem(item: MenuItem): void {
     if (item.kind === "submenu") {
-      recentOpen = true;
+      openRecentSubmenu();
       return;
     }
     if (item.kind === "command") activate(item);
   }
 
   function handleSubmenuPointer(item: MenuItem): void {
-    if (item.kind === "submenu") recentOpen = true;
+    if (item.kind === "submenu") openRecentSubmenu();
+  }
+
+  function handleMainItemPointer(item: MenuItem): void {
+    if (item.kind !== "submenu" && openMenu === "file") closeRecentSubmenu();
+  }
+
+  function openRecentSubmenu(): void {
+    recentCloseGrace.cancel();
+    recentOpen = true;
+  }
+
+  function closeRecentSubmenu(): void {
+    recentCloseGrace.cancel();
+    recentOpen = false;
+  }
+
+  function scheduleRecentClose(): void {
+    if (recentOpen) recentCloseGrace.schedule();
   }
 
   function activateRecent(item: MenuItem, itemIndex: number): void {
@@ -185,7 +206,6 @@
     aria-haspopup="menu"
     aria-expanded={openMenu === "file"}
     onclick={() => toggle("file")}
-    onpointerenter={() => switchMenu("file")}
   >File</button>
   <button
     bind:this={editTrigger}
@@ -195,7 +215,6 @@
     aria-haspopup="menu"
     aria-expanded={openMenu === "edit"}
     onclick={() => toggle("edit")}
-    onpointerenter={() => switchMenu("edit")}
   >Edit</button>
 
   {#if openMenu}
@@ -216,8 +235,11 @@
             title={commandTitle(item.id)}
             onclick={() => activateMenuItem(item)}
             onpointerenter={() => handleSubmenuPointer(item)}
+            onpointerleave={scheduleRecentClose}
           >
-            <span>{item.label}</span><span class="submenu-arrow" aria-hidden="true">›</span>
+            <span class="check" aria-hidden="true"></span>
+            <span>{item.label}</span>
+            <span class="submenu-arrow" aria-hidden="true">›</span>
           </button>
         {:else}
           <button
@@ -231,6 +253,7 @@
             data-menu-focus="main"
             title={itemTitle(item)}
             onclick={() => activateMenuItem(item)}
+            onpointerenter={() => handleMainItemPointer(item)}
           >
             <span class="check" aria-hidden="true">{item.checked ? "✓" : ""}</span>
             <span>{item.label}</span>
@@ -241,7 +264,15 @@
     </div>
 
     {#if openMenu === "file" && recentOpen}
-      <div class="menu-panel recent-panel" data-menu="file" role="menu" aria-label="Open recent">
+      <div
+        class="menu-panel recent-panel"
+        data-menu="file"
+        role="menu"
+        tabindex="-1"
+        aria-label="Open recent"
+        onpointerenter={() => recentCloseGrace.cancel()}
+        onpointerleave={scheduleRecentClose}
+      >
         {#each fileItems as fileItem, parentIndex (parentIndex)}
           {#if fileItem.kind === "submenu"}
             {#each fileItem.items as item, itemIndex (`${item.kind}-${itemIndex}`)}
@@ -368,7 +399,7 @@
   }
 
   .submenu-trigger {
-    grid-template-columns: minmax(100px, 1fr) auto;
+    grid-template-columns: 13px minmax(100px, 1fr) auto;
   }
 
   .submenu-arrow {
