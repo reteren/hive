@@ -195,6 +195,7 @@ function parseTrashNote(value: unknown): Note | null {
     ...(value.smoothLines === true ? { smoothLines: true } : {}),
     ...(smoothLineAnchors ? { smoothLineAnchors } : {}),
     ...(typeof value.color === "string" ? { color: value.color } : {}),
+    ...(typeof value.accentColor === "string" && /^#[0-9a-f]{6}$/i.test(value.accentColor) ? { accentColor: value.accentColor } : {}),
     ...(typeof value.zoneId === "string" ? { zoneId: value.zoneId } : {}),
     ...(finite(value.createdAt) ? { createdAt: value.createdAt } : {}),
   };

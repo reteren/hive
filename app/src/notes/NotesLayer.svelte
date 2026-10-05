@@ -18,6 +18,7 @@
   import { boardPopupStyle, dismissBoardPopup, fitBoardPopupAnchor } from "../ui/boardAnchor";
   import { imageFirstOrder } from "../images/imageLogic";
   import ImageOpacityPopover from "../images/ImageOpacityPopover.svelte";
+  import NoteColorPopover from "./NoteColorPopover.svelte";
   import { handleBoardImagePaste, registerImageDropHandler, registerImagePasteToBoard } from "../images/imageActions";
   import { handleBoardAudioPaste, registerAudioDropHandler, registerAudioPasteHandler } from "../audio/audioActions";
   import {
@@ -235,6 +236,7 @@
 
   <TasksPanel />
   <ImageOpacityPopover />
+  <NoteColorPopover />
 
   {#if linkContext.menu}
     <div

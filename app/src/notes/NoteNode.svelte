@@ -28,6 +28,7 @@
   import { nodeBodyFor } from "./nodeBodies";
   import { effectiveCustomMarkFrameColors, effectiveImportance } from "../modules/moduleActions.svelte";
   import { customMarkGradientFor } from "../markas/markasLogic";
+  import { noteColorStyle } from "./noteColorLogic";
   import { setTimeNodeView } from "../time/viewActions.svelte";
   import { canRenameNoteHeader } from "./noteMenu";
   import { startNoteEditing } from "../editor/editorSession";
@@ -51,6 +52,7 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
   let memberZone = $derived(zones.byId[zoneOf(note.id) ?? ""]);
   let customMarkFrameColors = $derived(effectiveCustomMarkFrameColors(note.id));
   let customMarkGradient = $derived(customMarkGradientFor(customMarkFrameColors));
+  let paint = $derived(noteColorStyle(note));
   let scale = $derived(normalizeNoteScale(note.scale));
   let activeComboDropPlan = $derived(isComboDropPlan($activeDropTarget?.payload) ? $activeDropTarget.payload : null);
   let comboDropTarget = $derived(
@@ -159,7 +161,13 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
   data-custom-mark-frame={customMarkFrameColors.length > 0 ? "true" : undefined}
   data-custom-mark-animate={customMarkFrameColors.length > 1 ? "true" : undefined}
   data-member-zone-id={memberZone?.id}
+  data-node-color={note.type !== "beacon" && note.color ? "true" : undefined}
   style:--custom-mark-gradient={customMarkGradient}
+  style:--note-frame={paint["--note-frame"]}
+  style:--note-body={paint["--note-body"]}
+  style:--note-header-text={paint["--note-header-text"]}
+  style:--text={paint["--text"]}
+  style:--text-dim={paint["--text-dim"]}
   style:--note-header-height={`${NOTE_HEADER_HEIGHT_UNITS * PX_PER_UNIT}px`}
   style:transform={`translate(${note.x * PX_PER_UNIT}px, ${note.y * PX_PER_UNIT}px)${scale === 1 ? "" : ` scale(${scale})`}`}
   style:left="0px"
@@ -317,7 +325,7 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
     -webkit-user-select: none;
     align-items: center;
     padding: 0 8px;
-    color: #e6e6e6;
+    color: var(--note-header-text, #e6e6e6);
     background: var(--note-frame);
     border-bottom: 1px solid #454545;
     font-size: 11px;

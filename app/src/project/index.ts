@@ -55,6 +55,7 @@ export interface IndexedNote {
   purposes: PurposeKind[];
   moods: MoodKind[];
   color?: string | null;
+  accentColor?: string;
   zoneId?: string | null;
   scope?: NodeScope;
   tiers?: TierRow[];
@@ -231,6 +232,7 @@ export function serializeProjectIndex(
       purposes: [...new Set(note.purposes ?? [])],
       moods: [...new Set(note.moods ?? [])],
       color: note.type === "beacon" ? normalizeBeaconColor(note.color ?? "") ?? beaconPaletteColor(0) : note.color ?? null,
+      ...(note.type !== "beacon" && note.accentColor ? { accentColor: note.accentColor } : {}),
       zoneId: note.zoneId && validZoneIds.has(note.zoneId) ? note.zoneId : null,
       ...(note.scope ? { scope: note.scope } : {}),
       ...(note.tiers ? { tiers: note.tiers } : {}),
@@ -313,6 +315,7 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       purposes: [...entry.purposes],
       ...(entry.moods.length > 0 ? { moods: [...entry.moods] } : {}),
       ...(entry.color ? { color: entry.color } : {}),
+      ...(entry.accentColor ? { accentColor: entry.accentColor } : {}),
       ...(entry.zoneId ? { zoneId: entry.zoneId } : {}),
       ...(entry.scope ? { scope: entry.scope } : {}),
       ...(entry.tiers ? { tiers: entry.tiers } : {}),
@@ -545,6 +548,11 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
     warnings.push(`Missing beacon colour for note ${id}; default colour was used.`);
   }
 
+  const accentColor = typeof value.accentColor === "string" && type !== "beacon" ? normalizeBeaconColor(value.accentColor) : null;
+  if (value.accentColor !== undefined && accentColor === null) {
+    warnings.push(`Invalid accent colour for note ${id}; it was cleared.`);
+  }
+
   const parsedMessage = parseMessageData(value.message);
   const message = type === "message" ? parsedMessage ?? defaultMessageData() : value.message === undefined ? undefined : parsedMessage;
   const time = parseTimeData(value.time);
@@ -595,6 +603,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
       flipX: type === "image" && value.flipX === true ? true : undefined,
       flipY: type === "image" && value.flipY === true ? true : undefined,
       color: type === "beacon" ? color ?? beaconPaletteColor(0) : color,
+      accentColor: accentColor ?? undefined,
       zoneId,
       scope: parseScope(value.scope) ?? undefined,
       tiers: parseTiers(value.tiers) ?? undefined,

@@ -5,6 +5,7 @@
   import { BEACON_SIZE } from "../model/note";
   import { BEACON_PALETTE } from "../beacons/beaconPalette";
   import { noteBounds } from "../notes/layout.svelte";
+  import { needsDarkText } from "../notes/noteColorLogic";
   import { overview } from "./overview.svelte";
   import { overviewFontSize, overviewLabelFor, overviewNameFor, overviewTextFits } from "./overviewLogic";
 
@@ -37,7 +38,7 @@
       const label = overviewLabelFor(note.type, overviewNameFor(note), { gif: note.image?.mime === "image/gif" });
       return [{
         id, beacon: false, x: bounds.x * PX_PER_UNIT, y: bounds.y * PX_PER_UNIT, w, h,
-        kind: label.kind, title: label.title, color: "",
+        kind: label.kind, title: label.title, color: note.color ?? "",
         showText: overviewTextFits(w, h, camera.zoom),
         font: overviewFontSize(label.kind, label.title, w, h),
       }];
@@ -57,7 +58,8 @@
           style:top={`${item.y}px`}
           style:width={`${item.w}px`}
           style:height={`${item.h}px`}
-          style:background={item.beacon ? item.color : undefined}
+          style:background={item.color || undefined}
+          style:color={!item.beacon && needsDarkText(item.color) ? "#1f1f1f" : undefined}
         >
           {#if item.showText}
             <span class="overview-text" style:font-size={`${item.font}px`}>

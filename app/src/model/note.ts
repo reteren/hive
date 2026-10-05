@@ -131,8 +131,10 @@ export interface Note {
   purposes?: PurposeKind[];
   /** Mood labels inserted into this note (rows: Importance, then Purpose, then Mood). */
   moods?: MoodKind[];
-  /** Beacon colour (kind "beacon"), hex "#rrggbb". */
+  /** Main colour, hex "#rrggbb": a beacon's colour, or a node's frame/header (Change color); also tints its lines. */
   color?: string;
+  /** Inner colour of a node, hex "#rrggbb" (Change accent color): the body behind the content. */
+  accentColor?: string;
   /** Zone this object belongs to (R4.3); kept to resolve equal-area ties in favour of the previous zone (H19). */
   zoneId?: string | null;
   /** Progress / Statistics (R5): what the node counts. */

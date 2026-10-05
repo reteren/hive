@@ -172,6 +172,7 @@ function parseArchivedNote(value: unknown): Note | null {
     ...(value.smoothLines === true ? { smoothLines: true } : {}),
     ...(smoothLineAnchors ? { smoothLineAnchors } : {}),
     ...(typeof value.color === "string" ? { color: value.color } : {}),
+    ...(typeof value.accentColor === "string" && /^#[0-9a-f]{6}$/i.test(value.accentColor) ? { accentColor: value.accentColor } : {}),
     ...(typeof value.zoneId === "string" ? { zoneId: value.zoneId } : {}),
     ...(typeof value.createdAt === "number" ? { createdAt: value.createdAt } : {}),
   };

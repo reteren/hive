@@ -29,6 +29,13 @@
   border-bottom-color: #774542;
 }
 
+/* A painted plus/minus keeps the user's colour instead of the green/red header. */
+.note-card[data-kind="pro"][data-node-color] .note-header,
+.note-card[data-kind="con"][data-node-color] .note-header {
+  color: var(--note-header-text, #e6e6e6);
+  background: var(--note-frame);
+}
+
 .note-card[data-kind="pro"] .note-name::before,
 .note-card[data-kind="con"] .note-name::before {
   display: inline-block;
