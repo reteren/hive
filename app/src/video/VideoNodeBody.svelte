@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { convertFileSrc, invoke } from "@tauri-apps/api/core";
   import { onDestroy, onMount } from "svelte";
   import { attachmentUrl } from "../attachments/service";
   import { registerHoverPlayback } from "../media-ui/hoverPlayback";
@@ -13,6 +14,7 @@
   let videoElement = $state<HTMLVideoElement | null>(null);
   let frameElement = $state<HTMLElement | null>(null);
   let failed = $state(false);
+  let externalStatus = $state<"checking" | "available" | "missing">("available");
   let playing = $state(false);
   let currentTime = $state(0);
   let seekDraft = $state<number | null>(null);
@@ -23,7 +25,7 @@
   let controlsVisible = $state(true);
   let captureGesture: { pointerId: number; start: { x: number; y: number }; moved: boolean } | null = null;
   let media = $derived(note.media?.kind === "video" ? note.media : null);
-  let source = $derived(media ? attachmentUrl(media.file) : "");
+  let source = $derived(media ? (media.externalPath ? convertFileSrc(media.externalPath) : attachmentUrl(media.file)) : "");
   let displayTime = $derived(seekDraft ?? currentTime);
   let aspectWidth = $derived(media?.naturalWidth && media.naturalWidth > 0 ? media.naturalWidth : 16);
   let aspectHeight = $derived(media?.naturalHeight && media.naturalHeight > 0 ? media.naturalHeight : 9);
@@ -31,12 +33,21 @@
   const controlsAutoHide = createControlsAutoHide((visible) => { controlsVisible = visible; }, 500);
 
   $effect(() => {
+    const externalPath = media?.externalPath;
     void source;
     failed = false;
     playing = false;
     currentTime = 0;
     seekDraft = null;
     duration = media?.duration ?? 0;
+    if (!externalPath) {
+      externalStatus = "available";
+      return;
+    }
+    externalStatus = "checking";
+    void invoke<boolean>("source_path_exists", { filePath: externalPath })
+      .then((exists) => { if (media?.externalPath === externalPath) externalStatus = exists ? "available" : "missing"; })
+      .catch(() => { if (media?.externalPath === externalPath) externalStatus = "missing"; });
   });
 
   $effect(() => {
@@ -156,6 +167,11 @@
     togglePlayback();
   }
 
+  function formatSize(bytes: number): string {
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
 </script>
 
 <section
@@ -164,7 +180,13 @@
   data-video-node={note.id}
   data-frame-hidden={note.frameHidden === true ? "true" : undefined}
 >
-  {#if !source || failed}
+  {#if media?.externalPath && externalStatus !== "available"}
+    <div class="video-error video-missing" data-video-error data-video-external-missing={externalStatus === "missing" ? "true" : "checking"} role="status">
+      <strong>{externalStatus === "missing" ? "File not found" : "Checking file…"}</strong>
+      <span>{media.name ?? note.name} · {formatSize(media.size)}</span>
+      <small>{media.externalPath}</small>
+    </div>
+  {:else if !source || failed}
     <div class="video-error" data-video-error role="status">{failed ? "Video could not be played." : `File missing: ${media?.name ?? note.name}`}</div>
   {:else}
     <div
@@ -243,6 +265,7 @@
   .video-capture { position: absolute; z-index: 1; inset: 0; background: transparent; cursor: grab; touch-action: none; }
   .video-capture:active { cursor: grabbing; }
   .video-error { display: grid; min-height: 72px; place-items: center; padding: 8px; color: #c3c3c3; background: #282828; font-size: 11px; overflow-wrap: anywhere; }
+  .video-error small { max-width: 100%; color: #999; font-size: 9px; overflow-wrap: anywhere; }
   .video-caption { min-width: 0; }
   :global(.note-card:has(.video-node-body[data-frame-hidden="true"])) { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
   :global(.note-card:has(.video-node-body[data-frame-hidden="true"])[data-note-glow="true"]) { box-shadow: var(--note-glow-shadow); }

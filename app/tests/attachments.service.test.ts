@@ -33,7 +33,7 @@ describe("attachment service browser fallback", () => {
     expect(second.ok).toBe(true);
     if (!first.ok || !second.ok) return;
     expect(first.image).toEqual({
-      file: expect.stringMatching(/^[0-9a-f]{64}\.png$/),
+      file: "clipboard.png",
       mime: "image/png",
       size: pngBytes.length,
       name: "clipboard.png",

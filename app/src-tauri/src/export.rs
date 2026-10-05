@@ -1,5 +1,5 @@
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
@@ -9,6 +9,7 @@ use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 use crate::project::{active_project_root, validate_project_index_contents, ProjectState};
+use crate::attachments;
 
 const INDEX_FILE_NAME: &str = "board.json";
 const BACKUPS_RELATIVE_PATH: &str = ".hive/backups";
@@ -149,7 +150,8 @@ fn write_project_archive(root: &Path, destination: &Path) -> Result<(), String> 
             .map_err(|error| format!("could not create export archive: {error}"))?;
         let mut zip = ZipWriter::new(file);
         let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-        append_directory(&mut zip, root, root, destination, &temp_path, options)?;
+        let external_videos = attachments::external_video_paths(root)?.into_iter().collect::<HashSet<_>>();
+        append_directory(&mut zip, root, root, destination, &temp_path, options, &external_videos)?;
         zip.finish()
             .map_err(|error| format!("could not finish export archive: {error}"))?;
         replace_file(&temp_path, destination).map_err(|error| {
@@ -172,6 +174,7 @@ fn append_directory(
     archive_destination: &Path,
     temporary_archive: &Path,
     options: SimpleFileOptions,
+    external_videos: &HashSet<PathBuf>,
 ) -> Result<(), String> {
     let mut entries = fs::read_dir(directory)
         .map_err(|error| format!("could not read project data: {error}"))?
@@ -192,6 +195,7 @@ fn append_directory(
         if same_path(&source, archive_destination) || same_path(&source, temporary_archive) {
             continue;
         }
+        if external_videos.iter().any(|path| same_path(&source, path)) { continue; }
         let file_type = entry
             .file_type()
             .map_err(|error| format!("could not inspect {}: {error}", source.display()))?;
@@ -212,6 +216,7 @@ fn append_directory(
                 archive_destination,
                 temporary_archive,
                 options,
+                external_videos,
             )?;
         } else if file_type.is_file() {
             zip.start_file(&archive_name, options)
@@ -566,12 +571,13 @@ fn replace_file(source: &Path, destination: &Path) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{extract_project_archive, write_project_archive};
+    use serde_json::json;
     use std::fs;
     use std::io::Write;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
     use zip::write::SimpleFileOptions;
-    use zip::ZipWriter;
+    use zip::{ZipArchive, ZipWriter};
 
     static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -679,6 +685,34 @@ mod tests {
                 .count(),
             0
         );
+        fs::remove_dir_all(root).expect("remove test data");
+    }
+
+    #[test]
+    fn project_archive_excludes_external_video_even_when_it_is_inside_project() {
+        let root = test_directory("external-video");
+        let source = root.join("source");
+        fs::create_dir_all(source.join("notes")).expect("create notes");
+        fs::create_dir_all(source.join("media")).expect("create media folder");
+        let video = source.join("media/large.mp4");
+        let file = fs::File::create(&video).expect("create external media file");
+        file.set_len(20 * 1024 * 1024 + 1).expect("set large file size");
+        drop(file);
+        let index = json!({
+            "version": 1,
+            "notes": [{ "type": "video", "media": {
+                "kind": "video", "file": "large.mp4", "name": "large.mp4",
+                "mime": "video/mp4", "size": 20 * 1024 * 1024 + 1,
+                "externalPath": video.to_string_lossy()
+            }}]
+        });
+        fs::write(source.join("board.json"), serde_json::to_vec(&index).unwrap()).expect("write board index");
+        let archive_path = root.join("external.zip");
+        write_project_archive(&source, &archive_path).expect("export project");
+
+        let mut archive = ZipArchive::new(fs::File::open(&archive_path).unwrap()).unwrap();
+        assert!(archive.by_name("board.json").is_ok());
+        assert!(archive.by_name("media/large.mp4").is_err());
         fs::remove_dir_all(root).expect("remove test data");
     }
 }

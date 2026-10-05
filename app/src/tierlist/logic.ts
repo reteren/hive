@@ -295,6 +295,9 @@ export function tierCardPreview(card: TierCard, notes: Readonly<Record<string, N
   }
   const lines = source.text.split(/\r?\n/).filter((line) => line.trim()).slice(0, 3);
   if (source.type === "video" && source.media?.kind === "video") {
+    if (source.media.externalPath) {
+      return { kind: "note", name: source.media.name || source.name, lines, missing: false };
+    }
     return {
       kind: "video",
       file: source.media.file,

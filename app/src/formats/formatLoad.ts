@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { isSafeAttachmentName } from "../attachments/types";
 import { decodeFormatText, type FormatTextEncoding } from "./textEncoding";
 
 export interface LoadedFormatText {
@@ -33,7 +34,7 @@ export async function loadFormatText(
   assetUrl: string,
   dependencies: FormatTextLoadDependencies = defaultDependencies,
 ): Promise<LoadedFormatText> {
-  if (!/^[0-9a-f]{64}\.[a-z0-9]{1,8}$/i.test(file)) {
+  if (!isSafeAttachmentName(file)) {
     throw new Error("Could not load file: invalid attachment name.");
   }
 

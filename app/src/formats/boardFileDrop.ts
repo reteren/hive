@@ -4,7 +4,7 @@ import { boardDropKindForPath, registerFileDropHandler, type BoardDropKind, type
 import { importImagePaths } from "../images/imageActions";
 import { importAudioPaths } from "../audio/audioActions";
 import { importVideoPaths } from "../video/import";
-import { createLockedSourceNotes } from "../source/creation";
+import { createSourceNotes } from "../source/creation";
 import { importFormatPaths } from "./formatActions";
 import { importMarkdownPaths } from "./textDrop";
 
@@ -37,7 +37,7 @@ async function importBoardDrop(paths: readonly string[], center: Point): Promise
       case "video": await importVideoPaths(group.paths, center); break;
       case "markdown": await importMarkdownPaths(group.paths, center); break;
       case "format": await importFormatPaths(group.paths, center, "text"); break;
-      case "source": createLockedSourceNotes(group.paths, center); break;
+      case "source": void createSourceNotes(group.paths, center); break;
     }
   }
 }

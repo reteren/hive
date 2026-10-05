@@ -5,6 +5,7 @@ mod export;
 mod overhive;
 mod project;
 mod quick_input_shortcut;
+mod recent;
 mod screen_pixel;
 mod settings;
 mod source;
@@ -22,6 +23,8 @@ use tauri::{Emitter, Manager, RunEvent, WindowEvent};
 #[derive(Default)]
 struct AppLifecycle {
     quit_requested: AtomicBool,
+    quit_completed: AtomicBool,
+    tray_quit_pending: AtomicBool,
     first_tray_notice_sent: AtomicBool,
     tray_notice: Mutex<(u64, bool)>,
 }
@@ -29,6 +32,13 @@ struct AppLifecycle {
 #[tauri::command]
 fn set_quit_requested(state: tauri::State<'_, AppLifecycle>, requested: bool) {
     state.quit_requested.store(requested, Ordering::SeqCst);
+}
+
+#[tauri::command]
+fn app_quit(app: tauri::AppHandle, state: tauri::State<'_, AppLifecycle>) {
+    state.quit_requested.store(true, Ordering::SeqCst);
+    state.quit_completed.store(true, Ordering::SeqCst);
+    app.exit(0);
 }
 
 #[tauri::command]
@@ -58,6 +68,30 @@ fn open_quick_input_window(app: &tauri::AppHandle) {
     quick_input_shortcut::show_quick_input_window(app);
 }
 
+fn request_tray_quit(app: &tauri::AppHandle) {
+    let Some(lifecycle) = app.try_state::<AppLifecycle>() else {
+        app.exit(0);
+        return;
+    };
+    if lifecycle.tray_quit_pending.swap(true, Ordering::SeqCst) {
+        return;
+    }
+
+    // The renderer flushes registered saves (up to 3 seconds) before app_quit. Give its invoke
+    // a short scheduling grace, then make sure a hidden or unresponsive renderer cannot strand hive.
+    let _ = app.emit("hive://quit-request", ());
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(3_500));
+        let should_exit = app
+            .try_state::<AppLifecycle>()
+            .is_some_and(|lifecycle| !lifecycle.quit_completed.load(Ordering::SeqCst));
+        if should_exit {
+            app.exit(0);
+        }
+    });
+}
+
 fn build_tray(app: &mut tauri::App) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open-hive", "Open hive", true, None::<&str>)?;
     let quick_input = MenuItem::with_id(app, "quick-input", "Quick input", true, None::<&str>)?;
@@ -72,9 +106,7 @@ fn build_tray(app: &mut tauri::App) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open-hive" => open_main_window(app),
             "quick-input" => open_quick_input_window(app),
-            "quit" => {
-                let _ = app.emit("hive://quit-request", ());
-            }
+            "quit" => request_tray_quit(app),
             _ => {}
         })
         .build(app)?;
@@ -164,10 +196,14 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             attachments::attachment_import_bytes,
             attachments::attachment_import_path,
+            attachments::attachment_import_source_path,
+            attachments::attachment_open_source_file,
+            attachments::attachment_reveal_source_file,
             attachments::attachment_directory,
             attachments::attachment_write_text,
             attachments::attachment_export,
             set_quit_requested,
+            app_quit,
             configure_quick_input_shortcut,
             quick_input_shortcut::log_overview,
             overhive::sync_overhive,
@@ -183,6 +219,9 @@ pub fn run() {
             project::save_project,
             project::write_conflict_copy,
             project::acknowledge_external_file_change,
+            recent::recent_projects_list,
+            recent::recent_projects_add,
+            recent::recent_projects_clear,
             backup::list_backups,
             backup::create_backup,
             backup::create_backup_if_changed,
@@ -223,6 +262,9 @@ pub fn run() {
                         .try_state::<AppLifecycle>()
                         .is_some_and(|state| state.quit_requested.load(Ordering::SeqCst))
                 {
+                    if let Some(lifecycle) = app_handle.try_state::<AppLifecycle>() {
+                        lifecycle.quit_completed.store(true, Ordering::SeqCst);
+                    }
                     app_handle.exit(0);
                 }
             }

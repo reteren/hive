@@ -33,8 +33,8 @@ struct SnapshotMeta {
     fingerprint_version: u32,
 }
 
-/// Attachments are content-addressed (`<sha256>.<ext>`) and immutable, so their name and size identify
-/// them. Reading multi-gigabyte videos on every project open made opening take minutes.
+/// Attachment files are immutable within a snapshot; name and size are cheap identifiers after
+/// project migration. Legacy hash-named entries are content-verified on restore.
 const FINGERPRINT_VERSION: u32 = 2;
 
 #[derive(Clone, Debug, Serialize)]
@@ -275,7 +275,7 @@ fn validate_snapshot_with(path: &Path, deep: bool) -> Result<SnapshotMeta, Strin
         for file in &files {
             let target = pool.join(file);
             ensure_regular_file(&target)?;
-            if deep {
+            if deep && attachments::is_legacy_hash_attachment(file) {
                 let hash = file.split_once('.').map(|(hash, _)| hash).unwrap_or_default();
                 attachments::verify_existing_attachment(&target, hash)?;
             }
@@ -908,7 +908,8 @@ fn collect_json_attachment_references(value: &Value, output: &mut HashSet<String
             let image_container = object.get("type").and_then(Value::as_str) == Some("image")
                 || object.get("kind").and_then(Value::as_str) == Some("image");
             let image_ref = object.contains_key("mime") || object.contains_key("naturalWidth");
-            if image_container || image_ref {
+            let source_ref = object.contains_key("description") && (object.contains_key("url") || object.contains_key("filePath"));
+            if (image_container || image_ref || source_ref) && !object.contains_key("externalPath") {
                 if let Some(file) = object.get("file").and_then(Value::as_str) {
                     output.insert(file.to_string());
                 }
@@ -932,10 +933,27 @@ fn collect_inline_attachment_references(text: &str, output: &mut HashSet<String>
         let after = &remaining[index + 4..];
         let file = after.split([')', '}', '\n', '\r', ' ', '\t']).next().unwrap_or_default();
         if !file.is_empty() {
-            output.insert(file.to_string());
+            output.insert(percent_decode(file).unwrap_or_else(|| file.to_string()));
         }
         remaining = after;
     }
+}
+
+fn percent_decode(value: &str) -> Option<String> {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            let pair = std::str::from_utf8(bytes.get(index + 1..index + 3)?).ok()?;
+            decoded.push(u8::from_str_radix(pair, 16).ok()?);
+            index += 3;
+        } else {
+            decoded.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(decoded).ok()
 }
 
 fn collect_files(directory: &Path, output: &mut Vec<PathBuf>) -> Result<(), String> {
@@ -1342,7 +1360,7 @@ mod tests {
         fs::create_dir_all(&attachments).expect("create attachments folder");
         let pdf_bytes = b"%PDF-1.7 media test";
         let video_bytes = b"\0\0\0\x18ftypisomvideo test";
-        let pdf = format!("{}.pdf", crate::attachments::sha256_hex(pdf_bytes));
+        let pdf = "Quarterly report (2).pdf".to_string();
         let video = format!("{}.mp4", crate::attachments::sha256_hex(video_bytes));
         fs::write(attachments.join(&pdf), pdf_bytes).expect("write PDF");
         fs::write(attachments.join(&video), video_bytes).expect("write video");

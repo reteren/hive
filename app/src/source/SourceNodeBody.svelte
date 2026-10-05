@@ -5,7 +5,8 @@
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { updateNote } from "../model/board.svelte";
   import type { Note } from "../model/note";
-  import { setSourceField, setSourceResourceValue } from "./actions.svelte";
+  import { setSourceAttachment, setSourceField, setSourceResourceValue } from "./actions.svelte";
+  import { importSourceFilePath } from "../attachments/service";
   import {
     emptySource,
     parseSourceValue,
@@ -19,7 +20,7 @@
 
   let { note }: { note: Note } = $props();
   let source = $derived(note.source ?? emptySource());
-  let sourceValue = $derived(source.url ?? source.filePath ?? "");
+  let sourceValue = $derived(source.file ? "" : source.url ?? source.filePath ?? "");
   let parsedValue = $derived(parseSourceValue(sourceValue));
   let urlOpenError = $state("");
   let fileError = $state("");
@@ -37,7 +38,7 @@
   const urlValidation = $derived(parsedValue.kind === "url" ? validateSourceUrl(parsedValue.value) : null);
   const isMissingSelectedPath = $derived(parsedValue.kind === "path" && source.filePath === parsedValue.value && fileAvailability === "missing");
   const openDisabled = $derived(
-    opening || parsedValue.kind === "empty" || (parsedValue.kind === "url" && !urlValidation?.valid) || isMissingSelectedPath,
+    opening || (!source.file && parsedValue.kind === "empty") || (parsedValue.kind === "url" && !urlValidation?.valid) || isMissingSelectedPath,
   );
 
   onMount(() => {
@@ -153,18 +154,30 @@
         defaultPath: source.filePath ?? undefined,
       });
       if (typeof selected !== "string" || !selected) return;
-      invalidateSourceFileAvailability(selected);
-      setSourceResourceValue(note.id, selected, meta("resource", "atomic", 0));
-      fileAvailability = "unknown";
+      const stored = await importSourceFilePath(selected);
+      setSourceAttachment(note.id, stored.file, meta("resource", "atomic", 0));
+      fileAvailability = "available";
       urlOpenError = "";
-    } catch {
-      fileError = "Could not open the file picker.";
+    } catch (error) {
+      fileError = error instanceof Error ? error.message : "Could not import this file.";
     } finally {
       choosingFile = false;
     }
   }
 
   async function openResource(): Promise<void> {
+    if (source.file) {
+      opening = true;
+      fileError = "";
+      try {
+        await invoke("attachment_open_source_file", { file: source.file });
+      } catch {
+        fileError = "Could not open this project file.";
+      } finally {
+        opening = false;
+      }
+      return;
+    }
     if (opening || parsedValue.kind === "empty") return;
     fileError = "";
     urlOpenError = "";
@@ -196,6 +209,15 @@
       fileError = state === "missing" ? "File not found." : "Could not open this path.";
     } finally {
       opening = false;
+    }
+  }
+
+  async function revealAttachment(): Promise<void> {
+    if (!source.file) return;
+    try {
+      await invoke("attachment_reveal_source_file", { file: source.file });
+    } catch {
+      fileError = "Could not reveal this project file.";
     }
   }
 </script>
@@ -231,6 +253,9 @@
   {#if source.filePath}
     <p class="source-file" data-source-file-path title={source.filePath}>{source.filePath}</p>
   {/if}
+  {#if source.file}
+    <p class="source-file" data-source-attachment={source.file} title={source.file}>attachments/{source.file}</p>
+  {/if}
   {#if source.filePath && fileAvailability === "missing"}
     <p class="source-message error" data-source-file-missing role="status">File not found.</p>
   {:else if fileError}
@@ -240,6 +265,9 @@
     <button type="button" class="source-action" data-source-open disabled={openDisabled} title={parsedValue.kind === "path" ? parsedValue.value : undefined} onclick={openResource} onkeydown={stopBoardHotkeys}>
       {opening ? "Opening…" : "Open"}
     </button>
+    {#if source.file}
+      <button type="button" class="source-action" data-source-reveal disabled={opening} onclick={revealAttachment} onkeydown={stopBoardHotkeys}>Show in folder</button>
+    {/if}
     {#if sourceHasPicker(source)}
       <button type="button" class="source-action" data-source-choose-file disabled={choosingFile} onclick={chooseFile} onkeydown={stopBoardHotkeys}>
         {choosingFile ? "Choosing…" : "Choose file…"}

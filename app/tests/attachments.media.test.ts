@@ -18,17 +18,17 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("media attachment service in browser preview", () => {
   it.each([
-    ["paper.pdf", "application/pdf", ascii("%PDF-1.7\ncontent"), "pdf", "application/pdf", "pdf"],
-    ["source.py", "text/x-python", utf8("print('hello')\n"), "text", "text/plain", "py"],
-    ["sound.mp3", "audio/mpeg", new Uint8Array([0x49, 0x44, 0x33, 4, 5, 6]), "audio", "audio/mpeg", "mp3"],
-    ["sound.wav", "audio/wav", ascii("RIFF0000WAVEdata"), "audio", "audio/wav", "wav"],
-    ["sound.ogg", "audio/ogg", ascii("OggS\x00audio"), "audio", "audio/ogg", "ogg"],
-    ["sound.flac", "audio/flac", ascii("fLaCdata"), "audio", "audio/flac", "flac"],
-    ["sound.m4a", "audio/mp4", mp4("M4A "), "audio", "audio/mp4", "m4a"],
-    ["clip.mp4", "video/mp4", mp4("isom"), "video", "video/mp4", "mp4"],
-    ["clip.webm", "video/webm", ebml(), "video", "video/webm", "webm"],
-    ["voice.webm", "audio/webm", ebml(), "audio", "audio/webm", "webm"],
-  ] as const)("imports %s with verified kind and MIME", async (name, type, bytes, kind, mime, extension) => {
+    ["paper.pdf", "application/pdf", ascii("%PDF-1.7\ncontent"), "pdf", "application/pdf"],
+    ["source.py", "text/x-python", utf8("print('hello')\n"), "text", "text/plain"],
+    ["sound.mp3", "audio/mpeg", new Uint8Array([0x49, 0x44, 0x33, 4, 5, 6]), "audio", "audio/mpeg"],
+    ["sound.wav", "audio/wav", ascii("RIFF0000WAVEdata"), "audio", "audio/wav"],
+    ["sound.ogg", "audio/ogg", ascii("OggS\x00audio"), "audio", "audio/ogg"],
+    ["sound.flac", "audio/flac", ascii("fLaCdata"), "audio", "audio/flac"],
+    ["sound.m4a", "audio/mp4", mp4("M4A "), "audio", "audio/mp4"],
+    ["clip.mp4", "video/mp4", mp4("isom"), "video", "video/mp4"],
+    ["clip.webm", "video/webm", ebml(), "video", "video/webm"],
+    ["voice.webm", "audio/webm", ebml(), "audio", "audio/webm"],
+  ] as const)("imports %s with verified kind and MIME", async (name, type, bytes, kind, mime) => {
     const file = makeFile(name, type, bytes);
 
     const result = await importMediaFile(file);
@@ -36,7 +36,7 @@ describe("media attachment service in browser preview", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.media).toMatchObject({
-      file: expect.stringMatching(new RegExp(`^[0-9a-f]{64}\\.${extension}$`)),
+      file: name,
       kind,
       mime,
       size: bytes.length,
@@ -66,7 +66,7 @@ describe("media attachment service in browser preview", () => {
     expect(read).not.toHaveBeenCalled();
   });
 
-  it("saves edited text as a new content-addressed attachment", async () => {
+  it("saves edited text as a new readable attachment", async () => {
     const previous = {
       file: `${"a".repeat(64)}.md`,
       mime: "text/plain",
@@ -82,6 +82,13 @@ describe("media attachment service in browser preview", () => {
     expect(result.media).toMatchObject({ kind: "text", name: "notes.md", mime: "text/plain" });
     expect(result.media.file).not.toBe(previous.file);
     expect(new Uint8Array(await (await fetch(attachmentUrl(result.media.file))).arrayBuffer())).toEqual(utf8("updated\n"));
+  });
+
+  it("rejects large browser video before reading it into memory", async () => {
+    const read = vi.fn(async () => new ArrayBuffer(0));
+    const large = { ...makeFile("large.mp4", "video/mp4", new Uint8Array()), size: 20 * 1024 * 1024 + 1, arrayBuffer: read } as File;
+    expect(await importMediaFile(large)).toMatchObject({ ok: false, error: expect.stringContaining("file path") });
+    expect(read).not.toHaveBeenCalled();
   });
 });
 

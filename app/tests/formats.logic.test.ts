@@ -63,10 +63,20 @@ describe("PDF and Format nodes", () => {
 
   it("validates immutable media refs and enforces the PDF minimum resize size", () => {
     expect(parseMediaRef(pdfRef)).toEqual(pdfRef);
-    expect(parseMediaRef({ ...pdfRef, file: "bad.pdf" })).toBeNull();
+    expect(parseMediaRef({ ...pdfRef, file: "../bad.pdf" })).toBeNull();
     expect(parseMediaRef({ ...pdfRef, mime: "text/plain" })).toBeNull();
     expect(minimumWidthForKind("pdf")).toBe(30);
     expect(minimumHeightForKind("pdf")).toBe(30);
+  });
+
+  it("accepts a large video only when its external path is absolute", () => {
+    const video: MediaRef = {
+      file: "clip.mp4", mime: "video/mp4", size: 25 * 1024 * 1024, name: "clip.mp4", kind: "video",
+      externalPath: "C:\\Videos\\clip.mp4",
+    };
+    expect(parseMediaRef(video)).toEqual(video);
+    expect(parseMediaRef({ ...video, externalPath: "Videos/clip.mp4" })).toBeNull();
+    expect(parseMediaRef({ ...video, size: 10 * 1024 * 1024, externalPath: "C:\\Videos\\clip.mp4" })).toBeNull();
   });
 
   it("keeps the PDF zoom label in sync and renders canvas pages through PDF.js", () => {

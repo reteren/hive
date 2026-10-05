@@ -98,12 +98,13 @@ export function normalizeSource(source?: SourceData): SourceData {
   return {
     url: source?.url || null,
     filePath: source?.filePath || null,
+    ...(source?.file ? { file: source.file } : {}),
     description: source?.description ?? "",
     ...(source?.locked ? { locked: true as const } : {}),
   };
 }
 
-/** Files dropped as unsupported formats keep their original path and hide the replacement picker. */
+/** Legacy locked sources retain their original path and hide the replacement picker. */
 export function sourceHasPicker(source?: SourceData): boolean {
   return source?.locked !== true;
 }

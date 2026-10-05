@@ -421,6 +421,7 @@ fn open_project_root(selected: &Path) -> Result<OpenedProject, String> {
     let root = canonical_project_root(selected)?;
     let index_path = root.join(INDEX_FILE_NAME);
     ensure_regular_or_missing(&index_path)?;
+    crate::attachments::migrate_attachments(&root)?;
     let contents = fs::read(&index_path)
         .map_err(|error| format!("could not read {INDEX_FILE_NAME}: {error}"))?;
     let mut index: BoardIndex = serde_json::from_slice(&contents)
@@ -1160,7 +1161,11 @@ fn remember_project(app: &AppHandle, root: &Path) -> Result<(), String> {
     let contents = serde_json::to_vec(&root.to_string_lossy().to_string())
         .map_err(|error| format!("could not encode last project path: {error}"))?;
     atomic_write(&path, &contents)
-        .map_err(|error| format!("could not remember the last project: {error}"))
+        .map_err(|error| format!("could not remember the last project: {error}"))?;
+    if let Err(error) = crate::recent::remember_folder(app, root) {
+        eprintln!("Could not add the opened project to recents: {error}");
+    }
+    Ok(())
 }
 
 #[cfg(test)]

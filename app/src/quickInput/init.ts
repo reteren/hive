@@ -6,7 +6,7 @@ import { initializeProjectPersistence } from "../project/persistence.svelte";
 import { initializeViewSettingsPersistence } from "../settings/persistence.svelte";
 import { initializeQuickInputShortcut } from "./shortcutRegistration";
 import { showQuickInputWindow as showQuickInputWindowHandle } from "./windowActivation";
-import { enableTrayCloseMode, markQuitRequested } from "../lifecycle/closeFlush";
+import { enableTrayCloseMode, flushBeforeAppQuit, markQuitRequested } from "../lifecycle/closeFlush";
 
 let toastTimer: number | null = null;
 let toastElement: HTMLElement | null = null;
@@ -25,14 +25,19 @@ async function initializeQuickInputMain(): Promise<void> {
     quitRequested = true;
     clearTrayNotice();
     try {
-      await invoke("set_quit_requested", { requested: true });
-      markQuitRequested(true);
-      await window.close();
+      await flushBeforeAppQuit();
+      await invoke("app_quit");
     } catch (error) {
       quitRequested = false;
-      markQuitRequested(false);
-      await invoke("set_quit_requested", { requested: false }).catch(() => undefined);
-      console.error("Could not quit hive after the close flush.", error);
+      try {
+        await invoke("set_quit_requested", { requested: true });
+        markQuitRequested(true);
+        await window.close();
+      } catch (fallbackError) {
+        markQuitRequested(false);
+        await invoke("set_quit_requested", { requested: false }).catch(() => undefined);
+        console.error("Could not quit hive after the close flush.", error, fallbackError);
+      }
     }
   });
 

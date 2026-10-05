@@ -1,6 +1,6 @@
 import { tags } from "@lezer/highlight";
 import { GFM, parser, type MarkdownConfig, type MarkdownExtension } from "@lezer/markdown";
-import { INLINE_IMAGE_DEFAULT_WIDTH_PERCENT, INLINE_IMAGE_PATTERN } from "../attachments/types";
+import { INLINE_IMAGE_DEFAULT_WIDTH_PERCENT, INLINE_IMAGE_PATTERN, isSafeAttachmentName } from "../attachments/types";
 
 const highlightDelimiter = { resolve: "HiveHighlight", mark: "HiveHighlightMark" };
 
@@ -76,10 +76,13 @@ export interface PreparedMarkdownPreview {
 export function parseInlineImageToken(value: string): InlineImageToken | null {
   const match = inlineImageTokenPattern.exec(value);
   if (!match || match[0] !== value) return null;
+  let file: string;
+  try { file = decodeURIComponent(match[2]); } catch { return null; }
+  if (!isSafeAttachmentName(file)) return null;
   const rawWidth = match[3];
   return {
     alt: match[1],
-    file: match[2],
+    file,
     widthPercent: rawWidth === undefined
       ? INLINE_IMAGE_DEFAULT_WIDTH_PERCENT
       : Math.min(100, Math.max(5, Number.parseInt(rawWidth, 10))),
@@ -90,7 +93,11 @@ export function parseInlineImageToken(value: string): InlineImageToken | null {
 export function formatInlineImageToken(alt: string, file: string, widthPercent: number): string {
   const safeAlt = alt.replace(/[\]\r\n]/gu, " ").trim() || "Image";
   const width = Math.min(100, Math.max(5, Math.round(widthPercent)));
-  return `![${safeAlt}](att:${file}){w=${width}}`;
+  return `![${safeAlt}](att:${encodeAttachmentToken(file)}){w=${width}}`;
+}
+
+function encodeAttachmentToken(file: string): string {
+  return encodeURIComponent(file).replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
 }
 
 /** Replace inline image tokens with their alt text for text-fit measurements. */

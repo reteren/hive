@@ -1,10 +1,8 @@
 /**
  * R9 attachments contract (coordinator-owned; ask before changing).
  *
- * Storage (R9.1): every imported file is copied into the project's `attachments/` folder under a
- * content-addressed name `<sha256 hex, lowercase>.<ext>` (ext lowercase, from the MIME type or the
- * original name). Identical content is stored once; the model only ever refers to that file name,
- * never to an absolute path, so copying/exporting the project folder keeps every picture.
+ * Storage: imported files use a readable, sanitized name inside the project's `attachments/`
+ * folder. The model refers to that basename, never an attachment path.
  * Files are immutable: nothing edits an attachment in place, so several nodes/cards/texts may share
  * one file and copies stay independent. Unreferenced files are not deleted while Undo/Trash/Archive
  * may still bring their owner back (cleanup is a separate, explicit step — not in R9.1).
@@ -13,7 +11,7 @@
  * and each snapshot lists the files it needs — no per-snapshot copies of the same file.
  */
 export interface AttachmentRef {
-  /** `<sha256>.<ext>` inside `attachments/`. */
+  /** Safe basename inside `attachments/`; legacy content hashes remain valid. */
   file: string;
   /** MIME type as detected on import, e.g. "image/png", "image/gif". */
   mime: string;
@@ -41,12 +39,20 @@ export const IMAGE_MIME_TYPES = ["image/png", "image/jpeg", "image/gif", "image/
  * always preserved for inline images.
  */
 export const INLINE_IMAGE_DEFAULT_WIDTH_PERCENT = 50;
-export const INLINE_IMAGE_PATTERN = /!\[([^\]\n]*)\]\(att:([0-9a-f]{64}\.[a-z0-9]{1,8})\)(?:\{w=(\d{1,3})\})?/g;
+export const INLINE_IMAGE_PATTERN = /!\[([^\]\n]*)\]\(att:((?:[A-Za-z0-9._~-]|%[0-9a-fA-F]{2})+)\)(?:\{w=(\d{1,3})\})?/g;
+
+/** Validate a project-local attachment basename at every persisted reference boundary. */
+export function isSafeAttachmentName(file: string): boolean {
+  if (!file || [...file].reduce((sum, character) => sum + (character.codePointAt(0)! > 0xFFFF ? 2 : 1), 0) > 120) return false;
+  if (file === "." || file === ".." || /[. ]$/.test(file) || /[\\/:<>"|?*\u0000-\u001f]/.test(file)) return false;
+  const stem = (file.slice(0, file.lastIndexOf(".") > 0 ? file.lastIndexOf(".") : file.length).split(".")[0] ?? "").toUpperCase();
+  return !/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/.test(stem);
+}
 
 /**
  * R9.3–R9.6 media contract (coordinator-owned, 01.10). User defaults (not objected):
  * - Format/text files are edited as a COPY inside the project. Attachments stay immutable: every
- *   save writes the new text as a new content-addressed file and points the node at it (one Undo
+ *   save writes the new text as a new readable file and points the node at it (one Undo
  *   step), so Undo/backups keep working. "Save as…" exports the current text to a file the user picks.
  * - Size limits: images, PDF and text 200 MB; audio and video 2 GB, copied by streaming (never
  *   loaded whole into memory).
@@ -77,6 +83,8 @@ export const MEDIA_LIMIT_BYTES: Record<MediaKind | "image", number> = {
 /** A non-image attachment on a node ("pdf", "format", "audio", "video" kinds). */
 export interface MediaRef extends AttachmentRef {
   kind: MediaKind;
+  /** Large videos stay at their original location and are intentionally not packaged. */
+  externalPath?: string;
   /** Duration in seconds for audio/video, read on import when the webview can decode it. */
   duration?: number;
   /** Intrinsic video size, for the initial node aspect ratio. */

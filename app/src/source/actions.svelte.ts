@@ -29,7 +29,11 @@ export function setSourceResourceValue(noteId: string, rawValue: string, meta: S
     : parsed.kind === "path"
       ? { url: null, filePath: parsed.value }
       : { url: null, filePath: null };
-  commitSourceEdit(noteId, value, meta);
+  commitSourceEdit(noteId, { ...value, file: undefined }, meta);
+}
+
+export function setSourceAttachment(noteId: string, file: string, meta: SourceEditMeta): void {
+  commitSourceEdit(noteId, { url: null, filePath: null, file }, meta);
 }
 
 function commitSourceEdit(
@@ -64,5 +68,5 @@ function commitSourceEdit(
 function sameSource(left: SourceData | undefined, right: SourceData | undefined): boolean {
   const a = normalizeSource(left);
   const b = normalizeSource(right);
-  return a.url === b.url && a.filePath === b.filePath && a.description === b.description && a.locked === b.locked;
+  return a.url === b.url && a.filePath === b.filePath && a.file === b.file && a.description === b.description && a.locked === b.locked;
 }

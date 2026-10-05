@@ -93,6 +93,12 @@ describe("inline image tokens", () => {
     expect(searchNotes("aaaaaaaaaa", notes)).toHaveLength(0);
   });
 
+  it("encodes readable attachment names in tokens and decodes them on parse", () => {
+    const token = formatInlineImageToken("Photo", "photo (2).png", 50);
+    expect(token).toContain("att:photo%20%282%29.png");
+    expect(parseInlineImageToken(token)?.file).toBe("photo (2).png");
+  });
+
   it("excludes the complete token from spellcheck", () => {
     const token = formatInlineImageToken("Photo", file, 72);
     const state = EditorState.create({

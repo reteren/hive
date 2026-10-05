@@ -5,6 +5,7 @@ import { showLinkStatus } from "../links-in-text/contextMenu.svelte";
 import {
   AUDIO_MIME_TYPES,
   IMAGE_MIME_TYPES,
+  isSafeAttachmentName,
   MEDIA_LIMIT_BYTES,
   PDF_MIME_TYPES,
   TEXT_FORMAT_LANGUAGES,
@@ -41,9 +42,11 @@ interface StoredAttachment {
   size: number;
   name?: string;
   kind?: MediaKind | "image";
+  externalPath?: string;
 }
 
 const browserAttachments = new Map<string, string>();
+const browserAttachmentsByContent = new Map<string, string>();
 const dropHandlers: { priority: number; sequence: number; handler: FileDropHandler }[] = [];
 let nextHandlerSequence = 0;
 
@@ -81,9 +84,8 @@ export async function importImageFile(file: File): Promise<ImportResult> {
       };
     }
 
-    const hash = await sha256(bytes);
     const extension = EXTENSION_BY_MIME[mime];
-    const storedName = `${hash}.${extension}`;
+    const storedName = await browserAttachmentNameFor(bytes, name ?? `Image.${extension}`, extension, mime);
     if (!browserAttachments.has(storedName)) {
       browserAttachments.set(storedName, URL.createObjectURL(new Blob([bytes], { type: mime })));
     }
@@ -96,7 +98,7 @@ export async function importImageFile(file: File): Promise<ImportResult> {
   }
 }
 
-/** Import a dropped or selected desktop path through Hive's validated, content-addressed store. */
+/** Import a dropped or selected desktop path through Hive's validated project store. */
 export async function importImagePath(path: string): Promise<ImportResult> {
   if (!isTauri()) return { ok: false, error: "Importing an image path is available in the desktop app." };
   try {
@@ -133,6 +135,13 @@ export async function importMediaPath(path: string): Promise<MediaImportResult> 
   }
 }
 
+/** Copy an arbitrary OS-selected file into the project for a Source node. */
+export async function importSourceFilePath(path: string): Promise<{ file: string; name?: string }> {
+  if (!isTauri()) throw new Error("Importing a file path is available in the desktop app.");
+  const stored = await invoke<StoredAttachment>("attachment_import_source_path", { path });
+  return { file: stored.file, ...(stored.name ? { name: stored.name } : {}) };
+}
+
 /** Import supported non-image media from a browser File or clipboard file. */
 export async function importMediaFile(file: File): Promise<MediaImportResult> {
   try {
@@ -140,6 +149,9 @@ export async function importMediaFile(file: File): Promise<MediaImportResult> {
     const hintedKind = mediaKindForFile(file);
     if (hintedKind && file.size > MEDIA_LIMIT_BYTES[hintedKind]) {
       return { ok: false, error: mediaLimitError(hintedKind) };
+    }
+    if (hintedKind === "video" && file.size > 20 * 1024 * 1024) {
+      return { ok: false, error: "Videos larger than 20 MB must be imported from their file path in the desktop app." };
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
     return await importMediaBytes(bytes, file.name, file.type);
@@ -181,7 +193,7 @@ export async function saveTextAttachment(text: string, previous: MediaRef): Prom
 
 /** Export an immutable attachment through the system save dialog. */
 export async function exportAttachmentAs(ref: AttachmentRef, suggestedName: string): Promise<boolean> {
-  if (!/^[0-9a-f]{64}\.[a-z0-9]{1,8}$/.test(ref.file)) {
+  if (!isSafeAttachmentName(ref.file)) {
     reportImportError("The attachment reference is invalid.");
     return false;
   }
@@ -259,7 +271,7 @@ export async function pickImageFiles(): Promise<string[]> {
 
 /** Convert the project-relative immutable name into a loadable asset URL. */
 export function attachmentUrl(file: string): string {
-  if (!/^[0-9a-f]{64}\.[a-z0-9]{1,8}$/i.test(file)) return "";
+  if (!isSafeAttachmentName(file)) return "";
   if (!isTauri()) return browserAttachments.get(file) ?? "";
   if (!project.path) return "";
   return convertFileSrc(joinPath(project.path, `attachments/${file}`));
@@ -347,11 +359,6 @@ function readNaturalSizeFromUrl(url: string): Promise<{ naturalWidth: number; na
     image.onerror = () => reject(new Error("This image could not be decoded."));
     image.src = url;
   });
-}
-
-async function sha256(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes.slice().buffer as ArrayBuffer);
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 interface MediaDescriptor {
@@ -461,11 +468,25 @@ async function browserMediaAttachment(
   mime: string,
   extension: string,
 ): Promise<MediaRef> {
-  const file = `${await sha256(bytes)}.${extension}`;
+  const file = await browserAttachmentNameFor(bytes, name, extension, mime);
   if (!browserAttachments.has(file)) {
     browserAttachments.set(file, URL.createObjectURL(new Blob([bytes.slice().buffer as ArrayBuffer], { type: mime })));
   }
   return { file, mime, size: bytes.byteLength, name, kind };
+}
+
+async function browserAttachmentNameFor(bytes: Uint8Array, name: string, extension: string, mime: string): Promise<string> {
+  const contentKey = `${mime}\u0000${await sha256(bytes)}`;
+  const existing = browserAttachmentsByContent.get(contentKey);
+  if (existing) return existing;
+  const file = nextBrowserAttachmentName(name, extension);
+  browserAttachmentsByContent.set(contentKey, file);
+  return file;
+}
+
+async function sha256(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes.slice().buffer as ArrayBuffer);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 async function makeMediaRef(stored: StoredAttachment, kind: MediaKind): Promise<MediaRef> {
@@ -475,10 +496,44 @@ async function makeMediaRef(stored: StoredAttachment, kind: MediaKind): Promise<
     size: stored.size,
     ...(stored.name ? { name: stored.name } : {}),
     kind,
+    ...(stored.externalPath ? { externalPath: stored.externalPath } : {}),
   };
   if (kind !== "audio" && kind !== "video") return media;
-  const metadata = await readMediaMetadata(attachmentUrl(stored.file), kind);
+  const metadata = await readMediaMetadata(stored.externalPath ? convertFileSrc(stored.externalPath) : attachmentUrl(stored.file), kind);
   return { ...media, ...metadata };
+}
+
+function nextBrowserAttachmentName(name: string, extension: string): string {
+  const base = name.trim().replaceAll("\\", "/").split("/").at(-1) || `Attachment.${extension}`;
+  let stem = base.replace(/\.[^.]*$/, "").replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").replace(/[. ]+$/g, "") || "Attachment";
+  const safeExtension = extension.replace(/[<>:"/\\|?*\u0000-\u001f. ]/g, "").toLowerCase();
+  const suffix = safeExtension ? `.${safeExtension}` : "";
+  const isReserved = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i.test(stem.split(".")[0] ?? "");
+  if (isReserved) {
+    const dot = stem.indexOf(".");
+    stem = dot >= 0 ? `${stem.slice(0, dot)}_${stem.slice(dot)}` : `${stem}_`;
+  }
+  const maxStemUnits = 120 - safeExtension.length;
+  stem = truncateNameUtf16(stem, maxStemUnits).replace(/[. ]+$/g, "") || "Attachment";
+  for (let collision = 1; collision < 100_000; collision += 1) {
+    const marker = collision === 1 ? "" : ` (${collision})`;
+    const collisionStem = truncateNameUtf16(stem, Math.max(1, 120 - marker.length - suffix.length));
+    const file = `${collisionStem}${marker}${suffix}`;
+    if (!Array.from(browserAttachments.keys()).some((key) => key.toLocaleLowerCase() === file.toLocaleLowerCase())) return file;
+  }
+  throw new Error("Could not choose a unique attachment file name.");
+}
+
+function truncateNameUtf16(value: string, maxUnits: number): string {
+  let units = 0;
+  let result = "";
+  for (const character of value) {
+    const length = character.codePointAt(0)! > 0xffff ? 2 : 1;
+    if (units + length > maxUnits) break;
+    result += character;
+    units += length;
+  }
+  return result;
 }
 
 function readMediaMetadata(url: string, kind: "audio" | "video"): Promise<Pick<MediaRef, "duration" | "naturalWidth" | "naturalHeight">> {

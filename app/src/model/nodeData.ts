@@ -11,7 +11,7 @@ export type NodeScope =
   | { kind: "beacon"; id: string };
 
 /** A card in a Tierlist row: free text, or a live read-only preview of a board node (H28/H29). */
-import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
+import { IMAGE_MIME_TYPES, isSafeAttachmentName, type ImageRef } from "../attachments/types";
 
 export type TierCard =
   | { id: string; kind: "text"; text: string }
@@ -80,9 +80,9 @@ function nonEmptyString(value: unknown): value is string {
 }
 
 function parseTierImageRef(value: unknown): ImageRef | null {
-  if (!isRecord(value) || !nonEmptyString(value.file) || !/^[0-9a-f]{64}\.[a-z0-9]{1,8}$/.test(value.file)) return null;
+  if (!isRecord(value) || !nonEmptyString(value.file) || !isSafeAttachmentName(value.file)) return null;
   const mime = IMAGE_MIME_TYPES.find((candidate) => candidate === value.mime);
-  const extension = value.file.slice(value.file.lastIndexOf(".") + 1);
+  const extension = value.file.slice(value.file.lastIndexOf(".") + 1).toLowerCase();
   if (!mime || !TIER_IMAGE_EXTENSIONS[mime].includes(extension)) return null;
   if (typeof value.size !== "number" || !Number.isSafeInteger(value.size) || value.size < 1) return null;
   if (typeof value.naturalWidth !== "number" || !Number.isSafeInteger(value.naturalWidth) || value.naturalWidth < 1) return null;
@@ -161,6 +161,8 @@ export interface ListItem {
 export interface SourceData {
   url: string | null;
   filePath: string | null;
+  /** Safe attachment basename relative to the project's attachments/ folder. */
+  file?: string;
   description: string;
   /** An unsupported OS file drop links to its original path without a replacement picker. */
   locked?: true;
@@ -185,6 +187,7 @@ export function parseSource(value: unknown): SourceData | null {
   return {
     url: nonEmptyString(value.url) ? value.url : null,
     filePath: nonEmptyString(value.filePath) ? value.filePath : null,
+    ...(nonEmptyString(value.file) && isSafeAttachmentName(value.file) ? { file: value.file } : {}),
     description: typeof value.description === "string" ? value.description : "",
     ...(value.locked === true ? { locked: true as const } : {}),
   };

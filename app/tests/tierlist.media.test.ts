@@ -66,6 +66,19 @@ describe("Tierlist media previews", () => {
     });
   });
 
+  it("falls back to the video name for external media in a Tierlist", () => {
+    const video = mediaNode({
+      type: "video",
+      media: {
+        file: "clip.mp4", mime: "video/mp4", size: 30 * 1024 * 1024,
+        kind: "video", name: "vacation.mp4", externalPath: "C:\\Videos\\clip.mp4",
+      },
+    });
+    expect(tierCardPreview(card, { source: video })).toEqual({
+      kind: "note", name: "vacation.mp4", lines: ["A note caption"], missing: false,
+    });
+  });
+
   it("uses the hqdefault thumbnail and title for a linked YouTube node", () => {
     const youtube = mediaNode({
       type: "youtube",

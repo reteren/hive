@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { boardDropKindForPath } from "../src/attachments/service";
 import { groupBoardDropPaths } from "../src/formats/boardFileDrop";
 import { createMarkdownNotes, initialMarkdownNoteHeight, MAX_IMPORTED_NOTE_HEIGHT } from "../src/formats/textDrop";
-import { createLockedSourceNotes } from "../src/source/creation";
+import { createSourceNotesFromAttachments } from "../src/source/creation";
 import { sourceHasPicker } from "../src/source/logic";
 import { parseSource } from "../src/model/nodeData";
 import { board, replaceBoard } from "../src/model/board.svelte";
@@ -63,13 +63,13 @@ describe("OS file drops on the empty board", () => {
     expect(board.notes[id!]).toMatchObject({ type: "note", height: MAX_IMPORTED_NOTE_HEIGHT, text });
   });
 
-  it("links unsupported files as locked Sources without importing an attachment", () => {
-    const [id] = createLockedSourceNotes(["C:\\Programs\\tool.exe"], { x: 0, y: 0 });
+  it("links unsupported files as project-local Source attachments", () => {
+    const [id] = createSourceNotesFromAttachments([{ file: "tool.exe", name: "tool.exe" }], { x: 0, y: 0 });
     const note = board.notes[id!]!;
     expect(note).toMatchObject({ type: "source", name: "tool.exe" });
     expect(note.media).toBeUndefined();
-    expect(note.source).toEqual({ url: null, filePath: "C:\\Programs\\tool.exe", description: "", locked: true });
-    expect(sourceHasPicker(note.source)).toBe(false);
+    expect(note.source).toEqual({ url: null, filePath: null, file: "tool.exe", description: "" });
+    expect(sourceHasPicker(note.source)).toBe(true);
     expect(sourceHasPicker({ url: null, filePath: "C:\\elsewhere\\file.txt", description: "" })).toBe(true);
     expect(history.entries).toHaveLength(1);
     undo();
@@ -77,7 +77,7 @@ describe("OS file drops on the empty board", () => {
   });
 
   it("retains locked Source through every persistence boundary", () => {
-    const [id] = createLockedSourceNotes(["C:\\Programs\\tool.exe"], { x: 0, y: 0 });
+    const [id] = createSourceNotesFromAttachments([{ file: "tool.exe", name: "tool.exe" }], { x: 0, y: 0 });
     const note = board.notes[id!]!;
     expect(parseSource(note.source)).toEqual(note.source);
     expect(parseProjectIndex(serializeProjectIndex([note])).notes[0]?.source).toEqual(note.source);

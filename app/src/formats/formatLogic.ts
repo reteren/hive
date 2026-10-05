@@ -1,5 +1,6 @@
 import {
   AUDIO_MIME_TYPES,
+  isSafeAttachmentName,
   MEDIA_LIMIT_BYTES,
   PDF_MIME_TYPES,
   TEXT_FORMAT_LANGUAGES,
@@ -68,14 +69,15 @@ export function parseMediaRef(value: unknown): MediaRef | null {
     !Number.isSafeInteger(value.size) || (value.size as number) < 0 ||
     value.name !== undefined && (typeof value.name !== "string" || value.name.length > 1024)) return null;
 
-  const match = /^([0-9a-f]{64})\.([a-z0-9]{1,8})$/.exec(value.file);
-  if (!match || !isMediaKind(value.kind) || (value.size as number) > MEDIA_LIMIT_BYTES[value.kind]) return null;
-  const extension = match[2];
+  if (!isSafeAttachmentName(value.file) || !isMediaKind(value.kind) || (value.size as number) > MEDIA_LIMIT_BYTES[value.kind]) return null;
+  const extension = value.file.slice(value.file.lastIndexOf(".") + 1).toLowerCase();
 
   if (value.kind === "pdf" && (extension !== "pdf" || !PDF_MIME_TYPES.includes(value.mime as (typeof PDF_MIME_TYPES)[number]))) return null;
   if (value.kind === "text" && !(extension in TEXT_FORMAT_LANGUAGES)) return null;
   if (value.kind === "audio" && !AUDIO_MIME_TYPES.includes(value.mime as (typeof AUDIO_MIME_TYPES)[number])) return null;
   if (value.kind === "video" && !VIDEO_MIME_TYPES.includes(value.mime as (typeof VIDEO_MIME_TYPES)[number])) return null;
+  if (value.externalPath !== undefined && (value.kind !== "video" || typeof value.externalPath !== "string" || !isAbsolutePath(value.externalPath) ||
+    (value.size as number) <= 20 * 1024 * 1024)) return null;
   if (value.duration !== undefined && (typeof value.duration !== "number" || !Number.isFinite(value.duration) || value.duration < 0)) return null;
   if (value.naturalWidth !== undefined && (!Number.isSafeInteger(value.naturalWidth) || (value.naturalWidth as number) <= 0)) return null;
   if (value.naturalHeight !== undefined && (!Number.isSafeInteger(value.naturalHeight) || (value.naturalHeight as number) <= 0)) return null;
@@ -85,6 +87,7 @@ export function parseMediaRef(value: unknown): MediaRef | null {
     mime: value.mime,
     size: value.size as number,
     kind: value.kind,
+    ...(typeof value.externalPath === "string" ? { externalPath: value.externalPath } : {}),
     ...(typeof value.name === "string" ? { name: value.name } : {}),
     ...(typeof value.duration === "number" ? { duration: value.duration } : {}),
     ...(typeof value.naturalWidth === "number" ? { naturalWidth: value.naturalWidth } : {}),
@@ -98,4 +101,8 @@ function isMediaKind(value: unknown): value is MediaRef["kind"] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isAbsolutePath(value: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(value) || /^\\\\/.test(value) || value.startsWith("/");
 }

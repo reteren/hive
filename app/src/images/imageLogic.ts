@@ -1,4 +1,4 @@
-import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
+import { IMAGE_MIME_TYPES, isSafeAttachmentName, type ImageRef } from "../attachments/types";
 import { PX_PER_UNIT } from "../board/cameraMath";
 import type { Note } from "../model/note";
 
@@ -90,8 +90,9 @@ export function parseImageRef(value: unknown): ImageRef | null {
     !Number.isSafeInteger(value.naturalHeight) || (value.naturalHeight as number) <= 0 ||
     value.name !== undefined && (typeof value.name !== "string" || value.name.length > 1024)) return null;
 
-  const match = /^([0-9a-f]{64})\.([a-z0-9]{1,8})$/.exec(value.file);
-  if (!match || EXTENSION_MIME[match[2]] !== value.mime) return null;
+  if (!isSafeAttachmentName(value.file)) return null;
+  const extension = value.file.slice(value.file.lastIndexOf(".") + 1).toLowerCase();
+  if (EXTENSION_MIME[extension] !== value.mime) return null;
   return {
     file: value.file,
     mime: value.mime,
