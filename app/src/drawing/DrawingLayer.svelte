@@ -105,6 +105,7 @@
 
   onMount(() => {
     if (gpu && host) host.prepend(gpu.canvas);
+    if (gpu) gpu.renderNow = render;
     const stopPersistence = startDrawingPersistence();
     const onResolutionChange = () => render();
     window.addEventListener("resize", onResolutionChange);
@@ -118,6 +119,7 @@
       stopRestored?.();
       window.removeEventListener("resize", onResolutionChange);
       gpu?.canvas.remove();
+      if (gpu?.renderNow === render) gpu.renderNow = null;
     };
   });
 </script>

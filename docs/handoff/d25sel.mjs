@@ -37,6 +37,9 @@ const t0 = Date.now(); let seen = false;
 while (Date.now() - t0 < 2000) { if (await ev(`!!document.querySelector('[data-selection-fast-preview], [data-selection-floating]')`)) { seen = true; break; } await wait(5); }
 console.log("1 floating preview after", Date.now() - t0, "ms", seen);
 for (let i = 2; i <= 10; i++) await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: b[0], y: b[1] + 15 * i, button: "left", buttons: 1 });
+await wait(100);
+console.log("1 preview pixels while held:", await ev(`(()=>{const c=document.querySelector('[data-selection-fast-preview] canvas');if(!c)return 'no preview canvas';const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let n=0;for(let i=3;i<d.length;i+=4)if(d[i])n++;return n})()`));
+await shot("d25-move-held");
 await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: b[0], y: b[1] + 150, button: "left", buttons: 0, clickCount: 1 }); await wait(800);
 const moved = await sel();
 console.log("1 moved selection:", moved, "| pixels at new place", await alphaAt(600, 650), "| old", await alphaAt(600, 500));

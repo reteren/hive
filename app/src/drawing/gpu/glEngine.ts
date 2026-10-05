@@ -153,6 +153,11 @@ export class DrawingGpu {
   private readonly strokeUniforms: Record<string, WebGLUniformLocation | null>;
   private readonly emptyClip: WebGLTexture;
   private scratch: GpuTexture | null = null;
+  /**
+   * Re-render the visible canvas now (set by DrawingLayer). The canvas does not preserve its buffer
+   * between frames, so anything copying it (drawImage) must render first, in the same task.
+   */
+  renderNow: (() => void) | null = null;
   private lost = false;
   private readonly lostListeners = new Set<() => void>();
   private readonly restoredListeners = new Set<() => void>();

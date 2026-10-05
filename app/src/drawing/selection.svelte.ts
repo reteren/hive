@@ -642,7 +642,9 @@ function captureScreenSelection(area: DrawingSelectionArea): HTMLCanvasElement |
   });
   context.closePath();
   context.clip();
-  // drawImage copies the already-rendered GPU canvas without a synchronous readPixels round trip.
+  // The GPU canvas keeps no buffer between frames: render it in this task, then copy it (a copy of
+  // an already presented frame was blank, so the moved piece vanished until release).
+  gpu.renderNow?.();
   context.drawImage(gpu.canvas, 0, 0);
   return canvas;
 }
