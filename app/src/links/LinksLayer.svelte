@@ -11,7 +11,6 @@
   import { captureSelectionSnapshot, setSelectionUndoable } from "../selection/selection.svelte";
   import { isLineTool, tool } from "../tools/tool.svelte";
   import { objectColor } from "./colors";
-  import { linkColorGradientStops, type LinkGradientStop } from "./linkColorGradient";
   import { marqueeIntersectsPath, strokeIntersectsPath } from "./lineGeometry";
   import { buildArrowGeometry, buildShape, buildShapeDashPaths, type ShapeResult } from "./shapes";
   import { pointOnCircleToward, projectPointToAnchor, resolveLinkEndpoints, shapeEndpoints } from "./anchors";
@@ -48,7 +47,8 @@
       y1: number;
       x2: number;
       y2: number;
-      stops: readonly LinkGradientStop[];
+      fromColor: string;
+      toColor: string;
     };
   }
 
@@ -128,17 +128,17 @@
       const last = geometry.polyline.at(-1);
       if (!first || !last) continue;
 
-      const stops = linkColorGradientStops(fromColor, toColor);
-      const gradient = stops
-        ? {
+      const gradient = fromColor.toLowerCase() === toColor.toLowerCase()
+        ? null
+        : {
             id: `hive-link-${safeId(link.id)}`,
             x1: first.x,
             y1: first.y,
             x2: last.x,
             y2: last.y,
-            stops,
-          }
-        : null;
+            fromColor,
+            toColor,
+          };
       const arrow = buildArrowGeometry(link.shape, geometry);
       const shapeDashes = link.kind === "weak" && (link.shape === "wave" || link.shape === "zigzag")
         ? buildShapeDashPaths(link.shape, geometry, arrow.shaftLength)
@@ -677,9 +677,8 @@
             x2={gradient.x2}
             y2={gradient.y2}
           >
-            {#each gradient.stops as stop}
-              <stop offset={`${stop.offset}%`} stop-color={stop.color} />
-            {/each}
+            <stop offset="0%" stop-color={gradient.fromColor} />
+            <stop offset="100%" stop-color={gradient.toColor} />
           </linearGradient>
         {/each}
       </defs>
@@ -710,7 +709,7 @@
               class="link-arrow"
               class:weak={link.kind === "weak"}
               d={link.headPath}
-              style:fill={link.selected ? "var(--accent)" : link.gradient ? link.gradient.stops.at(-1)?.color : undefined}
+              style:fill={link.selected ? "var(--accent)" : link.gradient ? link.gradient.toColor : undefined}
             />
           {/if}
         </g>
