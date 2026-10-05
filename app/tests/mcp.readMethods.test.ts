@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import "../src/mcp/readMethods";
+import packageMetadata from "../package.json";
 import { McpError, getMcpMethod, mcpMethodNames } from "../src/mcp/registry";
 import { board, replaceBoard } from "../src/model/board.svelte";
 import { replaceLinks } from "../src/model/links.svelte";
@@ -98,7 +99,7 @@ describe("MCP read methods", () => {
     }>("status");
 
     expect(result).toMatchObject({
-      appVersion: "1.6.9",
+      appVersion: packageMetadata.version,
       protocol: 1,
       project: { name: "Sample", root: "C:\\projects\\sample" },
       counts: { nodes: 3, links: 2, zones: 1, trash: 0, archive: 0 },

@@ -1,6 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { registerCloseFlush } from "../lifecycle/closeFlush";
-import { camera, cameraSettings } from "../board/camera.svelte";
+import { camera, cameraSettings, isTransientCameraChange } from "../board/camera.svelte";
 import { grid, setAutoGrid, setGridStep } from "../board/grid.svelte";
 import { history as undoHistory, setHistoryLimit } from "../history/history.svelte";
 import { brushState, setBrushSize } from "../zones/brushState.svelte";
@@ -66,7 +66,7 @@ async function initialize(): Promise<void> {
   $effect.root(() => {
     $effect(() => {
       const snapshot = currentSettingsSnapshot();
-      if (!initialized || snapshot === lastPersistedSnapshot) return;
+      if (!initialized || isTransientCameraChange() || snapshot === lastPersistedSnapshot) return;
       scheduleSave(snapshot);
     });
   });
@@ -82,6 +82,10 @@ function scheduleSave(snapshot: string): void {
   saveTimer = window.setTimeout(() => {
     saveTimer = null;
     saveTimerKind = null;
+    if (isTransientCameraChange()) {
+      scheduleSave(currentSettingsSnapshot());
+      return;
+    }
     void persistSnapshot(currentSettingsSnapshot());
   }, countersOnly ? TIME_COUNTER_SAVE_INTERVAL_MS : SAVE_DEBOUNCE_MS);
 }

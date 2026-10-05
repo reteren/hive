@@ -14,6 +14,7 @@ import { addZone, updateZone } from "../model/zones.svelte";
 import { rectContour, type Zone, type ZoneBounds } from "../model/zone";
 import { zoneMembers } from "../zones/membership.svelte";
 import { noteBounds } from "../notes/layout.svelte";
+import { notePositionAt, randomFreeNoteCenter } from "../notes/creationPosition";
 import { uniqueName } from "../notes/naming";
 import { boardDropKindForPath } from "../attachments/service";
 import { importImagePaths } from "../images/imageActions";
@@ -343,6 +344,18 @@ function parseNearTarget(value: unknown): { bounds: ZoneBounds; side: "right" | 
   return { bounds: noteBounds(note), side, gap };
 }
 
+/**
+ * Import pipelines drop every file at the same centre; for MCP calls without x/y/near move the new
+ * node to the nearest free spot so consecutive imports never stack on top of each other.
+ */
+function freeSpotFor(id: string, bounds: { width: number; height: number }, center: { x: number; y: number }): { x: number; y: number } {
+  const obstacles = board.order
+    .filter((other) => other !== id && board.notes[other])
+    .map((other) => noteBounds(board.notes[other]));
+  const free = randomFreeNoteCenter(center, Math.max(bounds.width, 1), Math.max(bounds.height, 1), obstacles, false, 1);
+  return notePositionAt(free, bounds.width, bounds.height, false, 1);
+}
+
 async function importFile(params: RecordValue): Promise<{ node: RecordValue }> {
   assertKeys(params, ["path", "x", "y", "near", "name"], "files.import");
   const path = nonEmptyString(params.path, "path");
@@ -396,7 +409,7 @@ async function importFile(params: RecordValue): Promise<{ node: RecordValue }> {
   }
 
   const bounds = noteBounds(note);
-  const nextPosition = position ?? (near ? placeNextTo(near.bounds, bounds, near.side, near.gap) : null);
+  const nextPosition = position ?? (near ? placeNextTo(near.bounds, bounds, near.side, near.gap) : freeSpotFor(id, bounds, initialCenter));
   if (nextName !== note.name || nextPosition && (nextPosition.x !== note.x || nextPosition.y !== note.y)) {
     const before = { name: note.name, x: note.x, y: note.y };
     const after = {

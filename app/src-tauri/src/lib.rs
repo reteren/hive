@@ -1,5 +1,6 @@
 mod attachments;
 mod backup;
+mod capture;
 mod drawing;
 mod export;
 mod mcp_bridge;
@@ -215,6 +216,7 @@ pub fn run() {
             mcp_bridge::mcp_respond,
             mcp_bridge::mcp_bridge_ready,
             mcp_bridge::mcp_bridge_set_enabled,
+            capture::capture_board_preview,
             overhive::sync_overhive,
             overhive::get_overhive_snapshot,
             overhive::set_overhive_regions,

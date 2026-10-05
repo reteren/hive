@@ -18,6 +18,22 @@ export const viewport: Size = $state({ width: 0, height: 0 });
 export const pointer: { world: Point | null } = $state({ world: null });
 
 let pointerScreen: Point | null = null;
+let transientCameraChangeDepth = 0;
+
+/** Suppress persisting a camera snapshot while a caller temporarily moves the board camera. */
+export function beginTransientCameraChange(): () => void {
+  transientCameraChangeDepth += 1;
+  let ended = false;
+  return () => {
+    if (ended) return;
+    ended = true;
+    transientCameraChangeDepth = Math.max(0, transientCameraChangeDepth - 1);
+  };
+}
+
+export function isTransientCameraChange(): boolean {
+  return transientCameraChangeDepth > 0;
+}
 
 /** Keep the pointer's world coordinate in sync with camera changes. */
 export function refreshPointerWorld(): void {
