@@ -25,6 +25,7 @@
     "@tauri-apps/plugin-dialog": "^2.7.3",
     "@tauri-apps/plugin-global-shortcut": "~2.3.1",
     "@tauri-apps/plugin-opener": "^2.5.5",
+    "@tauri-apps/plugin-updater": "^2.13.1",
     "pdfjs-dist": "^6.4.299"
   },
   "devDependencies": {

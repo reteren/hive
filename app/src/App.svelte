@@ -18,6 +18,7 @@
   import Tooltip from "./ui/Tooltip.svelte";
   import CoordsIndicator from "./ui/CoordsIndicator.svelte";
   import HistoryToast from "./ui/HistoryToast.svelte";
+  import UpdateBanner from "./updater/UpdateBanner.svelte";
   import LeftToolbar from "./ui/LeftToolbar.svelte";
   import TopBar from "./ui/TopBar.svelte";
   import UndoLog from "./ui/UndoLog.svelte";
@@ -160,6 +161,7 @@
       <MessageCards />
     </div>
     <PanelPopups />
+    <UpdateBanner />
     <SettingsPanel />
     <div class="overlay-bottom-right">
       <HistoryToast />
