@@ -25,7 +25,9 @@
       `scale(${camera.zoom}) translate(${-camera.x * PX_PER_UNIT}px, ${-camera.y * PX_PER_UNIT}px)`,
   );
   const area = $derived(drawingSelection.area);
-  const displayOffset = $derived(area && drawingSelection.floatingAt
+  const scalePreview = $derived(drawingSelection.transformPreview);
+  const scaleFactor = $derived(scalePreview?.factor ?? 1);
+  const displayOffset = $derived(!scalePreview && area && drawingSelection.floatingAt
     ? { x: drawingSelection.floatingAt.x - area.x, y: drawingSelection.floatingAt.y - area.y }
     : { x: 0, y: 0 });
   const areaBounds = $derived(area ? selectionBoundsWorldPixels(area) : null);
@@ -42,10 +44,10 @@
   /** Board px per raster px of the selection's level. */
   const areaRatio = $derived(PX_PER_UNIT / levelPxPerUnit(area?.level ?? 0));
   const selectionDisplayBounds = $derived(areaBounds ? {
-    left: areaBounds.left + displayOffset.x * areaRatio,
-    top: areaBounds.top + displayOffset.y * areaRatio,
-    width: areaBounds.width,
-    height: areaBounds.height,
+    left: areaBounds.left + displayOffset.x * areaRatio + (areaBounds.width - areaBounds.width * scaleFactor) / 2,
+    top: areaBounds.top + displayOffset.y * areaRatio + (areaBounds.height - areaBounds.height * scaleFactor) / 2,
+    width: areaBounds.width * scaleFactor,
+    height: areaBounds.height * scaleFactor,
   } : null);
   const selectionScreenBounds = $derived(selectionDisplayBounds ? {
     left: snapToDevicePixel(viewport.width / 2 + (selectionDisplayBounds.left - camera.x * PX_PER_UNIT) * camera.zoom),
@@ -82,7 +84,8 @@
     if (canvas.parentElement !== host) host.replaceChildren(canvas);
     canvas.style.width = `${viewport.width}px`;
     canvas.style.height = `${viewport.height}px`;
-    canvas.style.transform = `translate(${preview.offsetX}px, ${preview.offsetY}px)`;
+    canvas.style.transform = `translate(${preview.offsetX}px, ${preview.offsetY}px) scale(${preview.scale ?? 1})`;
+    canvas.style.transformOrigin = `${preview.originX ?? 0}px ${preview.originY ?? 0}px`;
   });
 
   $effect(() => {
@@ -106,9 +109,12 @@
 
   function pathForArea(value: DrawingSelectionArea, offset: RasterPoint): string {
     const ratio = PX_PER_UNIT / levelPxPerUnit(value.level);
+    const factor = drawingSelection.transformPreview?.factor ?? 1;
+    const centerX = value.x + value.width / 2;
+    const centerY = value.y + value.height / 2;
     return pathFromPoints(value.outline.map((point) => ({
-      x: (point.x + offset.x) * ratio,
-      y: (point.y + offset.y) * ratio,
+      x: (centerX + (point.x - centerX) * factor + offset.x) * ratio,
+      y: (centerY + (point.y - centerY) * factor + offset.y) * ratio,
     })), true);
   }
 
@@ -263,6 +269,10 @@
   @keyframes selection-march { to { stroke-dashoffset: var(--selection-dash-offset); } }
   :global(html[data-reduce-motion="true"]) .selection-dash { animation: none; }
   :global(html[data-drawing-mode="true"][data-selection-move-hover="true"] .board) { cursor: move !important; }
+  :global(html[data-drawing-mode="true"][data-selection-scale-cursor="nwse"] .board) { cursor: nwse-resize !important; }
+  :global(html[data-drawing-mode="true"][data-selection-scale-cursor="nesw"] .board) { cursor: nesw-resize !important; }
   :global(html[data-selection-move-hover="true"] [data-draw-cursor]),
-  :global(html[data-selection-move-hover="true"] [data-draw-reticle]) { visibility: hidden; }
+  :global(html[data-selection-move-hover="true"] [data-draw-reticle]),
+  :global(html[data-selection-scale-cursor] [data-draw-cursor]),
+  :global(html[data-selection-scale-cursor] [data-draw-reticle]) { visibility: hidden; }
 </style>

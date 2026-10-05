@@ -26,6 +26,7 @@ export interface DrawingSelectionArea extends PixelBounds {
 
 interface SelectionGesture {
   kind: "shape" | "move";
+  transformMode?: "grab" | "scale";
   tool?: SelectionTool;
   level: number;
   start: RasterPoint;
@@ -42,10 +43,15 @@ interface SelectionGesture {
   completion?: Promise<void>;
   selectionBefore?: DrawingSelectionArea | null;
   fastPreview?: HTMLCanvasElement | null;
+  scaleFactor?: number;
+  scaleCenter?: RasterPoint;
+  scaleStartDistance?: number;
+  scaleScreenCenter?: RasterPoint;
 }
 
 interface PreparedMove {
   area: DrawingSelectionArea;
+  resultArea?: DrawingSelectionArea;
   sourceKeys: TileKey[];
   before: TileSnapshot;
   selected: RasterPixels;
@@ -61,6 +67,8 @@ const DRAG_THRESHOLD_PX = 4;
 const MIN_PATH_STEP_RASTER_PX = 2;
 const MAX_SELECTION_DIMENSION = 4096;
 const MAX_SELECTION_PIXELS = 16_777_216;
+const MIN_SELECTION_SCALE_DIMENSION = 3;
+const MIN_SCALE_START_DISTANCE = 1;
 const SELECTION_TOOLS: readonly SelectionTool[] = ["select-rect", "select-lasso", "select-polygon"];
 
 export const drawingSelection = $state({
@@ -68,13 +76,23 @@ export const drawingSelection = $state({
   preview: null as { tool: SelectionTool; points: RasterPoint[]; level: number } | null,
   floating: null as RasterPixels | null,
   floatingAt: null as RasterPoint | null,
-  fastPreview: null as { canvas: HTMLCanvasElement; offsetX: number; offsetY: number; hideSource: boolean } | null,
+  fastPreview: null as {
+    canvas: HTMLCanvasElement;
+    offsetX: number;
+    offsetY: number;
+    hideSource: boolean;
+    scale?: number;
+    originX?: number;
+    originY?: number;
+  } | null,
+  transformPreview: null as { kind: "scale"; factor: number; centerX: number; centerY: number } | null,
   revision: 0,
 });
 
 let activeGesture: SelectionGesture | null = null;
 let clipboard: ClipboardPixels | null = null;
 let cursorWorld: RasterPoint | null = null;
+let latestPointer: DrawPointerEvent | null = null;
 
 /** Rasterize a rectangle, lasso, or polygon without depending on canvas APIs. */
 export function buildSelectionArea(tool: SelectionTool, points: readonly RasterPoint[], level = 0): DrawingSelectionArea | null {
@@ -169,9 +187,126 @@ export function shouldStartQuickSelection(tool: DrawTool, event: DrawPointerEven
   return !moveAlreadyStarted && event.ctrl && (tool === "brush" || tool === "eraser" || tool === "fill");
 }
 
+/** Keep the most recent board-local pointer so mode shortcuts can anchor at the visible cursor. */
+export function trackDrawingSelectionPointer(event: DrawPointerEvent): void {
+  latestPointer = { ...event, world: { ...event.world }, client: { ...event.client } };
+  cursorWorld = { ...event.world };
+}
+
+export function isDrawingSelectionTransformActive(): boolean {
+  return Boolean(activeTransformGesture());
+}
+
+/** Update the floating G/S preview from an unpressed pointer move. */
+export function updateDrawingSelectionTransform(event: DrawPointerEvent): boolean {
+  const gesture = activeTransformGesture();
+  if (!gesture || gesture.completion) return false;
+  moveActiveGesture(event);
+  return true;
+}
+
+/** Place the current G/S transform at the cursor and record its single drawing history step. */
+export function commitDrawingSelectionTransform(event?: DrawPointerEvent): boolean {
+  const gesture = activeTransformGesture();
+  if (!gesture) return false;
+  if (gesture.completion) return true;
+  if (event) moveActiveGesture(event);
+  void commitMove(gesture);
+  return true;
+}
+
+/** Cancel an uncommitted G/S transform. No pixels or history entries are changed. */
+export function cancelDrawingSelectionTransform(): boolean {
+  const gesture = activeTransformGesture();
+  if (!gesture) return false;
+  if (gesture.completion) return true;
+  gesture.cancelled = true;
+  activeGesture = null;
+  drawingSelection.floating = null;
+  drawingSelection.floatingAt = null;
+  drawingSelection.fastPreview = null;
+  drawingSelection.transformPreview = null;
+  clearTransformCursor();
+  updateState();
+  return true;
+}
+
+function activeTransformGesture(): SelectionGesture | null {
+  return activeGesture?.kind === "move" && activeGesture.transformMode ? activeGesture : null;
+}
+
+function startSelectionTransform(mode: "grab" | "scale", event: KeyboardEvent): boolean {
+  const area = drawingSelection.area;
+  if (!area || activeGesture) return false;
+  const fallbackWorld = cursorWorld ?? {
+    x: (area.x + area.width / 2) / levelPxPerUnit(area.level),
+    y: (area.y + area.height / 2) / levelPxPerUnit(area.level),
+  };
+  const source = latestPointer ?? {
+    world: fallbackWorld,
+    client: { x: 0, y: 0 },
+    zoom: camera.zoom,
+    pressure: 0.5,
+    shift: false,
+    ctrl: event.ctrlKey,
+    alt: false,
+    detail: 1,
+  };
+  const point = readPoint(source, area.level);
+  const center = { x: area.x + area.width / 2, y: area.y + area.height / 2 };
+  const startDistance = Math.max(MIN_SCALE_START_DISTANCE, Math.hypot(point.x - center.x, point.y - center.y));
+  const screenCenter = {
+    x: viewport.width / 2 + (center.x / levelPxPerUnit(area.level) - camera.x) * PX_PER_UNIT * camera.zoom,
+    y: viewport.height / 2 + (center.y / levelPxPerUnit(area.level) - camera.y) * PX_PER_UNIT * camera.zoom,
+  };
+  const gesture: SelectionGesture = {
+    kind: "move",
+    transformMode: mode,
+    level: area.level,
+    start: point,
+    last: point,
+    startClient: { ...source.client },
+    lastClient: { ...source.client },
+    copy: mode === "grab" && event.ctrlKey,
+    started: true,
+    scaleCenter: center,
+    scaleStartDistance: startDistance,
+    scaleFactor: 1,
+    scaleScreenCenter: { x: screenCenter.x, y: screenCenter.y },
+  };
+  activeGesture = gesture;
+  drawingSelection.floatingAt = { x: area.x, y: area.y };
+  drawingSelection.transformPreview = mode === "scale"
+    ? { kind: "scale", factor: 1, centerX: center.x, centerY: center.y }
+    : null;
+  startFloating(gesture);
+  setTransformCursor(mode, point, center);
+  updateState();
+  return true;
+}
+
 /** Selection commands are mode-wide, so Delete/Esc/C/V work with any drawing sub-tool active. */
 export function handleDrawingSelectionKey(event: KeyboardEvent): boolean {
-  if (event.defaultPrevented || event.isComposing || event.repeat) return false;
+  if (event.defaultPrevented || event.isComposing) return false;
+  const transform = activeTransformGesture();
+  if (transform) {
+    const undo = event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && event.code === "KeyZ";
+    if (event.key === "Escape" || undo) return cancelDrawingSelectionTransform();
+    if (event.code === "Enter") return commitDrawingSelectionTransform();
+    if (["ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight", "AltLeft", "AltRight", "MetaLeft", "MetaRight"].includes(event.code)) return false;
+    // G/S are modal: swallow other shortcuts until the user confirms or cancels the transform.
+    return true;
+  }
+  if (event.code === "KeyG" || event.code === "KeyS") {
+    const isGrab = event.code === "KeyG";
+    const hasUnsupportedModifier = event.shiftKey || event.altKey || event.metaKey || (!isGrab && event.ctrlKey);
+    if (hasUnsupportedModifier) return false;
+    if (event.repeat) return true;
+    if (!drawingSelection.area) return true;
+    startSelectionTransform(isGrab ? "grab" : "scale", event);
+    return true;
+  }
+  if (event.repeat) return false;
   if (event.key === "Escape") {
     if (drawingSelection.preview?.tool === "select-polygon") {
       drawingSelection.area = copySelectionArea(polygonSelectionBefore);
@@ -273,6 +408,62 @@ export function resizeSelectionArea(
     outline: area.outline.map((item) => ({
       x: bounds.x + (item.x - area.x) * scaleX,
       y: bounds.y + (item.y - area.y) * scaleY,
+    })),
+  };
+}
+
+/** Radial scale from the pointer distance captured when S was pressed. */
+export function selectionScaleFactor(center: RasterPoint, startDistance: number, point: RasterPoint): number {
+  const distance = Math.hypot(point.x - center.x, point.y - center.y);
+  const baseline = Number.isFinite(startDistance) && startDistance > 0 ? startDistance : MIN_SCALE_START_DISTANCE;
+  return Number.isFinite(distance) ? distance / baseline : 1;
+}
+
+/** Clamp a uniform selection scale so its raster rectangle stays within history/GPU limits. */
+export function boundedSelectionScaleFactor(area: DrawingSelectionArea, factor: number): number {
+  const raw = Number.isFinite(factor) ? Math.max(0, factor) : 1;
+  const maxFactor = Math.min(
+    MAX_SELECTION_DIMENSION / area.width,
+    MAX_SELECTION_DIMENSION / area.height,
+    Math.sqrt(MAX_SELECTION_PIXELS / (area.width * area.height)),
+  );
+  const desiredMinimum = Math.max(
+    MIN_SELECTION_SCALE_DIMENSION / area.width,
+    MIN_SELECTION_SCALE_DIMENSION / area.height,
+  );
+  // Keep factor 1 valid for selections that are already smaller than the preferred minimum.
+  const minFactor = Math.min(desiredMinimum, maxFactor, 1);
+  return Math.min(maxFactor, Math.max(minFactor, raw));
+}
+
+/** Scale selection bounds, mask and outline uniformly about the original center. */
+export function scaleSelectionArea(area: DrawingSelectionArea, factor: number): DrawingSelectionArea | null {
+  if (!selectionSizeIsSafe(area.width, area.height)) return null;
+  const safeFactor = boundedSelectionScaleFactor(area, factor);
+  const width = Math.max(1, Math.min(MAX_SELECTION_DIMENSION, Math.round(area.width * safeFactor)));
+  const height = Math.max(1, Math.min(MAX_SELECTION_DIMENSION, Math.round(area.height * safeFactor)));
+  if (!selectionSizeIsSafe(width, height)) return null;
+  const centerX = area.x + area.width / 2;
+  const centerY = area.y + area.height / 2;
+  const bounds = {
+    x: Math.round(centerX - width / 2),
+    y: Math.round(centerY - height / 2),
+    width,
+    height,
+  };
+  const scaleX = width / area.width;
+  const scaleY = height / area.height;
+  const mask = area.tool === "select-rect"
+    ? new Uint8Array(width * height).fill(255)
+    : resampleMaskBilinear(area.mask, area.width, area.height, width, height);
+  return {
+    ...bounds,
+    tool: area.tool,
+    level: area.level,
+    mask,
+    outline: area.outline.map((point) => ({
+      x: centerX + (point.x - centerX) * scaleX,
+      y: centerY + (point.y - centerY) * scaleY,
     })),
   };
 }
@@ -540,6 +731,7 @@ function restoreSelectionArea(area: DrawingSelectionArea | null): void {
   drawingSelection.floating = null;
   drawingSelection.floatingAt = null;
   drawingSelection.fastPreview = null;
+  drawingSelection.transformPreview = null;
   updateState();
 }
 
@@ -578,6 +770,7 @@ function selectPixels(
     drawingSelection.floating = null;
     drawingSelection.floatingAt = null;
     drawingSelection.fastPreview = null;
+    drawingSelection.transformPreview = null;
     updateState();
     return;
   }
@@ -585,6 +778,7 @@ function selectPixels(
   drawingSelection.floating = null;
   drawingSelection.floatingAt = null;
   drawingSelection.fastPreview = null;
+  drawingSelection.transformPreview = null;
   recordSelectionChange(beforeArea ? "Replace selection" : "Create selection", beforeArea, area);
   updateState();
 }
@@ -605,6 +799,88 @@ function prepareMove(area: DrawingSelectionArea): Promise<PreparedMove> {
     selected: split.selected,
     remainder: split.remainder,
   }));
+}
+
+function resampleMaskBilinear(
+  source: Uint8Array,
+  sourceWidth: number,
+  sourceHeight: number,
+  width: number,
+  height: number,
+): Uint8Array {
+  const output = new Uint8Array(width * height);
+  for (let y = 0; y < height; y += 1) {
+    const sy = Math.max(0, Math.min(sourceHeight - 1, (y + 0.5) * sourceHeight / height - 0.5));
+    const y0 = Math.floor(sy);
+    const y1 = Math.min(sourceHeight - 1, y0 + 1);
+    const fy = sy - y0;
+    for (let x = 0; x < width; x += 1) {
+      const sx = Math.max(0, Math.min(sourceWidth - 1, (x + 0.5) * sourceWidth / width - 0.5));
+      const x0 = Math.floor(sx);
+      const x1 = Math.min(sourceWidth - 1, x0 + 1);
+      const fx = sx - x0;
+      const top = (source[y0 * sourceWidth + x0] ?? 0) * (1 - fx) + (source[y0 * sourceWidth + x1] ?? 0) * fx;
+      const bottom = (source[y1 * sourceWidth + x0] ?? 0) * (1 - fx) + (source[y1 * sourceWidth + x1] ?? 0) * fx;
+      output[y * width + x] = Math.round(top * (1 - fy) + bottom * fy);
+    }
+  }
+  return output;
+}
+
+function resamplePixelsBilinear(source: RasterPixels, area: DrawingSelectionArea): RasterPixels {
+  const data = new Uint8ClampedArray(area.width * area.height * 4);
+  for (let y = 0; y < area.height; y += 1) {
+    const sy = Math.max(0, Math.min(source.height - 1, (y + 0.5) * source.height / area.height - 0.5));
+    const y0 = Math.floor(sy);
+    const y1 = Math.min(source.height - 1, y0 + 1);
+    const fy = sy - y0;
+    for (let x = 0; x < area.width; x += 1) {
+      const sx = Math.max(0, Math.min(source.width - 1, (x + 0.5) * source.width / area.width - 0.5));
+      const x0 = Math.floor(sx);
+      const x1 = Math.min(source.width - 1, x0 + 1);
+      const fx = sx - x0;
+      const weights = [
+        (1 - fx) * (1 - fy), fx * (1 - fy), (1 - fx) * fy, fx * fy,
+      ];
+      const offsets = [
+        (y0 * source.width + x0) * 4,
+        (y0 * source.width + x1) * 4,
+        (y1 * source.width + x0) * 4,
+        (y1 * source.width + x1) * 4,
+      ];
+      let alpha = 0;
+      let red = 0;
+      let green = 0;
+      let blue = 0;
+      for (let index = 0; index < offsets.length; index += 1) {
+        const offset = offsets[index]!;
+        const weight = weights[index]!;
+        const pixelAlpha = (source.data[offset + 3] ?? 0) / 255;
+        alpha += pixelAlpha * weight;
+        red += (source.data[offset] ?? 0) * pixelAlpha * weight;
+        green += (source.data[offset + 1] ?? 0) * pixelAlpha * weight;
+        blue += (source.data[offset + 2] ?? 0) * pixelAlpha * weight;
+      }
+      const target = (y * area.width + x) * 4;
+      data[target + 3] = Math.round(alpha * 255);
+      if (alpha > 0) {
+        data[target] = Math.round(red / alpha);
+        data[target + 1] = Math.round(green / alpha);
+        data[target + 2] = Math.round(blue / alpha);
+      }
+    }
+  }
+  return { x: area.x, y: area.y, width: area.width, height: area.height, data };
+}
+
+function scalePreparedMove(prepared: PreparedMove, factor: number): PreparedMove {
+  const resultArea = scaleSelectionArea(prepared.area, factor);
+  if (!resultArea) return { ...prepared, resultArea: prepared.area };
+  return {
+    ...prepared,
+    resultArea,
+    selected: resamplePixelsBilinear(prepared.selected, resultArea),
+  };
 }
 
 function beginMove(event: DrawPointerEvent): boolean {
@@ -666,7 +942,7 @@ function prepareFloatingMove(gesture: SelectionGesture): void {
   if (gesture.pending || !gesture.started) return;
   const area = drawingSelection.area;
   if (!area) return;
-  gesture.prepared = new Promise<PreparedMove>((resolve, reject) => {
+  const initialPrepared = new Promise<PreparedMove>((resolve, reject) => {
     const prepareAfterPaint = () => setTimeout(() => {
       try {
         void prepareMove(area).then(resolve, reject);
@@ -677,12 +953,17 @@ function prepareFloatingMove(gesture: SelectionGesture): void {
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(prepareAfterPaint);
     else prepareAfterPaint();
   });
+  gesture.prepared = initialPrepared.then((prepared) => gesture.transformMode === "scale"
+    ? scalePreparedMove(prepared, gesture.scaleFactor ?? 1)
+    : prepared);
   gesture.pending = gesture.prepared.then(async (prepared) => {
     if (gesture.cancelled || activeGesture !== gesture || !gesture.started) return;
     if (!hasVisiblePixels(prepared.selected)) {
       gesture.started = false;
       drawingSelection.floatingAt = null;
       drawingSelection.fastPreview = null;
+      drawingSelection.transformPreview = null;
+      clearTransformCursor();
       updateState();
       return;
     }
@@ -694,6 +975,7 @@ function prepareFloatingMove(gesture: SelectionGesture): void {
         gesture.didCut = true;
       }
       drawingSelection.floating = prepared.selected;
+      if (prepared.resultArea) drawingSelection.floatingAt = { x: prepared.resultArea.x, y: prepared.resultArea.y };
       drawingSelection.fastPreview = null;
       updateState();
     } catch (error) {
@@ -710,6 +992,8 @@ function prepareFloatingMove(gesture: SelectionGesture): void {
     drawingSelection.floating = null;
     drawingSelection.floatingAt = null;
     drawingSelection.fastPreview = null;
+    drawingSelection.transformPreview = null;
+    if (gesture.transformMode) clearTransformCursor();
     updateState();
     console.error("Could not prepare a drawing selection move", error);
   });
@@ -728,18 +1012,18 @@ async function finishMove(gesture: SelectionGesture): Promise<void> {
     const deltaY = Math.round(gesture.last.y - gesture.start.y);
     rollback = new Map(prepared.before);
     mutationStarted = gesture.didCut === true;
-    if (deltaX === 0 && deltaY === 0) {
-      if (gesture.didCut) await drawingStore.restore(prepared.before);
-      mutationStarted = false;
-      return;
-    }
-
-    const destination = {
+    const destination = prepared.resultArea ?? {
       x: prepared.area.x + deltaX,
       y: prepared.area.y + deltaY,
       width: prepared.area.width,
       height: prepared.area.height,
     };
+    if (destination.x === prepared.area.x && destination.y === prepared.area.y &&
+      destination.width === prepared.area.width && destination.height === prepared.area.height) {
+      if (gesture.didCut) await drawingStore.restore(prepared.before);
+      mutationStarted = false;
+      return;
+    }
     const destinationKeys = affectedTileKeys(areaWorldRect(destination, prepared.area.level), prepared.area.level, "paint");
     if (destinationKeys.length === 0) {
       if (gesture.didCut) await drawingStore.restore(prepared.before);
@@ -755,16 +1039,18 @@ async function finishMove(gesture: SelectionGesture): Promise<void> {
     for (const key of changedKeys) if (!rollback.has(key)) rollback.set(key, null);
     const after = await drawingStore.snapshot(changedKeys);
     const selectionBefore = copySelectionArea(prepared.area);
-    const selectionAfter: DrawingSelectionArea = {
+    const selectionAfter: DrawingSelectionArea = prepared.resultArea ?? {
       ...prepared.area,
       x: destination.x,
       y: destination.y,
       outline: prepared.area.outline.map((point) => ({ x: point.x + deltaX, y: point.y + deltaY })),
     };
-    pushDrawingHistory(gesture.copy ? "Copy selection" : "Move selection", rollback, after, {
+    const label = gesture.copy ? "Copy selection" : gesture.transformMode === "scale" ? "Scale selection" : "Move selection";
+    pushDrawingHistory(label, rollback, after, {
       undo: () => restoreSelectionArea(selectionBefore),
       redo: () => restoreSelectionArea(selectionAfter),
     });
+    if (gesture.transformMode === "scale") drawingSelection.transformPreview = null;
     drawingSelection.area = copySelectionArea(selectionAfter);
   } catch (error) {
     if (mutationStarted && rollback) {
@@ -781,6 +1067,8 @@ async function finishMove(gesture: SelectionGesture): Promise<void> {
     drawingSelection.floating = null;
     drawingSelection.floatingAt = null;
     drawingSelection.fastPreview = null;
+    drawingSelection.transformPreview = null;
+    if (gesture.transformMode) clearTransformCursor();
     updateState();
     if (activeGesture === gesture) activeGesture = null;
   }
@@ -807,6 +1095,8 @@ async function cancelMove(gesture: SelectionGesture): Promise<void> {
     drawingSelection.floating = null;
     drawingSelection.floatingAt = null;
     drawingSelection.fastPreview = null;
+    drawingSelection.transformPreview = null;
+    if (gesture.transformMode) clearTransformCursor();
     updateState();
     if (activeGesture === gesture) activeGesture = null;
   }
@@ -905,7 +1195,9 @@ function clearSelection(): void {
   drawingSelection.floating = null;
   drawingSelection.floatingAt = null;
   drawingSelection.fastPreview = null;
+  drawingSelection.transformPreview = null;
   polygonSelectionBefore = null;
+  clearTransformCursor();
   updateState();
 }
 
@@ -984,6 +1276,11 @@ function moveActiveGesture(event: DrawPointerEvent): void {
   gesture.last = readPoint(event, gesture.level);
   gesture.lastClient = { ...event.client };
   if (gesture.kind === "move") {
+    if (gesture.transformMode === "scale") {
+      updateScaleTransformPreview(gesture);
+      return;
+    }
+    if (gesture.transformMode === "grab") gesture.copy = event.ctrl;
     if (!gesture.started && Math.hypot(
       gesture.lastClient.x - gesture.startClient.x,
       gesture.lastClient.y - gesture.startClient.y,
@@ -1005,6 +1302,7 @@ function moveActiveGesture(event: DrawPointerEvent): void {
           hideSource: !gesture.copy,
         };
       }
+      if (gesture.transformMode === "grab") setTransformCursor("grab", gesture.last, null);
       updateState();
     }
     return;
@@ -1016,6 +1314,49 @@ function moveActiveGesture(event: DrawPointerEvent): void {
   gesture.points = points;
   drawingSelection.preview = { tool: gesture.tool!, points, level: gesture.level };
   updateState();
+}
+
+function updateScaleTransformPreview(gesture: SelectionGesture): void {
+  const area = drawingSelection.area;
+  const center = gesture.scaleCenter;
+  if (!area || !center) return;
+  const point = gesture.last;
+  const startDistance = gesture.scaleStartDistance ?? MIN_SCALE_START_DISTANCE;
+  const factor = boundedSelectionScaleFactor(area, selectionScaleFactor(center, startDistance, point));
+  gesture.scaleFactor = factor;
+  drawingSelection.floatingAt = { x: area.x, y: area.y };
+  drawingSelection.transformPreview = { kind: "scale", factor, centerX: center.x, centerY: center.y };
+  drawingSelection.fastPreview = gesture.fastPreview ? {
+    canvas: gesture.fastPreview,
+    offsetX: 0,
+    offsetY: 0,
+    hideSource: true,
+    scale: factor,
+    originX: gesture.scaleScreenCenter?.x ?? 0,
+    originY: gesture.scaleScreenCenter?.y ?? 0,
+  } : null;
+  setTransformCursor("scale", point, center);
+  updateState();
+}
+
+function setTransformCursor(mode: "grab" | "scale", point: RasterPoint, center: RasterPoint | null): void {
+  if (typeof document === "undefined" || !document.documentElement) return;
+  const root = document.documentElement;
+  if (mode === "grab") {
+    root.dataset.selectionMoveHover = "true";
+    delete root.dataset.selectionScaleCursor;
+    return;
+  }
+  delete root.dataset.selectionMoveHover;
+  const dx = point.x - (center?.x ?? point.x);
+  const dy = point.y - (center?.y ?? point.y);
+  root.dataset.selectionScaleCursor = dx * dy < 0 ? "nesw" : "nwse";
+}
+
+function clearTransformCursor(): void {
+  if (typeof document === "undefined" || !document.documentElement) return;
+  delete document.documentElement.dataset.selectionMoveHover;
+  delete document.documentElement.dataset.selectionScaleCursor;
 }
 
 function finishActiveGesture(event: DrawPointerEvent): void {
