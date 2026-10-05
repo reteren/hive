@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { clear, history, undo } from "../src/history/history.svelte";
+import { clear, history, redo, undo } from "../src/history/history.svelte";
 import { board, replaceBoard } from "../src/model/board.svelte";
 import type { Note } from "../src/model/note";
 import { canRenameNoteHeader, noteMenuItems } from "../src/notes/noteMenu";
 import { notePressIntent } from "../src/selection/noteMoveIntent";
+import { selection } from "../src/selection/selection.svelte";
 
 const noteNodeSource = Object.values(import.meta.glob<string>("../src/notes/NoteNode.svelte", {
   eager: true,
@@ -11,8 +12,18 @@ const noteNodeSource = Object.values(import.meta.glob<string>("../src/notes/Note
   import: "default",
 }))[0] ?? "";
 
-function note(height: number | null = 20): Note {
-  return { id: "note-1", type: "note", name: "Header test", text: "Body", x: 0, y: 0, width: 30, height };
+function note(height: number | null = 20, id = "note-1", headerHidden?: boolean): Note {
+  return {
+    id,
+    type: "note",
+    name: id === "note-1" ? "Header test" : id,
+    text: "Body",
+    x: 0,
+    y: 0,
+    width: 30,
+    height,
+    ...(headerHidden === undefined ? {} : { headerHidden }),
+  };
 }
 
 function headerMenuItem(): ReturnType<typeof noteMenuItems>[number] {
@@ -24,11 +35,13 @@ function headerMenuItem(): ReturnType<typeof noteMenuItems>[number] {
 beforeEach(() => {
   clear();
   replaceBoard([note()]);
+  selection.ids = [];
 });
 
 afterEach(() => {
   clear();
   replaceBoard([]);
+  selection.ids = [];
 });
 
 describe("note header visibility", () => {
@@ -65,6 +78,40 @@ describe("note header visibility", () => {
     expect(board.notes["note-1"]?.headerHidden).toBeUndefined();
     expect(board.notes["note-1"]?.height).toBe(20);
     expect(item.label("note-1")).toBe("Hide header");
+  });
+
+  it("hides or shows every eligible selected header uniformly in one Undo step", () => {
+    const alreadyHidden = note(17.2, "note-2", true);
+    const beacon = { ...note(7.2, "beacon"), type: "beacon" as const };
+    const image = { ...note(12, "image"), type: "image" as const };
+    replaceBoard([note(), alreadyHidden, beacon, image]);
+    selection.ids = ["note-1", "note-2", "beacon", "image"];
+
+    const item = headerMenuItem();
+    expect(item.label("note-1")).toBe("Hide header");
+    item.run("note-1");
+
+    expect(board.notes["note-1"]).toMatchObject({ headerHidden: true, height: 17.2 });
+    expect(board.notes["note-2"]).toMatchObject({ headerHidden: true, height: 17.2 });
+    expect(board.notes.beacon?.headerHidden).toBeUndefined();
+    expect(board.notes.image?.headerHidden).toBeUndefined();
+    expect(history.entries).toHaveLength(1);
+
+    undo();
+    expect(board.notes["note-1"]).toMatchObject({ height: 20 });
+    expect(board.notes["note-1"]?.headerHidden).toBeUndefined();
+    expect(board.notes["note-2"]).toMatchObject({ headerHidden: true, height: 17.2 });
+    redo();
+    expect(board.notes["note-1"]).toMatchObject({ headerHidden: true, height: 17.2 });
+
+    expect(item.label("note-1")).toBe("Show header");
+    item.run("note-1");
+    expect(board.notes["note-1"]).toMatchObject({ headerHidden: false, height: 20 });
+    expect(board.notes["note-2"]).toMatchObject({ headerHidden: false, height: 20 });
+    expect(history.entries).toHaveLength(2);
+    undo();
+    expect(board.notes["note-1"]).toMatchObject({ headerHidden: true, height: 17.2 });
+    expect(board.notes["note-2"]).toMatchObject({ headerHidden: true, height: 17.2 });
   });
 
   it("keeps auto-height notes auto-sized and leaves their body draggable", () => {

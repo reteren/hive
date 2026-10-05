@@ -1,5 +1,6 @@
 import { board, updateNote } from "../model/board.svelte";
 import { NOTE_HEADER_HEIGHT_UNITS } from "../model/note";
+import { selection } from "../selection/selection.svelte";
 import { linksOf } from "../model/links.svelte";
 import { execute } from "../history/history.svelte";
 import { toggleSmoothLinesForNote } from "../links/smoothLines";
@@ -113,7 +114,12 @@ registerNoteMenuItem({
 
 registerNoteMenuItem({
   id: "notes.toggleHeader",
-  label: (noteId) => board.notes[noteId]?.headerHidden ? "Show header" : "Hide header",
+  label: (noteId) => {
+    const targets = noteHeaderTargets(noteId);
+    return targets.length > 0 && targets.every((id) => board.notes[id]?.headerHidden === true)
+      ? "Show header"
+      : "Hide header";
+  },
   run: toggleNoteHeader,
   visible: (noteId) => Boolean(board.notes[noteId] && board.notes[noteId].type !== "beacon" && board.notes[noteId].type !== "image"),
   order: 90,
@@ -144,22 +150,53 @@ registerNoteMenuItem({
   order: 1002,
 });
 
-function toggleNoteHeader(noteId: string): void {
-  const note = board.notes[noteId];
-  if (!note || note.type === "beacon") return;
+/** The RMB target expands to the selection only when it is already selected. */
+export function noteHeaderTargets(noteId: string): string[] {
+  const ids = selection.ids.includes(noteId) ? selection.ids : [noteId];
+  return ids.filter((id) => {
+    const note = board.notes[id];
+    return Boolean(note && note.type !== "beacon" && note.type !== "image");
+  });
+}
 
-  const beforeHeaderHidden = note.headerHidden;
-  const beforeHeight = note.height;
-  const headerHidden = note.headerHidden !== true;
-  const height = beforeHeight === null
-    ? null
-    : Math.max(0.1, beforeHeight + (headerHidden ? -NOTE_HEADER_HEIGHT_UNITS : NOTE_HEADER_HEIGHT_UNITS));
-  const patch = { headerHidden, height };
+function toggleNoteHeader(noteId: string): void {
+  const targets = noteHeaderTargets(noteId);
+  if (targets.length === 0) return;
+
+  const hide = !targets.every((id) => board.notes[id]?.headerHidden === true);
+  const changes = new Map<string, {
+    before: { headerHidden: boolean | undefined; height: number | null };
+    after: { headerHidden: boolean; height: number | null };
+  }>();
+  for (const id of targets) {
+    const note = board.notes[id];
+    if (!note || note.headerHidden === hide) continue;
+    changes.set(id, {
+      before: { headerHidden: note.headerHidden, height: note.height },
+      after: {
+        headerHidden: hide,
+        height: note.height === null
+          ? null
+          : Math.max(0.1, note.height + (hide ? -NOTE_HEADER_HEIGHT_UNITS : NOTE_HEADER_HEIGHT_UNITS)),
+      },
+    });
+  }
+  if (changes.size === 0) return;
+
+  const firstChangedId = changes.keys().next().value as string;
   execute({
-    label: headerHidden ? "Hide header" : "Show header",
-    target: note.name,
-    do: () => updateNote(noteId, patch),
-    undo: () => updateNote(noteId, { headerHidden: beforeHeaderHidden, height: beforeHeight }),
+    label: hide ? "Hide header" : "Show header",
+    target: changes.size === 1 ? board.notes[firstChangedId]?.name ?? "node" : `${changes.size} nodes`,
+    do: () => {
+      for (const [id, change] of changes) {
+        updateNote(id, change.after);
+      }
+    },
+    undo: () => {
+      for (const [id, change] of changes) {
+        updateNote(id, change.before);
+      }
+    },
   });
 }
 

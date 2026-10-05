@@ -60,9 +60,33 @@ export interface TaskCompletionResult {
 }
 
 export function toggleTaskFlag(noteId: string): void {
-  const note = board.notes[noteId];
-  if (!note || !note.task && !canBeTask(note)) return;
-  execute(createTaskFlagCommand(transitionStore(), noteId, note.name));
+  const targets = taskFlagTargets(noteId);
+  if (targets.length === 0) return;
+
+  const mark = targets.some((id) => !board.notes[id]?.task);
+  const changed = targets.filter((id) => Boolean(board.notes[id]?.task) !== mark);
+  const commands = changed.map((id) => {
+    const note = board.notes[id]!;
+    return createTaskFlagCommand(transitionStore(), id, note.name);
+  });
+  if (commands.length === 0) return;
+
+  const firstChangedId = changed[0]!;
+  execute({
+    label: mark ? "Mark as task" : "Unmark as task",
+    target: changed.length === 1 ? board.notes[firstChangedId]?.name : `${changed.length} nodes`,
+    do: () => { for (const command of commands) command.do(); },
+    undo: () => { for (let index = commands.length - 1; index >= 0; index -= 1) commands[index]?.undo(); },
+  });
+}
+
+/** The RMB target expands to its selection; legacy tasks remain individually unmarkable. */
+export function taskFlagTargets(noteId: string): string[] {
+  const ids = selection.ids.includes(noteId) ? selection.ids : [noteId];
+  return ids.filter((id) => {
+    const note = board.notes[id];
+    return Boolean(note && (canBeTask(note) || ids.length === 1 && id === noteId && note.task));
+  });
 }
 
 export function toggleTaskCompletion(noteId: string): TaskCompletionResult {
@@ -93,7 +117,7 @@ function nextCompletionTime(noteId: string, now: number): number {
 
 registerNoteMenuItem({
   id: "task.toggleFlag",
-  label: (noteId) => board.notes[noteId]?.task ? "Unmark as task" : "Mark as task",
+  label: (noteId) => taskFlagTargets(noteId).some((id) => !board.notes[id]?.task) ? "Mark as task" : "Unmark task",
   run: toggleTaskFlag,
   visible: (noteId) => Boolean(board.notes[noteId]?.task || canBeTask(board.notes[noteId])),
   order: 20,

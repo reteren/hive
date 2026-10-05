@@ -93,7 +93,7 @@ describe("board object context menus", () => {
     replaceBoard([legacyTask]);
     const item = noteMenuItemsForContext("legacy-task").find(({ id }) => id === "task.toggleFlag");
 
-    expect(item?.label("legacy-task")).toBe("Unmark as task");
+    expect(item?.label("legacy-task")).toBe("Unmark task");
     item?.run("legacy-task");
     expect(board.notes["legacy-task"]?.task).toBeNull();
   });

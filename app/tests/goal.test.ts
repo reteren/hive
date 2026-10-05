@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { clear, execute, redo, undo } from "../src/history/history.svelte";
+import { clear, execute, history, redo, undo } from "../src/history/history.svelte";
 import { addLink, removeLink, replaceLinks } from "../src/model/links.svelte";
 import type { Link } from "../src/model/link";
 import { addNote, board, replaceBoard, updateNote } from "../src/model/board.svelte";
 import type { Note, NoteKind } from "../src/model/note";
 import { canBeTask, toggleTaskFlag } from "../src/tasks/taskActions.svelte";
+import { selection } from "../src/selection/selection.svelte";
 import { noteMenuItems } from "../src/notes/noteMenu";
 import { goalState, visibleGoalRows } from "../src/goal/goal";
 import { canCreateLinkPair } from "../src/links/rules";
@@ -31,6 +32,7 @@ beforeEach(() => {
   clear();
   replaceBoard([]);
   replaceLinks([]);
+  selection.ids = [];
 });
 
 describe("Goal node", () => {
@@ -220,5 +222,53 @@ describe("Goal node", () => {
       }
     }
     expect(canBeTask(note("plain"))).toBe(true);
+  });
+
+  it("marks all eligible selected notes when any is unmarked and skips unsupported nodes", () => {
+    const plain = note("plain");
+    plain.task = null;
+    const alreadyTask = note("already-task");
+    const textFile: Note = {
+      ...note("text-file", "format"),
+      task: null,
+      media: { kind: "text", file: "readme.md", mime: "text/markdown", size: 12 },
+    };
+    const legacyImage = note("legacy-image", "image", true);
+    const goal = note("goal", "goal");
+    replaceBoard([plain, alreadyTask, textFile, legacyImage, goal]);
+    selection.ids = ["plain", "already-task", "text-file", "legacy-image", "goal"];
+
+    const item = noteMenuItems("plain").find(({ id }) => id === "task.toggleFlag");
+    expect(item?.label("plain")).toBe("Mark as task");
+    item?.run("plain");
+
+    expect(board.notes.plain?.task).toEqual({ done: false, doneAt: null });
+    expect(board.notes["already-task"]?.task).toEqual({ done: false, doneAt: null });
+    expect(board.notes["text-file"]?.task).toEqual({ done: false, doneAt: null });
+    expect(board.notes["legacy-image"]?.task).toEqual({ done: true, doneAt: 1 });
+    expect(board.notes.goal?.task).toBeNull();
+    expect(history.entries).toHaveLength(1);
+
+    undo();
+    expect(board.notes.plain?.task).toBeNull();
+    expect(board.notes["already-task"]?.task).toEqual({ done: false, doneAt: null });
+    expect(board.notes["text-file"]?.task).toBeNull();
+    expect(board.notes["legacy-image"]?.task).toEqual({ done: true, doneAt: 1 });
+    redo();
+    expect(board.notes.plain?.task).toEqual({ done: false, doneAt: null });
+    expect(board.notes["text-file"]?.task).toEqual({ done: false, doneAt: null });
+
+    expect(item?.label("plain")).toBe("Unmark task");
+    item?.run("plain");
+    expect(board.notes.plain?.task).toBeNull();
+    expect(board.notes["already-task"]?.task).toBeNull();
+    expect(board.notes["text-file"]?.task).toBeNull();
+    expect(board.notes["legacy-image"]?.task).toEqual({ done: true, doneAt: 1 });
+    expect(board.notes.goal?.task).toBeNull();
+    expect(history.entries).toHaveLength(2);
+    undo();
+    expect(board.notes.plain?.task).toEqual({ done: false, doneAt: null });
+    expect(board.notes["already-task"]?.task).toEqual({ done: false, doneAt: null });
+    expect(board.notes["text-file"]?.task).toEqual({ done: false, doneAt: null });
   });
 });
