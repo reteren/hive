@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { closePanelPopup } from "./popups/panelPopupState.svelte";
   import {
     closeUndoLog,
     history,
@@ -11,6 +12,8 @@
   import { formatKey } from "../commands/keys";
   import { getCommand } from "../commands/registry.svelte";
 
+  let { variant = "dock" } = $props<{ variant?: "dock" | "popup" }>();
+
   let undoCommand = $derived(getCommand("edit.undo"));
   let redoCommand = $derived(getCommand("edit.redo"));
   let undoBindings = $derived(undoCommand?.keys.map(formatKey).join(", ") ?? "");
@@ -18,7 +21,7 @@
   function moveTo(index: number): void {
     try {
       jumpTo(index);
-      if (!undoLogPanel.pinned) closeUndoLog();
+      if (!undoLogPanel.pinned) closeCurrentPanel();
     } catch {
       // The history wrapper leaves its cursor at the last successful step and shows feedback.
     }
@@ -39,9 +42,22 @@
       // The history wrapper shows a short failure caption.
     }
   }
+
+  function closeCurrentPanel(): void {
+    if (variant === "popup") closePanelPopup();
+    else closeUndoLog();
+  }
 </script>
 
-<aside id="undo-log-panel" class="history-panel" aria-label="Undo history">
+<aside
+  id="undo-log-panel"
+  class="history-panel"
+  class:popup-panel={variant === "popup"}
+  data-selection-ignore
+  role={variant === "popup" ? "dialog" : undefined}
+  aria-modal={variant === "popup" ? "true" : undefined}
+  aria-label="Undo history"
+>
   <header class="panel-heading">
     <div class="panel-title">
       <h2>Undo log</h2>
@@ -59,7 +75,7 @@
       >
         {undoLogPanel.pinned ? "Pinned" : "Pin"}
       </button>
-      <button class="panel-control close" type="button" aria-label="Close undo log" title="Close" onclick={closeUndoLog}>
+      <button class="panel-control close" type="button" aria-label="Close undo log" title="Close" onclick={closeCurrentPanel}>
         ×
       </button>
     </div>

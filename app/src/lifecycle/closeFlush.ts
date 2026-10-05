@@ -86,3 +86,8 @@ async function flushRegisteredTasks(): Promise<void> {
   ]);
   if (timeoutId !== undefined) window.clearTimeout(timeoutId);
 }
+
+/** Run the same registered save flushes used by the native close path before an explicit quit. */
+export async function flushBeforeAppQuit(): Promise<void> {
+  await flushRegisteredTasks();
+}

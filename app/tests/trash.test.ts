@@ -220,6 +220,17 @@ describe("trash actions", () => {
 });
 
 describe("trash persistence", () => {
+  it("round trips more than 99 trash entries without truncating them", () => {
+    const manyEntries = Array.from({ length: 101 }, (_, index) => {
+      const indexText = String(index);
+      return entry(`deleted-${indexText}`, [note(`trashed-${indexText}`)]);
+    });
+    const parsed = parseProjectIndex(serializeProjectIndex([], undefined, [], [], [], [], {}, [], manyEntries));
+
+    expect(parsed.trash).toHaveLength(101);
+    expect(parsed.trash.map(({ id }) => id)).toEqual(manyEntries.map(({ id }) => id));
+  });
+
   it("round trips trashed note text, formatting, zones and dangling links", () => {
     const savedNote = note("A", "Resurfaced");
     savedNote.task = { done: true, doneAt: 100 };

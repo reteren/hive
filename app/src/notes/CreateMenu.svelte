@@ -1,7 +1,7 @@
 <script lang="ts">
   import { isTauri } from "@tauri-apps/api/core";
   import { camera, viewport } from "../board/camera.svelte";
-  import { createNote, createNoteKind } from "./noteCommands";
+  import { createNote, createNoteKind, createTaskNote } from "./noteCommands";
   import { R5_KINDS, R6_KINDS, R7_KINDS } from "../model/note";
   import { creationMenu, closeCreationMenu, toggleCreationMenuPin } from "./creation.svelte";
   import { boardPopupStyle, dismissBoardPopup, fitBoardPopupAnchor, screenAnchoredPopupStyle } from "../ui/boardAnchor";
@@ -37,6 +37,12 @@
 
   function createNoteFromMenu(): void {
     createNote();
+    switchToSelectToolAfterCreation();
+    if (!creationMenu.pinned) closeCreationMenu();
+  }
+
+  function createTaskFromMenu(): void {
+    createTaskNote();
     switchToSelectToolAfterCreation();
     if (!creationMenu.pinned) closeCreationMenu();
   }
@@ -267,6 +273,12 @@
         <span class="note-icon" aria-hidden="true"></span>
         <span>Note</span>
       </button>
+      <button class="create-item" type="button" data-create-kind="task" onclick={createTaskFromMenu}>
+        <span class="task-icon" aria-hidden="true">
+          <svg viewBox="0 0 16 16" focusable="false"><circle cx="8" cy="8" r="6.2" /></svg>
+        </span>
+        <span>Task</span>
+      </button>
       <button class="create-item" type="button" onclick={() => createMiniNodeFromMenu("pro")}>
         <span class="kind-icon plus-icon" aria-hidden="true">+</span>
         <span>Plus</span>
@@ -478,6 +490,27 @@
     box-shadow: inset 0 -3px 0 #303030;
   }
 
+  .task-icon {
+    display: grid;
+    width: 15px;
+    height: 15px;
+    flex: 0 0 auto;
+    place-items: center;
+  }
+
+  .task-icon svg {
+    display: block;
+    width: 15px;
+    height: 15px;
+    overflow: visible;
+  }
+
+  .task-icon circle {
+    fill: transparent;
+    stroke: #999;
+    stroke-width: 1.35;
+  }
+
   .kind-icon {
     display: grid;
     width: 15px;
@@ -589,7 +622,6 @@
   .video-icon { position: relative; }
   .video-icon::after { position: absolute; top: 2px; left: 4px; border-top: 3px solid transparent; border-bottom: 3px solid transparent; border-left: 4px solid currentColor; content: ""; }
   .youtube-icon { border-color: #d05a5a; border-radius: 3px; }
-  .youtube-icon::after { position: absolute; top: 2px; left: 4px; border-top: 3px solid transparent; border-bottom: 3px solid transparent; border-left: 4px solid #d05a5a; content: ""; }
   .youtube-create-input { display: grid; gap: 5px; padding: 5px; border: 1px solid #484a50; border-radius: 3px; background: #222428; }
   .youtube-create-input input { box-sizing: border-box; width: 100%; min-width: 0; padding: 5px; border: 1px solid #555860; border-radius: 3px; color: var(--text); background: #18191c; font: inherit; font-size: 10px; }
   .youtube-create-error { color: #e59a94; font-size: 10px; overflow-wrap: anywhere; }

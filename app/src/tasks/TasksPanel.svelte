@@ -2,14 +2,18 @@
   import { board } from "../model/board.svelte";
   import { taskLog } from "./taskLog.svelte";
   import { openTasks, taskHistory } from "./taskTransitions";
-  import { tasksPanel } from "./tasksPanelState.svelte";
-  import { getCommand, runCommand } from "../commands/registry.svelte";
+  import { closeTasksPanel, tasksPanel, toggleTasksPanel } from "./tasksPanelState.svelte";
+  import { getCommand } from "../commands/registry.svelte";
   import { formatKey } from "../commands/keys";
   import { teleportToObject } from "../navigation/navigate";
   import TaskCheckbox from "./TaskCheckbox.svelte";
+  import { closePanelPopup, panelPopupState } from "../ui/popups/panelPopupState.svelte";
+
+  let { variant = "dock" } = $props<{ variant?: "dock" | "popup" }>();
 
   let openItems = $derived.by(() => openTasks(Object.values(board.notes)));
   let historyItems = $derived.by(() => taskHistory(taskLog.entries));
+  let isOpen = $derived(variant === "popup" ? panelPopupState.active === "tasks" : tasksPanel.open);
   let toggleCommand = $derived(getCommand("ui.toggleTasks"));
   let toggleKeys = $derived(toggleCommand?.keys.map(formatKey).join(", ") ?? "");
 
@@ -25,18 +29,24 @@
     if (event.key !== "Escape" || event.defaultPrevented) return;
     event.preventDefault();
     event.stopPropagation();
-    runCommand("ui.toggleTasks");
+    closeCurrentPanel();
+  }
+
+  function closeCurrentPanel(): void {
+    if (variant === "popup") closePanelPopup();
+    else closeTasksPanel();
   }
 </script>
 
-{#if tasksPanel.open}
+{#if isOpen}
   <dialog
     open
     id="tasks-panel"
     class="tasks-panel"
+    class:popup-panel={variant === "popup"}
     data-selection-ignore
     aria-label="Tasks"
-    aria-modal="false"
+    aria-modal={variant === "popup"}
     onkeydown={handleKeydown}
   >
     <header class="panel-heading">
@@ -49,7 +59,7 @@
         type="button"
         aria-label="Close tasks panel"
         title={`Close${toggleKeys ? ` · ${toggleKeys}` : ""}`}
-        onclick={() => runCommand("ui.toggleTasks")}
+        onclick={closeCurrentPanel}
       >×</button>
     </header>
 
@@ -106,10 +116,10 @@
     data-selection-ignore
     type="button"
     aria-controls="tasks-panel"
-    aria-expanded={tasksPanel.open}
+    aria-expanded={isOpen}
     aria-label={`Open tasks panel${toggleKeys ? `; ${toggleKeys}` : ""}`}
     title={`Tasks${toggleKeys ? ` · ${toggleKeys}` : ""}`}
-    onclick={() => runCommand("ui.toggleTasks")}
+    onclick={toggleTasksPanel}
   >Tasks</button>
 {/if}
 

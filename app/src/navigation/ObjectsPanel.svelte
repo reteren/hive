@@ -16,6 +16,9 @@
     objectsPanel,
     toggleObjectsPanel,
   } from "./panelState.svelte";
+  import { closePanelPopup, panelPopupState } from "../ui/popups/panelPopupState.svelte";
+
+  let { variant = "dock" } = $props<{ variant?: "dock" | "popup" }>();
 
   let toggleCommand = $derived(getCommand("ui.toggleObjectsPanel"));
   let backCommand = $derived(getCommand("navigation.back"));
@@ -23,6 +26,7 @@
   let toggleKeys = $derived(toggleCommand?.keys.map(formatKey).join(", ") ?? "");
   let backKeys = $derived(backCommand?.keys.map(formatKey).join(", ") ?? "");
   let forwardKeys = $derived(forwardCommand?.keys.map(formatKey).join(", ") ?? "");
+  let isOpen = $derived(variant === "popup" ? panelPopupState.active === "objects" : objectsPanel.open);
   let canGoBack = $derived.by(() => {
     navigationHistoryState.revision;
     return canNavigateBack();
@@ -34,9 +38,9 @@
   let filterInput = $state<HTMLInputElement | null>(null);
 
   $effect(() => {
-    if (!objectsPanel.open) return;
+    if (!isOpen) return;
     queueMicrotask(() => {
-      if (objectsPanel.open) filterInput?.focus();
+      if (isOpen) filterInput?.focus();
     });
   });
 
@@ -57,12 +61,17 @@
     if (event.key !== "Escape" || event.defaultPrevented) return;
     event.preventDefault();
     event.stopPropagation();
-    closeObjectsPanel();
+    closeCurrentPanel();
   }
 
   function jumpToNote(id: string): void {
     if (!teleportToObject(id, { label: "Objects panel" })) return;
-    if (!objectsPanel.pinned) closeObjectsPanel();
+    if (!objectsPanel.pinned) closeCurrentPanel();
+  }
+
+  function closeCurrentPanel(): void {
+    if (variant === "popup") closePanelPopup();
+    else closeObjectsPanel();
   }
 
   function toggleSearchPin(): void {
@@ -77,13 +86,14 @@
   }
 </script>
 
-{#if objectsPanel.open}
+{#if isOpen}
   <dialog
     open
     id="objects-panel"
     class="objects-panel"
+    class:popup-panel={variant === "popup"}
     data-selection-ignore
-    aria-modal="false"
+    aria-modal={variant === "popup"}
     aria-label="Objects panel"
     onkeydown={handleKeydown}
   >
@@ -123,7 +133,7 @@
           class="panel-control close"
           aria-label="Close objects panel"
           title="Close"
-          onclick={closeObjectsPanel}
+          onclick={closeCurrentPanel}
         >×</button>
       </div>
     </header>

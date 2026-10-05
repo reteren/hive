@@ -53,7 +53,7 @@ export async function exportCurrentProject(): Promise<void> {
   }
 }
 
-export async function importProjectFromZip(): Promise<void> {
+export async function importProjectFromZip(selectedArchivePath?: string): Promise<void> {
   if (exportState.busy) return;
   if (!isTauri()) {
     exportState.error = "Project import is available in the desktop app.";
@@ -65,7 +65,7 @@ export async function importProjectFromZip(): Promise<void> {
   exportState.error = "";
   exportState.message = "Choose a Hive project zip…";
   try {
-    const archivePath = await open({
+    const archivePath = selectedArchivePath ?? await open({
       title: "Choose a Hive project zip",
       multiple: false,
       filters: [{ name: "Hive project archive", extensions: ["zip"] }],
@@ -92,6 +92,9 @@ export async function importProjectFromZip(): Promise<void> {
       destinationPath: destination,
     });
     await openProjectAt(importedPath);
+    await invoke("recent_projects_add", { path: archivePath, kind: "zip" }).catch((error: unknown) => {
+      console.warn("Could not add the imported zip to recent projects.", error);
+    });
     exportState.message = `Project imported from ${archivePath} to ${importedPath}`;
     await refreshStorageStats();
   } catch (error) {

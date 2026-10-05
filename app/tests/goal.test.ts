@@ -204,14 +204,20 @@ describe("Goal node", () => {
     ]);
   });
 
-  it("prevents beacons and all R5 nodes from becoming tasks", () => {
+  it("hides new task actions on beacons and R5 nodes but keeps legacy tasks unmarkable", () => {
     for (const type of ["beacon", "goal", "progress", "calculator", "tierlist", "stats"] as const) {
       expect(canBeTask(note(type, type))).toBe(false);
       replaceBoard([note(type, type)]);
       const taskBefore = board.notes[type]?.task;
+      const item = noteMenuItems(type).find(({ id }) => id === "task.toggleFlag");
+      expect(Boolean(item)).toBe(Boolean(taskBefore));
       toggleTaskFlag(type);
-      expect(board.notes[type]?.task).toBe(taskBefore);
-      expect(noteMenuItems(type).some((item) => item.id === "task.toggleFlag")).toBe(false);
+      expect(board.notes[type]?.task).toBe(taskBefore ? null : taskBefore);
+      if (taskBefore) {
+        expect(noteMenuItems(type).some(({ id }) => id === "task.toggleFlag")).toBe(false);
+        undo();
+        expect(board.notes[type]?.task).toEqual(taskBefore);
+      }
     }
     expect(canBeTask(note("plain"))).toBe(true);
   });

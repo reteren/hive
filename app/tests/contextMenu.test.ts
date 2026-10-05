@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { replaceBoard } from "../src/model/board.svelte";
+import { board, replaceBoard } from "../src/model/board.svelte";
 import { replaceZones } from "../src/model/zones.svelte";
 import type { Note } from "../src/model/note";
 import { selection } from "../src/selection/selection.svelte";
@@ -37,6 +37,9 @@ beforeEach(() => {
   resetAllCommandKeyOverrides();
   replaceBoard([
     note("plain"),
+    { ...note("text-file", "format"), media: { kind: "text", file: "a.json", name: "data.json", mime: "application/json", size: 1 } },
+    note("pdf", "pdf"),
+    note("audio", "audio"),
     note("photo", "image"),
     { ...note("gif", "image"), image: { file: "gif.gif", name: "loop.gif", mime: "image/gif", size: 1, naturalWidth: 320, naturalHeight: 240 } },
     note("beacon", "beacon"),
@@ -64,10 +67,16 @@ describe("board object context menus", () => {
   it("keeps ordinary note entries and limits images to their supported actions", () => {
     const plainIds = noteMenuItemsForContext("plain").map((item) => item.id);
     expect(plainIds).toContain("task.toggleFlag");
-    expect(plainIds).toContain("notes.addPlus");
-    expect(plainIds).toContain("notes.addMinus");
-    expect(plainIds).toContain("module.importance");
+    expect(plainIds).not.toContain("notes.addPlus");
+    expect(plainIds).not.toContain("notes.addMinus");
+    expect(plainIds).not.toContain("module.importance");
+    expect(plainIds).not.toContain("module.purpose");
+    expect(plainIds).not.toContain("module.mood");
     expect(plainIds.slice(-3)).toEqual(["object.scale", "object.grab", "object.delete"]);
+
+    expect(noteMenuItems("text-file").map((item) => item.id)).toContain("task.toggleFlag");
+    expect(noteMenuItems("pdf").map((item) => item.id)).not.toContain("task.toggleFlag");
+    expect(noteMenuItems("audio").map((item) => item.id)).not.toContain("task.toggleFlag");
 
     const imageItems = noteMenuItemsForContext("photo");
     expect(imageItems.map((item) => item.id)).toEqual([
@@ -76,7 +85,17 @@ describe("board object context menus", () => {
     expect(imageItems[0]?.label("photo")).toBe("Copy link to image");
     expect(imageItems[2]?.label("photo")).toBe("Erase");
     expect(imageItems.some((item) => item.id === "task.toggleFlag")).toBe(false);
-    expect(imageItems.some((item) => item.id === "notes.addPlus" || item.id === "notes.addMinus")).toBe(false);
+    expect(imageItems.some((item) => ["notes.addPlus", "notes.addMinus", "module.importance", "module.purpose", "module.mood"].includes(item.id))).toBe(false);
+  });
+
+  it("keeps legacy task nodes unmarkable even when their kind cannot become a new task", () => {
+    const legacyTask = { ...note("legacy-task", "image"), task: { done: false, doneAt: null } };
+    replaceBoard([legacyTask]);
+    const item = noteMenuItemsForContext("legacy-task").find(({ id }) => id === "task.toggleFlag");
+
+    expect(item?.label("legacy-task")).toBe("Unmark as task");
+    item?.run("legacy-task");
+    expect(board.notes["legacy-task"]?.task).toBeNull();
   });
 
   it("shows the GIF toggle beside copy/archive and universal actions, and keeps beacon actions", () => {

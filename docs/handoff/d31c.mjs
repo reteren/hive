@@ -1,0 +1,40 @@
+// debug 22 part 2: line/draw sub-tools unfold under their hotbar button; draw panel has no tool grid.
+import { writeFileSync } from "node:fs";
+const OUT = "C:/Users/reteren/AppData/Local/Temp/claude";
+const page = (await fetch(`http://localhost:9334/json/list`).then((r) => r.json())).find((t) => t.type === "page" && t.url.includes("1450"));
+const ws = new WebSocket(page.webSocketDebuggerUrl); let id = 0; const pending = new Map(); const errors = [];
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.method === "Runtime.exceptionThrown") errors.push(m.params.exceptionDetails.exception?.description?.slice(0, 220)); if (pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+await new Promise((r) => (ws.onopen = r));
+const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+await send("Runtime.enable");
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const ev = async (expression) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); return r.result?.result?.value ?? r.result?.exceptionDetails?.exception?.description; };
+const mouse = (type, x, y) => send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" ? "none" : "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: type === "mouseMoved" ? 0 : 1 });
+const click = async (x, y) => { await mouse("mouseMoved", x, y); await mouse("mousePressed", x, y); await mouse("mouseReleased", x, y); await wait(300); };
+const key = async (k, code, vk, modifiers = 0) => { await send("Input.dispatchKeyEvent", { type: "keyDown", key: k, code, windowsVirtualKeyCode: vk, modifiers }); await send("Input.dispatchKeyEvent", { type: "keyUp", key: k, code, windowsVirtualKeyCode: vk, modifiers }); await wait(250); };
+const shot = async (n) => writeFileSync(`${OUT}/${n}.png`, Buffer.from((await send("Page.captureScreenshot", { format: "png" })).result.data, "base64"));
+await ev(`localStorage.removeItem('hive.dockVisibility.v1')`);
+await send("Page.reload"); await wait(3000);
+const dock = () => ev(`[...document.querySelectorAll('[data-dock-button]')].map(b=>b.dataset.dockButton).join(',')`);
+console.log("1 dock at start:", await dock(), "| old search btn:", await ev(`!!document.querySelector('.panel-dock [data-command-id="search.open"], .panel-dock .dock-toggle')`));
+const pos = (sel) => ev(`(()=>{const b=document.querySelector(${JSON.stringify(sel)});if(!b)return null;const r=b.getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()`);
+let p = await ev(`(()=>{const b=[...document.querySelectorAll('[data-menubar] > button')].find(b=>b.textContent.trim()==='Edit');const r=b.getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()`); await click(p[0], p[1]);
+p = await pos('[data-menu-item="dock.toggleTasks"]'); await click(p[0], p[1]);
+p = await ev(`(()=>{const b=[...document.querySelectorAll('[data-menubar] > button')].find(b=>b.textContent.trim()==='Edit');const r=b.getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()`); await click(p[0], p[1]);
+p = await pos('[data-menu-item="dock.toggleTrash"]'); await click(p[0], p[1]);
+console.log("2 dock after Edit:", await dock(), "| saved", await ev(`localStorage.getItem('hive.dockVisibility.v1')`));
+p = await ev(`(()=>{const b=[...document.querySelectorAll('[data-menubar] > button')].find(b=>b.textContent.trim()==='Edit');const r=b.getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()`); await click(p[0], p[1]); await wait(200); await shot("d31c-editchecks");
+await key("Escape","Escape",27);
+p = await pos('[data-dock-button="tasks"]'); await click(p[0], p[1]); await wait(300); await shot("d31c-dockTasks");
+console.log("3 tasks panel open via dock:", await ev(`!!document.querySelector('.tasks-panel, [data-tasks-panel]')`));
+await click(p[0], p[1]);
+const keyOf = (id) => ev(`(async()=>{const r=await import('/src/commands/registry.svelte.ts');return JSON.stringify(r.getCommand('${id}')?.keys)})()`);
+for (const id of ["ui.toggleUndoLog","ui.toggleTasks","ui.openTrash","ui.toggleObjectsPanel"]) console.log("key", id, await keyOf(id));
+for (const id of ["ui.toggleTasks","ui.openTrash","ui.toggleObjectsPanel","ui.toggleUndoLog"]) {
+  await ev(`(async()=>{(await import('/src/commands/registry.svelte.ts')).runCommand('${id}')})()`); await wait(350);
+  console.log("4 popup", id, await ev(`[...document.querySelectorAll('[data-panel-popup]')].map(e=>e.dataset.panelPopup).join(',')`));
+  await shot("d31c-popup-"+id);
+}
+await key("Escape","Escape",27); await wait(200);
+console.log("5 after Esc:", await ev(`document.querySelectorAll('[data-panel-popup]').length`));
+console.log("errors", errors); process.exit(0);

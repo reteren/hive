@@ -14,7 +14,6 @@
   import { closeCreationMenu, creationMenu, markCreationMenuToolbarTrigger } from "./creation.svelte";
   import { closeLinkContextMenu, linkContext } from "../links-in-text/contextMenu.svelte";
   import { formatPointAddress } from "../links-in-text/format";
-  import TasksPanel from "../tasks/TasksPanel.svelte";
   import { boardPopupStyle, dismissBoardPopup, fitBoardPopupAnchor } from "../ui/boardAnchor";
   import { imageFirstOrder } from "../images/imageLogic";
   import ImageOpacityPopover from "../images/ImageOpacityPopover.svelte";
@@ -234,7 +233,6 @@
     {/each}
   </div>
 
-  <TasksPanel />
   <ImageOpacityPopover />
   <NoteColorPopover />
 

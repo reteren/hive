@@ -1,7 +1,8 @@
 import { registerCommand } from "./registry.svelte";
 import { commandSearchState, openCommandSearch } from "./commandSearch.svelte";
 import { keymapPanelState, openKeymapPanel } from "./keymapPanel.svelte";
-import { undoLogPanel, redo, toggleUndoLog, undo } from "../history/history.svelte";
+import { redo, undo } from "../history/history.svelte";
+import { panelPopupState, togglePanelPopup } from "../ui/popups/panelPopupState.svelte";
 import { sequentialRenameState, startSequentialRename } from "../notes/sequentialRenameState.svelte";
 
 function runUndo(): void {
@@ -38,8 +39,8 @@ registerCommand({
   id: "ui.toggleUndoLog",
   label: "Toggle Undo Log",
   keys: ["Ctrl+Alt+KeyZ"],
-  run: toggleUndoLog,
-  isActive: () => undoLogPanel.open,
+  run: () => togglePanelPopup("undo-log"),
+  isActive: () => panelPopupState.active === "undo-log",
 });
 
 registerCommand({

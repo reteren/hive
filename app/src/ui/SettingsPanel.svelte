@@ -22,6 +22,8 @@
 
   let historyLimitDraft = $state(String(history.limit));
   let closeButton = $state<HTMLButtonElement | null>(null);
+  let confirmingEmptyTrash = $state(false);
+  let emptyTrashCancelButton = $state<HTMLButtonElement | null>(null);
 
   $effect(() => {
     historyLimitDraft = String(history.limit);
@@ -31,6 +33,12 @@
     if (!settingsPanel.open) return;
     if (project.path) void refreshStorageStats();
     const frame = requestAnimationFrame(() => closeButton?.focus());
+    return () => cancelAnimationFrame(frame);
+  });
+
+  $effect(() => {
+    if (!settingsPanel.open || !confirmingEmptyTrash || !emptyTrashCancelButton) return;
+    const frame = requestAnimationFrame(() => emptyTrashCancelButton?.focus());
     return () => cancelAnimationFrame(frame);
   });
 
@@ -68,14 +76,29 @@
     }
   }
 
+  function requestEmptyTrash(): void {
+    if (trash.entries.length > 0) confirmingEmptyTrash = true;
+  }
+
   function confirmEmptyTrash(): void {
     if (trash.entries.length === 0) return;
-    const confirmed = window.confirm(`Permanently delete ${trash.entries.length} trash entr${trash.entries.length === 1 ? "y" : "ies"}? This cannot be undone.`);
-    if (!confirmed) return;
     emptyTrash();
+    confirmingEmptyTrash = false;
     exportState.message = "Trash emptied.";
     exportState.error = "";
     void refreshStorageStats();
+  }
+
+  function handleTrashConfirmKeydown(event: KeyboardEvent): void {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      confirmingEmptyTrash = false;
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      confirmEmptyTrash();
+    }
   }
 </script>
 
@@ -199,12 +222,21 @@
                 ]} onchange={changeBackupInterval} />
               </span>
             </label>
-            <button type="button" onclick={confirmEmptyTrash} disabled={trash.entries.length === 0}>Empty trash…</button>
+            <button type="button" data-settings-empty-trash onclick={requestEmptyTrash} disabled={trash.entries.length === 0}>Empty trash…</button>
             <button type="button" onclick={openBackupsPanel}>Open backups</button>
             <button type="button" onclick={() => void refreshStorageStats()} disabled={exportState.refreshingStorage}>
               {exportState.refreshingStorage ? "Refreshing…" : "Refresh storage"}
             </button>
           </div>
+          {#if confirmingEmptyTrash}
+            <div class="storage-trash-confirm" data-settings-trash-confirm role="dialog" aria-modal="false" aria-label="Confirm empty trash" tabindex="-1" onkeydown={handleTrashConfirmKeydown}>
+              <p>Permanently delete all <strong>{trash.entries.length}</strong> {trash.entries.length === 1 ? "entry" : "entries"}? This cannot be undone.</p>
+              <div class="storage-trash-confirm-actions">
+                <button bind:this={emptyTrashCancelButton} type="button" data-settings-trash-cancel onclick={() => (confirmingEmptyTrash = false)}>Cancel</button>
+                <button type="button" data-settings-trash-confirm-action onclick={confirmEmptyTrash}>Empty trash</button>
+              </div>
+            </div>
+          {/if}
           <div class="storage-actions transfer-actions">
             <button type="button" onclick={() => void exportCurrentProject()} disabled={!project.path || exportState.busy}>
               {exportState.busy ? "Working…" : "Export project…"}
@@ -406,6 +438,44 @@
   .storage-actions button:disabled {
     color: #777;
     cursor: default;
+  }
+
+  .storage-trash-confirm {
+    margin-top: 7px;
+    padding: 8px;
+    border: 1px solid #6c5144;
+    border-radius: 3px;
+    background: #302723;
+    color: var(--text);
+    font-size: 10px;
+    line-height: 1.4;
+  }
+
+  .storage-trash-confirm p {
+    margin: 0 0 6px;
+  }
+
+  .storage-trash-confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 5px;
+  }
+
+  .storage-trash-confirm-actions button {
+    min-height: 24px;
+    padding: 3px 7px;
+    border: 1px solid #484848;
+    border-radius: 3px;
+    background: #252525;
+    color: var(--text);
+    font: inherit;
+    font-size: 10px;
+    cursor: pointer;
+  }
+
+  .storage-trash-confirm-actions button:last-child {
+    border-color: #985b55;
+    color: #e2a19a;
   }
 
   .interval-control {

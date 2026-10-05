@@ -80,7 +80,7 @@ describe("view settings serialization", () => {
         cameraSettings: { minZoom: 0.1, maxZoom: 5, zoomSensitivity: -1, panSpeed: 900 },
         grid: { step: 0, showGrid: false, snap: "yes" },
         display: { rightPanelOpen: false },
-        history: { limit: 999 },
+        history: { limit: 5000 },
       }),
       DEFAULT_VIEW_SETTINGS,
     );

@@ -5,7 +5,7 @@ import { noteBounds } from "../notes/layout.svelte";
 import { selectOnly } from "../selection/selection.svelte";
 import { execute } from "../history/history.svelte";
 import { registerCommand } from "../commands/registry.svelte";
-import { objectsPanel, toggleObjectsPanel } from "./panelState.svelte";
+import { panelPopupState, togglePanelPopup } from "../ui/popups/panelPopupState.svelte";
 import {
   canNavigateBack,
   canNavigateForward,
@@ -19,8 +19,8 @@ registerCommand({
   id: "ui.toggleObjectsPanel",
   label: "Toggle Objects Panel",
   keys: ["Alt+KeyO"],
-  run: toggleObjectsPanel,
-  isActive: () => objectsPanel.open,
+  run: () => togglePanelPopup("objects"),
+  isActive: () => panelPopupState.active === "objects",
 });
 
 /**

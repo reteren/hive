@@ -194,7 +194,7 @@ describe("standalone modules", () => {
     expect(links.byId["target-link"]).toBeUndefined();
   });
 
-  it("offers embedded module actions only on note, plus, and minus targets", () => {
+  it("hides the removed module add actions from note context menus", () => {
     replaceBoard([
       note({ id: "content", type: "note" }),
       note({ id: "importance", type: "importance", importance: "basic" }),
@@ -204,13 +204,13 @@ describe("standalone modules", () => {
       .filter((item) => item.id.startsWith("module."))
       .map((item) => item.id);
 
-    expect(moduleItems("content")).toEqual(["module.importance", "module.purpose", "module.mood"]);
+    expect(moduleItems("content")).toEqual([]);
     expect(moduleItems("importance")).toEqual([]);
     expect(moduleItems("purpose")).toEqual([]);
 
     replaceLinks([link("importance", "content")]);
     const importanceItem = noteMenuItems("content").find((item) => item.id === "module.importance");
-    expect(importanceItem?.label("content")).toBe("Change Importance");
+    expect(importanceItem).toBeUndefined();
     expect(moduleItems("content")).not.toContain("module.removeImportance");
   });
 

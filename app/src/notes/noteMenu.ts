@@ -45,8 +45,9 @@ export function canRenameNoteHeader(headerHidden: boolean | undefined): boolean 
   return headerHidden !== true;
 }
 
-const MEDIA_KINDS = new Set<string>(["youtube", "video", "audio", "pdf", "format"]);
-const TEXT_ONLY_MENU_IDS = new Set(["task.toggleFlag", "notes.addPlus", "notes.addMinus"]);
+const REMOVED_CONTEXT_MENU_IDS = new Set([
+  "notes.addPlus", "notes.addMinus", "module.importance", "module.purpose", "module.mood",
+]);
 
 /** Apply the intentionally compact menu allowed for images and GIF surfaces. */
 export function noteMenuItemsForContext(
@@ -59,6 +60,7 @@ export function noteMenuItemsForContext(
 
   if (note?.type === "image") {
     const allowed = new Set(["notes.copyLink", "image.erase", "image.opacity", "archive.note", ...UNIVERSAL_MENU_IDS]);
+    if (note.task) allowed.add("task.toggleFlag");
     if (note.image?.mime === "image/gif" && target?.kind === "board") {
       allowed.add("attachments.toggleGif");
     }
@@ -66,11 +68,7 @@ export function noteMenuItemsForContext(
   }
 
   if (target) {
-    return allItems.filter((item) => UNIVERSAL_MENU_IDS.has(item.id) || item.id === "attachments.toggleGif");
-  }
-  // Debug 19: media objects are not tasks and carry no plus/minus mini-nodes.
-  if (note && MEDIA_KINDS.has(note.type)) {
-    return allItems.filter((item) => !TEXT_ONLY_MENU_IDS.has(item.id));
+    return allItems.filter((item) => UNIVERSAL_MENU_IDS.has(item.id) || item.id === "attachments.toggleGif" || item.id === "task.toggleFlag" && Boolean(note?.task));
   }
   return allItems;
 }
@@ -170,9 +168,10 @@ export function registerNoteMenuItem(item: NoteMenuItem): void {
 }
 
 export function noteMenuItems(noteId: string): NoteMenuItem[] {
-  const beacon = board.notes[noteId]?.type === "beacon";
+  const note = board.notes[noteId];
   return [...items.values()]
-    .filter((item) => !(beacon && /^tasks?\./i.test(item.id)))
+    .filter((item) => !REMOVED_CONTEXT_MENU_IDS.has(item.id))
+    .filter((item) => !(note?.type === "beacon" && !note.task && /^tasks?\./i.test(item.id)))
     .filter((item) => item.visible?.(noteId) ?? true)
     .sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
 }

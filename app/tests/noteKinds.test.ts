@@ -1,13 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { creationMenu } from "../src/notes/creation.svelte";
-import { addMiniNode, createNoteKind, DEFAULT_MINI_NOTE_WIDTH } from "../src/notes/noteCommands";
+import { createNoteKind, createTaskNote, DEFAULT_MINI_NOTE_WIDTH } from "../src/notes/noteCommands";
 import { editing } from "../src/notes/editing.svelte";
 import { clear, history, redo, undo } from "../src/history/history.svelte";
 import { replaceBoard, board } from "../src/model/board.svelte";
-import { links, replaceLinks } from "../src/model/links.svelte";
+import { replaceLinks } from "../src/model/links.svelte";
 import { selection, clearSelection } from "../src/selection/selection.svelte";
 import { grid } from "../src/board/grid.svelte";
-import { tool } from "../src/tools/tool.svelte";
 import type { Note } from "../src/model/note";
 import { estimatedCreationHeight } from "../src/notes/creationPosition";
 
@@ -25,7 +24,6 @@ beforeEach(() => {
   editing.noteId = null;
   selection.ids = [];
   clearSelection();
-  tool.lineShape = "base";
 });
 
 afterEach(() => {
@@ -34,7 +32,6 @@ afterEach(() => {
   replaceLinks([]);
   editing.noteId = null;
   clearSelection();
-  tool.lineShape = "base";
 });
 
 describe("plus and minus mini-nodes", () => {
@@ -110,35 +107,24 @@ describe("plus and minus mini-nodes", () => {
     expect(secondBounds).not.toEqual(firstBounds);
   });
 
-  it("quick-adds a nearby strong child link as one undo and redo step", () => {
-    tool.lineShape = "wave";
-    replaceBoard([
-      note("parent", "Parent"),
-      note("blocker", "Blocker", 32, 20),
-    ]);
+  it("creates a task from the creation flow as one ordinary note Undo step", () => {
+    const taskId = createTaskNote();
+    const task = board.notes[taskId];
 
-    const childId = addMiniNode("parent", "pro");
-    const child = childId ? board.notes[childId] : undefined;
-    const [link] = Object.values(links.byId);
-
-    expect(child).toMatchObject({ type: "pro", name: "Plus", x: 52, y: 0, width: DEFAULT_MINI_NOTE_WIDTH });
-    expect(link).toMatchObject({ from: "parent", to: childId, kind: "strong", shape: "base" });
+    expect(task).toMatchObject({ type: "note", name: "Note", text: "", task: { done: false, doneAt: null } });
+    expect(editing.noteId).toBe(taskId);
+    expect(selection.ids).toEqual([taskId]);
     expect(history.entries).toHaveLength(1);
-    expect(history.cursor).toBe(1);
-    expect(history.entries[0]).toMatchObject({ label: "Add plus", target: "Parent → Plus" });
-    expect(selection.ids).toEqual([childId]);
+    expect(history.entries[0]).toMatchObject({ label: "Create note", target: "Note" });
 
     undo();
-    expect(board.notes[childId!]).toBeUndefined();
-    expect(links.byId[link.id]).toBeUndefined();
-    expect(board.notes.parent).toBeDefined();
+    expect(board.notes[taskId]).toBeUndefined();
     expect(selection.ids).toEqual([]);
     expect(history.cursor).toBe(0);
 
     redo();
-    expect(board.notes[childId!]).toEqual(child);
-    expect(links.byId[link.id]).toEqual(link);
-    expect(selection.ids).toEqual([childId]);
+    expect(board.notes[taskId]?.task).toEqual({ done: false, doneAt: null });
+    expect(history.entries).toHaveLength(1);
     expect(history.cursor).toBe(1);
   });
 });

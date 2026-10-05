@@ -3,64 +3,32 @@
   import CommandButton from "./CommandButton.svelte";
   import GridControls from "./GridControls.svelte";
   import ConflictNotice from "./ConflictNotice.svelte";
-  import { getCommand, runCommand } from "../commands/registry.svelte";
-  import { formatKey } from "../commands/keys";
+  import MenuBar from "./menubar/MenuBar.svelte";
   import { project } from "../project/project.svelte";
 
-  let zoomPercent = $derived(Math.round(camera.zoom * 100));
+  let { onMenuOpenChange = () => {} } = $props<{ onMenuOpenChange?: (open: boolean) => void }>();
 
-  /** Menu tooltip with the command's current (possibly user-changed) bindings. */
-  function commandTitle(id: string): string {
-    const command = getCommand(id);
-    if (!command) return "";
-    return command.keys.length ? `${command.label} · ${command.keys.map(formatKey).join(", ")}` : command.label;
-  }
+  let zoomPercent = $derived(Math.round(camera.zoom * 100));
 </script>
 
 <!-- Top toolbar (R0.4): general tools centred, Grid controls. -->
 <header class="top-bar">
   <div class="brand" aria-label="hive">
     <span class="brand-mark">hive</span>
-    <div class="project-control">
-      <button
-        class="project-button"
-        class:has-error={project.error}
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={project.menuOpen}
-        title={`Project: ${project.name}${project.error ? ` · ${project.error}` : ""}`}
-        onclick={() => (project.menuOpen = !project.menuOpen)}
-      >
-        <span class="project-name">{project.name}</span>
-        <span aria-hidden="true">⌄</span>
-      </button>
-      {#if project.error}
-        <span class="project-error-indicator" role="status" title={project.error}>Save failed: {project.error}</span>
-      {/if}
-      {#if project.warnings.length > 0}
-        <span class="project-warning-indicator" role="status" title={project.warnings.join("\n")}>Warning: {project.warnings[0]}</span>
-      {/if}
-      {#if project.menuOpen}
-        <div class="project-menu" role="menu" aria-label="Project">
-          <button role="menuitem" type="button" title={commandTitle("project.new")} onclick={() => runCommand("project.new")}>New…</button>
-          <button role="menuitem" type="button" title={commandTitle("project.open")} onclick={() => runCommand("project.open")}>Open…</button>
-          {#if project.error}
-            <div class="project-error" role="status">{project.error}</div>
-          {/if}
-          {#each project.warnings as warning}
-            <div class="project-warning" role="status">{warning}</div>
-          {/each}
-        </div>
-      {/if}
-    </div>
+    <MenuBar onOpenChange={onMenuOpenChange} />
+    <span class="project-name" title={`Project: ${project.name}`}>{project.name}</span>
+    {#if project.error}
+      <span class="project-error-indicator" role="status" title={project.error}>Save failed: {project.error}</span>
+    {/if}
+    {#if project.warnings.length > 0}
+      <span class="project-warning-indicator" role="status" title={project.warnings.join("\n")}>Warning: {project.warnings[0]}</span>
+    {/if}
   </div>
   <div class="toolbar-center">
     <div class="view-commands" aria-label="View commands">
-      <CommandButton commandId="view.home" />
       <CommandButton commandId="view.zoomOut" />
       <output class="zoom-level" aria-label="Zoom level">{zoomPercent}%</output>
       <CommandButton commandId="view.zoomIn" />
-      <CommandButton commandId="view.zoomReset" />
     </div>
     <div class="grid-slot" aria-label="Grid controls">
       <GridControls />
@@ -109,57 +77,14 @@
     letter-spacing: 0.02em;
   }
 
-  .project-control {
-    position: relative;
-    min-width: 0;
-  }
-
-  .project-button {
-    display: flex;
-    max-width: 154px;
-    min-height: 26px;
-    align-items: center;
-    gap: 5px;
-    padding: 3px 6px;
-    border: 1px solid #3b3b3b;
-    border-radius: 3px;
-    background: #202020;
-    color: var(--text-dim);
-    font: inherit;
-    font-size: 10px;
-    cursor: pointer;
-  }
-
-  .project-button:hover,
-  .project-button[aria-expanded="true"] {
-    border-color: #666;
-    color: var(--text);
-  }
-
-  .project-button.has-error {
-    border-color: #9b4c46;
-    color: #ffaaa2;
-  }
-
   .project-name {
+    min-width: 0;
+    color: var(--text-dim);
+    font-size: 10px;
+    max-width: 132px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .project-menu {
-    display: grid;
-    position: absolute;
-    z-index: 30;
-    top: calc(100% + 3px);
-    left: 0;
-    width: 210px;
-    gap: 2px;
-    padding: 5px;
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    background: var(--bg-panel);
-    box-shadow: 0 6px 18px #0008;
   }
 
   .project-error-indicator {
@@ -182,35 +107,6 @@
     overflow-wrap: anywhere;
   }
 
-  .project-menu button {
-    padding: 5px 7px;
-    border: 0;
-    border-radius: 2px;
-    background: transparent;
-    color: var(--text);
-    font: inherit;
-    font-size: 10px;
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .project-menu button:hover {
-    background: #383838;
-  }
-
-  .project-error,
-  .project-warning {
-    padding: 5px 7px;
-    border-top: 1px solid #454545;
-    color: #ffaaa2;
-    font-size: 9px;
-    line-height: 1.35;
-    overflow-wrap: anywhere;
-  }
-
-  .project-warning {
-    color: #e7ca78;
-  }
 
   .toolbar-center {
     display: flex;
@@ -258,19 +154,27 @@
     }
 
     .brand {
-      display: none;
+      grid-column: 1 / -1;
+      grid-row: 1;
+      max-width: 100%;
+      gap: 5px;
+    }
+
+    .project-name {
+      max-width: 90px;
+      font-size: 9px;
     }
 
     .toolbar-center {
       grid-column: 1;
-      grid-row: 1;
+      grid-row: 2;
       flex-wrap: wrap;
       row-gap: 3px;
     }
 
     .top-actions {
       grid-column: 2;
-      grid-row: 1;
+      grid-row: 2;
     }
 
     .grid-slot {

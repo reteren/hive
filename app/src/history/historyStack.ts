@@ -12,7 +12,7 @@ export interface HistoryCommand {
 
 export const DEFAULT_HISTORY_LIMIT = 64;
 export const MIN_HISTORY_LIMIT = 8;
-export const MAX_HISTORY_LIMIT = 256;
+export const MAX_HISTORY_LIMIT = 1000;
 
 export function normalizeHistoryLimit(limit: number): number {
   if (!Number.isFinite(limit)) return DEFAULT_HISTORY_LIMIT;

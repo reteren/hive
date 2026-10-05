@@ -4,12 +4,8 @@ import { nodeBodyFor } from "./nodeBodies";
 import { execute } from "../history/history.svelte";
 import { addNote, board, removeNote } from "../model/board.svelte";
 import { BEACON_SIZE, DEFAULT_NOTE_WIDTH, newId, R5_BASE_WIDTHS, type Note, type NoteKind } from "../model/note";
-import { addLink, canLink, removeLink } from "../model/links.svelte";
-import type { Link } from "../model/link";
 import { pointer } from "../board/camera.svelte";
 import { grid } from "../board/grid.svelte";
-import { snapToGrid } from "../board/gridMath";
-import { tool } from "../tools/tool.svelte";
 import {
   creationObstacleForNote,
   estimatedCreationHeight,
@@ -18,7 +14,7 @@ import {
 } from "./creationPosition";
 import type { Point } from "../board/cameraMath";
 import { editing } from "./editing.svelte";
-import { measuredHeights, type Bounds } from "./layout.svelte";
+import { measuredHeights } from "./layout.svelte";
 import { closeCreationMenu, creationMenu, creationMenuTrigger, openCreationMenu } from "./creation.svelte";
 import { uniqueName } from "./naming";
 import { registerNoteMenuItem } from "./noteMenu";
@@ -43,8 +39,6 @@ import { openPdfExternally, registerFormatDropHandler } from "../formats/formatA
 
 export const DEFAULT_MINI_NOTE_WIDTH = 18;
 
-type MiniNoteKind = Extract<NoteKind, "pro" | "con">;
-
 registerFormatDropHandler();
 
 export function toggleCreationMenu(): void {
@@ -59,8 +53,13 @@ export function createNote(): string {
   return createNoteKind("note");
 }
 
+/** Create a normal editable note with its task flag in the same Undo command. */
+export function createTaskNote(): string {
+  return createNoteKind("note", true);
+}
+
 /** Create a note, plus/minus, or standalone module at the current creation origin. */
-export function createNoteKind(kind: NoteKind): string {
+export function createNoteKind(kind: NoteKind, task = false): string {
   const isModule = kind === "importance" || kind === "purpose" || kind === "mood";
   const width = kind === "beacon" ? BEACON_SIZE : kind in R5_BASE_WIDTHS ? R5_BASE_WIDTHS[kind as keyof typeof R5_BASE_WIDTHS] : kind === "note" ? DEFAULT_NOTE_WIDTH : isModule ? MODULE_NOTE_WIDTH : DEFAULT_MINI_NOTE_WIDTH;
   const height = estimatedCreationHeight({
@@ -85,7 +84,7 @@ export function createNoteKind(kind: NoteKind): string {
     false,
     grid.step,
   );
-  const note = makeNote(kind, id, position, Date.now());
+  const note = makeNote(kind, id, position, Date.now(), task);
   const index = board.order.length;
   const previousEditing = editing.noteId;
   const previousSelection = captureSelectionSnapshot();
@@ -200,53 +199,7 @@ export function createAudioNotes(files: readonly MediaRef[], center: Point): str
   return ids;
 }
 
-/** Add a linked mini-node beside an existing node as one undoable board operation. */
-export function addMiniNode(parentId: string, kind: MiniNoteKind): string | null {
-  const parent = board.notes[parentId];
-  if (!parent) return null;
-
-  const id = newId();
-  const parentBounds = creationObstacleForNote(parent, measuredHeights[parent.id]);
-  const position = findMiniNodePosition(
-    parentBounds,
-    Object.values(board.notes).map((note) => creationObstacleForNote(note, measuredHeights[note.id])),
-    kind,
-  );
-  const note = makeNote(kind, id, position, Date.now());
-  const link: Link = {
-    id: newId(),
-    from: parent.id,
-    to: note.id,
-    kind: "strong",
-    shape: "base",
-  };
-  if (!canLink(link.from, link.to)) return null;
-
-  const index = board.order.length;
-  const previousEditing = editing.noteId;
-  const previousSelection = captureSelectionSnapshot();
-  execute({
-    label: `Add ${kindLabel(kind).toLowerCase()}`,
-    target: `${parent.name} → ${note.name}`,
-    do: () => {
-      addNote(note, index);
-      addLink(link);
-      clearSelection();
-      clearSelectedLink();
-      selectOnly(id);
-      editing.noteId = id;
-    },
-    undo: () => {
-      removeLink(link.id);
-      removeNote(id);
-      restoreSelectionSnapshot(previousSelection);
-      if (editing.noteId === id) editing.noteId = previousEditing;
-    },
-  });
-  return id;
-}
-
-function makeNote(kind: NoteKind, id: string, position: Point, createdAt: number): Note {
+function makeNote(kind: NoteKind, id: string, position: Point, createdAt: number, task = false): Note {
   const baseName = kindLabel(kind);
   return {
     id,
@@ -266,6 +219,7 @@ function makeNote(kind: NoteKind, id: string, position: Point, createdAt: number
         : DEFAULT_MINI_NOTE_WIDTH,
     height: kind === "beacon" ? BEACON_SIZE : kind === "calendar" ? 34 : kind === "importance" ? MODULE_NOTE_HEIGHT : kind === "trash" || kind === "archive" ? 40 : kind === "map" ? 30 : kind === "source" ? 24 : null,
     createdAt,
+    ...(task ? { task: { done: false, doneAt: null } } : {}),
     ...(kind === "importance" ? { importance: "basic" as const } : {}),
     ...(kind === "purpose" ? { purposes: [] } : {}),
     ...(kind === "mood" ? { moods: [] } : {}),
@@ -300,34 +254,6 @@ function kindLabel(kind: NoteKind): string {
   if (kind === "message") return "Message";
   if (kind === "calendar") return "Calendar";
   return "Note";
-}
-
-function findMiniNodePosition(parent: Bounds, existing: readonly Bounds[], kind: MiniNoteKind): Point {
-  const width = DEFAULT_MINI_NOTE_WIDTH;
-  const height = estimatedCreationHeight({ type: kind, width, height: null, text: "" });
-  const gap = 2;
-  const startX = parent.x + parent.width + gap;
-
-  // Fill a right-hand shelf first, then continue onto rows below as the board becomes busy.
-  for (let row = 0; row < 128; row += 1) {
-    const y = parent.y + row * (height + gap);
-    for (let column = 0; column < 128; column += 1) {
-      const raw = { x: startX + column * (width + gap), y };
-      const center = grid.snap
-        ? snapToGrid({ x: raw.x + width / 2, y: raw.y + height / 2 }, grid.step)
-        : { x: raw.x + width / 2, y: raw.y + height / 2 };
-      const candidate = { x: center.x - width / 2, y: center.y - height / 2 };
-      const bounds = { ...candidate, width, height };
-      if (existing.every((other) => !overlaps(bounds, other))) return candidate;
-    }
-  }
-
-  return { x: startX, y: parent.y };
-}
-
-function overlaps(first: Bounds, second: Bounds): boolean {
-  return first.x < second.x + second.width && first.x + first.width > second.x &&
-    first.y < second.y + second.height && first.y + first.height > second.y;
 }
 
 export async function copyCursorCoordinates(point?: Point): Promise<boolean> {
@@ -410,26 +336,4 @@ registerNoteMenuItem({
   run: (noteId) => { void openPdfExternally(noteId); },
   visible: (noteId) => board.notes[noteId]?.type === "pdf",
   order: 30,
-});
-
-registerNoteMenuItem({
-  id: "notes.addPlus",
-  label: () => "Add plus",
-  order: 40,
-  visible: (noteId) => Boolean(board.notes[noteId] && board.notes[noteId].type !== "image"),
-  run: (noteId) => {
-    addMiniNode(noteId, "pro");
-    closeLinkContextMenu();
-  },
-});
-
-registerNoteMenuItem({
-  id: "notes.addMinus",
-  label: () => "Add minus",
-  order: 41,
-  visible: (noteId) => Boolean(board.notes[noteId] && board.notes[noteId].type !== "image"),
-  run: (noteId) => {
-    addMiniNode(noteId, "con");
-    closeLinkContextMenu();
-  },
 });

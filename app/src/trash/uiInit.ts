@@ -1,14 +1,14 @@
 import TrashNodeBody from "./TrashNodeBody.svelte";
 import { registerCommand } from "../commands/registry.svelte";
 import { registerNodeBody } from "../notes/nodeBodies";
-import { toggleTrashPanel, trashPanel } from "./trashPanelState.svelte";
+import { panelPopupState, togglePanelPopup } from "../ui/popups/panelPopupState.svelte";
 
 registerNodeBody("trash", TrashNodeBody);
 
 registerCommand({
   id: "ui.openTrash",
   label: "Open trash",
-  keys: [],
-  run: toggleTrashPanel,
-  isActive: () => trashPanel.open,
+  keys: ["Alt+KeyD"],
+  run: () => togglePanelPopup("trash"),
+  isActive: () => panelPopupState.active === "trash",
 });

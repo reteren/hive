@@ -10,6 +10,20 @@
   let restorePreview = $state<{ entry: TrashListItem; report: TrashRestorePreview } | null>(null);
   let pendingDelete = $state<TrashListItem | null>(null);
   let confirmingEmpty = $state(false);
+  let deleteCancelButton = $state<HTMLButtonElement | null>(null);
+  let emptyCancelButton = $state<HTMLButtonElement | null>(null);
+
+  $effect(() => {
+    if (!pendingDelete || !deleteCancelButton) return;
+    const frame = requestAnimationFrame(() => deleteCancelButton?.focus());
+    return () => cancelAnimationFrame(frame);
+  });
+
+  $effect(() => {
+    if (!confirmingEmpty || !emptyCancelButton) return;
+    const frame = requestAnimationFrame(() => emptyCancelButton?.focus());
+    return () => cancelAnimationFrame(frame);
+  });
 
   function requestRestore(entry: TrashListItem): void {
     const report = previewRestore(entry.id);
@@ -49,9 +63,33 @@
     pendingDelete = null;
   }
 
+  function handleDeleteConfirmKeydown(event: KeyboardEvent): void {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      pendingDelete = null;
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      confirmDelete();
+    }
+  }
+
   function confirmEmpty(): void {
     emptyTrash();
     confirmingEmpty = false;
+  }
+
+  function handleEmptyConfirmKeydown(event: KeyboardEvent): void {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      confirmingEmpty = false;
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      confirmEmpty();
+    }
   }
 
   function formatTime(value: number): string {
@@ -164,11 +202,11 @@
           {/if}
 
           {#if pendingDelete?.id === entry.id}
-            <div class="trash-confirm" role="alert" aria-label={`Confirm permanent deletion of ${summary.label}`}>
-              <p>Delete <strong>{summary.label}</strong> permanently?</p>
+            <div class="trash-confirm" data-trash-delete-confirm role="dialog" aria-modal="false" aria-label={`Confirm permanent deletion of ${summary.label}`} tabindex="-1" onkeydown={handleDeleteConfirmKeydown}>
+              <p>Delete “<strong>{summary.label}</strong>” permanently? This cannot be undone.</p>
               <div class="trash-confirm-actions">
-                <button type="button" class="trash-action" onclick={() => (pendingDelete = null)}>Cancel</button>
-                <button type="button" class="trash-action danger" onclick={confirmDelete}>Delete permanently</button>
+                <button bind:this={deleteCancelButton} type="button" class="trash-action" data-trash-delete-cancel onclick={() => (pendingDelete = null)}>Cancel</button>
+                <button type="button" class="trash-action danger" data-trash-delete-confirm-action onclick={confirmDelete}>Delete</button>
               </div>
             </div>
           {/if}
@@ -180,10 +218,10 @@
   </div>
 
   {#if confirmingEmpty}
-    <div class="trash-empty-confirm" role="alert" aria-label="Confirm empty trash">
-      <span>Permanently delete all {entries.length} {entries.length === 1 ? "entry" : "entries"}?</span>
+    <div class="trash-empty-confirm" data-trash-empty-confirm role="dialog" aria-modal="false" aria-label="Confirm empty trash" tabindex="-1" onkeydown={handleEmptyConfirmKeydown}>
+      <span>Permanently delete all {entries.length} {entries.length === 1 ? "entry" : "entries"}? This cannot be undone.</span>
       <div class="trash-confirm-actions">
-        <button type="button" class="trash-action" onclick={() => (confirmingEmpty = false)}>Cancel</button>
+        <button bind:this={emptyCancelButton} type="button" class="trash-action" data-trash-empty-cancel onclick={() => (confirmingEmpty = false)}>Cancel</button>
         <button type="button" class="trash-action danger" onclick={confirmEmpty}>Empty trash</button>
       </div>
     </div>

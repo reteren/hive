@@ -1,24 +1,32 @@
 <script lang="ts">
-  import { runCommand } from "../commands/registry.svelte";
-  import { trashPanel } from "./trashPanelState.svelte";
+  import { closeTrashPanel, trashPanel } from "./trashPanelState.svelte";
   import TrashList from "./TrashList.svelte";
+  import { closePanelPopup, panelPopupState } from "../ui/popups/panelPopupState.svelte";
   import "./uiInit";
+
+  let { variant = "dock" } = $props<{ variant?: "dock" | "popup" }>();
+  let isOpen = $derived(variant === "popup" ? panelPopupState.active === "trash" : trashPanel.open);
 
   function closeOnEscape(event: KeyboardEvent): void {
     if (event.key !== "Escape" || event.defaultPrevented) return;
     event.preventDefault();
     event.stopPropagation();
-    runCommand("ui.openTrash");
+    closeCurrentPanel();
+  }
+
+  function closeCurrentPanel(): void {
+    if (variant === "popup") closePanelPopup();
+    else closeTrashPanel();
   }
 </script>
 
-{#if trashPanel.open}
-  <dialog open id="trash-panel" class="trash-panel" data-selection-ignore aria-label="Trash" aria-modal="false" onkeydown={closeOnEscape}>
+{#if isOpen}
+  <dialog open id="trash-panel" class="trash-panel" class:popup-panel={variant === "popup"} data-selection-ignore aria-label="Trash" aria-modal={variant === "popup"} onkeydown={closeOnEscape}>
     <header class="panel-heading">
       <div class="panel-title">
         <h2>Trash</h2>
       </div>
-      <button class="panel-control close" type="button" aria-label="Close trash panel" title="Close" onclick={() => runCommand("ui.openTrash")}>×</button>
+      <button class="panel-control close" type="button" aria-label="Close trash panel" title="Close" onclick={closeCurrentPanel}>×</button>
     </header>
     <TrashList />
   </dialog>
