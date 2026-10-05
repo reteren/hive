@@ -1,0 +1,8 @@
+TASK C2 — MCP layout uses estimated heights → overlaps. Read d34_mcp_contract.md / d34_tasks.md (you wrote app/src/mcp/writeMethods.ts + app/src/mcp/write/*).
+
+Coordinator E2E against the real running hive (create_nodes with layout "tree": beacon root + 4 children, notes with 2–4 lines of Markdown):
+- returned heights 11.89 / 8.2 / 8.2 / 8.2 with 2 u gaps, but after rendering nodes.list reports measured heights 14.7 / 11.4 … → the children overlap each other by ~1 u.
+
+Fix: whenever placement depends on node heights (layouts row/column/grid/tree/auto, `near` with side below/above, nodes.arrange), wait until the new nodes are rendered and measured (await Svelte tick() + two requestAnimationFrame, then read measuredHeights; time-box to ~500 ms and fall back to estimates), recompute the placement with real sizes and move the nodes — inside the SAME MCP history transaction (the run() is async; the dispatcher keeps the transaction open until it resolves; verify that, see app/src/mcp/dispatcher.ts). The returned x/y/width/height must be the final measured values. Also make sure auto placement keeps the new group clear of existing nodes using measured heights of existing nodes (measuredHeights) not stored height:null.
+Also: project.root in `status` (and wherever a path is returned) must not carry the Windows extended-length prefix `\\?\` — strip it for display (small hunk in app/src/mcp/read/serialize.ts or readMethods.ts; tell the coordinator; Rust discovery file is fixed by the coordinator).
+Tests: a layout test with a fake measurement that differs from the estimate → no overlaps, one undo step. npm run check + npm test green, do NOT commit, worker_done in Russian.

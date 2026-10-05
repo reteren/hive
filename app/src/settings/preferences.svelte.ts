@@ -10,6 +10,7 @@ export const preferences = $state({
   transferHintsShown: 0,
   fitWidthToText: true,
   recordInBackground: false,
+  allowAiToolsMcp: true,
   videoExternalThresholdMb: DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB as VideoExternalThresholdMb,
 });
 
@@ -32,6 +33,10 @@ export function setFitWidthToText(enabled: boolean): void {
 
 export function setRecordInBackground(enabled: boolean): void {
   preferences.recordInBackground = enabled;
+}
+
+export function setAllowAiToolsMcp(enabled: boolean): void {
+  preferences.allowAiToolsMcp = enabled;
 }
 
 export function setVideoExternalThresholdMb(value: unknown): void {

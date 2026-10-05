@@ -199,7 +199,8 @@ export function createAudioNotes(files: readonly MediaRef[], center: Point): str
   return ids;
 }
 
-function makeNote(kind: NoteKind, id: string, position: Point, createdAt: number, task = false): Note {
+/** Construct a node with the same kind defaults used by the Q creation menu. */
+export function makeNote(kind: NoteKind, id: string, position: Point, createdAt: number, task = false): Note {
   const baseName = kindLabel(kind);
   return {
     id,

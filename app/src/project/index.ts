@@ -627,6 +627,11 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
   };
 }
 
+/** Validate one proposed MCP note with the same kind-specific rules used for board.json. */
+export function parseMcpNote(value: unknown, validZoneIds: ReadonlySet<string> = new Set()): { note: IndexedNote; warnings: string[] } {
+  return parseNote(value, 0, false, false, validZoneIds);
+}
+
 function validateUniqueNotes(notes: readonly IndexedNote[]): void {
   const ids = new Set<string>();
   const files = new Set<string>();

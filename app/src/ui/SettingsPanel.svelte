@@ -15,6 +15,7 @@
   import {
     preferences,
     setFitWidthToText,
+    setAllowAiToolsMcp,
     setRecordInBackground,
     setReduceAnimations,
     setVideoExternalThresholdMb,
@@ -26,12 +27,16 @@
   import ExportStatus from "../export/ExportStatus.svelte";
   import SpellcheckSettings from "../spell/SpellcheckSettings.svelte";
   import Select from "./Select.svelte";
+  import { setMcpBridgeEnabled } from "../mcp/bridge";
+  import { mcpBridge } from "../mcp/bridge.svelte";
 
   let historyLimitDraft = $state(String(history.limit));
   let videoThresholdDraft = $state(String(preferences.videoExternalThresholdMb ?? DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB));
   let closeButton = $state<HTMLButtonElement | null>(null);
   let confirmingEmptyTrash = $state(false);
   let emptyTrashCancelButton = $state<HTMLButtonElement | null>(null);
+  let mcpSettingBusy = $state(false);
+  let mcpSettingError = $state("");
 
   $effect(() => {
     historyLimitDraft = String(history.limit);
@@ -79,6 +84,22 @@
     if (!(event.currentTarget instanceof HTMLInputElement)) return;
     setVideoExternalThresholdMb(event.currentTarget.valueAsNumber);
     videoThresholdDraft = String(preferences.videoExternalThresholdMb ?? DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB);
+  }
+
+  async function changeMcpSetting(event: Event): Promise<void> {
+    if (!(event.currentTarget instanceof HTMLInputElement)) return;
+    const enabled = event.currentTarget.checked;
+    mcpSettingBusy = true;
+    mcpSettingError = "";
+    try {
+      await setMcpBridgeEnabled(enabled);
+      setAllowAiToolsMcp(enabled);
+    } catch (error) {
+      mcpSettingError = "Could not update the MCP bridge. Check the hive log and try again.";
+      console.error("Could not update the MCP bridge setting.", error);
+    } finally {
+      mcpSettingBusy = false;
+    }
   }
 
   function handleVideoThresholdKeydown(event: KeyboardEvent): void {
@@ -199,6 +220,27 @@
             />
           </label>
           <QuickInputShortcutSetting />
+        </section>
+
+        <section class="settings-section" aria-labelledby="ai-tools-settings-title" data-ai-tools-settings>
+          <h2 id="ai-tools-settings-title">AI tools</h2>
+          <label class="setting-row">
+            <span class="setting-copy">
+              <span>Allow AI tools (MCP)</span>
+              <span class="setting-description">Let local AI clients read and edit the open hive project.</span>
+            </span>
+            <input
+              type="checkbox"
+              checked={preferences.allowAiToolsMcp}
+              disabled={mcpSettingBusy}
+              data-allow-ai-tools-mcp
+              onchange={changeMcpSetting}
+            />
+          </label>
+          <p class="mcp-bridge-status" data-mcp-bridge-status aria-live="polite">
+            {mcpBridge.enabled && mcpBridge.port !== null ? `Listening on 127.0.0.1:${mcpBridge.port}` : "Off"}
+          </p>
+          {#if mcpSettingError}<p class="storage-error" role="alert">{mcpSettingError}</p>{/if}
         </section>
 
         <SpellcheckSettings />
@@ -479,6 +521,13 @@
     font-family: var(--mono-font);
     font-size: 9px;
     text-align: right;
+  }
+
+  .mcp-bridge-status {
+    margin: 0 2px 5px;
+    color: var(--text-dim);
+    font-family: var(--mono-font);
+    font-size: 9px;
   }
 
   .video-threshold-setting {

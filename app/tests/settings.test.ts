@@ -46,6 +46,7 @@ describe("view settings serialization", () => {
       fitWidthToText: false,
       gifPlayback: "selected" as const,
       recordInBackground: true,
+      allowAiToolsMcp: true,
       backupIntervalMinutes: 15 as const,
       quickInputShortcut: "Ctrl+Shift+Space",
       skipCompletedTimerConfirmation: false,
@@ -121,6 +122,7 @@ describe("view settings serialization", () => {
       fitWidthToText: true,
       gifPlayback: "always",
       recordInBackground: false,
+      allowAiToolsMcp: true,
       backupIntervalMinutes: 30,
       quickInputShortcut: DEFAULT_VIEW_SETTINGS.quickInputShortcut,
       skipCompletedTimerConfirmation: false,
@@ -133,6 +135,13 @@ describe("view settings serialization", () => {
     expect(DEFAULT_VIEW_SETTINGS.recordInBackground).toBe(false);
     expect(parseViewSettings('{"fitWidthToText":false}', DEFAULT_VIEW_SETTINGS).fitWidthToText).toBe(false);
     expect(parseViewSettings('{"fitWidthToText":"yes"}', DEFAULT_VIEW_SETTINGS).fitWidthToText).toBe(true);
+  });
+
+  it("defaults MCP tools on and persists an explicit opt-out", () => {
+    expect(DEFAULT_VIEW_SETTINGS.allowAiToolsMcp).toBe(true);
+    expect(parseViewSettings('{"allowAiToolsMcp":false}', DEFAULT_VIEW_SETTINGS).allowAiToolsMcp).toBe(false);
+    const serialized = serializeViewSettings({ ...DEFAULT_VIEW_SETTINGS, allowAiToolsMcp: false });
+    expect(parseViewSettings(serialized, DEFAULT_VIEW_SETTINGS).allowAiToolsMcp).toBe(false);
   });
 
   it("normalizes the persisted zone brush size and defaults older settings", () => {

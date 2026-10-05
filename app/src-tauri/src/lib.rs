@@ -2,6 +2,7 @@ mod attachments;
 mod backup;
 mod drawing;
 mod export;
+mod mcp_bridge;
 mod overhive;
 mod project;
 mod quick_input_shortcut;
@@ -128,6 +129,10 @@ pub fn run() {
             app.manage(quick_input_shortcut::QuickInputShortcutService::new(app.handle().clone()));
             build_tray(app)?;
             let config_dir = app.path().app_config_dir()?;
+            app.manage(mcp_bridge::McpBridgeState::new(
+                config_dir.clone(),
+                env!("CARGO_PKG_VERSION").to_string(),
+            ));
             let packaged_dictionaries = app.path().resource_dir()?.join("dictionaries");
             let dictionary_dir = if packaged_dictionaries.is_dir() {
                 packaged_dictionaries
@@ -207,6 +212,9 @@ pub fn run() {
             app_quit,
             configure_quick_input_shortcut,
             quick_input_shortcut::log_overview,
+            mcp_bridge::mcp_respond,
+            mcp_bridge::mcp_bridge_ready,
+            mcp_bridge::mcp_bridge_set_enabled,
             overhive::sync_overhive,
             overhive::get_overhive_snapshot,
             overhive::set_overhive_regions,
@@ -252,6 +260,10 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building hive")
         .run(|app_handle, event| {
+            if let RunEvent::Exit = &event {
+                mcp_bridge::shutdown(app_handle);
+                return;
+            }
             if let RunEvent::WindowEvent {
                 label,
                 event: WindowEvent::Destroyed,

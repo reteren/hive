@@ -67,6 +67,29 @@ export function record(command: HistoryCommand): void {
   syncState();
 }
 
+/** Begin collecting already-applied history commands into one Undo entry. */
+export function beginHistoryTransaction(label: string): void {
+  stack.beginTransaction(label);
+}
+
+/** Commit collected commands as one composite history entry. */
+export function commitHistoryTransaction(): HistoryCommand | undefined {
+  try {
+    return stack.commitTransaction();
+  } finally {
+    syncState();
+  }
+}
+
+/** Undo all collected commands in reverse order and leave history unchanged. */
+export function abortHistoryTransaction(): void {
+  try {
+    stack.abortTransaction();
+  } finally {
+    syncState();
+  }
+}
+
 export function undo(): HistoryCommand | undefined {
   let command: HistoryCommand | undefined;
   try {

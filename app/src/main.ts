@@ -11,7 +11,9 @@ import "./clipboard/commands";
 import "./project/commands";
 import "./scope/init";
 import { initializeViewSettingsPersistence } from "./settings/persistence.svelte";
+import { preferences } from "./settings/preferences.svelte";
 import { initializeProjectPersistence } from "./project/persistence.svelte";
+import { initializeMcpBridge } from "./mcp/bridge";
 import { initializeTransfer } from "./transfer/init";
 import "./goal/init";
 import "./calculator/init";
@@ -32,6 +34,7 @@ import "./drawing/init";
 
 await initializeViewSettingsPersistence();
 await initializeProjectPersistence();
+await initializeMcpBridge(preferences.allowAiToolsMcp);
 
 initializeTransfer();
 

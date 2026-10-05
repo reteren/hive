@@ -184,6 +184,7 @@ pub fn initialize_project(
                         .root
                         .lock()
                         .map_err(|_| "project state is unavailable")? = Some(project.root.clone());
+                    crate::mcp_bridge::project_changed(&app, &project.root);
                     let mut project = project;
                     enable_project_watch(&app, &watcher, &mut project);
                     return Ok(project.load);
@@ -224,6 +225,7 @@ pub fn initialize_project(
         .root
         .lock()
         .map_err(|_| "project state is unavailable")? = Some(project.root.clone());
+    crate::mcp_bridge::project_changed(&app, &project.root);
     enable_project_watch(&app, &watcher, &mut project);
     Ok(project.load)
 }
@@ -254,6 +256,7 @@ pub fn create_project(
         .root
         .lock()
         .map_err(|_| "project state is unavailable")? = Some(project.root.clone());
+    crate::mcp_bridge::project_changed(&app, &project.root);
     let mut project = project;
     enable_project_watch(&app, &watcher, &mut project);
     Ok(project.load)
@@ -272,6 +275,7 @@ pub fn open_project(
         .root
         .lock()
         .map_err(|_| "project state is unavailable")? = Some(project.root.clone());
+    crate::mcp_bridge::project_changed(&app, &project.root);
     enable_project_watch(&app, &watcher, &mut project);
     Ok(project.load)
 }

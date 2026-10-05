@@ -1,2 +1,2 @@
-// Task write registers its MCP methods here (docs/handoff/d34_mcp_contract.md).
-export {};
+// The node write methods live in their own module to keep registration imports small.
+import "./write/nodes";

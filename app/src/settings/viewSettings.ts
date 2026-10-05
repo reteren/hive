@@ -14,7 +14,7 @@ import {
   type VideoExternalThresholdMb,
 } from "./videoThreshold";
 
-export const VIEW_SETTINGS_VERSION = 15;
+export const VIEW_SETTINGS_VERSION = 16;
 
 export interface CameraSettings {
   minZoom: number;
@@ -55,6 +55,7 @@ export interface ViewSettings {
   fitWidthToText: boolean;
   gifPlayback: GifPlaybackMode;
   recordInBackground: boolean;
+  allowAiToolsMcp: boolean;
   backupIntervalMinutes: BackupInterval;
   quickInputShortcut: string;
   skipCompletedTimerConfirmation?: boolean;
@@ -87,6 +88,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
   fitWidthToText: true,
   gifPlayback: "always",
   recordInBackground: false,
+  allowAiToolsMcp: true,
   backupIntervalMinutes: 30,
   quickInputShortcut: DEFAULT_QUICK_INPUT_SHORTCUT,
   skipCompletedTimerConfirmation: false,
@@ -152,6 +154,7 @@ export function parseViewSettings(serialized: string | null | undefined, default
     fitWidthToText: booleanOrDefault(parsed.fitWidthToText, defaults.fitWidthToText),
     gifPlayback: normalizeGifPlaybackMode(parsed.gifPlayback, defaults.gifPlayback),
     recordInBackground: booleanOrDefault(parsed.recordInBackground, defaults.recordInBackground),
+    allowAiToolsMcp: booleanOrDefault(parsed.allowAiToolsMcp, defaults.allowAiToolsMcp),
     backupIntervalMinutes: backupIntervalOrDefault(parsed.backupIntervalMinutes, defaults.backupIntervalMinutes),
     quickInputShortcut: normalizeQuickInputShortcut(parsed.quickInputShortcut) ?? defaults.quickInputShortcut,
     skipCompletedTimerConfirmation: booleanOrDefault(parsed.skipCompletedTimerConfirmation, defaults.skipCompletedTimerConfirmation ?? false),
@@ -188,6 +191,7 @@ export function serializeViewSettings(settings: ViewSettings): string {
     fitWidthToText: settings.fitWidthToText,
     gifPlayback: settings.gifPlayback,
     recordInBackground: settings.recordInBackground,
+    allowAiToolsMcp: settings.allowAiToolsMcp,
     backupIntervalMinutes: backupIntervalOrDefault(settings.backupIntervalMinutes, 30),
     quickInputShortcut: normalizeQuickInputShortcut(settings.quickInputShortcut) ?? DEFAULT_QUICK_INPUT_SHORTCUT,
     skipCompletedTimerConfirmation: settings.skipCompletedTimerConfirmation === true,
@@ -264,6 +268,7 @@ function cloneViewSettings(settings: ViewSettings): ViewSettings {
     fitWidthToText: settings.fitWidthToText,
     gifPlayback: settings.gifPlayback,
     recordInBackground: settings.recordInBackground,
+    allowAiToolsMcp: settings.allowAiToolsMcp,
     backupIntervalMinutes: settings.backupIntervalMinutes,
     quickInputShortcut: settings.quickInputShortcut,
     skipCompletedTimerConfirmation: settings.skipCompletedTimerConfirmation ?? false,

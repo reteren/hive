@@ -24,6 +24,7 @@ export class HistoryStack {
   entries: HistoryCommand[] = [];
   cursor = 0;
   limit: number;
+  private readonly transactions: Array<{ label: string; commands: HistoryCommand[] }> = [];
 
   constructor(limit = DEFAULT_HISTORY_LIMIT) {
     this.limit = normalizeHistoryLimit(limit);
@@ -36,9 +37,62 @@ export class HistoryStack {
 
   /** Record a command whose effect has already been applied. */
   record(command: HistoryCommand): void {
+    const transaction = this.transactions[this.transactions.length - 1];
+    if (transaction) {
+      // Transaction children have already run. Keep each intact so abort can
+      // undo exactly what was applied, and so none can merge across a boundary.
+      transaction.commands.push(command);
+      return;
+    }
+    this.recordDirect(command, true);
+  }
+
+  beginTransaction(label: string): void {
+    this.transactions.push({ label, commands: [] });
+  }
+
+  commitTransaction(): HistoryCommand | undefined {
+    const transaction = this.transactions.pop();
+    if (!transaction) throw new Error("No history transaction is active.");
+    if (transaction.commands.length === 0) return undefined;
+
+    const commands = [...transaction.commands];
+    const composite: HistoryCommand = {
+      label: transaction.label,
+      do() {
+        for (const command of commands) command.do();
+      },
+      undo() {
+        for (let index = commands.length - 1; index >= 0; index -= 1) {
+          commands[index].undo();
+        }
+      },
+    };
+
+    const parent = this.transactions[this.transactions.length - 1];
+    if (parent) parent.commands.push(composite);
+    else this.recordDirect(composite, false);
+    return composite;
+  }
+
+  abortTransaction(): void {
+    const transaction = this.transactions.pop();
+    if (!transaction) throw new Error("No history transaction is active.");
+    let firstError: unknown;
+    for (let index = transaction.commands.length - 1; index >= 0; index -= 1) {
+      try {
+        transaction.commands[index].undo();
+      } catch (error) {
+        firstError ??= error;
+      }
+    }
+    if (firstError !== undefined) throw firstError;
+  }
+
+  private recordDirect(command: HistoryCommand, allowMerge: boolean): void {
     this.entries.splice(this.cursor);
     const last = this.entries[this.entries.length - 1];
-    if (last?.merge) {
+    if (allowMerge && last?.merge) {
       try {
         if (last.merge(command)) return;
       } catch {

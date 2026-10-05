@@ -9,6 +9,7 @@ import { applyReduceMotionPreference } from "./motion";
 import {
   preferences,
   setFitWidthToText,
+  setAllowAiToolsMcp,
   setRecordInBackground,
   setReduceAnimations,
   setTransferHintsShown,
@@ -146,6 +147,7 @@ function currentSettings(): ViewSettings {
     fitWidthToText: preferences.fitWidthToText,
     gifPlayback: gifPlayback.mode,
     recordInBackground: preferences.recordInBackground,
+    allowAiToolsMcp: preferences.allowAiToolsMcp,
     backupIntervalMinutes: backupSettings.interval,
     quickInputShortcut: quickInputShortcut.value,
     skipCompletedTimerConfirmation: timeEnablePreference.skipCompletedTimerConfirmation,
@@ -174,6 +176,7 @@ function applySettings(settings: ViewSettings): void {
   setFitWidthToText(settings.fitWidthToText);
   setGifPlaybackMode(settings.gifPlayback);
   setRecordInBackground(settings.recordInBackground);
+  setAllowAiToolsMcp(settings.allowAiToolsMcp);
   setBackupInterval(settings.backupIntervalMinutes);
   setQuickInputShortcutValue(settings.quickInputShortcut);
   timeEnablePreference.skipCompletedTimerConfirmation = settings.skipCompletedTimerConfirmation ?? false;
