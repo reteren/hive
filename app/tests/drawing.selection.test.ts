@@ -7,10 +7,13 @@ import {
   copySelectionPixels,
   deleteSelectionPixels,
   drawingSelection,
+  handleDrawingSelectionKey,
   isDrawingSelectionBorder,
   moveSelectionPixels,
+  quickSelectionHandler,
   resizeSelectionArea,
   selectionMoveHandler,
+  shouldStartQuickSelection,
   type RasterPixels,
 } from "../src/drawing/selection.svelte";
 import { drawingTools } from "../src/drawing/tools.svelte";
@@ -19,12 +22,16 @@ import type { DrawPointerEvent } from "../src/drawing/types";
 const harness = vi.hoisted(() => ({
   pixels: new Uint8ClampedArray(8 * 8 * 4),
   commands: [] as Array<{ label: string; undo(): void; do(): void }>,
+  snapshots: 0,
+  readbacks: 0,
+  gpu: null as { canvas: HTMLCanvasElement; isLost: boolean } | null,
 }));
 
 vi.mock("../src/drawing/tileStore.svelte", () => ({
   drawingStore: {
     keysInRect: () => ["0:0"],
     async snapshot(keys: readonly string[]) {
+      harness.snapshots += 1;
       const bytes = harness.pixels.slice();
       return new Map(keys.map((key) => [key, new Blob([bytes.buffer as ArrayBuffer])]));
     },
@@ -44,6 +51,7 @@ vi.mock("../src/drawing/history", () => {
   }
   return {
     readCompositeRect(x: number, y: number, width: number, height: number) {
+      harness.readbacks += 1;
       const data = new Uint8ClampedArray(width * height * 4);
       for (let row = 0; row < height; row += 1) {
         for (let column = 0; column < width; column += 1) {
@@ -75,11 +83,22 @@ vi.mock("../src/drawing/history", () => {
       }
       return ["0:0"];
     },
-    pushDrawingHistory(label: string, before: Map<string, Blob | null>, after: Map<string, Blob | null>) {
-      harness.commands.push({ label, do() { void restore(after); }, undo() { void restore(before); } });
+    pushDrawingHistory(
+      label: string,
+      before: Map<string, Blob | null>,
+      after: Map<string, Blob | null>,
+      extra?: { undo(): void; redo(): void },
+    ) {
+      harness.commands.push({
+        label,
+        do() { void restore(after); extra?.redo(); },
+        undo() { void restore(before); extra?.undo(); },
+      });
     },
   };
 });
+
+vi.mock("../src/drawing/gpu/glEngine", () => ({ drawingGpu: () => harness.gpu }));
 
 vi.mock("../src/history/history.svelte", () => ({
   record(command: { label: string; undo(): void; do(): void }) {
@@ -155,6 +174,12 @@ function testCanvasDocument(): Document {
               return new TestImageData(new Uint8ClampedArray(width * height * 4), width, height);
             },
             putImageData(image: TestImageData) { canvas.pixels = new Uint8ClampedArray(image.data); },
+            beginPath() {},
+            moveTo() {},
+            lineTo() {},
+            closePath() {},
+            clip() {},
+            drawImage() {},
           };
         },
       };
@@ -167,10 +192,14 @@ describe("drawing selection", () => {
   beforeEach(() => {
     harness.pixels = new Uint8ClampedArray(8 * 8 * 4);
     harness.commands.length = 0;
+    harness.snapshots = 0;
+    harness.readbacks = 0;
+    harness.gpu = null;
     drawingSelection.area = null;
     drawingSelection.preview = null;
     drawingSelection.floating = null;
     drawingSelection.floatingAt = null;
+    drawingSelection.fastPreview = null;
     drawingTools.active = "brush";
     vi.stubGlobal("document", testCanvasDocument());
     vi.stubGlobal("ImageData", TestImageData);
@@ -218,6 +247,7 @@ describe("drawing selection", () => {
     handler.up(pointer(102, 102, 120, 120));
     expect(drawingSelection.area).not.toBe(previousArea);
     expect(drawingSelection.area?.x).toBeGreaterThan(previousArea.x + previousArea.width);
+    expect(harness.commands.map(({ label }) => label)).toEqual(["Create selection", "Replace selection"]);
   });
 
   it("replaces a selection when a new gesture starts in its interior", () => {
@@ -264,6 +294,7 @@ describe("drawing selection", () => {
     putPixel(harness.pixels, 8, 5, 0, [0, 0, 255, 255]);
     const handler = selectRectangle()!;
     expect(drawingSelection.area).toMatchObject({ x: 0, y: 0, width: 4, height: 2 });
+    harness.commands.length = 0;
 
     handler.down(pointer(1.5, 0.5, 100, 10));
     handler.move(pointer(3.5, 0.5, 104, 10));
@@ -275,12 +306,17 @@ describe("drawing selection", () => {
     expect(pixel(harness.pixels, 8, 5, 0)).toEqual([0, 0, 255, 255]);
     expect(harness.commands).toHaveLength(1);
     expect(harness.commands[0]?.label).toBe("Move selection");
+    expect(drawingSelection.area?.x).toBe(2);
 
     harness.commands[0]?.undo();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(pixel(harness.pixels, 8, 1, 0)).toEqual([255, 0, 0, 255]);
     expect(pixel(harness.pixels, 8, 3, 0)).toEqual([0, 0, 0, 0]);
     expect(pixel(harness.pixels, 8, 5, 0)).toEqual([0, 0, 255, 255]);
+    expect(drawingSelection.area?.x).toBe(0);
+    harness.commands[0]?.do();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(drawingSelection.area?.x).toBe(2);
   });
 
   it("starts a border move through the shared handler with one undo", async () => {
@@ -289,6 +325,7 @@ describe("drawing selection", () => {
     const start = pointer(1.5, 0.5, 100, 10);
     expect(isDrawingSelectionBorder(start)).toBe(true);
     expect(beginSelectionBorderMove(start)).toBe(true);
+    harness.commands.length = 0;
 
     selectionMoveHandler.move(pointer(3.5, 0.5, 104, 10));
     selectionMoveHandler.up(pointer(3.5, 0.5, 104, 10));
@@ -301,7 +338,7 @@ describe("drawing selection", () => {
 
   it("moves from anywhere inside a selection with Ctrl and records one undo action", async () => {
     putPixel(harness.pixels, 8, 1, 0, [255, 0, 0, 255]);
-    drawingTools.active = "select-rect";
+    drawingTools.active = "brush";
     drawingSelection.area = buildSelectionArea("select-rect", [{ x: 0, y: 0 }, { x: 8, y: 8 }]);
 
     const interior = pointer(4, 4, 100, 10, true, false, 10);
@@ -322,6 +359,7 @@ describe("drawing selection", () => {
     putPixel(harness.pixels, 8, 1, 0, [255, 0, 0, 255]);
     drawingTools.active = "select-rect";
     const handler = selectRectangle()!;
+    harness.commands.length = 0;
 
     handler.down(pointer(1.5, 0.5, 100, 10, true, true));
     handler.move(pointer(3.5, 0.5, 104, 10, true, true));
@@ -332,16 +370,22 @@ describe("drawing selection", () => {
     expect(pixel(harness.pixels, 8, 3, 0)).toEqual([255, 0, 0, 255]);
     expect(harness.commands).toHaveLength(1);
     expect(harness.commands[0]?.label).toBe("Copy selection");
+    expect(drawingSelection.area?.x).toBe(2);
 
     harness.commands[0]?.undo();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(pixel(harness.pixels, 8, 1, 0)).toEqual([255, 0, 0, 255]);
     expect(pixel(harness.pixels, 8, 3, 0)).toEqual([0, 0, 0, 0]);
+    expect(drawingSelection.area?.x).toBe(0);
+    harness.commands[0]?.do();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(drawingSelection.area?.x).toBe(2);
   });
 
   it("deletes and pastes through one history entry apiece", async () => {
     putPixel(harness.pixels, 8, 1, 0, [255, 0, 0, 255]);
     const handler = selectRectangle()!;
+    harness.commands.length = 0;
 
     handler.key?.(key("KeyC", "c", true));
     handler.move(pointer(4.5, 2.5, 140, 40));
@@ -357,17 +401,82 @@ describe("drawing selection", () => {
     expect(pixel(harness.pixels, 8, 1, 0)).toEqual([0, 0, 0, 0]);
     expect(drawingSelection.area).not.toBeNull();
     expect(harness.commands.map(({ label }) => label)).toEqual(["Paste selection", "Delete selection"]);
+    harness.commands[1]?.undo();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(pixel(harness.pixels, 8, 1, 0)).toEqual([255, 0, 0, 255]);
+    expect(drawingSelection.area).not.toBeNull();
   });
 
-  it("clears the selection UI without changing pixels", () => {
+  it("records create, replace, and clear as selection-only undo steps", () => {
     putPixel(harness.pixels, 8, 1, 0, [255, 0, 0, 255]);
-    selectRectangle();
+    const handler = selectRectangle();
+    expect(harness.commands.map(({ label }) => label)).toEqual(["Create selection"]);
+    expect(harness.snapshots).toBe(0);
+    const first = drawingSelection.area!;
+
+    const replacementStart = pointer(100, 100, 100, 100);
+    handler.down(replacementStart);
+    handler.move(pointer(102, 102, 120, 120));
+    handler.up(pointer(102, 102, 120, 120));
+    expect(harness.commands.map(({ label }) => label)).toEqual(["Create selection", "Replace selection"]);
+    expect(drawingSelection.area?.x).toBeGreaterThan(first.x);
+    harness.commands[1]?.undo();
+    expect(drawingSelection.area?.x).toBe(first.x);
+    harness.commands[1]?.do();
+    expect(drawingSelection.area?.x).toBeGreaterThan(first.x);
+
     const before = new Uint8ClampedArray(harness.pixels);
+    const clearCommand = harness.commands.length;
 
     clearDrawingSelection();
 
     expect(drawingSelection.area).toBeNull();
     expect(harness.pixels).toEqual(before);
-    expect(harness.commands).toHaveLength(0);
+    expect(harness.commands[clearCommand]?.label).toBe("Clear selection");
+    expect(harness.snapshots).toBe(0);
+    harness.commands[clearCommand]?.undo();
+    expect(drawingSelection.area?.x).toBeGreaterThan(first.x);
+    harness.commands[clearCommand]?.do();
+    expect(drawingSelection.area).toBeNull();
+
+    selectRectangle();
+    harness.commands.length = 0;
+    expect(handleDrawingSelectionKey(key("Escape", "Escape"))).toBe(true);
+    expect(drawingSelection.area).toBeNull();
+    expect(harness.commands.map(({ label }) => label)).toEqual(["Clear selection"]);
+    harness.commands[0]?.undo();
+    expect(drawingSelection.area).not.toBeNull();
+  });
+
+  it("routes Ctrl-drag on drawing tools to a temporary rectangle without changing the tool", () => {
+    const drawEvent = pointer(0.5, 0.5, 10, 10, true);
+    expect(shouldStartQuickSelection("brush", drawEvent)).toBe(true);
+    expect(shouldStartQuickSelection("eraser", drawEvent)).toBe(true);
+    expect(shouldStartQuickSelection("fill", drawEvent)).toBe(true);
+    expect(shouldStartQuickSelection("select-rect", drawEvent)).toBe(false);
+    expect(shouldStartQuickSelection("brush", pointer(0.5, 0.5, 10, 10))).toBe(false);
+    expect(shouldStartQuickSelection("brush", drawEvent, true)).toBe(false);
+
+    quickSelectionHandler.down(drawEvent);
+    quickSelectionHandler.move(pointer(3.5, 2.5, 30, 20, true));
+    quickSelectionHandler.up(pointer(3.5, 2.5, 30, 20, true));
+
+    expect(drawingTools.active).toBe("brush");
+    expect(drawingSelection.area).toMatchObject({ x: 0, y: 0, width: 4, height: 3, tool: "select-rect" });
+    expect(harness.commands.map(({ label }) => label)).toEqual(["Create selection"]);
+  });
+
+  it("shows a GPU-copied selection at its first move without readback", () => {
+    const gpuCanvas = { width: 16, height: 16 } as HTMLCanvasElement;
+    harness.gpu = { canvas: gpuCanvas, isLost: false };
+    drawingSelection.area = buildSelectionArea("select-rect", [{ x: 0, y: 0 }, { x: 4, y: 2 }]);
+    expect(beginSelectionBorderMove(pointer(1.5, 0.5, 10, 10))).toBe(true);
+
+    selectionMoveHandler.move(pointer(3.5, 0.5, 14, 10));
+
+    expect(drawingSelection.floatingAt).toMatchObject({ x: 2, y: 0 });
+    expect(drawingSelection.fastPreview).toMatchObject({ offsetX: 4, offsetY: 0, hideSource: true });
+    expect(harness.readbacks).toBe(0);
+    expect(harness.snapshots).toBe(0);
   });
 });

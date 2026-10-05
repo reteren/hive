@@ -13,7 +13,9 @@ import {
   clearDrawingSelection,
   handleDrawingSelectionKey,
   isDrawingSelectionBorder,
+  quickSelectionHandler,
   selectionMoveHandler,
+  shouldStartQuickSelection,
 } from "./selection.svelte";
 
 export type DrawShortcut =
@@ -162,9 +164,13 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
       // The pointer may already have been cancelled by the platform.
     }
     const point = pointerEvent(event);
-    if (beginSelectionBorderMove(point)) {
+    const movedSelection = beginSelectionBorderMove(point);
+    if (movedSelection) {
       gestureHandler = selectionMoveHandler;
       setSelectionMoveHover(true);
+    } else if (shouldStartQuickSelection(drawingTools.active, point, movedSelection)) {
+      gestureHandler = quickSelectionHandler;
+      gestureHandler.down(point);
     }
     else {
       gestureHandler = handler;
@@ -304,13 +310,22 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
     cancelEyedropper();
   }
 
+  function onAltKeyUp(event: KeyboardEvent): void {
+    if (tool.active !== "draw") return;
+    if (event.key === "Alt" || event.code === "AltLeft" || event.code === "AltRight") event.preventDefault();
+  }
+
   function onKeyDown(event: KeyboardEvent): void {
     if (tool.active !== "draw") {
       deactivateDrawInput();
       return;
     }
-    // Leave the Alt modifier alone for OverviewLayer; drawing shortcuts must not consume it.
-    if (event.key === "Alt" || event.code === "AltLeft" || event.code === "AltRight") return;
+    // A lone Alt press puts the Windows window into menu mode (the pointer stutters and the system
+    // cursor flashes). The Alt overview is off in draw mode, so the key is swallowed here.
+    if (event.key === "Alt" || event.code === "AltLeft" || event.code === "AltRight") {
+      event.preventDefault();
+      return;
+    }
     const handler = refreshHandler();
     if (event.code !== "Escape" && (isDrawOverlayControl(event.target) || isTextEditingTarget(event.target) ||
       isTextEditingTarget(document.activeElement))) return;
@@ -363,6 +378,7 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
   boardElement.addEventListener("contextmenu", onContextMenu, true);
   boardElement.addEventListener("wheel", onWheel, { capture: true, passive: false });
   window.addEventListener("keydown", onKeyDown, true);
+  window.addEventListener("keyup", onAltKeyUp, true);
   window.addEventListener("blur", onWindowBlur);
   selectedTool = null;
   selectedHandler = undefined;
@@ -386,6 +402,7 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
     boardElement.removeEventListener("contextmenu", onContextMenu, true);
     boardElement.removeEventListener("wheel", onWheel, true);
     window.removeEventListener("keydown", onKeyDown, true);
+    window.removeEventListener("keyup", onAltKeyUp, true);
     window.removeEventListener("blur", onWindowBlur);
   };
 }
