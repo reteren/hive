@@ -1298,6 +1298,36 @@ mod tests {
     }
 
     #[test]
+    fn restores_a_hash_named_snapshot_after_live_attachments_are_migrated() {
+        let root = project("legacy-hash-after-migration");
+        let bytes = b"legacy image bytes";
+        let old_file = write_attachment(&root, bytes);
+        fs::write(
+            root.join("board.json"),
+            format!(r#"{{"version":1,"notes":[{{"id":"note-1","name":"First","file":"First.md","x":1,"y":2,"width":30,"height":null,"image":{{"file":"{old_file}","name":"photo.png","mime":"image/png","size":18,"naturalWidth":1,"naturalHeight":1}}}}],"links":[],"zones":[]}}"#),
+        )
+        .expect("write legacy board index");
+        let snapshot = create_backup_at(&root).expect("create pre-migration snapshot");
+
+        crate::attachments::migrate_attachments(&root).expect("migrate live attachments");
+        assert!(root.join("attachments/photo.png").exists());
+        restore_snapshot_at(&root, &root.join(".hive/backups").join(&snapshot.id))
+            .expect("restore pre-migration snapshot");
+
+        assert_eq!(
+            fs::read(root.join("attachments").join(&old_file)).expect("restored hash attachment"),
+            bytes
+        );
+        crate::attachments::migrate_attachments(&root).expect("migrate restored snapshot");
+        assert!(!root.join("attachments").join(&old_file).exists());
+        assert_eq!(
+            fs::read(root.join("attachments/photo.png")).expect("restored readable attachment"),
+            bytes
+        );
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
     fn drawing_tiles_are_fingerprinted_backed_up_restored_and_health_checked() {
         let root = project("drawing");
         let drawing = root.join("drawing");

@@ -696,11 +696,7 @@ fn attachment_name_exists_case_insensitive(directory: &Path, name: &str) -> Resu
     for entry in entries {
         let entry =
             entry.map_err(|error| format!("could not inspect attachments folder: {error}"))?;
-        if entry
-            .file_name()
-            .to_string_lossy()
-            .eq_ignore_ascii_case(name)
-        {
+        if entry.file_name().to_string_lossy().to_lowercase() == name.to_lowercase() {
             return Ok(true);
         }
     }
@@ -1282,6 +1278,29 @@ mod tests {
                 .expect("list attachments")
                 .count(),
             2
+        );
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn generic_import_avoids_unicode_case_collisions() {
+        let root = test_root();
+        fs::create_dir_all(root.join("attachments")).expect("create attachments folder");
+        fs::write(root.join("attachments/ПОРТРЕТ.png"), b"existing image")
+            .expect("write existing attachment");
+        let source = root.join("портрет.png");
+        fs::write(&source, b"new image").expect("write source file");
+
+        let imported = import_source_path_at(&root, &source).expect("import colliding source");
+
+        assert_eq!(imported.file, "портрет (2).png");
+        assert_eq!(
+            fs::read(root.join("attachments/ПОРТРЕТ.png")).expect("read existing attachment"),
+            b"existing image"
+        );
+        assert_eq!(
+            fs::read(root.join("attachments").join(&imported.file)).expect("read new attachment"),
+            b"new image"
         );
         fs::remove_dir_all(root).expect("remove fixture");
     }

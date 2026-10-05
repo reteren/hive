@@ -151,17 +151,20 @@ pub(crate) fn migrate_attachments(root: &Path) -> Result<(), String> {
         }
     }
 
+    let mut pending_deletes = false;
     for old in journal.mappings.keys() {
         let path = attachments_dir.join(old);
         match fs::remove_file(&path) {
             Ok(()) => {}
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => {
-                return Err(format!(
-                    "could not finish migrating attachment {old}: {error}"
-                ))
-            }
+            // The new copy is already installed and every reference rewrite succeeded. A player
+            // may still hold the old file without delete sharing, so retry cleanup on the next
+            // open while allowing this project to open with its valid new references.
+            Err(_) => pending_deletes = true,
         }
+    }
+    if pending_deletes {
+        return Ok(());
     }
     fs::remove_file(&journal_path)
         .map_err(|error| format!("could not clear attachment migration journal: {error}"))?;
@@ -387,7 +390,7 @@ fn find_case_insensitive(directory: &Path, filename: &str) -> Result<Option<Stri
         let entry =
             entry.map_err(|error| format!("could not inspect attachments folder: {error}"))?;
         let name = entry.file_name().to_string_lossy().into_owned();
-        if name.eq_ignore_ascii_case(filename) {
+        if name.to_lowercase() == filename.to_lowercase() {
             return Ok(Some(name));
         }
     }
@@ -458,7 +461,16 @@ fn install_copy(source: &Path, target: &Path) -> Result<(), String> {
         drop(output);
         match fs::hard_link(&temp, target) {
             Ok(()) => Ok(()),
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                if is_regular_file(target)? && files_equal(source, target)? {
+                    Ok(())
+                } else {
+                    Err(format!(
+                        "readable attachment target {} conflicts with the old file",
+                        target.display()
+                    ))
+                }
+            }
             Err(error) => Err(format!("could not install readable attachment: {error}")),
         }
     })();
@@ -522,9 +534,6 @@ fn rewrite_inline_tokens(text: &str, mappings: &HashMap<String, String>) -> Stri
             output.push_str(token);
         }
         cursor = end;
-        if cursor == token_start {
-            cursor += 1;
-        }
     }
     output.push_str(&text[cursor..]);
     output
@@ -622,7 +631,7 @@ fn replace_file(source: &Path, destination: &Path) -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{migrate_attachments, MigrationJournal};
+    use super::{install_copy, migrate_attachments, MigrationJournal};
     use std::collections::HashMap;
     use std::fs;
     use std::path::PathBuf;
@@ -709,4 +718,103 @@ mod tests {
         assert!(!root.join(".hive/attachment-migration.json").exists());
         fs::remove_dir_all(root).unwrap();
     }
+
+    #[test]
+    fn preserves_empty_inline_tokens_while_rewriting_legacy_references() {
+        let root = project("empty-inline-token");
+        let old = format!("{}.png", "c".repeat(64));
+        fs::write(root.join("attachments").join(&old), b"image").unwrap();
+        fs::write(
+            root.join("board.json"),
+            format!(r#"{{"notes":[{{"type":"image","name":"photo.png","image":{{"file":"{old}","name":"photo.png","mime":"image/png","size":5,"naturalWidth":1,"naturalHeight":1}}}}],"description":"literal att:"}}"#),
+        )
+        .unwrap();
+        let markdown = format!("![photo](att:{old})\nraw att:\n![empty](att:)\n");
+        fs::write(root.join("notes/one.md"), &markdown).unwrap();
+
+        migrate_attachments(&root).unwrap();
+
+        let index = fs::read_to_string(root.join("board.json")).unwrap();
+        assert!(index.contains("literal att:"));
+        assert!(fs::read_to_string(root.join("notes/one.md"))
+            .unwrap()
+            .contains("raw att:\n![empty](att:)\n"));
+        assert!(!root.join("attachments").join(old).exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn allocates_a_suffix_for_unicode_case_collisions() {
+        let root = project("unicode-case-collision");
+        let old = format!("{}.png", "e".repeat(64));
+        fs::write(root.join("attachments").join(&old), b"migrated image").unwrap();
+        fs::write(root.join("attachments/ПОРТРЕТ.png"), b"existing image").unwrap();
+        fs::write(
+            root.join("board.json"),
+            format!(r#"{{"notes":[{{"type":"image","image":{{"file":"{old}","name":"портрет.png","mime":"image/png","size":14,"naturalWidth":1,"naturalHeight":1}}}}]}}"#),
+        )
+        .unwrap();
+
+        migrate_attachments(&root).unwrap();
+
+        let index = fs::read_to_string(root.join("board.json")).unwrap();
+        assert!(index.contains("портрет (2).png"));
+        assert_eq!(
+            fs::read(root.join("attachments/портрет (2).png")).unwrap(),
+            b"migrated image"
+        );
+        assert_eq!(
+            fs::read(root.join("attachments/ПОРТРЕТ.png")).unwrap(),
+            b"existing image"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn refuses_a_readable_target_that_appears_with_different_contents() {
+        let root = project("target-race");
+        let source = root.join("attachments/old-hash.png");
+        let target = root.join("attachments/photo.png");
+        fs::write(&source, b"old attachment bytes").unwrap();
+        fs::write(&target, b"different target bytes").unwrap();
+
+        assert!(install_copy(&source, &target).is_err());
+        assert_eq!(fs::read(&source).unwrap(), b"old attachment bytes");
+        assert_eq!(fs::read(&target).unwrap(), b"different target bytes");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn keeps_journal_and_opens_when_old_attachment_cannot_be_deleted_yet() {
+        use std::fs::OpenOptions;
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let root = project("locked-old-file");
+        let old = format!("{}.mp4", "d".repeat(64));
+        let old_path = root.join("attachments").join(&old);
+        fs::write(&old_path, b"video").unwrap();
+        fs::write(
+            root.join("board.json"),
+            format!(r#"{{"notes":[{{"kind":"video","media":{{"file":"{old}","name":"clip.mp4","mime":"video/mp4","size":5,"kind":"video"}}}}]}}"#),
+        )
+        .unwrap();
+        let lock = OpenOptions::new()
+            .read(true)
+            .share_mode(0x1) // FILE_SHARE_READ, deliberately excluding FILE_SHARE_DELETE
+            .open(&old_path)
+            .unwrap();
+
+        migrate_attachments(&root).unwrap();
+        assert!(old_path.exists());
+        assert!(root.join("attachments/clip.mp4").exists());
+        assert!(root.join(".hive/attachment-migration.json").exists());
+
+        drop(lock);
+        migrate_attachments(&root).unwrap();
+        assert!(!old_path.exists());
+        assert!(!root.join(".hive/attachment-migration.json").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
 }
+
