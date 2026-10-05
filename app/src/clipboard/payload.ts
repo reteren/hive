@@ -28,6 +28,7 @@ import { normalizePdfZoom, parseMediaRef } from "../formats/formatLogic";
 import { copyAudioRecordings, parseAudioRecordings } from "../audio/recordingData";
 import { parseYouTubeRef } from "../youtube/logic";
 import { parseSource, type SourceData } from "../model/nodeData";
+import { parseNoteGlow } from "../notes/noteGlowLogic";
 
 export const HIVE_CLIPBOARD_MARKER = "hive/nodes";
 export const HIVE_CLIPBOARD_VERSION = 3;
@@ -55,6 +56,8 @@ export interface ClipboardNode {
   purposes: PurposeKind[];
   moods: MoodKind[];
   color?: string | null;
+  accentColor?: string;
+  glow?: Note["glow"];
   zoneId?: string | null;
   headerHidden?: boolean;
   frameHidden?: true;
@@ -112,7 +115,7 @@ export function serializeNotes(
     marker: HIVE_CLIPBOARD_MARKER,
     version: HIVE_CLIPBOARD_VERSION,
     nodes: notes.map(({
-      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, time, message, embedSections, importance, purposes, moods, color, zoneId, headerHidden, frameHidden, image, opacity, media, pdfZoom, recordings, youtube, source, flipX, flipY, gifStopped,
+      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, time, message, embedSections, importance, purposes, moods, color, accentColor, glow, zoneId, headerHidden, frameHidden, image, opacity, media, pdfZoom, recordings, youtube, source, flipX, flipY, gifStopped,
     }) => ({
       sourceId: id,
       type,
@@ -132,6 +135,8 @@ export function serializeNotes(
       purposes: [...new Set(purposes ?? [])],
       moods: [...new Set(moods ?? [])],
       color: color ?? null,
+      ...(accentColor ? { accentColor } : {}),
+      ...(glow ? { glow: { ...glow } } : {}),
       zoneId: zoneId ?? null,
       ...(headerHidden ? { headerHidden: true } : {}),
       ...((type === "youtube" || type === "video") && frameHidden === true ? { frameHidden: true } : {}),
@@ -388,6 +393,10 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     ? null
     : typeof value.color === "string" ? normalizeBeaconColor(value.color) : null;
   if (value.color !== undefined && value.color !== null && color === null) return null;
+  const accentColor = value.accentColor === undefined ? undefined
+    : typeof value.accentColor === "string" ? normalizeBeaconColor(value.accentColor) ?? undefined : undefined;
+  if (value.accentColor !== undefined && !accentColor) return null;
+  const glow = parseNoteGlow(value.glow);
   const zoneId = value.zoneId === undefined || value.zoneId === null
     ? null
     : typeof value.zoneId === "string" && value.zoneId.trim() ? value.zoneId : null;
@@ -430,6 +439,8 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     purposes,
     moods,
     color,
+    ...(accentColor ? { accentColor } : {}),
+    ...(glow ? { glow } : {}),
     zoneId,
     ...(value.headerHidden === true ? { headerHidden: true } : {}),
     ...((value.type === "youtube" || value.type === "video") && value.frameHidden === true ? { frameHidden: true } : {}),

@@ -273,6 +273,7 @@ function selectIds(ids: readonly string[], zoneIds: readonly string[] = []): voi
 type CopySource = Omit<Pick<Note,
   "type" | "name" | "text" | "x" | "y" | "width" | "height" | "createdAt" |
   "task" | "taskMemory" | "importance" | "purposes" | "embedSections" | "headerHidden" | "frameHidden" | "image" | "opacity" | "media" | "pdfZoom" | "recordings" | "youtube" | "source" | "flipX" | "flipY" | "gifStopped"
+  | "glow" | "accentColor"
 >, "time" | "message"> & {
   time?: Note["time"] | null;
   message?: Note["message"] | null;
@@ -344,6 +345,8 @@ function createCopies(
       ...(note.pdfZoom !== undefined ? { pdfZoom: note.pdfZoom } : {}),
       ...(note.recordings ? { recordings: copyAudioRecordings(note.recordings) } : {}),
       ...(note.youtube ? { youtube: { ...note.youtube } } : {}),
+      ...(note.glow ? { glow: { ...note.glow } } : {}),
+      ...(note.accentColor ? { accentColor: note.accentColor } : {}),
       ...(note.type === "source" && note.source ? { source: { ...note.source } } : {}),
       ...(note.flipX === true ? { flipX: true as const } : {}),
       ...(note.flipY === true ? { flipY: true as const } : {}),

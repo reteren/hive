@@ -13,6 +13,7 @@ import { normalizePdfZoom, parseMediaRef } from "../formats/formatLogic";
 import { copyAudioRecordings, parseAudioRecordings } from "../audio/recordingData";
 import { parseYouTubeRef } from "../youtube/logic";
 import { copyTrashEntry } from "./trash";
+import { parseNoteGlow } from "../notes/noteGlowLogic";
 
 const NOTE_KINDS = new Set<NoteKind>([
   "note", "pro", "con", "importance", "purpose", "mood", "beacon",
@@ -127,6 +128,7 @@ function parseTrashNote(value: unknown): Note | null {
   const pdfZoom = value.pdfZoom === undefined ? undefined : normalizePdfZoom(value.pdfZoom);
   const recordings = value.recordings === undefined ? undefined : parseAudioRecordings(value.recordings);
   const youtube = value.youtube === undefined ? null : parseYouTubeRef(value.youtube) ?? null;
+  const glow = parseNoteGlow(value.glow);
   if (task === false || taskMemory === false ||
     value.time !== undefined && !time ||
     value.message !== undefined && !message ||
@@ -174,6 +176,7 @@ function parseTrashNote(value: unknown): Note | null {
     ...(value.type === "pdf" && pdfZoom !== undefined ? { pdfZoom } : {}),
     ...(recordings ? { recordings: copyAudioRecordings(recordings) } : {}),
     ...(youtube ? { youtube } : {}),
+    ...(glow ? { glow } : {}),
     ...((value.type === "youtube" || value.type === "video") && value.frameHidden === true ? { frameHidden: true } : {}),
     ...(value.type === "image" && value.flipX === true ? { flipX: true } : {}),
     ...(value.type === "image" && value.flipY === true ? { flipY: true } : {}),

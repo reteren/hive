@@ -88,6 +88,13 @@ export interface TaskState {
   doneAt: number | null;
 }
 
+/** Optional static outer glow. Size is measured in board units and scales with the node zoom. */
+export interface NoteGlow {
+  color: string;
+  opacity: number;
+  size: number;
+}
+
 /**
  * A plain board note (R1). Geometry is in board units (u); x/y is the top-left corner.
  * The Markdown body lives in `text` and is saved as its own .md file named after `name`.
@@ -135,6 +142,8 @@ export interface Note {
   color?: string;
   /** Inner colour of a node, hex "#rrggbb" (Change accent color): the body behind the content. */
   accentColor?: string;
+  /** Static outer glow; size is the box-shadow blur radius in board units. */
+  glow?: NoteGlow;
   /** Zone this object belongs to (R4.3); kept to resolve equal-area ties in favour of the previous zone (H19). */
   zoneId?: string | null;
   /** Progress / Statistics (R5): what the node counts. */

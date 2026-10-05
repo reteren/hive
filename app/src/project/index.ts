@@ -35,6 +35,7 @@ import { normalizeImageOpacity, parseImageRef } from "../images/imageLogic";
 import { normalizePdfZoom, parseMediaRef } from "../formats/formatLogic";
 import { copyAudioRecordings, parseAudioRecordings } from "../audio/recordingData";
 import { parseYouTubeRef } from "../youtube/logic";
+import { copyNoteGlow, parseNoteGlow } from "../notes/noteGlowLogic";
 
 export interface IndexedNote {
   id: string;
@@ -56,6 +57,7 @@ export interface IndexedNote {
   moods: MoodKind[];
   color?: string | null;
   accentColor?: string;
+  glow?: Note["glow"];
   zoneId?: string | null;
   scope?: NodeScope;
   tiers?: TierRow[];
@@ -233,6 +235,7 @@ export function serializeProjectIndex(
       moods: [...new Set(note.moods ?? [])],
       color: note.type === "beacon" ? normalizeBeaconColor(note.color ?? "") ?? beaconPaletteColor(0) : note.color ?? null,
       ...(note.type !== "beacon" && note.accentColor ? { accentColor: note.accentColor } : {}),
+      glow: copyNoteGlow(note.glow),
       zoneId: note.zoneId && validZoneIds.has(note.zoneId) ? note.zoneId : null,
       ...(note.scope ? { scope: note.scope } : {}),
       ...(note.tiers ? { tiers: note.tiers } : {}),
@@ -316,6 +319,7 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       ...(entry.moods.length > 0 ? { moods: [...entry.moods] } : {}),
       ...(entry.color ? { color: entry.color } : {}),
       ...(entry.accentColor ? { accentColor: entry.accentColor } : {}),
+      ...(entry.glow ? { glow: copyNoteGlow(entry.glow) } : {}),
       ...(entry.zoneId ? { zoneId: entry.zoneId } : {}),
       ...(entry.scope ? { scope: entry.scope } : {}),
       ...(entry.tiers ? { tiers: entry.tiers } : {}),
@@ -552,6 +556,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
   if (value.accentColor !== undefined && accentColor === null) {
     warnings.push(`Invalid accent colour for note ${id}; it was cleared.`);
   }
+  const glow = parseNoteGlow(value.glow);
 
   const parsedMessage = parseMessageData(value.message);
   const message = type === "message" ? parsedMessage ?? defaultMessageData() : value.message === undefined ? undefined : parsedMessage;
@@ -604,6 +609,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
       flipY: type === "image" && value.flipY === true ? true : undefined,
       color: type === "beacon" ? color ?? beaconPaletteColor(0) : color,
       accentColor: accentColor ?? undefined,
+      glow,
       zoneId,
       scope: parseScope(value.scope) ?? undefined,
       tiers: parseTiers(value.tiers) ?? undefined,

@@ -13,31 +13,31 @@
 
 .note-card[data-kind="goal"]:has(.goal-summary[data-gold="true"]) {
   border-color: #e9c94f;
-  box-shadow: 0 3px 12px rgb(0 0 0 / 28%), 0 0 9px rgb(232 194 66 / 32%);
+  box-shadow: var(--note-glow-shadow, 0 0 0 0 transparent), 0 3px 12px rgb(0 0 0 / 28%), 0 0 9px rgb(232 194 66 / 32%);
   animation: goal-gold-shimmer 2.8s ease-in-out infinite;
 }
 
 @keyframes goal-gold-shimmer {
   0%, 100% {
     border-color: #b39238;
-    box-shadow: 0 3px 12px rgb(0 0 0 / 28%), 0 0 7px rgb(216 177 54 / 24%);
+    box-shadow: var(--note-glow-shadow, 0 0 0 0 transparent), 0 3px 12px rgb(0 0 0 / 28%), 0 0 7px rgb(216 177 54 / 24%);
   }
   50% {
     border-color: #ffe47b;
-    box-shadow: 0 3px 12px rgb(0 0 0 / 28%), 0 0 14px rgb(255 217 91 / 48%);
+    box-shadow: var(--note-glow-shadow, 0 0 0 0 transparent), 0 3px 12px rgb(0 0 0 / 28%), 0 0 14px rgb(255 217 91 / 48%);
   }
 }
 
 :root[data-reduce-motion="true"] .note-card[data-kind="goal"]:has(.goal-summary[data-gold="true"]) {
   border-color: #e9c94f;
-  box-shadow: 0 3px 12px rgb(0 0 0 / 28%), 0 0 9px rgb(232 194 66 / 32%);
+  box-shadow: var(--note-glow-shadow, 0 0 0 0 transparent), 0 3px 12px rgb(0 0 0 / 28%), 0 0 9px rgb(232 194 66 / 32%);
   animation: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .note-card[data-kind="goal"]:has(.goal-summary[data-gold="true"]) {
     border-color: #e9c94f;
-    box-shadow: 0 3px 12px rgb(0 0 0 / 28%), 0 0 9px rgb(232 194 66 / 32%);
+    box-shadow: var(--note-glow-shadow, 0 0 0 0 transparent), 0 3px 12px rgb(0 0 0 / 28%), 0 0 9px rgb(232 194 66 / 32%);
     animation: none;
   }
 }

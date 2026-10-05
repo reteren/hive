@@ -12,6 +12,7 @@ import { normalizePdfZoom, parseMediaRef } from "../formats/formatLogic";
 import { copyAudioRecordings, parseAudioRecordings } from "../audio/recordingData";
 import { parseYouTubeRef } from "../youtube/logic";
 import { copyArchivedLink, copyArchivedNote } from "./logic";
+import { copyNoteGlow, parseNoteGlow } from "../notes/noteGlowLogic";
 
 const ARCHIVABLE_KINDS = new Set<NoteKind>([
   "note", "pro", "con", "importance", "purpose", "mood",
@@ -26,6 +27,7 @@ export function copyArchiveEntry(entry: ArchiveEntry): ArchiveEntry {
     archivedAt: entry.archivedAt,
     note: {
       ...copyArchivedNote(entry.note),
+      ...(entry.note.glow ? { glow: copyNoteGlow(entry.note.glow) } : {}),
       ...(entry.note.image ? { image: { ...entry.note.image } } : {}),
       ...(entry.note.media ? { media: { ...entry.note.media } } : {}),
       ...(entry.note.recordings ? { recordings: copyAudioRecordings(entry.note.recordings) } : {}),
@@ -104,6 +106,7 @@ function parseArchivedNote(value: unknown): Note | null {
   const pdfZoom = value.pdfZoom === undefined ? undefined : normalizePdfZoom(value.pdfZoom);
   const recordings = value.recordings === undefined ? undefined : parseAudioRecordings(value.recordings);
   const youtube = value.youtube === undefined ? null : parseYouTubeRef(value.youtube) ?? null;
+  const glow = parseNoteGlow(value.glow);
   if (task === false || taskMemory === false) return null;
   if (value.image !== undefined && !image || value.type === "image" && (!image || !finite(value.height) || value.height <= 0) ||
     value.media !== undefined && !media || value.type === "pdf" && media?.kind !== "pdf" || value.type === "format" && media?.kind !== "text" || value.type === "audio" && media?.kind !== "audio" && !recordings || value.type === "video" && media?.kind !== "video" ||
@@ -151,6 +154,7 @@ function parseArchivedNote(value: unknown): Note | null {
     ...(value.type === "pdf" && pdfZoom !== undefined ? { pdfZoom } : {}),
     ...(recordings ? { recordings: copyAudioRecordings(recordings) } : {}),
     ...(youtube ? { youtube } : {}),
+    ...(glow ? { glow } : {}),
     ...((value.type === "youtube" || value.type === "video") && value.frameHidden === true ? { frameHidden: true } : {}),
     ...(value.type === "image" && value.flipX === true ? { flipX: true } : {}),
     ...(value.type === "image" && value.flipY === true ? { flipY: true } : {}),

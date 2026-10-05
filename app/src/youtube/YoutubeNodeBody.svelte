@@ -405,6 +405,9 @@
     background: transparent;
     box-shadow: none;
   }
+  :global(.note-card:has(.youtube-node-body[data-frame-hidden="true"])[data-note-glow="true"]) {
+    box-shadow: var(--note-glow-shadow);
+  }
   :global(.note-card:has(.youtube-node-body[data-frame-hidden="true"]) > .hidden-note-header) { display: none; }
   :global(.note-card:has(.youtube-node-body[data-frame-hidden="true"]) > .note-frame) {
     display: block;

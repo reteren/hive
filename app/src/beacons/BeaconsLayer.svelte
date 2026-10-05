@@ -7,6 +7,7 @@
   import { PX_PER_UNIT } from "../board/cameraMath";
   import { BEACON_SIZE, normalizeNoteScale } from "../model/note";
   import { BEACON_PALETTE } from "./beaconPalette";
+  import { noteGlowShadow } from "../notes/noteGlowLogic";
   import { beaconEditor, closeBeaconEditor, openBeaconEditor, recolorBeacon, renameBeacon } from "./beaconActions.svelte";
   import { isDimmed } from "./focus.svelte";
   import { isMarked } from "./marks.svelte";
@@ -97,6 +98,7 @@
           data-note-id={id}
           data-kind="beacon"
           data-note-scale={scale === 1 ? undefined : scale}
+          data-note-glow={note.glow ? "true" : undefined}
           data-dimmed={isDimmed(id)}
           data-member-zone-id={memberZone?.id}
           style:left={`${note.x * PX_PER_UNIT}px`}
@@ -113,6 +115,7 @@
             aria-label={`Beacon ${note.name}${memberZone ? `, Zone: ${memberZone.name}` : ""}`}
             class:in-zone={Boolean(memberZone)}
             style:--beacon-color={note.color ?? BEACON_PALETTE[0]}
+            style:--note-glow-shadow={note.glow ? noteGlowShadow(note.glow) : undefined}
             style:--zone-color={memberZone?.color ?? "transparent"}
             ondblclick={(event) => { event.preventDefault(); event.stopPropagation(); openBeaconEditor(id, "rename"); }}
           ></button>

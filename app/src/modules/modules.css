@@ -1,25 +1,25 @@
 .note-card[data-importance="basic"] {
   border-width: 4px;
   border-color: #bfc2c7;
-  box-shadow: 0 3px 12px rgb(0 0 0 / 28%), 0 0 7px rgb(214 214 214 / 12%);
+  box-shadow: var(--note-glow-shadow, 0 0 0 0 transparent), 0 3px 12px rgb(0 0 0 / 28%), 0 0 7px rgb(214 214 214 / 12%);
 }
 
 .note-card[data-importance="medium"] {
   border-width: 4px;
   border-color: #c5a53b;
-  box-shadow: 0 3px 12px rgb(0 0 0 / 28%), 0 0 8px rgb(237 200 77 / 16%);
+  box-shadow: var(--note-glow-shadow, 0 0 0 0 transparent), 0 3px 12px rgb(0 0 0 / 28%), 0 0 8px rgb(237 200 77 / 16%);
 }
 
 .note-card[data-importance="important"] {
   border-width: 4px;
   border-color: #bd4d4d;
-  box-shadow: 0 3px 12px rgb(0 0 0 / 28%), 0 0 9px rgb(224 91 91 / 19%);
+  box-shadow: var(--note-glow-shadow, 0 0 0 0 transparent), 0 3px 12px rgb(0 0 0 / 28%), 0 0 9px rgb(224 91 91 / 19%);
 }
 
 .note-card[data-importance="immediately"] {
   border-width: 4px;
   border-color: #8764b7;
-  box-shadow: 0 3px 12px rgb(0 0 0 / 28%), 0 0 9px rgb(166 123 227 / 18%);
+  box-shadow: var(--note-glow-shadow, 0 0 0 0 transparent), 0 3px 12px rgb(0 0 0 / 28%), 0 0 9px rgb(166 123 227 / 18%);
 }
 
 .note-card[data-importance="absolute"] {
@@ -35,7 +35,7 @@
       #e78b91 240px) border-box;
   background-size: 100% 100%, 240px 100%;
   animation: importance-rainbow-flow 8s linear infinite;
-  box-shadow: 0 3px 12px rgb(0 0 0 / 28%), 0 0 9px rgb(176 139 220 / 16%);
+  box-shadow: var(--note-glow-shadow, 0 0 0 0 transparent), 0 3px 12px rgb(0 0 0 / 28%), 0 0 9px rgb(176 139 220 / 16%);
 }
 
 @keyframes importance-rainbow-flow {
@@ -376,7 +376,7 @@
     var(--custom-mark-gradient) border-box;
   background-size: 100% 100%, 100% 100%;
   animation: none;
-  box-shadow: 0 3px 12px rgb(0 0 0 / 28%), 0 0 8px rgb(181 155 210 / 14%);
+  box-shadow: var(--note-glow-shadow, 0 0 0 0 transparent), 0 3px 12px rgb(0 0 0 / 28%), 0 0 8px rgb(181 155 210 / 14%);
 }
 
 .note-card[data-custom-mark-frame="true"][data-custom-mark-animate="true"] {

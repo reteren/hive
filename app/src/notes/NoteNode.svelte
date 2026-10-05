@@ -28,7 +28,8 @@
   import { nodeBodyFor } from "./nodeBodies";
   import { effectiveCustomMarkFrameColors, effectiveImportance } from "../modules/moduleActions.svelte";
   import { customMarkGradientFor } from "../markas/markasLogic";
-  import { noteColorStyle } from "./noteColorLogic";
+import { noteColorStyle } from "./noteColorLogic";
+  import { noteGlowShadow } from "./noteGlowLogic";
   import { setTimeNodeView } from "../time/viewActions.svelte";
   import { canRenameNoteHeader } from "./noteMenu";
   import { startNoteEditing } from "../editor/editorSession";
@@ -162,7 +163,9 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
   data-custom-mark-animate={customMarkFrameColors.length > 1 ? "true" : undefined}
   data-member-zone-id={memberZone?.id}
   data-node-color={note.type !== "beacon" && note.color ? "true" : undefined}
+  data-note-glow={note.glow ? "true" : undefined}
   style:--custom-mark-gradient={customMarkGradient}
+  style:--note-glow-shadow={note.glow ? noteGlowShadow(note.glow) : undefined}
   style:--note-frame={paint["--note-frame"]}
   style:--note-body={paint["--note-body"]}
   style:--note-header-text={paint["--note-header-text"]}
@@ -315,6 +318,10 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
     box-shadow: 0 3px 12px rgb(0 0 0 / 28%);
     pointer-events: auto;
     user-select: text;
+  }
+
+  .note-card[data-note-glow="true"] {
+    box-shadow: var(--note-glow-shadow), 0 3px 12px rgb(0 0 0 / 28%);
   }
 
   .note-header {
@@ -475,6 +482,10 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
     background: transparent;
     border-color: transparent;
     box-shadow: none;
+  }
+
+  .note-card[data-kind="image"][data-note-glow="true"] {
+    box-shadow: var(--note-glow-shadow);
   }
 
   .note-card[data-kind="image"] .note-frame-edge {

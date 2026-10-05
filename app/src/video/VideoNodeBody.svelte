@@ -245,6 +245,7 @@
   .video-error { display: grid; min-height: 72px; place-items: center; padding: 8px; color: #c3c3c3; background: #282828; font-size: 11px; overflow-wrap: anywhere; }
   .video-caption { min-width: 0; }
   :global(.note-card:has(.video-node-body[data-frame-hidden="true"])) { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+  :global(.note-card:has(.video-node-body[data-frame-hidden="true"])[data-note-glow="true"]) { box-shadow: var(--note-glow-shadow); }
   :global(.note-card:has(.video-node-body[data-frame-hidden="true"]) > .hidden-note-header) { display: none; }
   :global(.note-card:has(.video-node-body[data-frame-hidden="true"]) > .note-frame) { display: block; min-height: 0; flex: 1 1 auto; background: transparent; }
   :global(.note-card:has(.video-node-body[data-frame-hidden="true"]) .note-frame-edge) { display: none; }

@@ -22,7 +22,7 @@
   border: 0;
   border-radius: 50%;
   background: var(--beacon-color);
-  box-shadow: 0 0 0 10px color-mix(in srgb, var(--beacon-color) 24%, transparent);
+  box-shadow: var(--note-glow-shadow, 0 0 0 0 transparent), 0 0 0 10px color-mix(in srgb, var(--beacon-color) 24%, transparent);
   pointer-events: auto;
   cursor: grab;
 }

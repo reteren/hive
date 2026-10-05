@@ -31,6 +31,7 @@
   import MessageCards from "./messages/MessageCards.svelte";
   import DrawToolbar from "./drawing/DrawToolbar.svelte";
   import ImageEraseLayer from "./attachments/ImageEraseLayer.svelte";
+  import NoteGlowPopover from "./notes/NoteGlowPopover.svelte";
 
   let undoLogCommand = $derived(getCommand("ui.toggleUndoLog"));
   let undoLogKeys = $derived(undoLogCommand?.keys.map(formatKey).join(", ") ?? "");
@@ -41,6 +42,7 @@
   <div class="left"><LeftToolbar /></div>
   <main class="center">
     <Board />
+    <NoteGlowPopover />
     <ImageEraseLayer />
     <DrawToolbar />
     <MapOverlay />
