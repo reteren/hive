@@ -38,7 +38,39 @@ export const inlineImageSelectionField = StateField.define<InlineImageSelection 
 type ImageInsertionTarget = number | { from: number; to: number };
 type ResizeEdge = "n" | "e" | "s" | "w" | "ne" | "se" | "sw" | "nw";
 
-const RESIZE_EDGES: ResizeEdge[] = ["n", "e", "s", "w", "ne", "se", "sw", "nw"];
+const RESIZE_HIT_AREA_PX = 6;
+
+/** Finds an edge from viewport coordinates so the hit area stays fixed under board zoom. */
+export function inlineImageResizeEdgeAtPoint(
+  bounds: Pick<DOMRect, "left" | "top" | "right" | "bottom">,
+  clientX: number,
+  clientY: number,
+  hitAreaPx = RESIZE_HIT_AREA_PX,
+): ResizeEdge | null {
+  if (clientX < bounds.left || clientX > bounds.right || clientY < bounds.top || clientY > bounds.bottom) return null;
+
+  const hit = Math.max(0, Number.isFinite(hitAreaPx) ? hitAreaPx : RESIZE_HIT_AREA_PX);
+  const left = clientX - bounds.left <= hit;
+  const right = bounds.right - clientX <= hit;
+  const top = clientY - bounds.top <= hit;
+  const bottom = bounds.bottom - clientY <= hit;
+
+  if (top && left) return "nw";
+  if (top && right) return "ne";
+  if (bottom && left) return "sw";
+  if (bottom && right) return "se";
+  if (left) return "w";
+  if (right) return "e";
+  if (top) return "n";
+  if (bottom) return "s";
+  return null;
+}
+
+function inlineImageResizeCursor(edge: ResizeEdge): string {
+  if (edge === "e" || edge === "w") return "ew-resize";
+  if (edge === "n" || edge === "s") return "ns-resize";
+  return edge === "ne" || edge === "sw" ? "nesw-resize" : "nwse-resize";
+}
 
 export function inlineImagesExtension(breakHistoryGroup: BreakHistoryGroup, noteId: string): Extension[] {
   const plugin = ViewPlugin.fromClass(
@@ -116,62 +148,22 @@ export function inlineImagesExtension(breakHistoryGroup: BreakHistoryGroup, note
         touchAction: "pan-y",
       },
       ".cm-inline-image-widget[data-selected='true']": {
-        outline: "2px solid var(--accent)",
-        outlineOffset: "1px",
+        cursor: "default",
       },
       ".cm-inline-image-widget[data-dragging='true']": {
         opacity: "0.55",
       },
       ".cm-inline-image-resize-frame": {
         position: "absolute",
-        inset: "-5px",
+        inset: "0",
+        boxSizing: "border-box",
+        border: "2px solid var(--accent)",
+        display: "none",
         pointerEvents: "none",
       },
-      ".cm-inline-image-resize": {
-        position: "absolute",
-        zIndex: "2",
-        display: "none",
-        width: "12px",
-        height: "12px",
-        padding: "0",
-        border: "1px solid #171717",
-        borderRadius: "3px",
-        backgroundColor: "var(--accent)",
-        cursor: "nwse-resize",
-        pointerEvents: "auto",
-        touchAction: "none",
-      },
-      ".cm-inline-image-widget[data-selected='true'] .cm-inline-image-resize": {
+      ".cm-inline-image-widget[data-selected='true'] .cm-inline-image-resize-frame": {
         display: "block",
       },
-      ".cm-inline-image-resize[data-edge='n']": {
-        top: "-6px",
-        left: "50%",
-        transform: "translateX(-50%)",
-        cursor: "ns-resize",
-      },
-      ".cm-inline-image-resize[data-edge='s']": {
-        bottom: "-6px",
-        left: "50%",
-        transform: "translateX(-50%)",
-        cursor: "ns-resize",
-      },
-      ".cm-inline-image-resize[data-edge='e']": {
-        top: "50%",
-        right: "-6px",
-        transform: "translateY(-50%)",
-        cursor: "ew-resize",
-      },
-      ".cm-inline-image-resize[data-edge='w']": {
-        top: "50%",
-        left: "-6px",
-        transform: "translateY(-50%)",
-        cursor: "ew-resize",
-      },
-      ".cm-inline-image-resize[data-edge='ne']": { top: "-6px", right: "-6px", cursor: "nesw-resize" },
-      ".cm-inline-image-resize[data-edge='nw']": { top: "-6px", left: "-6px", cursor: "nwse-resize" },
-      ".cm-inline-image-resize[data-edge='se']": { bottom: "-6px", right: "-6px", cursor: "nwse-resize" },
-      ".cm-inline-image-resize[data-edge='sw']": { bottom: "-6px", left: "-6px", cursor: "nesw-resize" },
       ".cm-inline-image-widget img": {
         display: "block",
         width: "100%",
@@ -213,10 +205,6 @@ export function inlineImagesExtension(breakHistoryGroup: BreakHistoryGroup, note
         fontFamily: "var(--ui-font)",
         fontSize: "12px",
         overflowWrap: "anywhere",
-      },
-      ".cm-inline-image-resize:focus-visible": {
-        outline: "2px solid #fff",
-        outlineOffset: "2px",
       },
     }),
   ];
@@ -330,44 +318,31 @@ class InlineImageWidget extends WidgetType {
 
     const frame = view.dom.ownerDocument.createElement("span");
     frame.className = "cm-inline-image-resize-frame";
-    for (const edge of RESIZE_EDGES) {
-      const handle = view.dom.ownerDocument.createElement("button");
-      handle.type = "button";
-      handle.className = "cm-inline-image-resize";
-      handle.dataset.inlineImageResize = "";
-      handle.dataset.edge = edge;
-      handle.setAttribute("aria-label", `Resize image ${edge}`);
-      handle.title = "Drag to resize image";
-      handle.addEventListener("pointerdown", (event) => {
-        if (event.button !== 0) return;
-        event.preventDefault();
-        event.stopPropagation();
-        const current = currentImageWidget.get(wrapper) ?? this;
-        selectInlineImage(view, current.from, current.to, current.from);
-        startResize(event, wrapper, view, current, edge);
-      });
-      handle.addEventListener("mousedown", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      });
-      handle.addEventListener("keydown", (event) => {
-        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
-        event.preventDefault();
-        event.stopPropagation();
-        const current = currentImageWidget.get(wrapper) ?? this;
-        const positive = event.key === "ArrowRight" || event.key === "ArrowDown";
-        commitInlineImageResize(view, current.from, current.to, current.raw, current.token,
-          current.token.widthPercent + (positive ? 5 : -5), current.breakHistoryGroup);
-      });
-      frame.append(handle);
-    }
+    frame.dataset.inlineImageSelectionFrame = "";
     wrapper.append(frame);
 
+    const updateResizeCursor = (event: PointerEvent) => {
+      const current = currentImageWidget.get(wrapper) ?? this;
+      const edge = current.selected
+        ? inlineImageResizeEdgeAtPoint(wrapper.getBoundingClientRect(), event.clientX, event.clientY)
+        : null;
+      wrapper.style.cursor = edge ? inlineImageResizeCursor(edge) : "";
+    };
+    wrapper.addEventListener("pointermove", updateResizeCursor);
+    wrapper.addEventListener("pointerleave", () => { wrapper.style.cursor = ""; });
+
     const selectAndStartDrag = (event: PointerEvent) => {
-      if (event.button !== 0 || (event.target instanceof Element && event.target.closest("[data-inline-image-resize]"))) return;
+      if (event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
       const current = currentImageWidget.get(wrapper) ?? this;
+      const edge = current.selected
+        ? inlineImageResizeEdgeAtPoint(wrapper.getBoundingClientRect(), event.clientX, event.clientY)
+        : null;
+      if (edge) {
+        startResize(event, wrapper, view, current, edge);
+        return;
+      }
       const bounds = wrapper.getBoundingClientRect();
       const position = event.clientX < bounds.left + bounds.width / 2 ? current.from : current.to;
       selectInlineImage(view, current.from, current.to, position);
@@ -375,7 +350,6 @@ class InlineImageWidget extends WidgetType {
     };
     wrapper.addEventListener("pointerdown", selectAndStartDrag);
     wrapper.addEventListener("mousedown", (event) => {
-      if (event.target instanceof Element && event.target.closest("[data-inline-image-resize]")) return;
       event.preventDefault();
       event.stopPropagation();
     });
@@ -406,7 +380,9 @@ function showMissingFile(wrapper: HTMLElement, alt: string, file: string): void 
   const missing = wrapper.ownerDocument.createElement("span");
   missing.className = "cm-inline-image-missing";
   missing.textContent = `File missing: ${alt || file}`;
-  wrapper.insertBefore(missing, wrapper.querySelector("button"));
+  const frame = wrapper.querySelector(".cm-inline-image-resize-frame");
+  if (frame) wrapper.insertBefore(missing, frame);
+  else wrapper.append(missing);
   wrapper.querySelector("img")?.remove();
 }
 
@@ -424,7 +400,9 @@ function startResize(
   const imageBounds = image.getBoundingClientRect();
   const startPixelWidth = Math.max(1, imageBounds.width || wrapper.getBoundingClientRect().width);
   const startPixelHeight = Math.max(1, imageBounds.height || wrapper.getBoundingClientRect().height);
-  const columnWidth = Math.max(1, view.contentDOM.clientWidth);
+  // Pointer deltas use viewport CSS pixels; use the transformed column width
+  // too so the percentage change is independent of board zoom.
+  const columnWidth = Math.max(1, view.contentDOM.getBoundingClientRect().width || view.contentDOM.clientWidth);
   let nextWidth = startWidth;
 
   const move = (moveEvent: PointerEvent) => {
@@ -445,8 +423,11 @@ function startResize(
     window.removeEventListener("pointerup", pointerUp);
     window.removeEventListener("pointercancel", pointerCancel);
     const current = currentImageWidget.get(wrapper) ?? widget;
-    if (commit) commitInlineImageResize(view, current.from, current.to, current.raw, current.token, nextWidth, current.breakHistoryGroup);
-    else wrapper.style.width = `${startWidth}%`;
+    if (commit && nextWidth !== startWidth) {
+      commitInlineImageResize(view, current.from, current.to, current.raw, current.token, nextWidth, current.breakHistoryGroup);
+    } else if (!commit) {
+      wrapper.style.width = `${startWidth}%`;
+    }
   };
   const pointerUp = (upEvent: PointerEvent) => {
     if (upEvent.pointerId === event.pointerId) finish(true);

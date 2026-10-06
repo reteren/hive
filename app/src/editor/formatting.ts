@@ -131,3 +131,75 @@ export function toggleHeadingLevel(view: EditorView, level: number): boolean {
   });
   return true;
 }
+
+/** Remove inline Markdown styling from the current selection or word. */
+export function clearFormatting(view: EditorView): boolean {
+  const state = view.state;
+  const pairs = ["**", "~~", "==", "*", "`"];
+  const ranges = state.selection.ranges.filter((range) => !range.empty);
+  const targets = ranges.length > 0
+    ? ranges.map((range) => ({ from: range.from, to: range.to }))
+    : [wordRangeAtCursor(state) ?? { from: state.selection.main.from, to: state.selection.main.to }];
+  const changes: Array<{ from: number; to: number; insert: string }> = [];
+
+  for (const target of targets) {
+    if (target.from === target.to) continue;
+    let from = target.from;
+    let to = target.to;
+    let expanded = true;
+    while (expanded) {
+      expanded = false;
+      for (const pair of pairs) {
+        if (from >= pair.length && to + pair.length <= state.doc.length
+          && state.sliceDoc(from - pair.length, from) === pair
+          && state.sliceDoc(to, to + pair.length) === pair) {
+          from -= pair.length;
+          to += pair.length;
+          expanded = true;
+          break;
+        }
+      }
+    }
+    const original = state.sliceDoc(from, to);
+    const stripped = stripInlineMarkup(original);
+    if (stripped !== original || from !== target.from || to !== target.to) changes.push({ from, to, insert: stripped });
+  }
+
+  if (!changes.length) return false;
+  const changeSet = ChangeSet.of(changes, state.doc.length);
+  const selection = ranges.length > 0
+    ? state.selection.map(changeSet)
+    : EditorSelection.range(changeSet.mapPos(changes[0].from), changeSet.mapPos(changes[0].from) + changes[0].insert.length);
+  view.dispatch({ changes: changeSet, selection, annotations: Transaction.userEvent.of("input.format") });
+  return true;
+}
+
+function wordRangeAtCursor(state: EditorView["state"]): { from: number; to: number } | null {
+  const cursor = state.selection.main.head;
+  const line = state.doc.lineAt(cursor);
+  const local = cursor - line.from;
+  let from = local;
+  let to = local;
+  const isWord = (character: string): boolean => /[^\s*_~=`\[\]()]/u.test(character);
+  while (from > 0 && isWord(line.text[from - 1] ?? "")) from -= 1;
+  while (to < line.text.length && isWord(line.text[to] ?? "")) to += 1;
+  return from === to ? null : { from: line.from + from, to: line.from + to };
+}
+
+function stripInlineMarkup(text: string): string {
+  return text.split("\n").map((line) => {
+    const marker = /^(\s*(?:#{1,6}\s+|[-+*]\s+\[[ xX]\]\s+|[-+*]\s+|\d+[.)]\s+))/u.exec(line)?.[1] ?? "";
+    let body = marker ? line.slice(marker.length) : line;
+    let previous: string;
+    do {
+      previous = body;
+      body = body
+        .replace(/`([^`\n]+)`/gu, "$1")
+        .replace(/==([^=\n]+)==/gu, "$1")
+        .replace(/~~([^~\n]+)~~/gu, "$1")
+        .replace(/\*\*([^\n]+?)\*\*/gu, "$1")
+        .replace(/\*([^\n]+?)\*/gu, "$1");
+    } while (body !== previous);
+    return marker + body;
+  }).join("\n");
+}

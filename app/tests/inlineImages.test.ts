@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ImageRef } from "../src/attachments/types";
 import {
   commitInlineImageResize,
+  inlineImageResizeEdgeAtPoint,
   inlineImageSelectionEffect,
   inlineImageSelectionField,
   insertImportedImages,
@@ -210,7 +211,7 @@ describe("inline image tokens", () => {
     });
   });
 
-  it("resizes from all eight grips while preserving the image proportions", () => {
+  it("resizes from every edge and corner while preserving image proportions", () => {
     const options = [50, 200, 100, 100, 100, 1000] as const;
     expect(resizedInlineImageWidth("e", ...options)).toBe(60);
     expect(resizedInlineImageWidth("w", ...options)).toBe(40);
@@ -222,5 +223,24 @@ describe("inline image tokens", () => {
     expect(resizedInlineImageWidth("sw", 50, 200, 100, -100, 100, 1000)).toBe(70);
     expect(resizedInlineImageWidth("e", 98, 200, 100, 100, 0, 1000)).toBe(100);
     expect(resizedInlineImageWidth("e", 6, 200, 100, -100, 0, 1000)).toBe(5);
+  });
+
+  it("detects resize edges in a fixed viewport-pixel band at every zoom", () => {
+  const boundsAtZoom = (zoom: number) => ({
+      left: 10,
+      top: 20,
+      right: 10 + 500 * zoom,
+      bottom: 20 + 300 * zoom,
+    });
+
+    for (const zoom of [0.1, 1, 4]) {
+      const bounds = boundsAtZoom(zoom);
+      expect(inlineImageResizeEdgeAtPoint(bounds, bounds.left + 3, bounds.top + 3)).toBe("nw");
+      expect(inlineImageResizeEdgeAtPoint(bounds, bounds.right - 3, bounds.top + 150 * zoom)).toBe("e");
+      expect(inlineImageResizeEdgeAtPoint(bounds, bounds.left + 250 * zoom, bounds.bottom - 3)).toBe("s");
+      expect(inlineImageResizeEdgeAtPoint(bounds, bounds.left + 250 * zoom, bounds.top + 150 * zoom)).toBeNull();
+      expect(inlineImageResizeEdgeAtPoint(bounds, bounds.left + 7, bounds.top + 150 * zoom)).toBeNull();
+      expect(resizedInlineImageWidth("e", 50, 200 * zoom, 100 * zoom, 10 * zoom, 0, 1000 * zoom)).toBe(51);
+    }
   });
 });

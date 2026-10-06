@@ -1,7 +1,8 @@
 import { EditorSelection, EditorState } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { describe, expect, it } from "vitest";
-import { toggleMarkdownLines } from "../src/editor/markdownCommands";
+import { clearFormatting } from "../src/editor/formatting";
+import { insertMarkdownBlock, toggleMarkdownLines } from "../src/editor/markdownCommands";
 import { noteEditorKeyBindings } from "../src/editor/noteEditorKeymap";
 
 function fakeView(doc: string, anchor = 0, head = doc.length): { view: EditorView; text: () => string } {
@@ -30,6 +31,30 @@ describe("note editor Markdown actions", () => {
     const { view, text } = fakeView("- item\n- next");
     toggleMarkdownLines(view, "ordered");
     expect(text()).toBe("1. item\n2. next");
+  });
+
+  it("clears inline formatting while keeping paragraph markers", () => {
+    const { view, text } = fakeView("## **Heading**\n- *bold* and `code`");
+    clearFormatting(view);
+    expect(text()).toBe("## Heading\n- bold and code");
+  });
+
+  it("inserts each MarkNote block at the selection as one edit", () => {
+    const table = fakeView("", 0, 0);
+    insertMarkdownBlock(table.view, "table");
+    expect(table.text()).toBe("|  |  |\n| --- | --- |\n|  |  |\n\n");
+
+    const callout = fakeView("", 0, 0);
+    insertMarkdownBlock(callout.view, "callout");
+    expect(callout.text()).toBe("> [!NOTE] Note\n> \n");
+
+    const math = fakeView("", 0, 0);
+    insertMarkdownBlock(math.view, "math");
+    expect(math.text()).toBe("$$\n\n$$\n");
+
+    const rule = fakeView("text", 4, 4);
+    insertMarkdownBlock(rule.view, "horizontalRule");
+    expect(rule.text()).toBe("text\n\n---\n");
   });
 
   it("binds MarkNote editing, formatting, and list shortcuts", () => {

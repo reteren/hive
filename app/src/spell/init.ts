@@ -43,7 +43,7 @@ if (typeof document !== "undefined") {
     if (!board) return;
     const rect = board.getBoundingClientRect();
     const world = screenToWorld(camera, viewport, { x: event.clientX - rect.left, y: event.clientY - rect.top });
-    const anchor: Point = fitBoardPopupAnchor(camera, viewport, world, { width: 238, height: 420 });
+    const anchor: Point = fitBoardPopupAnchor(camera, viewport, world, { width: 216, height: 360 });
     event.preventDefault();
     event.stopPropagation();
     closeLinkContextMenu();

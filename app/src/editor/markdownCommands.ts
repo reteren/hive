@@ -1,8 +1,41 @@
-import { ChangeSet, Transaction, type ChangeSpec } from "@codemirror/state";
+import { ChangeSet, EditorSelection, Transaction, type ChangeSpec } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { parseListLine } from "./listCommands";
 
 export type ListToggle = "bullet" | "ordered" | "task" | "quote";
+export type MarkdownBlock = "table" | "callout" | "math" | "horizontalRule";
+
+/** Insert one of the Markdown blocks offered by MarkNote's Insert submenu. */
+export function insertMarkdownBlock(view: EditorView, kind: MarkdownBlock): boolean {
+  const { state } = view;
+  const range = state.selection.main;
+  let insert: string;
+  let cursorOffset: number;
+  if (kind === "table") {
+    const suffix = state.sliceDoc(range.to);
+    insert = `|  |  |\n| --- | --- |\n|  |  |\n${suffix.startsWith("\n") ? "" : "\n"}`;
+    cursorOffset = 2;
+  } else if (kind === "callout") {
+    insert = "> [!NOTE] Note\n> \n";
+    cursorOffset = 17;
+  } else if (kind === "math") {
+    insert = "$$\n\n$$\n";
+    cursorOffset = 3;
+  } else {
+    const before = state.sliceDoc(0, range.from);
+    const prefix = before.length === 0 || before.endsWith("\n\n") ? "" : before.endsWith("\n") ? "\n" : "\n\n";
+    insert = `${prefix}---\n`;
+    cursorOffset = insert.length;
+  }
+
+  view.dispatch({
+    changes: { from: range.from, to: range.to, insert },
+    selection: EditorSelection.cursor(range.from + cursorOffset),
+    annotations: Transaction.userEvent.of("input.format"),
+    scrollIntoView: true,
+  });
+  return true;
+}
 
 /** Toggle a Markdown line marker on every line touched by the selection. */
 export function toggleMarkdownLines(view: EditorView, kind: ListToggle): boolean {
