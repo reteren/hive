@@ -874,7 +874,7 @@
 
   .cut-preview polyline {
     fill: none;
-    stroke: #ffe17a;
+    stroke: var(--accent);
     stroke-width: 2px;
     stroke-linecap: round;
     stroke-linejoin: round;

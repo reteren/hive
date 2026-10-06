@@ -258,7 +258,7 @@
   .hue-thumb { top: 50%; width: 13px; height: 13px; }
 
   .sv-area:focus-visible, .hue-bar:focus-visible {
-    outline: 2px solid var(--accent, #c8a94e);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
 
@@ -286,11 +286,11 @@
     border: 1px solid var(--border, #454545);
     border-radius: 3px;
     color: var(--text-dim, #bcbcbc);
-    background: #1b1b1b;
+    background: var(--bg-panel);
     font-family: var(--mono-font, monospace);
   }
 
-  .hex-field:focus-within { border-color: var(--accent, #c8a94e); }
+  .hex-field:focus-within { border-color: var(--accent); }
 
   .hex-field input {
     width: 100%;
@@ -323,7 +323,7 @@
   .recent-swatch.selected { outline: 1px solid #fff; outline-offset: 1px; }
 
   .recent-swatch:focus-visible {
-    outline: 2px solid var(--accent, #c8a94e);
+    outline: 2px solid var(--accent);
     outline-offset: 1px;
   }
 
@@ -336,14 +336,14 @@
     place-items: center;
     border: 1px solid #484a50;
     border-radius: 3px;
-    color: var(--text-dim);
-    background: #222428;
+    color: var(--icon);
+    background: var(--bg-panel-raised);
     cursor: pointer;
   }
 
   .eyedropper-button:hover {
     border-color: #6a6d74;
-    color: var(--text);
+    color: var(--icon);
   }
 
   .eyedropper-button svg {

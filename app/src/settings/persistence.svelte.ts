@@ -22,6 +22,11 @@ import { timeEnablePreference } from "../time/enablePreference.svelte";
 import { gifPlayback, setGifPlaybackMode } from "../attachments/gifPlayback.svelte";
 import { drawingPreferencesSnapshot, loadDrawingPreferences } from "../drawing/tools.svelte";
 import {
+  cacheThemeBootstrap,
+  getThemeSettingsSnapshot,
+  setThemeSettings,
+} from "../theme/appearance.svelte";
+import {
   parseTimeCounters,
   parseViewSettings,
   serializeViewSettingsWithTimeCounters,
@@ -59,6 +64,7 @@ async function initialize(): Promise<void> {
   }
 
   applySettings(settings);
+  cacheThemeBootstrap(settings.appearance);
   setTimeCounters(parseTimeCounters(serialized));
   lastPersistedSnapshot = currentSettingsSnapshot();
   initialized = true;
@@ -125,6 +131,7 @@ function persistSnapshot(snapshot: string): Promise<void> {
     try {
       await invoke("save_view_settings", { contents: snapshot });
       lastPersistedSnapshot = snapshot;
+      cacheThemeBootstrap((JSON.parse(snapshot) as { appearance?: unknown }).appearance);
     } catch (error) {
       console.error("Could not save view settings.", error);
     }
@@ -156,6 +163,7 @@ function currentSettings(): ViewSettings {
     quickInputShortcut: quickInputShortcut.value,
     skipCompletedTimerConfirmation: timeEnablePreference.skipCompletedTimerConfirmation,
     videoExternalThresholdMb: preferences.videoExternalThresholdMb,
+    appearance: getThemeSettingsSnapshot(),
   };
 }
 
@@ -185,4 +193,5 @@ function applySettings(settings: ViewSettings): void {
   setQuickInputShortcutValue(settings.quickInputShortcut);
   timeEnablePreference.skipCompletedTimerConfirmation = settings.skipCompletedTimerConfirmation ?? false;
   setVideoExternalThresholdMb(settings.videoExternalThresholdMb);
+  setThemeSettings(settings.appearance);
 }

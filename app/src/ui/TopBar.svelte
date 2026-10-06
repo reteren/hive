@@ -71,7 +71,7 @@
   }
 
   .brand-mark {
-    color: #e8b030;
+    color: var(--accent);
     font-size: 12px;
     font-weight: 650;
     letter-spacing: 0.02em;

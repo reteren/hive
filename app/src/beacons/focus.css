@@ -12,10 +12,10 @@
 }
 
 .beacon-focus-indicator, .beacon-menu-toggle, .beacon-menu {
-  border: 1px solid #49483e;
+  border: 1px solid var(--border);
   border-radius: 4px;
-  color: #e9e5d8;
-  background: rgb(29 29 27 / 94%);
+  color: var(--text);
+  background: var(--bg-panel);
   box-shadow: 0 3px 10px rgb(0 0 0 / 28%);
 }
 
@@ -25,12 +25,12 @@
 .beacon-menu-toggle { padding: 6px 8px; font: inherit; cursor: pointer; }
 .beacon-menu { position: absolute; top: 34px; left: 0; width: 230px; max-height: min(50vh, 320px); overflow-y: auto; padding: 6px; }
 .beacon-controls:has(.beacon-focus-indicator) .beacon-menu { top: 66px; }
-.beacon-menu-title { padding: 4px 6px 7px; color: #aaa798; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+.beacon-menu-title { padding: 4px 6px 7px; color: var(--text-dim); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
 .beacon-menu-row { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 3px 6px; border-radius: 3px; cursor: pointer; }
-.beacon-menu-row:hover { background: #3a392f; }
+.beacon-menu-row:hover { background: var(--bg-hover); }
 .beacon-color { width: 9px; height: 9px; flex: none; border-radius: 50%; }
 .beacon-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.beacon-menu-row input { margin: 0; accent-color: #d8ae4f; }
+.beacon-menu-row input { margin: 0; accent-color: var(--accent); }
 
 .me-beacon-context {
   position: fixed;
@@ -42,7 +42,7 @@
   padding: 4px;
   border: 1px solid #4c4c4c;
   border-radius: 4px;
-  background: #242424;
+  background: var(--bg-panel);
   box-shadow: 0 5px 16px rgb(0 0 0 / 45%);
   pointer-events: auto;
 }
@@ -53,14 +53,14 @@
   border: 0;
   border-radius: 2px;
   background: transparent;
-  color: #e9e5d8;
+  color: var(--text);
   text-align: left;
   white-space: nowrap;
   cursor: pointer;
 }
 
 .me-beacon-context button:hover,
-.me-beacon-context button:focus-visible { background: #393939; color: #fff; }
+.me-beacon-context button:focus-visible { background: var(--bg-hover); color: var(--text); }
 
 .note-card[data-dimmed="true"],
 .beacon-object[data-dimmed="true"],

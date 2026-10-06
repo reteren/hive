@@ -401,7 +401,7 @@
     overflow-x: hidden;
     overflow-y: auto;
     color: var(--text);
-    background: #282828;
+    background: var(--bg-panel);
     border: 1px solid #4b4b4b;
     border-radius: 4px;
     box-shadow: 0 6px 20px rgb(0 0 0 / 42%);
@@ -414,7 +414,7 @@
     justify-content: space-between;
     padding: 0 5px 0 9px;
     color: var(--text-dim);
-    background: #222;
+    background: var(--bg-panel-raised);
     border-bottom: 1px solid #414141;
     font-size: 11px;
     font-weight: 600;
@@ -450,7 +450,7 @@
     width: 14px;
     height: 14px;
     fill: none;
-    stroke: currentColor;
+    stroke: var(--icon);
     stroke-linecap: round;
     stroke-linejoin: round;
     stroke-width: 1.35;
@@ -484,10 +484,10 @@
   .note-icon {
     width: 13px;
     height: 15px;
-    background: #3a3a3a;
-    border: 1px solid #929292;
+    background: color-mix(in srgb, var(--icon) 20%, transparent);
+    border: 1px solid var(--icon);
     border-radius: 2px;
-    box-shadow: inset 0 -3px 0 #303030;
+    box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--icon) 25%, transparent);
   }
 
   .task-icon {
@@ -507,7 +507,7 @@
 
   .task-icon circle {
     fill: transparent;
-    stroke: #999;
+    stroke: var(--icon);
     stroke-width: 1.35;
   }
 
@@ -545,14 +545,14 @@
     width: 9px;
     height: 9px;
     margin-inline: 3px;
-    border: 1px solid #eee;
+    border: 1px solid var(--icon);
     border-radius: 50%;
-    background: #d6d6d6;
-    box-shadow: 0 0 5px rgb(214 214 214 / 35%);
+    background: var(--icon);
+    box-shadow: 0 0 5px color-mix(in srgb, var(--icon) 35%, transparent);
   }
 
   .purpose-icon {
-    color: #70b5a1;
+    color: var(--icon);
   }
 
   .mood-icon::before {
@@ -588,8 +588,8 @@
     height: 13px;
     flex: 0 0 auto;
     border-radius: 50%;
-    background: #e8b030;
-    box-shadow: 0 0 0 2px rgb(232 176 48 / 18%);
+    background: var(--icon);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--icon) 18%, transparent);
   }
 
   .time-icon {
@@ -617,14 +617,14 @@
   .audio-icon { position: relative; border-radius: 50%; }
   .audio-icon::before { position: absolute; inset: 3px; border: 1px solid currentColor; border-radius: 50%; content: ""; }
   .audio-icon::after { position: absolute; top: 2px; bottom: 2px; left: 6px; width: 2px; border-left: 1px solid currentColor; border-right: 1px solid currentColor; content: ""; }
-  .record-audio-icon { border-radius: 50%; background: #d4473f; box-shadow: inset 0 0 0 4px #242424; }
+  .record-audio-icon { border-radius: 50%; background: #d4473f; box-shadow: inset 0 0 0 4px var(--bg-panel); }
   .hidden-file-input { display: none; }
   .video-icon { position: relative; }
   .video-icon::after { position: absolute; top: 2px; left: 4px; border-top: 3px solid transparent; border-bottom: 3px solid transparent; border-left: 4px solid currentColor; content: ""; }
   .youtube-icon { border-color: #d05a5a; border-radius: 3px; }
-  .youtube-create-input { display: grid; gap: 5px; padding: 5px; border: 1px solid #484a50; border-radius: 3px; background: #222428; }
-  .youtube-create-input input { box-sizing: border-box; width: 100%; min-width: 0; padding: 5px; border: 1px solid #555860; border-radius: 3px; color: var(--text); background: #18191c; font: inherit; font-size: 10px; }
+  .youtube-create-input { display: grid; gap: 5px; padding: 5px; border: 1px solid var(--border); border-radius: 3px; background: var(--bg-panel-raised); }
+  .youtube-create-input input { box-sizing: border-box; width: 100%; min-width: 0; padding: 5px; border: 1px solid var(--border); border-radius: 3px; color: var(--text); background: var(--bg-panel); font: inherit; font-size: 10px; }
   .youtube-create-error { color: #e59a94; font-size: 10px; overflow-wrap: anywhere; }
   .youtube-create-actions { display: flex; justify-content: flex-end; gap: 4px; }
-  .youtube-create-actions button { padding: 4px 6px; border: 1px solid #4a4d53; border-radius: 3px; color: var(--text); background: #303238; font: inherit; font-size: 10px; cursor: pointer; }
+  .youtube-create-actions button { padding: 4px 6px; border: 1px solid var(--border); border-radius: 3px; color: var(--text); background: var(--bg-panel-raised); font: inherit; font-size: 10px; cursor: pointer; }
 </style>

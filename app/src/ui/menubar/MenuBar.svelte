@@ -327,7 +327,7 @@
   .menubar > button:hover,
   .menubar > button.active {
     border-color: #464646;
-    background: #303030;
+    background: var(--bg-hover);
     color: var(--text);
   }
 
@@ -374,7 +374,7 @@
   .menu-item:hover,
   .menu-item:focus-visible {
     outline: none;
-    background: #383838;
+    background: var(--bg-hover);
   }
 
   .menu-item:disabled {
@@ -393,7 +393,7 @@
   }
 
   .check {
-    color: #e8b030;
+    color: var(--accent);
     font-size: 11px;
     text-align: center;
   }

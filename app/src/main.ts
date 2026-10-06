@@ -11,6 +11,7 @@ import "./clipboard/commands";
 import "./project/commands";
 import "./scope/init";
 import { initializeViewSettingsPersistence } from "./settings/persistence.svelte";
+import { applyTheme } from "./theme/appearance.svelte";
 import { preferences } from "./settings/preferences.svelte";
 import { initializeProjectPersistence } from "./project/persistence.svelte";
 import { initializeMcpBridge } from "./mcp/bridge";
@@ -32,6 +33,7 @@ import "./messages/init";
 import "./time/init";
 import "./drawing/init";
 
+applyTheme();
 await initializeViewSettingsPersistence();
 await initializeProjectPersistence();
 await initializeMcpBridge(preferences.allowAiToolsMcp);

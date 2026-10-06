@@ -222,14 +222,14 @@
 
 <style>
   .list-body { position: relative; display: grid; min-width: 0; gap: 6px; padding: 2px; font-size: 11px; }
-  .list-body.drop-target { outline: 2px solid var(--accent); outline-offset: -2px; background: #f5cd4d12; }
+  .list-body.drop-target { outline: 2px solid var(--accent); outline-offset: -2px; background: rgba(var(--accent-rgb), 0.07); }
   .list-empty { margin: 0; padding: 6px; color: var(--text-dim); }
   .list-rows { display: grid; gap: 2px; }
   .list-row { display: flex; min-width: 0; min-height: 26px; align-items: center; gap: 4px; border: 1px solid #41444a; border-radius: 3px; background: #24262b; }
   .list-content { min-width: 0; flex: 1; display: grid; gap: 2px; }
   .list-entry { position: relative; z-index: 2; }
   .list-footer { position: relative; z-index: 2; display: grid; min-width: 0; }
-  .list-drag-slot { box-sizing: border-box; border: 1px dashed var(--accent); border-radius: 3px; background: #f5cd4d12; }
+  .list-drag-slot { box-sizing: border-box; border: 1px dashed var(--accent); border-radius: 3px; background: rgba(var(--accent-rgb), 0.07); }
   .list-row.insert-before { border-top: 2px solid var(--accent); }
   .list-row.missing { color: #898b90; background: #202125; }
   .list-grip, .list-remove { flex: none; border: 0; color: #9da0a6; background: transparent; cursor: pointer; }
@@ -243,10 +243,10 @@
   .list-remove { width: 23px; height: 23px; font-size: 16px; }
   .list-remove:hover { color: #f0b6b6; }
   .list-end-slot { height: 2px; background: var(--accent); }
-  .list-add, .list-picker button { padding: 5px 7px; border: 1px solid #53565e; border-radius: 3px; color: var(--text); background: #2c2e34; font: inherit; cursor: pointer; }
+  .list-add, .list-picker button { padding: 5px 7px; border: 1px solid var(--border); border-radius: 3px; color: var(--text); background: var(--bg-panel-raised); font: inherit; cursor: pointer; }
   .list-add { text-align: left; }
-  .list-picker { display: grid; gap: 5px; padding: 5px; border: 1px solid #4d5057; border-radius: 3px; background: #222429; }
-  .list-picker input { min-width: 0; width: 100%; box-sizing: border-box; padding: 5px; border: 1px solid #646871; border-radius: 3px; color: var(--text); background: #191a1e; font: inherit; }
+  .list-picker { display: grid; gap: 5px; padding: 5px; border: 1px solid var(--border); border-radius: 3px; background: var(--bg-panel); }
+  .list-picker input { min-width: 0; width: 100%; box-sizing: border-box; padding: 5px; border: 1px solid var(--border); border-radius: 3px; color: var(--text); background: var(--bg-panel-raised); font: inherit; }
   .list-picker-results { display: grid; max-height: 130px; overflow: auto; gap: 2px; }
   .list-picker-results button { text-align: left; }
   .list-picker-empty { color: var(--text-dim); }

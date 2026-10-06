@@ -268,7 +268,7 @@
     place-items: center;
     border: 1px solid #909090;
     border-radius: 2px;
-    background: #292929;
+    background: var(--bg-panel-raised);
     color: #c4c4c4;
     font-size: 7px;
     font-weight: 700;
@@ -291,10 +291,10 @@
   .trash-kind-icon[data-kind="trash"]::after { content: "×"; }
   .trash-kind-icon[data-kind="objects"]::after { content: "3"; }
   .trash-kind-icon[data-kind="beacon"] {
-    border-color: #e8b030;
+    border-color: var(--icon);
     border-radius: 50%;
-    background: #e8b030;
-    box-shadow: inset 0 0 0 3px #28251c;
+    background: var(--icon);
+    box-shadow: inset 0 0 0 3px var(--bg-panel);
   }
 
   .trash-kind-icon[data-kind="beacon"]::after { content: ""; }
@@ -365,7 +365,7 @@
     padding: 2px 6px;
     border: 1px solid #444;
     border-radius: 2px;
-    background: #242424;
+    background: var(--bg-panel-raised);
     color: var(--text-dim);
     font: inherit;
     font-size: 9px;
@@ -379,8 +379,8 @@
   }
 
   .trash-action.primary {
-    border-color: #806b2d;
-    color: #fff0be;
+    border-color: rgba(var(--accent-rgb), 0.45);
+    color: var(--accent);
   }
 
   .trash-action.danger {

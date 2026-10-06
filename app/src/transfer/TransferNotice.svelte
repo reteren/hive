@@ -128,7 +128,7 @@
   }
 
   strong {
-    color: #fff0be;
+    color: var(--accent);
     font-weight: 650;
   }
 
@@ -144,7 +144,7 @@
     padding: 3px 8px;
     border: 1px solid #4b4b4b;
     border-radius: 3px;
-    background: #303030;
+    background: var(--bg-panel-raised);
     color: var(--text);
     font: inherit;
     cursor: pointer;
@@ -152,13 +152,13 @@
 
   button:hover {
     border-color: #777;
-    background: #3a3a3a;
+    background: var(--bg-hover);
   }
 
   button.replace {
-    border-color: #907944;
-    background: #493e25;
-    color: #fff0be;
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.16);
+    color: var(--accent);
   }
 
   .notice {
@@ -166,7 +166,7 @@
     width: min(260px, calc(100% - 16px));
     max-width: 260px;
     border-color: #4a4a4a;
-    background: #242424;
+    background: var(--bg-panel);
     color: var(--text-dim);
   }
 

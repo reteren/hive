@@ -271,10 +271,10 @@
   .bank-title-row .bank-name, .bank-row-label, .bank-add-row input:first-child { flex: 1 1 auto; min-width: 0; }
   .bank-panel input { min-width: 0; height: 24px; padding: 3px 5px; border: 1px solid #555; border-radius: 3px; color: var(--text); background: #202020; font: inherit; }
   .bank-panel input:focus { border-color: var(--accent); outline: none; }
-  .bank-panel button { min-height: 23px; padding: 3px 6px; border: 1px solid #625633; border-radius: 3px; background: #383324; color: #f0d8a1; cursor: pointer; white-space: nowrap; }
-  .bank-panel button:hover { background: #4b4026; }
+  .bank-panel button { min-height: 23px; padding: 3px 6px; border: 1px solid rgba(var(--accent-rgb), 0.45); border-radius: 3px; background: rgba(var(--accent-rgb), 0.16); color: var(--accent); cursor: pointer; white-space: nowrap; }
+  .bank-panel button:hover { background: var(--accent-hover); }
   .bank-panel .quiet { border-color: transparent; background: transparent; color: var(--text-dim); }
-  .bank-panel .quiet:hover { color: var(--text); background: #363636; }
+  .bank-panel .quiet:hover { color: var(--text); background: var(--bg-hover); }
   .bank-panel .danger { border-color: #87554f; color: #f1bbb2; background: #4b302d; }
   .bank-total { justify-content: space-between; }
   .bank-total input, .bank-row-amount, .bank-add-row .new-amount { width: 86px; flex: 0 0 86px; text-align: right; font-family: var(--mono-font); }
@@ -284,7 +284,7 @@
   .bank-linked-label small, .bank-pending { color: var(--text-dim); font-size: 10px; }
   .bank-row-delete { width: 23px; flex: 0 0 23px; font-size: 15px; line-height: 1; }
   .bank-remaining { padding-top: 5px; border-top: 1px solid #464646; font-weight: 650; }
-  .bank-remaining output { font-family: var(--mono-font); color: #dfc782; }
+  .bank-remaining output { font-family: var(--mono-font); color: var(--accent); }
   .bank-remaining.negative output { color: #ec8c81; }
   .bank-create { display: grid; gap: 5px; }
   .bank-actions { justify-content: flex-end; }

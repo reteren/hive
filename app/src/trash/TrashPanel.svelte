@@ -78,7 +78,7 @@
   .panel-control:hover,
   .panel-control:focus-visible {
     border-color: #4a4a4a;
-    background: #303030;
+    background: var(--bg-hover);
     color: var(--text);
   }
 </style>

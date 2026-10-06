@@ -187,9 +187,9 @@
 
   .mode-toggle:hover,
   .mode-toggle.move-mode {
-    border-color: #806b2d;
-    background: #332d1c;
-    color: #fff0be;
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.16);
+    color: var(--accent);
   }
 
   .size-field {
@@ -237,9 +237,9 @@
 
   .size-value:hover,
   .step-button:not(:disabled):hover {
-    border-color: #806b2d;
-    background: #332d1c;
-    color: #fff0be;
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.16);
+    color: var(--accent);
   }
 
   .size-value:focus-visible,

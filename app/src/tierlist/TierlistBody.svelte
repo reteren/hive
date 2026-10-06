@@ -1127,9 +1127,9 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
     min-width: 142px;
     gap: 5px;
     padding: 7px;
-    border: 1px solid #4a4d52;
+    border: 1px solid var(--border);
     border-radius: 5px;
-    background: #222428;
+    background: var(--bg-panel);
     box-shadow: 0 6px 18px #0009;
   }
 
@@ -1137,7 +1137,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
   .tier-picker { width: 190px; }
   .tier-menu-delete { padding: 5px 6px; border: 1px solid #51545a; border-radius: 3px; color: #f0dada; background: #39282b; text-align: left; cursor: pointer; }
   .tier-menu-add-image { padding: 5px 6px; border: 1px solid #51545a; border-radius: 3px; color: #e2e2e4; background: #2b2d32; text-align: left; cursor: pointer; }
-  .tier-menu-add-image:hover, .tier-menu-add-image:focus-visible { border-color: var(--accent); color: #f2d277; }
+  .tier-menu-add-image:hover, .tier-menu-add-image:focus-visible { border-color: var(--accent); color: var(--accent); }
 
   .tier-row-cards {
     position: relative;
@@ -1154,11 +1154,11 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
   }
 
   .tier-row-cards.drop-target {
-    background: #f5cd4d17;
+    background: rgba(var(--accent-rgb), 0.09);
     box-shadow: inset 0 0 0 2px var(--accent);
   }
 
-  .tier-row-cards.card-drop-target { background: #f5cd4d0c; }
+  .tier-row-cards.card-drop-target { background: rgba(var(--accent-rgb), 0.05); }
 
   :global(.tier-card-insertion-indicator) {
     position: absolute;
@@ -1166,7 +1166,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
     width: 3px;
     border-radius: 2px;
     background: var(--accent);
-    box-shadow: 0 0 7px #f5cd4d90;
+    box-shadow: 0 0 7px rgba(var(--accent-rgb), 0.56);
     pointer-events: none;
   }
 
@@ -1177,7 +1177,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
     left: 0;
     height: 2px;
     background: var(--accent);
-    box-shadow: 0 0 7px #f5cd4d90;
+    box-shadow: 0 0 7px rgba(var(--accent-rgb), 0.56);
     pointer-events: none;
   }
 
@@ -1191,7 +1191,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
   }
 
   .tier-card-content { position: relative; width: 100%; }
-  .tier-card-slot { display: block; box-sizing: border-box; width: 100%; height: 100%; min-height: inherit; border: 1px dashed var(--accent); border-radius: 4px; background: #f5cd4d12; }
+  .tier-card-slot { display: block; box-sizing: border-box; width: 100%; height: 100%; min-height: inherit; border: 1px dashed var(--accent); border-radius: 4px; background: rgba(var(--accent-rgb), 0.07); }
   .tier-card-wrap:has(.tier-card-editor) { border: 1px solid var(--accent); border-radius: 4px; background: #292c31; }
 
   .tier-card {
@@ -1214,7 +1214,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
   }
 
   .tier-card:hover { border-color: #747981; }
-  .tier-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px #f5cd4d50; }
+  .tier-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.31); }
   .tier-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .tier-card.image-card { box-sizing: border-box; height: 56px; min-height: 56px; max-height: 56px; padding: 0; }
   :global(.tier-card-image) { max-width: none; border-radius: 3px; background: transparent; }
@@ -1285,10 +1285,10 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
   .tier-add-row:hover { border-color: var(--accent); color: var(--accent); }
 
   .tier-dialog-backdrop { position: absolute; z-index: 10; inset: 0; display: grid; place-items: center; padding: 10px; background: #08090bcc; }
-  .tier-delete-dialog { display: flex; width: min(260px, 100%); flex-direction: column; gap: 7px; padding: 12px; border: 1px solid #53565d; border-radius: 5px; color: var(--text); background: #25272c; box-shadow: 0 8px 24px #000a; }
+  .tier-delete-dialog { display: flex; width: min(260px, 100%); flex-direction: column; gap: 7px; padding: 12px; border: 1px solid var(--border); border-radius: 5px; color: var(--text); background: var(--bg-panel); box-shadow: 0 8px 24px #000a; }
   .tier-delete-dialog strong { font-size: 13px; }
   .tier-delete-dialog p { margin: 0; color: #b4b6bb; font-size: 11px; }
-  .tier-delete-dialog button { padding: 6px 8px; border: 1px solid #4c5058; border-radius: 3px; color: var(--text); background: #303238; font: inherit; font-size: 11px; text-align: left; cursor: pointer; }
+  .tier-delete-dialog button { padding: 6px 8px; border: 1px solid var(--border); border-radius: 3px; color: var(--text); background: var(--bg-panel-raised); font: inherit; font-size: 11px; text-align: left; cursor: pointer; }
   .tier-delete-dialog button:hover { border-color: var(--accent); }
   .tier-delete-dialog button.danger { color: #f0c6c6; background: #3a292c; }
 </style>

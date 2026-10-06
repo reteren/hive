@@ -38,8 +38,8 @@
 <style>
   .random-body { display: grid; min-width: 0; gap: 7px; padding: 3px; font-size: 11px; }
   .random-hint { margin: 0; color: var(--text-dim); line-height: 1.4; }
-  .random-pick { justify-self: start; padding: 5px 12px; border: 1px solid #927d49; border-radius: 3px; color: #f4dda2; background: #3a3324; font: inherit; cursor: pointer; }
-  .random-pick:hover { border-color: var(--accent); background: #493b21; }
+  .random-pick { justify-self: start; padding: 5px 12px; border: 1px solid rgba(var(--accent-rgb), 0.45); border-radius: 3px; color: var(--accent); background: rgba(var(--accent-rgb), 0.16); font: inherit; cursor: pointer; }
+  .random-pick:hover { border-color: var(--accent); background: var(--accent-hover); }
   .random-pick:disabled { opacity: 0.45; cursor: default; }
   .random-result { display: grid; min-width: 0; gap: 3px; padding: 7px; border: 1px solid #55504a; border-radius: 3px; background: #292723; }
   .random-result button, .random-result strong { min-width: 0; overflow: hidden; color: #f1ddb0; font: inherit; font-size: 15px; font-weight: 700; text-align: left; text-overflow: ellipsis; white-space: nowrap; }

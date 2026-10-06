@@ -58,11 +58,11 @@
     z-index: 80;
     width: 210px;
     padding: 10px;
-    border: 1px solid #555;
+    border: 1px solid var(--border);
     border-radius: 5px;
-    background: #292929;
+    background: var(--bg-panel);
     box-shadow: 0 5px 18px rgb(0 0 0 / 45%);
-    color: #eee;
+    color: var(--text);
     font-size: 13px;
     pointer-events: auto;
     user-select: none;
@@ -70,20 +70,20 @@
 
   .note-color-popover:focus { outline: none; }
 
-  .note-color-title { display: block; margin-bottom: 8px; color: #bdbdbd; font-size: 11px; }
+  .note-color-title { display: block; margin-bottom: 8px; color: var(--text-dim); font-size: 11px; }
 
   .note-color-actions { display: flex; gap: 6px; margin-top: 9px; }
 
   .note-color-actions button {
     padding: 4px 8px;
-    border: 1px solid #555;
+    border: 1px solid var(--border);
     border-radius: 3px;
-    background: #383838;
-    color: #eee;
+    background: var(--bg-panel-raised);
+    color: var(--text);
     cursor: pointer;
   }
 
-  .note-color-actions button:hover { background: #484848; }
+  .note-color-actions button:hover { background: var(--bg-hover); }
 
   .note-color-actions .reset { margin-right: auto; }
 </style>

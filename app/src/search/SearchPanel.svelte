@@ -316,8 +316,8 @@
     padding: 1px 4px;
     border: 1px solid #484848;
     border-radius: 2px;
-    background: #202020;
-    color: #e2e2e2;
+    background: var(--bg-panel-raised);
+    color: var(--text);
     font: inherit;
     font-family: var(--mono-font);
     white-space: nowrap;
@@ -339,7 +339,7 @@
 
   .close-button:hover {
     border-color: #555;
-    background: #333;
+    background: var(--bg-hover);
     color: var(--text);
   }
 
@@ -350,7 +350,7 @@
     border: 1px solid #57503d;
     border-radius: 3px;
     outline: none;
-    background: #181818;
+    background: var(--bg-panel-raised);
     color: var(--text);
     font: inherit;
     font-size: 12px;
@@ -412,8 +412,8 @@
 
   .search-result:hover,
   .search-result.current {
-    border-color: #534a30;
-    background: #343019;
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.16);
   }
 
   .result-name,
@@ -444,8 +444,8 @@
 
   mark {
     border-radius: 1px;
-    background: #765c1d;
-    color: #fff2bc;
+    background: rgba(var(--accent-rgb), 0.28);
+    color: var(--accent);
   }
 
   .empty-results {
@@ -489,8 +489,8 @@
   }
 
   .result-controls button:hover:not(:disabled) {
-    border-color: #68604a;
-    background: #343019;
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: var(--bg-hover);
   }
 
   .result-controls button:disabled {
@@ -499,8 +499,8 @@
   }
 
   .result-controls .jump-button {
-    border-color: #7a642d;
-    color: #fff0be;
+    border-color: rgba(var(--accent-rgb), 0.45);
+    color: var(--accent);
   }
 
   @media (max-width: 460px) {

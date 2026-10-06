@@ -147,7 +147,7 @@
     max-height: min(480px, calc(100% - 54px));
     flex-direction: column;
     overflow: hidden;
-    border: 1px solid #080808;
+    border: 1px solid var(--border);
     border-radius: 4px;
     background: var(--bg-panel);
     box-shadow: 0 8px 24px rgb(0 0 0 / 40%);
@@ -210,9 +210,9 @@
   }
 
   .panel-control.pinned {
-    border-color: #806b2d;
-    background: #413716;
-    color: #fff0be;
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.16);
+    color: var(--accent);
   }
 
   .panel-control.close {
@@ -253,7 +253,7 @@
   }
 
   .history-actions button:hover {
-    border-color: #6d5a25;
+    border-color: rgba(var(--accent-rgb), 0.45);
     background: var(--bg-hover);
   }
 
@@ -280,7 +280,7 @@
 
   .history-row.current {
     border-left-color: var(--accent);
-    background: #343019;
+    background: rgba(var(--accent-rgb), 0.16);
   }
 
   .history-row.future {

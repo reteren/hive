@@ -169,25 +169,25 @@
     justify-content: space-between;
     gap: 7px;
     padding: 0 7px;
-    color: #e3e3e3;
-    background: #282828;
-    border: 1px solid #4b4b4b;
+    color: var(--text);
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
     border-radius: 4px;
     font: inherit;
     text-align: left;
     cursor: pointer;
   }
 
-  .app-select-trigger:hover { background: #303030; }
-  .app-select-trigger:focus-visible { outline: 1px solid #d6ad53; outline-offset: 1px; }
+  .app-select-trigger:hover { background: var(--bg-hover); }
+  .app-select-trigger:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
   .app-select-trigger:disabled { opacity: .55; cursor: default; }
   .app-select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .app-select-arrow {
     width: 7px;
     height: 7px;
     flex: 0 0 auto;
-    border-right: 1.5px solid #c8c8c8;
-    border-bottom: 1.5px solid #c8c8c8;
+    border-right: 1.5px solid var(--icon);
+    border-bottom: 1.5px solid var(--icon);
     transform: translateY(-2px) rotate(45deg);
   }
 
@@ -198,9 +198,9 @@
     overflow: auto;
     margin: 0;
     padding: 2px;
-    color: #e3e3e3;
-    background: #282828;
-    border: 1px solid #4b4b4b;
+    color: var(--text);
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
     border-radius: 4px;
     box-shadow: 0 5px 16px rgb(0 0 0 / 42%);
   }
@@ -209,7 +209,7 @@
   .app-select-option {
     min-height: 23px;
     padding: 3px 6px;
-    color: #d5d5d5;
+    color: var(--text);
     background: transparent;
     border: 0;
     border-radius: 2px;
@@ -217,7 +217,7 @@
     text-align: left;
     cursor: pointer;
   }
-  .app-select-option:hover, .app-select-option.active { background: #393939; }
-  .app-select-option.selected { color: #edc35e; }
-  .app-select-option.selected.active { background: #413923; }
+  .app-select-option:hover, .app-select-option.active { background: var(--bg-hover); }
+  .app-select-option.selected { color: var(--accent); }
+  .app-select-option.selected.active { background: rgba(var(--accent-rgb), 0.16); }
 </style>

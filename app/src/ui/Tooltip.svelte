@@ -134,7 +134,7 @@
     overflow: auto;
     padding: 5px 7px;
     color: var(--text);
-    background: #101010;
+    background: var(--bg-panel);
     border: 1px solid #555;
     border-radius: 3px;
     box-shadow: 0 3px 10px rgb(0 0 0 / 45%);
@@ -176,9 +176,9 @@
 
   kbd {
     padding: 1px 4px;
-    color: #eee;
-    background: #292929;
-    border: 1px solid #4a4a4a;
+    color: var(--text);
+    background: var(--bg-panel-raised);
+    border: 1px solid var(--border);
     border-radius: 2px;
     font: inherit;
     white-space: nowrap;

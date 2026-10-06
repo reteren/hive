@@ -77,15 +77,16 @@
   }
 
   .subtool-button.active {
-    color: #fff0be;
-    background: #413716;
-    border-color: #806b2d;
+    color: var(--accent);
+    background: rgba(var(--accent-rgb), 0.16);
+    border-color: rgba(var(--accent-rgb), 0.45);
   }
 
   svg {
     width: 16px;
     height: 16px;
     fill: none;
+    color: var(--icon);
     stroke: currentColor;
     stroke-linecap: round;
     stroke-linejoin: round;

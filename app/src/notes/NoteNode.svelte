@@ -305,6 +305,10 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
 
 <style>
   .note-card {
+    /* Nodes keep their own dark card colours on every theme, so their text stays light even when a
+       light theme flips the UI text dark. */
+    --text: #d6d6d6;
+    --text-dim: #a0a0a0;
     position: absolute;
     transform-origin: top left;
     isolation: isolate;
@@ -366,8 +370,8 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
   }
 
   .time-view-switch button.active {
-    color: #f0d58a;
-    background: #48402d;
+    color: var(--accent);
+    background: rgba(var(--accent-rgb), 0.16);
   }
 
   /* Hidden header stays as a hit target just above the node without covering its body. */
@@ -526,9 +530,9 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
   }
 
   .note-content[data-combo-drop-target="host"] {
-    outline: 2px solid #f5cd4d;
+    outline: 2px solid var(--accent);
     outline-offset: -2px;
-    background-color: #f5cd4d14;
+    background-color: rgba(var(--accent-rgb), 0.08);
   }
 
   .note-content :global(.note-body) {

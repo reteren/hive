@@ -133,7 +133,7 @@
     height: 100%;
     margin: 0;
     overflow: hidden;
-    background: #161616;
+    background: var(--bg-board);
   }
 
   .quick-input {
@@ -144,9 +144,9 @@
     flex-direction: column;
     gap: 10px;
     padding: 13px 15px 12px;
-    border: 1px solid #3d3d3d;
-    background: #1d1d1d;
-    color: #ededed;
+    border: 1px solid var(--border);
+    background: var(--bg-panel);
+    color: var(--text);
     font-family: Inter, "Segoe UI", sans-serif;
   }
 
@@ -187,7 +187,7 @@
   .quick-input__close:hover,
   .quick-input__close:focus-visible {
     border-color: #555;
-    background: #303030;
+    background: var(--bg-hover);
     color: #fff;
   }
 
@@ -201,14 +201,14 @@
     border: 1px solid #494949;
     border-radius: 3px;
     outline: none;
-    background: #151515;
-    color: #ededed;
+    background: var(--bg-panel-raised);
+    color: var(--text);
     font: 12px/1.45 Inter, "Segoe UI", sans-serif;
   }
 
   .quick-input__text:focus {
-    border-color: #8e742b;
-    box-shadow: 0 0 0 1px #8e742b;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
   }
 
   .quick-input__text::placeholder {
@@ -224,10 +224,10 @@
   .quick-input__submit {
     min-height: 27px;
     padding: 4px 10px;
-    border: 1px solid #776327;
+    border: 1px solid var(--accent);
     border-radius: 3px;
-    background: #3a321d;
-    color: #f1df9e;
+    background: rgba(var(--accent-rgb), 0.16);
+    color: var(--accent);
     font: inherit;
     font-size: 10px;
     cursor: pointer;
@@ -235,12 +235,12 @@
 
   .quick-input__submit:hover:not(:disabled),
   .quick-input__submit:focus-visible {
-    background: #504426;
+    background: var(--accent-hover);
   }
 
   .quick-input__submit:disabled {
-    border-color: #414141;
-    background: #272727;
+    border-color: var(--border);
+    background: var(--bg-panel-raised);
     color: #777;
     cursor: default;
   }

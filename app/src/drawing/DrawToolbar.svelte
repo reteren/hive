@@ -117,7 +117,7 @@
     border: 1px solid var(--border, #454545);
     border-radius: 5px;
     color: var(--text, #ededed);
-    background: var(--bg-panel, #222);
+    background: var(--bg-panel);
     box-shadow: 0 6px 18px rgb(0 0 0 / 36%);
     font-size: 11px;
     scrollbar-width: thin;
@@ -137,17 +137,17 @@
     border: 1px solid var(--border, #454545);
     border-radius: 3px;
     color: var(--text, #ededed);
-    background: #2b2b2b;
+    background: var(--bg-panel-raised);
     cursor: pointer;
   }
 
   button:hover {
     border-color: #a7a7a7;
-    background: #3b3b3b;
+    background: var(--bg-hover);
   }
 
   button:focus-visible, input:focus-visible {
-    outline: 2px solid var(--accent, #c8a94e);
+    outline: 2px solid var(--accent);
     outline-offset: 1px;
   }
 
@@ -164,7 +164,7 @@
     border-radius: 3px;
     padding: 4px 6px;
     color: var(--text, #ededed);
-    background: #1b1b1b;
+    background: var(--bg-panel);
   }
   .size-control { gap: 9px; }
   .size-control :global(.media-slider) { flex: 1; }

@@ -123,8 +123,8 @@
   .importance-dot.rainbow-dot { background: linear-gradient(135deg, #edc84d, #e05b5b, #a67be3, #78a9d4, #86b879); }
   .message-close { position: absolute; right: 5px; top: 5px; padding: 0; width: 22px; height: 22px; border: 0; color: #bbb; background: transparent; font: inherit; font-size: 17px; cursor: pointer; }
   .message-go { margin-left: auto; padding: 4px 7px; border: 1px solid #555; border-radius: 3px; color: #ddd; background: #333; font: inherit; font-size: 10px; cursor: pointer; }
-  button:hover { color: #fff; border-color: var(--accent, #9e8642); }
-  button:focus-visible { outline: 1px solid var(--accent, #9e8642); outline-offset: 1px; }
+  button:hover { color: var(--accent); border-color: var(--accent); }
+  button:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
   .message-late { padding: 1px 4px; border-radius: 2px; color: #e6c87b; background: #554524; }
   .message-unavailable { margin-left: auto; }
   :global(html[data-reduce-motion="true"]) .fresh,

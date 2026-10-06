@@ -20,10 +20,10 @@
     max-width: min(340px, 100%);
     padding: 6px 9px;
     overflow: hidden;
-    border: 1px solid #5a4a1d;
+    border: 1px solid rgba(var(--accent-rgb), 0.45);
     border-radius: 3px;
-    background: #292516;
-    color: #f1d98e;
+    background: rgba(var(--accent-rgb), 0.12);
+    color: var(--accent);
     font-size: 10px;
     line-height: 1.25;
     text-overflow: ellipsis;
@@ -32,8 +32,8 @@
   }
 
   .history-toast.muted {
-    border-color: #383838;
-    background: #202020;
+    border-color: var(--border);
+    background: var(--bg-panel);
     color: var(--text-dim);
   }
 

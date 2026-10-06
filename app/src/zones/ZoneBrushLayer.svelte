@@ -294,5 +294,5 @@
 <style>
   .zone-brush-layer, .brush-svg { position: absolute; inset: 0; pointer-events: none; }
   .brush-svg { overflow: visible; }
-  .brush-cursor { fill: #f2d34c; fill-opacity: 0.05; stroke: #f2d34c; stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+  .brush-cursor { fill: var(--accent); fill-opacity: 0.05; stroke: var(--accent); stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
 </style>

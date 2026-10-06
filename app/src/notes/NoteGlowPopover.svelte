@@ -109,34 +109,34 @@
     width: 210px;
     gap: 8px;
     padding: 10px;
-    border: 1px solid #555;
+    border: 1px solid var(--border);
     border-radius: 5px;
-    background: #292929;
+    background: var(--bg-panel);
     box-shadow: 0 5px 18px rgb(0 0 0 / 45%);
-    color: #eee;
+    color: var(--text);
     font-size: 13px;
     pointer-events: auto;
     user-select: none;
   }
 
   .note-glow-popover:focus { outline: none; }
-  .note-glow-title { display: block; color: #bdbdbd; font-size: 11px; }
+  .note-glow-title { display: block; color: var(--text-dim); font-size: 11px; }
 
   .field { display: grid; gap: 5px; }
-  .field span { display: flex; justify-content: space-between; gap: 8px; color: #c8c8c8; }
-  .field strong { color: #ededed; font-variant-numeric: tabular-nums; }
+  .field span { display: flex; justify-content: space-between; gap: 8px; color: var(--text-dim); }
+  .field strong { color: var(--text); font-variant-numeric: tabular-nums; }
 
   .note-glow-popover button {
     min-height: 27px;
     padding: 4px 8px;
-    border: 1px solid #555;
+    border: 1px solid var(--border);
     border-radius: 3px;
-    background: #383838;
-    color: #eee;
+    background: var(--bg-panel-raised);
+    color: var(--text);
     cursor: pointer;
   }
 
-  .note-glow-popover button:hover { background: #484848; }
+  .note-glow-popover button:hover { background: var(--bg-hover); }
   .note-glow-actions { display: flex; justify-content: flex-end; gap: 6px; }
   .color-as-main { justify-self: start; }
 </style>

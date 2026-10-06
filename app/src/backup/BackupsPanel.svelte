@@ -178,14 +178,14 @@
 <style>
   .backup-overlay { position: fixed; z-index: 1200; inset: 0; display: grid; place-items: center; padding: 16px; }
   .backup-backdrop { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #0009; cursor: default; }
-  .backup-dialog { position: relative; display: flex; width: min(620px, 100%); max-height: min(720px, 88vh); flex-direction: column; overflow: hidden; border: 1px solid #4d5056; border-radius: 5px; color: var(--text); background: var(--bg-panel); box-shadow: 0 14px 40px #0009; }
+  .backup-dialog { position: relative; display: flex; width: min(620px, 100%); max-height: min(720px, 88vh); flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: 5px; color: var(--text); background: var(--bg-panel); box-shadow: 0 14px 40px #0009; }
   .backup-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #3b3e44; }
   h2, h3, p { margin: 0; }
   h2 { font-size: 14px; }
   .backup-heading p { margin-top: 4px; color: #aeb2ba; font-size: 11px; }
-  .icon-button { width: 26px; height: 26px; border: 1px solid #474b52; border-radius: 3px; color: var(--text); background: #303238; font: inherit; cursor: pointer; }
+  .icon-button { width: 26px; height: 26px; border: 1px solid var(--border); border-radius: 3px; color: var(--icon); background: var(--bg-panel-raised); font: inherit; cursor: pointer; }
   .backup-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 9px 12px; border-bottom: 1px solid #3b3e44; }
-  button { min-height: 27px; padding: 5px 8px; border: 1px solid #4b4f57; border-radius: 3px; color: var(--text); background: #303238; font: inherit; font-size: 11px; cursor: pointer; }
+  button { min-height: 27px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 3px; color: var(--text); background: var(--bg-panel-raised); font: inherit; font-size: 11px; cursor: pointer; }
   button:hover:not(:disabled) { border-color: var(--accent); }
   button:disabled { opacity: .55; cursor: default; }
   .backup-actions label { display: flex; align-items: center; gap: 7px; margin-left: auto; color: #c0c2c8; font-size: 11px; }
@@ -199,7 +199,7 @@
   .danger { color: #f2c6c6; }
   .backup-empty { padding: 18px 12px; }
   .backup-error { padding: 8px 12px; color: #ffc0bc; background: #482e31; font-size: 11px; overflow-wrap: anywhere; }
-  .health-report { max-height: 170px; overflow: auto; padding: 9px 12px; border-bottom: 1px solid #3b3e44; background: #222429; }
+  .health-report { max-height: 170px; overflow: auto; padding: 9px 12px; border-bottom: 1px solid var(--border); background: var(--bg-panel-raised); }
   h3 { margin-bottom: 6px; font-size: 11px; }
   .health-report p, .health-report li { color: #c1c3c9; font-size: 10px; line-height: 1.45; }
   .health-ok { color: #bfe0c1 !important; }

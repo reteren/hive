@@ -13,8 +13,9 @@ import {
   normalizeVideoExternalThresholdMb,
   type VideoExternalThresholdMb,
 } from "./videoThreshold";
+import { DEFAULT_THEME_SETTINGS, normalizeThemeSettings, type ThemeSettings } from "../theme/presets";
 
-export const VIEW_SETTINGS_VERSION = 16;
+export const VIEW_SETTINGS_VERSION = 17;
 
 export interface CameraSettings {
   minZoom: number;
@@ -60,6 +61,7 @@ export interface ViewSettings {
   quickInputShortcut: string;
   skipCompletedTimerConfirmation?: boolean;
   videoExternalThresholdMb: VideoExternalThresholdMb;
+  appearance: ThemeSettings;
 }
 
 /** App-wide Time totals. They belong to view settings, not to an individual project. */
@@ -93,6 +95,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
   quickInputShortcut: DEFAULT_QUICK_INPUT_SHORTCUT,
   skipCompletedTimerConfirmation: false,
   videoExternalThresholdMb: DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB,
+  appearance: normalizeThemeSettings(DEFAULT_THEME_SETTINGS),
 };
 
 const MIN_ALLOWED_ZOOM_LIMIT = 0.001;
@@ -162,6 +165,7 @@ export function parseViewSettings(serialized: string | null | undefined, default
       parsed.videoExternalThresholdMb,
       defaults.videoExternalThresholdMb,
     ),
+    appearance: normalizeThemeSettings(parsed.appearance, defaults.appearance),
   };
 }
 
@@ -199,6 +203,7 @@ export function serializeViewSettings(settings: ViewSettings): string {
       settings.videoExternalThresholdMb,
       DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB,
     ),
+    appearance: normalizeThemeSettings(settings.appearance),
   });
 }
 
@@ -276,6 +281,7 @@ function cloneViewSettings(settings: ViewSettings): ViewSettings {
       settings.videoExternalThresholdMb,
       DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB,
     ),
+    appearance: normalizeThemeSettings(settings.appearance),
   };
 }
 

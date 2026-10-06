@@ -190,8 +190,8 @@
     padding: 1px 4px;
     border: 1px solid #484848;
     border-radius: 2px;
-    background: #202020;
-    color: #e2e2e2;
+    background: var(--bg-panel-raised);
+    color: var(--text);
     font: inherit;
     font-family: var(--mono-font);
     white-space: nowrap;
@@ -204,7 +204,7 @@
     border: 1px solid #57503d;
     border-radius: 3px;
     outline: none;
-    background: #181818;
+    background: var(--bg-panel-raised);
     color: var(--text);
     font: inherit;
     font-size: 13px;
@@ -241,8 +241,8 @@
 
   .command-result:hover,
   .command-result.selected {
-    border-color: #534a30;
-    background: #343019;
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.16);
   }
 
   .result-copy {

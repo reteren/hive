@@ -7,15 +7,23 @@
 
   let canvas: HTMLCanvasElement;
   let devicePixelRatio = $state(1);
+  let themeRevision = $state(0);
 
   onMount(() => {
     const updatePixelRatio = () => {
       devicePixelRatio = window.devicePixelRatio || 1;
     };
+    const updateTheme = () => {
+      themeRevision += 1;
+    };
 
     updatePixelRatio();
     window.addEventListener("resize", updatePixelRatio);
-    return () => window.removeEventListener("resize", updatePixelRatio);
+    window.addEventListener("hive:themechange", updateTheme);
+    return () => {
+      window.removeEventListener("resize", updatePixelRatio);
+      window.removeEventListener("hive:themechange", updateTheme);
+    };
   });
 
   $effect(() => {
@@ -24,6 +32,8 @@
     const currentStep = grid.step;
     const showGrid = grid.showGrid;
     const ratio = devicePixelRatio;
+    const currentThemeRevision = themeRevision;
+    void currentThemeRevision;
 
     // Draw in the same update as the DOM layer (ME marker). Deferring to a separate
     // animation frame starved the grid while WASD moved the camera every frame.

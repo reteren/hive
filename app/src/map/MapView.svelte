@@ -410,7 +410,7 @@
     <circle cx={beacon.x} cy={beacon.y} r={beacon.radius} fill={beacon.color} stroke="#171717" stroke-width="0.7" data-map-beacon={beacon.id} />
   {/each}
   {#if frame.me}
-    <circle cx={frame.me.x} cy={frame.me.y} r="3" fill="#f4f4ef" stroke="#181818" stroke-width="1" data-map-me={ME_OBJECT_ID} />
+    <circle cx={frame.me.x} cy={frame.me.y} r="3" fill="var(--accent)" stroke="var(--bg-board)" stroke-width="1" data-map-me={ME_OBJECT_ID} />
     <path d={`M${frame.me.x - 5},${frame.me.y}h10M${frame.me.x},${frame.me.y - 5}v10`} stroke="#fff" stroke-opacity="0.75" stroke-width="0.7" vector-effect="non-scaling-stroke" aria-hidden="true" />
   {/if}
   <rect
@@ -420,7 +420,7 @@
     width={Math.max(0.5, frame.viewport.width)}
     height={Math.max(0.5, frame.viewport.height)}
     fill="none"
-    stroke="#fff4ae"
+    stroke="var(--accent)"
     stroke-width="2"
     vector-effect="non-scaling-stroke"
     data-map-viewport
@@ -428,7 +428,7 @@
 </svg>
 
 <style>
-  .map-view { display: block; width: 100%; height: 100%; overflow: hidden; background: #191c1c; cursor: crosshair; touch-action: none; user-select: none; }
-  .map-background { fill: #191c1c; }
+  .map-view { display: block; width: 100%; height: 100%; overflow: hidden; background: var(--bg-board); cursor: crosshair; touch-action: none; user-select: none; }
+  .map-background { fill: var(--bg-board); }
   .map-viewport { pointer-events: none; }
 </style>

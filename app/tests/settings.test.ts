@@ -51,6 +51,7 @@ describe("view settings serialization", () => {
       quickInputShortcut: "Ctrl+Shift+Space",
       skipCompletedTimerConfirmation: false,
       videoExternalThresholdMb: 125,
+      appearance: DEFAULT_VIEW_SETTINGS.appearance,
     };
 
     const serialized = serializeViewSettings(settings);
@@ -127,6 +128,7 @@ describe("view settings serialization", () => {
       quickInputShortcut: DEFAULT_VIEW_SETTINGS.quickInputShortcut,
       skipCompletedTimerConfirmation: false,
       videoExternalThresholdMb: 20,
+      appearance: DEFAULT_VIEW_SETTINGS.appearance,
     });
   });
 

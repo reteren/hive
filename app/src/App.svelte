@@ -230,9 +230,9 @@
     align-items: center;
     gap: 4px;
     padding: 2px;
-    border: 1px solid #353535;
+    border: 1px solid var(--border);
     border-radius: 4px;
-    background: rgb(25 25 25 / 92%);
+    background: var(--bg-panel);
     box-shadow: 0 3px 10px rgb(0 0 0 / 28%);
   }
 
@@ -284,6 +284,7 @@
     height: 14px;
     flex: 0 0 auto;
     fill: none;
+    color: var(--icon);
     stroke: currentColor;
     stroke-linecap: round;
     stroke-width: 1.2;
@@ -291,9 +292,9 @@
 
   .dock-button:hover,
   .dock-button.active {
-    border-color: #806b2d;
-    background: #343019;
-    color: #fff0be;
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.16);
+    color: var(--accent);
   }
 
   .overlay-bottom-right {

@@ -75,7 +75,7 @@
       title={commandTitle(snapCommand)}
       onclick={() => runCommand(snapCommand.id)}
     >
-      <span class="magnet-icon" style:--icon={`url("${isSnapEnabled ? magnetOnIcon : magnetOffIcon}")`} aria-hidden="true"></span>
+      <span class="magnet-icon" style:--magnet-image={`url("${isSnapEnabled ? magnetOnIcon : magnetOffIcon}")`} aria-hidden="true"></span>
     </button>
   {/if}
 
@@ -160,7 +160,7 @@
     align-items: center;
     justify-content: center;
     padding: 0;
-    border: 1px solid #1a1a1a;
+    border: 1px solid var(--border);
     border-radius: 5px;
     background: var(--bg-panel-raised);
     color: var(--text);
@@ -175,7 +175,7 @@
   .expand-button.expanded {
     border-color: var(--accent);
     background: var(--accent);
-    color: #24211b;
+    color: var(--on-accent);
   }
 
   /* The user's icons are white on transparent: used as a mask so the glyph follows the button colour. */
@@ -183,16 +183,16 @@
     display: block;
     width: 16px;
     height: 16px;
-    background: currentColor;
-    -webkit-mask: var(--icon) center / contain no-repeat;
-    mask: var(--icon) center / contain no-repeat;
+    background: var(--icon);
+    -webkit-mask: var(--magnet-image) center / contain no-repeat;
+    mask: var(--magnet-image) center / contain no-repeat;
   }
 
   .expand-arrow {
     width: 16px;
     height: 16px;
     fill: none;
-    stroke: currentColor;
+    stroke: var(--icon);
     stroke-width: 1.8;
     stroke-linecap: round;
     stroke-linejoin: round;
@@ -245,7 +245,7 @@
     width: 16px;
     height: 16px;
     fill: none;
-    stroke: currentColor;
+    stroke: var(--icon);
     stroke-width: 1.1;
   }
 
@@ -306,7 +306,7 @@
     width: 14px;
     height: 14px;
     fill: none;
-    stroke: var(--text-dim);
+    stroke: var(--icon-dim);
     stroke-width: 1.3;
     stroke-linecap: round;
     stroke-linejoin: round;

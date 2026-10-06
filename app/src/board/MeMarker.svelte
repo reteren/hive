@@ -47,7 +47,7 @@
     height: 72px;
     border-radius: 50%;
     background: var(--accent);
-    box-shadow: 0 0 0 12px rgba(232, 176, 48, 0.25);
+    box-shadow: 0 0 0 12px rgba(var(--accent-rgb), 0.25);
     pointer-events: auto;
     cursor: crosshair;
     padding: 0;
@@ -76,8 +76,8 @@
     top: -38px;
     width: 14px;
     height: 14px;
-    border: 2px solid #1c1c1c;
+    border: 2px solid var(--bg-board);
     border-radius: 50%;
-    background: #f7d269;
+    background: var(--accent);
   }
 </style>

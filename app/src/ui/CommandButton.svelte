@@ -68,7 +68,10 @@
       onmousedown={preventMouseFocus}
       onclick={() => runCommand(commandId)}
     >
-      <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+      {#if !icon && iconName === "settings"}
+        <span class="raster-icon" style:--raster-icon={`url("${settingsIcon}")`} aria-hidden="true"></span>
+      {:else}
+        <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
         {#if icon}
           {@render icon()}
         {:else if iconName === "home"}
@@ -85,8 +88,6 @@
         {:else if iconName === "panel"}
           <rect x="2.5" y="3" width="15" height="14" rx="1" />
           <path d="M11.5 3v14M14.5 7h1M14.5 10h1" />
-        {:else if iconName === "settings"}
-          <image href={settingsIcon} x="2" y="2" width="16" height="16" class="raster-icon" />
         {:else if iconName === "search"}
           <circle cx="8.5" cy="8.5" r="5.2" />
           <path d="m12.4 12.4 4.3 4.3" />
@@ -115,7 +116,8 @@
           <circle cx="10" cy="10" r="6.5" />
           <path d="M10 6.5v7M6.5 10h7" />
         {/if}
-      </svg>
+        </svg>
+      {/if}
       {#if showLabel}<span>{labelOverride ?? command.label}</span>{/if}
     </button>
   </Tooltip>
@@ -145,14 +147,21 @@
     height: 16px;
     flex: 0 0 auto;
     fill: none;
+    color: var(--icon);
     stroke: currentColor;
     stroke-linecap: round;
     stroke-linejoin: round;
     stroke-width: 1.35;
   }
 
-  /* White raster icon: dimmed like the stroked icons, full brightness on hover/active. */
+  /* Raster icons use a mask so the theme icon colour can tint them. */
   .raster-icon {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+    background: var(--icon);
+    -webkit-mask: var(--raster-icon) center / contain no-repeat;
+    mask: var(--raster-icon) center / contain no-repeat;
     opacity: 0.78;
   }
 
@@ -172,9 +181,9 @@
 
   .command-button.active,
   .command-button[aria-pressed="true"] {
-    color: #fff0be;
-    background: #413716;
-    border-color: #806b2d;
+    color: var(--accent);
+    background: rgba(var(--accent-rgb), 0.16);
+    border-color: rgba(var(--accent-rgb), 0.45);
   }
 
   .command-button.with-label {

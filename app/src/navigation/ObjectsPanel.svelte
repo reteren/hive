@@ -200,7 +200,7 @@
     z-index: 7;
     top: 48px;
     left: 8px;
-    border: 1px solid #080808;
+    border: 1px solid var(--border);
     border-radius: 4px;
     background: var(--bg-panel);
     box-shadow: 0 8px 24px rgb(0 0 0 / 40%);
@@ -228,9 +228,9 @@
   }
 
   .objects-tab:hover {
-    border-color: #806b2d;
-    background: #343019;
-    color: #fff0be;
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.16);
+    color: var(--accent);
   }
 
   .panel-heading {
@@ -290,14 +290,14 @@
   .panel-control:hover,
   .sort-button:hover {
     border-color: #4a4a4a;
-    background: #303030;
+    background: var(--bg-hover);
     color: var(--text);
   }
 
   .panel-control.pinned {
-    border-color: #806b2d;
-    background: #343019;
-    color: #fff0be;
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.16);
+    color: var(--accent);
   }
 
   .panel-control:disabled {
@@ -329,7 +329,7 @@
     border: 1px solid #414141;
     border-radius: 2px;
     outline: none;
-    background: #1d1d1d;
+    background: var(--bg-panel-raised);
     color: var(--text);
     font: inherit;
     font-size: 10px;
@@ -368,12 +368,12 @@
 
   .object-entry:hover,
   .object-entry.selected {
-    border-color: #514322;
-    background: #343019;
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.16);
   }
 
   .object-dot {
-    color: #e8b030;
+    color: var(--icon);
     font-size: 8px;
   }
 

@@ -22,7 +22,7 @@
     padding: 8px 9px 8px 11px;
     border: 1px solid #4b4b4b;
     border-radius: 4px;
-    background: #202020;
+    background: var(--bg-panel);
     box-shadow: 0 5px 18px rgb(0 0 0 / 42%);
     color: var(--text);
     font-size: 11px;
@@ -52,7 +52,7 @@
   button:hover,
   button:focus-visible {
     border-color: #555;
-    background: #333;
-    color: var(--text);
+    background: var(--bg-hover);
+    color: var(--icon);
   }
 </style>

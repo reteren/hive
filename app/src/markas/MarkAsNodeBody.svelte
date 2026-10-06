@@ -311,7 +311,7 @@
     width: 18px;
     place-items: center;
     padding: 0 3px 0 0;
-    color: color-mix(in srgb, var(--tag-color) 70%, #fff);
+    color: var(--icon);
     opacity: 0.7;
   }
 
@@ -322,6 +322,7 @@
     width: 10px;
     height: 10px;
     fill: none;
+    color: var(--icon);
     stroke: currentColor;
     stroke-width: 1.6;
     stroke-linecap: round;
@@ -397,7 +398,7 @@
 
   .markas-color-toggle:hover, .markas-color-toggle.open { border-color: #777; }
   .markas-color-toggle .markas-color-code { flex: 1; font-family: var(--mono-font, monospace); text-align: left; }
-  .markas-color-toggle svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.4; transition: transform 140ms ease; }
+  .markas-color-toggle svg { width: 10px; height: 10px; fill: none; color: var(--icon); stroke: currentColor; stroke-width: 1.4; transition: transform 140ms ease; }
   .markas-color-toggle.open svg { transform: rotate(180deg); }
   .markas-picker { padding: 2px 0 2px; }
 

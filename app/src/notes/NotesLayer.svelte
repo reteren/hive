@@ -318,7 +318,7 @@
     padding: 4px;
     border: 1px solid #4c4c4c;
     border-radius: 4px;
-    background: #242424;
+    background: var(--bg-panel);
     box-shadow: 0 5px 16px rgb(0 0 0 / 45%);
     pointer-events: auto;
   }
@@ -360,8 +360,8 @@
 
   .link-context-menu button:hover,
   .link-context-menu button:focus-visible {
-    background: #393939;
-    color: #fff;
+    background: var(--bg-hover);
+    color: var(--text);
   }
 
   .link-status {
@@ -373,7 +373,7 @@
     padding: 6px 9px;
     border: 1px solid #494949;
     border-radius: 3px;
-    background: #292929;
+    background: var(--bg-panel);
     color: var(--text);
     box-shadow: 0 3px 10px rgb(0 0 0 / 32%);
     pointer-events: none;

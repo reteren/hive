@@ -233,7 +233,7 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
         // GPU-composited cursor layer and WebView2 clips it to an invisible sliver (debug 28 #11).
         ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#fff", marginLeft: "0" },
         ".cm-selectionBackground, ::selection": {
-          backgroundColor: "var(--bg-active) !important",
+          backgroundColor: "rgba(var(--accent-rgb), 0.3) !important",
         },
         "&.cm-focused": { outline: "none" },
         ".cm-activeLine": { backgroundColor: "transparent" },

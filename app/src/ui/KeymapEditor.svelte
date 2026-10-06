@@ -336,9 +336,9 @@
   }
 
   .binding-button.capturing {
-    border-color: #a58a39;
-    background: #3b321b;
-    color: #fff0be;
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.16);
+    color: var(--accent);
   }
 
   .add-binding {
@@ -370,9 +370,9 @@
   }
 
   .replace-button {
-    border-color: #806b2d;
-    background: #403619;
-    color: #fff0be;
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.16);
+    color: var(--accent);
   }
 
   .keymap-status {

@@ -10,6 +10,11 @@
   --text: #d6d6d6;
   --text-dim: #a0a0a0;
   --accent: #e8b030;
+  --accent-hover: #ebb949;
+  --accent-rgb: 232, 176, 48;
+  --on-accent: #000000;
+  --icon: #ffffff;
+  --icon-dim: rgb(255 255 255 / 58%);
   --grid-minor: rgba(255, 255, 255, 0.05);
   --grid-major: rgba(255, 255, 255, 0.1);
   --axis: rgba(232, 176, 48, 0.28);
@@ -72,9 +77,10 @@ input[type="number"]::-webkit-outer-spin-button {
   outline: none;
 }
 
+/* Follows the theme accent; ≈ the old #665421 on the Hive preset. Text keeps its own colour. */
 ::selection {
-  color: #fff4d0;
-  background: #665421;
+  color: var(--text);
+  background: rgba(var(--accent-rgb), 0.36);
 }
 
 .note-card :is(label, button, [role="button"]) {

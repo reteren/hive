@@ -86,10 +86,10 @@
   .inbox-prompt {
     width: min(460px, 100%);
     padding: 12px;
-    border: 1px solid #555;
+    border: 1px solid var(--border);
     border-radius: 5px;
     color: var(--text);
-    background: #242424;
+    background: var(--bg-panel);
     box-shadow: 0 12px 40px rgb(0 0 0 / 38%);
   }
 
@@ -110,20 +110,20 @@
     box-sizing: border-box;
     resize: vertical;
     padding: 8px;
-    border: 1px solid #4a4a4a;
+    border: 1px solid var(--border);
     border-radius: 3px;
     color: var(--text);
-    background: #1a1a1a;
+    background: var(--bg-panel-raised);
     font: inherit;
     line-height: 1.4;
   }
 
   .inbox-prompt button {
     padding: 5px 8px;
-    border: 1px solid #555;
+    border: 1px solid var(--border);
     border-radius: 3px;
     color: var(--text);
-    background: #303030;
+    background: var(--bg-panel-raised);
     font: inherit;
     font-size: 10px;
     cursor: pointer;

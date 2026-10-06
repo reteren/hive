@@ -2421,7 +2421,7 @@ type PendingBoardMove =
 
   .resize-handle:hover::before,
   .resize-handle:focus-visible::before {
-    background: #ffd260;
+    background: var(--accent-hover);
   }
 
   .resize-handle-top-left {
@@ -2482,8 +2482,8 @@ type PendingBoardMove =
 
   .marquee {
     position: absolute;
-    border: 1px solid rgba(232, 176, 48, 0.95);
-    background: rgba(232, 176, 48, 0.12);
+    border: 1px solid rgba(var(--accent-rgb), 0.95);
+    background: rgba(var(--accent-rgb), 0.12);
   }
 
   .zone-collision-hint {

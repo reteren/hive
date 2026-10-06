@@ -81,7 +81,7 @@
     border: 1px solid #484a50;
     border-radius: 4px;
     color: var(--text);
-    background: #26282c;
+    background: var(--bg-panel);
     font: inherit;
     font-size: 12px;
     cursor: pointer;
@@ -89,7 +89,7 @@
 
   .update-actions button:hover:not(:disabled) { border-color: #6a6d74; }
   .update-actions .install { border-color: var(--accent); color: #18191c; background: var(--accent); font-weight: 600; }
-  .update-actions .install:hover:not(:disabled) { border-color: #f4c860; background: #f4c860; }
+  .update-actions .install:hover:not(:disabled) { border-color: var(--accent-hover); background: var(--accent-hover); }
   .update-actions button:disabled { opacity: 0.55; cursor: default; }
 
   .update-progress { height: 3px; overflow: hidden; border-radius: 2px; background: #3a3c40; }

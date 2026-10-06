@@ -27,6 +27,7 @@
   import QuickInputShortcutSetting from "../settings/QuickInputShortcutSetting.svelte";
   import ExportStatus from "../export/ExportStatus.svelte";
   import SpellcheckSettings from "../spell/SpellcheckSettings.svelte";
+  import AppearanceSettings from "../theme/AppearanceSettings.svelte";
   import Select from "./Select.svelte";
   import { setMcpBridgeEnabled } from "../mcp/bridge";
   import { mcpBridge } from "../mcp/bridge.svelte";
@@ -222,6 +223,8 @@
           </label>
           <QuickInputShortcutSetting />
         </section>
+
+        <AppearanceSettings />
 
         <section class="settings-section" aria-labelledby="ai-tools-settings-title" data-ai-tools-settings>
           <h2 id="ai-tools-settings-title">AI tools</h2>

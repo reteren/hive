@@ -130,7 +130,7 @@
     z-index: 7;
     top: 8px;
     right: 8px;
-    border: 1px solid #080808;
+    border: 1px solid var(--border);
     border-radius: 4px;
     background: var(--bg-panel);
     box-shadow: 0 8px 24px rgb(0 0 0 / 40%);
@@ -162,9 +162,9 @@
 
   .tasks-tab:hover,
   .tasks-tab:focus-visible {
-    border-color: #806b2d;
-    background: #343019;
-    color: #fff0be;
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.16);
+    color: var(--accent);
   }
 
   .panel-heading {
@@ -213,7 +213,7 @@
   .panel-control:hover,
   .panel-control:focus-visible {
     border-color: #4a4a4a;
-    background: #303030;
+    background: var(--bg-hover);
     color: var(--text);
   }
 
@@ -264,8 +264,8 @@
   .history-name:hover,
   .task-name:focus-visible,
   .history-name:focus-visible {
-    border-color: #514322;
-    background: #343019;
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.16);
   }
 
   .empty-state {
@@ -321,7 +321,7 @@
     padding: 3px 7px;
     border: 1px solid #414141;
     border-radius: 2px;
-    background: #252525;
+    background: var(--bg-panel-raised);
     color: var(--text-dim);
     font: inherit;
     font-size: 9px;

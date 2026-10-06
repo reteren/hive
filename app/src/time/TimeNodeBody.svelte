@@ -491,15 +491,15 @@
     box-sizing: border-box; width: 100%; min-width: 0; height: 25px; padding: 0 5px;
     color: #e3e3e3; background: #252727; border: 1px solid #494c4b; border-radius: 3px; font: inherit;
   }
-  .time-field input:focus-visible, .time-save:focus-visible, .time-check input:focus-visible { outline: 1px solid #d6ad53; outline-offset: 1px; }
+  .time-field input:focus-visible, .time-save:focus-visible, .time-check input:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
   .time-field small, .time-helper { margin: 0; color: #8b918e; font-size: 9px; }
   .time-check { display: inline-flex; min-height: 22px; align-items: center; gap: 6px; color: #c5c9c7; }
   .weekday-toggles { display: flex; justify-content: space-between; gap: 3px; }
   .weekday-toggle { flex: 1 1 0; min-width: 0; min-height: 22px; padding: 2px 1px; color: #9fa49f; background: #252727; border: 1px solid #494c4b; border-radius: 3px; font: inherit; cursor: pointer; }
-  .weekday-toggle.active { color: #241f14; background: #d2a847; border-color: #d2a847; }
-  .weekday-toggle:focus-visible { outline: 1px solid #d6ad53; outline-offset: 1px; }
+  .weekday-toggle.active { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+  .weekday-toggle:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
   .calendar-rule-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
-  .time-check input { accent-color: #d2a847; }
+  .time-check input { accent-color: var(--accent); }
   .time-actions { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-top: 3px; border-top: 1px solid #3c403e; }
   .time-save { min-height: 23px; padding: 2px 7px; color: #dedede; background: #333735; border: 1px solid #505552; border-radius: 3px; font: inherit; cursor: pointer; }
   .time-save:hover { background: #3d423f; }
@@ -512,7 +512,7 @@
     justify-content: center;
     gap: 8px;
     padding: 4px 2px 7px;
-    color: #f0d58a;
+    color: var(--accent);
     border-bottom: 1px solid #3c403e;
     font: 700 20px/1 var(--mono-font);
     font-variant-numeric: tabular-nums;
@@ -523,10 +523,10 @@
   .stopwatch-mode-field { margin-top: 1px; }
   .stopwatch-project-base { color: #b3b3ae; }
   .stopwatch-project-base input:disabled { opacity: 0.78; }
-  .stopwatch-project-base.optional { color: #e0bb63; }
+  .stopwatch-project-base.optional { color: var(--accent); }
   .stopwatch-project-base.optional input:disabled { opacity: 1; }
-  .stopwatch-toggle { justify-self: center; min-width: 82px; min-height: 27px; padding: 3px 14px; color: #e8ddb9; background: #37372f; border: 1px solid #686043; border-radius: 4px; font: inherit; cursor: pointer; }
-  .stopwatch-toggle:hover { background: #444234; border-color: #a18a4d; }
+  .stopwatch-toggle { justify-self: center; min-width: 82px; min-height: 27px; padding: 3px 14px; color: var(--accent); background: rgba(var(--accent-rgb), 0.16); border: 1px solid rgba(var(--accent-rgb), 0.45); border-radius: 4px; font: inherit; cursor: pointer; }
+  .stopwatch-toggle:hover { background: var(--accent-hover); border-color: var(--accent); }
   .stopwatch-conditions { display: grid; gap: 4px; }
   .conditions-label { color: #aaa; font-size: 9px; }
   .activation-list { display: flex; min-height: 27px; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px; background: #232323; border: 1px solid #444; border-radius: 3px; }

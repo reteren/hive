@@ -137,7 +137,7 @@
     border: 1px solid #62562f;
     border-radius: 3px;
     outline: none;
-    background: #181818;
+    background: var(--bg-panel-raised);
     color: var(--text);
     font: inherit;
   }
@@ -165,8 +165,8 @@
   }
 
   .commit-button {
-    border-color: #806b2d;
-    background: #343019;
-    color: #fff0be;
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.16);
+    color: var(--accent);
   }
 </style>

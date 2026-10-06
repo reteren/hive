@@ -296,14 +296,14 @@
   .zone-svg [data-moving="true"] { opacity: 0.7; }
   .zone-name { font-size: 1.15px; font-weight: 650; paint-order: stroke; stroke: #17191d; stroke-width: 0.25px; cursor: text; outline: none; }
   .zone-name:focus-visible { text-decoration: underline; text-decoration-thickness: 0.12px; text-underline-offset: 0.2px; }
-  .zone-menu { position: absolute; z-index: 30; display: flex; width: 220px; flex-direction: column; gap: 3px; padding: 5px; border: 1px solid #4c4c4c; border-radius: 4px; color: var(--text); background: #242424; box-shadow: 0 5px 16px #0008; pointer-events: auto; }
+  .zone-menu { position: absolute; z-index: 30; display: flex; width: 220px; flex-direction: column; gap: 3px; padding: 5px; border: 1px solid var(--border); border-radius: 4px; color: var(--text); background: var(--bg-panel); box-shadow: 0 5px 16px #0008; pointer-events: auto; }
   .zone-menu > button { min-height: 27px; padding: 4px 7px; border: 0; border-radius: 3px; color: inherit; background: transparent; text-align: left; cursor: pointer; }
-  .zone-menu > button:hover { background: #393939; }
+  .zone-menu > button:hover { background: var(--bg-hover); }
   .zone-menu > .zone-menu-command { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
   .zone-menu-shortcut { flex: 0 0 auto; color: #8a8a8a; font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .zone-menu-command:hover .zone-menu-shortcut { color: #c4c4c4; }
   .zone-menu-divider { height: 1px; margin: 2px 7px; background: #474747; }
-  .zone-menu input { width: 100%; box-sizing: border-box; padding: 5px; border: 1px solid var(--accent); border-radius: 2px; color: var(--text); background: #202020; }
+  .zone-menu input { width: 100%; box-sizing: border-box; padding: 5px; border: 1px solid var(--accent); border-radius: 2px; color: var(--text); background: var(--bg-panel-raised); }
   .zone-color-popup { display: grid; gap: 7px; padding: 4px; outline: none; }
   .zone-color-title { overflow: hidden; color: var(--text-dim); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 </style>
