@@ -93,7 +93,10 @@ export function measureAndCacheTextMinimumWidth(
   context.font = requestedFont;
   if (!requestedFont || context.font === previousFont && requestedFont !== previousFont) context.font = fallbackFont;
   const font = context.font;
-  const widestLine = widestNaturalLineWidth(noteId, text, font, (line) => context.measureText(line).width);
+  // Debug 28 #5 (user correction): only the FIRST line sets the node's width while typing;
+  // later lines wrap. Manual resizing stays free.
+  const firstLine = text.split(/\r\n|\r|\n/u, 1)[0] ?? "";
+  const widestLine = widestNaturalLineWidth(noteId, firstLine, font, (line) => context.measureText(line).width);
 
   const contentStyle = getComputedStyle(content);
   const padding = (Number.parseFloat(contentStyle.paddingLeft) || 0) +
