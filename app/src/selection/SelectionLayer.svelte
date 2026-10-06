@@ -75,7 +75,7 @@ import { measureDictionaryHeightLimits } from "../spell/dictionarySizing";
     type ResizeGesture,
     type ScaleModeGesture,
   } from "./gestures";
-  import { hitTestNotes, hitTestZones, noteSelectionCornerRadius, notesTouchingMarquee, pointInBounds, rectFromPoints, zonesTouchingMarquee } from "./hitTesting";
+  import { hitTestNotes, hitTestZones, noteSelectionCornerRadius, notesTouchingMarquee, pointInBounds, rectFromPoints, zonesSelectedByMarquee } from "./hitTesting";
   import {
     cancelGroupScaleGesture,
     createGroupScaleGesture,
@@ -1612,8 +1612,15 @@ type PendingBoardMove =
       if (cancelled) {
         setMarquee(null);
       } else if (gesture.started && marquee) {
-        const zoneIds = zonesTouchingMarquee(marquee, zones.byId, zones.order);
         const ids = notesTouchingMarquee(marquee, boardState.notes, boardState.order, noteBounds, (id) => !isDimmed(id));
+        const zoneIds = zonesSelectedByMarquee(
+          marquee,
+          zones.byId,
+          zones.order,
+          zoneMembers,
+          ids,
+          (id) => boardState.notes[id] !== undefined && !isDimmed(id),
+        );
         changeSelectionUndoable((next) => {
           if (!gesture.additive) {
             next.ids = [...ids];

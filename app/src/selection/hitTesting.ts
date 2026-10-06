@@ -2,7 +2,8 @@ import type { Note } from "../model/note";
 import { noteBounds, type Bounds } from "../notes/layout.svelte";
 import type { Point } from "../board/cameraMath";
 import { zoneBounds, type Zone } from "../model/zone";
-import { zoneTouchesRect } from "../zones/geometry";
+import { zoneAreaInRect, zoneTouchesRect } from "../zones/geometry";
+import { shapeArea } from "../zones/shape";
 
 const NOTE_CORNER_RADIUS_PX = 5;
 const SELECTION_OUTLINE_OFFSET_PX = 1;
@@ -82,6 +83,33 @@ export function zonesTouchingMarquee(
   return paintOrder.filter((id) => {
     const zone = zones[id];
     return zone !== undefined && boundsTouch(marquee, zoneBounds(zone)) && zoneTouchesRect(zone, marquee);
+  });
+}
+
+/** Share of a zone's area the marquee must cover before the zone joins a marquee selection. */
+export const MARQUEE_ZONE_COVERAGE = 0.6;
+
+/**
+ * Zones picked up by a marquee (user rule, 1.8.0): a zone is selected only when the marquee
+ * selected every object inside it AND covers at least 60 % of the zone's area; otherwise the
+ * marquee selects just the objects. The permanent ME beacon is not a marquee target, so it does
+ * not count as a member that must be selected.
+ */
+export function zonesSelectedByMarquee(
+  marquee: Bounds,
+  zones: Readonly<Record<string, Zone>>,
+  paintOrder: readonly string[],
+  membersOf: (zoneId: string) => readonly string[],
+  selectedIds: readonly string[],
+  isMarqueeTarget: (id: string) => boolean = () => true,
+): string[] {
+  const selected = new Set(selectedIds);
+  return paintOrder.filter((id) => {
+    const zone = zones[id];
+    if (!zone || !boundsTouch(marquee, zoneBounds(zone))) return false;
+    const area = shapeArea(zone);
+    if (!(area > 0) || zoneAreaInRect(zone, marquee) / area < MARQUEE_ZONE_COVERAGE) return false;
+    return membersOf(id).every((member) => !isMarqueeTarget(member) || selected.has(member));
   });
 }
 
