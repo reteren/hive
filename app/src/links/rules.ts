@@ -1,5 +1,6 @@
 import { board } from "../model/board.svelte";
 import { ME_OBJECT_ID, pairKey, type Link } from "../model/link";
+import { hasMeBeacon } from "../beacons/beaconState.svelte";
 import type { ModuleEdge, ModuleNoteLookup, ModuleNoteValue } from "../modules/moduleLogic";
 
 export type LinkKind = Link["kind"];
@@ -36,6 +37,7 @@ export function linkRefusalReason(
   existing: readonly ExistingLink[],
   notes: ModuleNoteLookup = board.notes,
 ): string | null {
+  if ((from === ME_OBJECT_ID || to === ME_OBJECT_ID) && !hasMeBeacon()) return "ME beacon has been deleted.";
   if (from === to) return "An object cannot link to itself.";
   const source = notes[from];
   const target = notes[to];

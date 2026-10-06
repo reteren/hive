@@ -12,8 +12,9 @@ import {
   previewNoteGlowColor,
   previewNoteGlowOpacity,
   setGlowColorAsMain,
+  noteGlowTargets,
 } from "../src/notes/noteGlow.svelte";
-import { defaultNoteGlow, mainNoteColor, parseNoteGlow } from "../src/notes/noteGlowLogic";
+import { defaultBeaconGlow, defaultNoteGlow, mainNoteColor, parseNoteGlow } from "../src/notes/noteGlowLogic";
 import { parseNotesPayload, serializeNotes } from "../src/clipboard/payload";
 import { duplicateSelection } from "../src/clipboard/commands";
 import type { ArchiveEntry, TrashEntry } from "../src/model/retention.svelte";
@@ -89,7 +90,7 @@ describe("node glow", () => {
     expect(parseNotesPayload(JSON.stringify(badClipboard))?.nodes[0]?.glow).toBeUndefined();
   });
 
-  it("offers Add, Edit, and Remove glow for every node kind, including image and GIF menus", () => {
+  it("offers Add, Edit, and Remove glow for regular nodes but keeps beacon glow fixed", () => {
     const kinds: NoteKind[] = [
       "note", "pro", "con", "importance", "purpose", "mood", "beacon", "goal", "progress", "calculator",
       "tierlist", "stats", "archive", "trash", "inbox", "list", "source", "glossary", "map", "random", "markas",
@@ -103,16 +104,28 @@ describe("node glow", () => {
     for (const item of notes) {
       const menu = noteMenuItemsForContext(item.id, item.type === "image" ? { kind: "board", noteId: item.id } : null);
       const action = menu.find((entry) => entry.id === "notes.glow.edit");
-      expect(action, item.type).toBeDefined();
-      expect(action?.label(item.id), item.type).toBe("Add glow");
+      if (item.type === "beacon") {
+        expect(action).toBeUndefined();
+        expect(menu.find((entry) => entry.id === "notes.glow.remove")).toBeUndefined();
+      } else {
+        expect(action, item.type).toBeDefined();
+        expect(action?.label(item.id), item.type).toBe("Add glow");
+      }
     }
 
     for (const item of notes) item.glow = { ...glow };
     for (const item of notes) {
       const menu = noteMenuItemsForContext(item.id, item.type === "image" ? { kind: "board", noteId: item.id } : null);
-      expect(menu.find((entry) => entry.id === "notes.glow.edit")?.label(item.id), item.type).toBe("Edit glow");
-      expect(menu.find((entry) => entry.id === "notes.glow.remove")?.label(item.id), item.type).toBe("Remove glow");
+      if (item.type === "beacon") {
+        expect(menu.find((entry) => entry.id === "notes.glow.edit")).toBeUndefined();
+        expect(menu.find((entry) => entry.id === "notes.glow.remove")).toBeUndefined();
+      } else {
+        expect(menu.find((entry) => entry.id === "notes.glow.edit")?.label(item.id), item.type).toBe("Edit glow");
+        expect(menu.find((entry) => entry.id === "notes.glow.remove")?.label(item.id), item.type).toBe("Remove glow");
+      }
     }
+    selection.ids = ["beacon", "note"];
+    expect(noteGlowTargets("beacon")).toEqual(["note"]);
   });
 
   it("previews a multi-node popover and records its edits as one Undo step", () => {
@@ -163,6 +176,10 @@ describe("node glow", () => {
     expect(mainNoteColor(note("minus", "con"))).toBe("#422d2c");
     expect(mainNoteColor(note("goal", "goal"))).toBe("#3b3422");
     expect(mainNoteColor(note("beacon", "beacon", { color: "#aabbcc" }))).toBe("#aabbcc");
+    expect(defaultBeaconGlow(note("beacon", "beacon", { color: "#aabbcc", glow }))).toEqual({
+      color: "#aabbcc", opacity: 1, size: 6.2,
+    });
+    expect(defaultBeaconGlow(note("old-beacon", "beacon"))).toMatchObject({ opacity: 1, size: 6.2 });
     expect(defaultNoteGlow(note("plain")).color).toBe("#353535");
 
     replaceBoard([note("painted", "note", { color: "#123abc" }), note("plain", "pro")]);

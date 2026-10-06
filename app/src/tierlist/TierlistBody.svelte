@@ -112,6 +112,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
   let rowDraft = $state("");
   let rowInput: HTMLInputElement | undefined = $state();
   let contextMenuElement: HTMLDivElement | undefined = $state();
+  let tierColorSession: { rowId: string; before: string; current: string } | null = null;
   let dialogCancelButton: HTMLButtonElement | undefined = $state();
   let editingCardId = $state<string | null>(null);
   let editingCardRowId = $state<string | null>(null);
@@ -181,7 +182,10 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
   onMount(() => {
     const onDocumentPointerDown = (event: PointerEvent): void => {
       if (!(event.target instanceof Element)) return;
-      if (!root?.contains(event.target) || !event.target.closest(".tier-context-menu")) contextRowId = null;
+      if (!root?.contains(event.target) || !event.target.closest(".tier-context-menu")) {
+        finishTierlistColor(true);
+        contextRowId = null;
+      }
     };
     const onDocumentKeydown = (event: KeyboardEvent): void => {
       if (event.key === "Escape" && activePointerDrag) {
@@ -196,17 +200,50 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
         commitDeleteRow("cancel");
       } else if (contextRowId) {
         event.preventDefault();
+        event.stopImmediatePropagation();
+        finishTierlistColor(false);
         contextRowId = null;
       }
     };
-    document.addEventListener("pointerdown", onDocumentPointerDown);
-    document.addEventListener("keydown", onDocumentKeydown);
+    document.addEventListener("pointerdown", onDocumentPointerDown, true);
+    document.addEventListener("keydown", onDocumentKeydown, true);
     return () => {
-      document.removeEventListener("pointerdown", onDocumentPointerDown);
-      document.removeEventListener("keydown", onDocumentKeydown);
+      document.removeEventListener("pointerdown", onDocumentPointerDown, true);
+      document.removeEventListener("keydown", onDocumentKeydown, true);
       cancelPointerDrag();
+      finishTierlistColor(false);
     };
   });
+
+  function previewTierlistColor(rowId: string, color: string): void {
+    const currentRows = rowsForTierlist(note.id);
+    const row = currentRows.find((candidate) => candidate.id === rowId);
+    if (!row) return;
+    if (!tierColorSession || tierColorSession.rowId !== rowId) {
+      finishTierlistColor(true);
+      tierColorSession = { rowId, before: row.color, current: row.color };
+    }
+    tierColorSession.current = color;
+    updateNote(note.id, {
+      tiers: currentRows.map((candidate) => candidate.id === rowId ? { ...candidate, color } : candidate),
+    });
+  }
+
+  function finishTierlistColor(keep: boolean): void {
+    const session = tierColorSession;
+    if (!session) return;
+    tierColorSession = null;
+    const rowsNow = rowsForTierlist(note.id);
+    const finalColor = keep ? session.current : session.before;
+    updateNote(note.id, {
+      tiers: rowsNow.map((candidate) => candidate.id === session.rowId
+        ? { ...candidate, color: finalColor }
+        : candidate),
+    });
+    if (keep && finalColor.toLowerCase() !== session.before.toLowerCase()) {
+      recolorTierlistRow(note.id, session.rowId, finalColor);
+    }
+  }
 
   function findDropTarget(noteIds: readonly string[], worldPoint: Point): DropTargetMatch | null {
     if (noteIds.length !== 1 || !root || !board.notes[noteIds[0]] || noteIds[0] === note.id) return null;
@@ -230,6 +267,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
   function openRowMenu(event: MouseEvent, row: TierRow): void {
     event.preventDefault();
     event.stopPropagation();
+    finishTierlistColor(true);
     contextRowId = contextRowId === row.id ? null : row.id;
     if (contextRowId) void tick().then(() => contextMenuElement?.querySelector<HTMLElement>(".tier-picker [role=slider]")?.focus());
   }
@@ -253,6 +291,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
   }
 
   function requestDeleteRow(row: TierRow): void {
+    finishTierlistColor(true);
     contextRowId = null;
     if (row.cards.length === 0) {
       removeTierlistRow(note.id, row.id, "delete-cards");
@@ -280,6 +319,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
   }
 
   async function addImageFromPicker(rowId: string): Promise<void> {
+    finishTierlistColor(true);
     contextRowId = null;
     await addTierlistImagesFromPicker(rowId, pickImageFiles, importImagePathsIntoRow);
   }
@@ -828,7 +868,8 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
               <HexColorPicker
                 value={row.color}
                 label={`${row.name} colour`}
-                onchange={(color) => { if (color.toLowerCase() !== row.color.toLowerCase()) recolorTierlistRow(note.id, row.id, color); }}
+                oninput={(color) => previewTierlistColor(row.id, color)}
+                onchange={(color) => previewTierlistColor(row.id, color)}
               />
             </div>
             <button class="tier-menu-add-image" data-tier-add-image type="button" role="menuitem" onclick={() => { void addImageFromPicker(row.id); }}>

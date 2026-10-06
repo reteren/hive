@@ -2,6 +2,7 @@ import { ME_OBJECT_ID } from "../model/link";
 import type { Link } from "../model/link";
 import type { ListItem } from "../model/nodeData";
 import type { Note } from "../model/note";
+import { hasMeBeacon } from "../beacons/beaconState.svelte";
 
 const WORD = /[\p{L}\p{N}][\p{L}\p{N}\p{M}]*(?:['’\u2010-\u2015-][\p{L}\p{N}\p{M}]+)*/gu;
 const MAX_ROW_CACHE_ENTRIES = 800;
@@ -42,7 +43,7 @@ export function statisticsForListRow(
   }
 
   const target = notes[targetId];
-  if (targetId === ME_OBJECT_ID) {
+  if (targetId === ME_OBJECT_ID && hasMeBeacon()) {
     const signature = JSON.stringify(["beacon", "ME", countConnections(targetId, links)]);
     return memoized(`${listId}:${item.id}`, signature, () => ({
       kind: "beacon",

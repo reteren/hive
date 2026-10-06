@@ -3,7 +3,14 @@ import { EditorState } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { describe, expect, it, vi } from "vitest";
 import type { ImageRef } from "../src/attachments/types";
-import { commitInlineImageResize, insertImportedImages } from "../src/editor/inlineImages";
+import {
+  commitInlineImageResize,
+  inlineImageSelectionEffect,
+  inlineImageSelectionField,
+  insertImportedImages,
+  resizedInlineImageWidth,
+  selectedInlineImageDeletionRange,
+} from "../src/editor/inlineImages";
 import {
   formatInlineImageToken,
   hiveMarkdownExtensions,
@@ -164,5 +171,56 @@ describe("inline image tokens", () => {
       `\n![photo.png](att:${file}){w=50}\n`,
     );
     expect(pasteBoundary).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the image selection through resize but clears it for text changes", () => {
+    const token = formatInlineImageToken("Photo", file, 50);
+    const start = EditorState.create({ doc: `before\n${token}\nafter`, extensions: [inlineImageSelectionField] });
+    const from = "before\n".length;
+    const selected = start.update({ effects: inlineImageSelectionEffect.of({ from, to: from + token.length }) }).state;
+    expect(selected.field(inlineImageSelectionField)).toEqual({ from, to: from + token.length });
+
+    const resizedToken = formatInlineImageToken("Photo", file, 60);
+    const resized = selected.update({
+      changes: { from, to: from + token.length, insert: resizedToken },
+      effects: inlineImageSelectionEffect.of({ from, to: from + resizedToken.length }),
+    }).state;
+    expect(resized.field(inlineImageSelectionField)).toEqual({ from, to: from + resizedToken.length });
+
+    const typed = resized.update({ changes: { from: 0, insert: "!" } }).state;
+    expect(typed.field(inlineImageSelectionField)).toBeNull();
+  });
+
+  it("deletes the whole line for a lone image and preserves neighboring text", () => {
+    const token = formatInlineImageToken("Photo", file, 50);
+    const middle = EditorState.create({ doc: `above\n${token}\nbelow` }).doc;
+    const from = "above\n".length;
+    expect(selectedInlineImageDeletionRange(middle, { from, to: from + token.length })).toEqual({
+      from,
+      to: from + token.length + 1,
+      cursor: from,
+    });
+
+    const inline = EditorState.create({ doc: `left ${token} right` }).doc;
+    const inlineFrom = "left ".length;
+    expect(selectedInlineImageDeletionRange(inline, { from: inlineFrom, to: inlineFrom + token.length })).toEqual({
+      from: inlineFrom,
+      to: inlineFrom + token.length,
+      cursor: inlineFrom,
+    });
+  });
+
+  it("resizes from all eight grips while preserving the image proportions", () => {
+    const options = [50, 200, 100, 100, 100, 1000] as const;
+    expect(resizedInlineImageWidth("e", ...options)).toBe(60);
+    expect(resizedInlineImageWidth("w", ...options)).toBe(40);
+    expect(resizedInlineImageWidth("s", ...options)).toBe(70);
+    expect(resizedInlineImageWidth("n", ...options)).toBe(30);
+    expect(resizedInlineImageWidth("se", ...options)).toBe(70);
+    expect(resizedInlineImageWidth("nw", 50, 200, 100, -100, -100, 1000)).toBe(70);
+    expect(resizedInlineImageWidth("ne", 50, 200, 100, 100, -100, 1000)).toBe(70);
+    expect(resizedInlineImageWidth("sw", 50, 200, 100, -100, 100, 1000)).toBe(70);
+    expect(resizedInlineImageWidth("e", 98, 200, 100, 100, 0, 1000)).toBe(100);
+    expect(resizedInlineImageWidth("e", 6, 200, 100, -100, 0, 1000)).toBe(5);
   });
 });

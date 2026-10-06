@@ -84,6 +84,10 @@ export function toggleWrapper(view: EditorView, wrapper: string): boolean {
 }
 
 export function toggleHeading(view: EditorView): boolean {
+  return toggleHeadingLevel(view, 1);
+}
+
+export function toggleHeadingLevel(view: EditorView, level: number): boolean {
   const { state } = view;
   const touched = new Set<number>();
   const changes: { from: number; to: number; insert: string }[] = [];
@@ -98,7 +102,8 @@ export function toggleHeading(view: EditorView): boolean {
       const match = /^(\s*)(#{1,6})(?:\s+|$)/u.exec(line.text);
       const indent = match?.[1] ?? line.text.match(/^\s*/u)?.[0] ?? "";
       const body = match ? line.text.slice(match[0].length) : line.text.slice(indent.length);
-      const next = match?.[2].length === 1 ? `${indent}${body}` : `${indent}# ${body}`;
+      const nextLevel = level === 0 || match?.[2].length === level ? 0 : level;
+      const next = nextLevel === 0 ? `${indent}${body}` : `${indent}${"#".repeat(nextLevel)} ${body}`;
       if (next !== line.text) changes.push({ from: line.from, to: line.to, insert: next });
     }
   }
@@ -108,14 +113,14 @@ export function toggleHeading(view: EditorView): boolean {
   const changeSet = ChangeSet.of(changes, state.doc.length);
   let selection = state.selection.map(changeSet);
   const main = state.selection.main;
-  if (main.empty) {
+  if (main.empty && level > 0) {
     const line = state.doc.lineAt(main.head);
     const original = line.text;
-    const isHeadingOne = /^\s*#(?:\s+|$)/u.test(original);
-    if (!isHeadingOne) {
+    const currentLevel = /^\s*(#{1,6})(?:\s+|$)/u.exec(original)?.[1].length ?? 0;
+    if (currentLevel !== level) {
       const indent = original.match(/^\s*/u)?.[0].length ?? 0;
       const mappedLineStart = changeSet.mapPos(line.from, -1);
-      selection = EditorSelection.create([EditorSelection.cursor(mappedLineStart + indent + 2)]);
+      selection = EditorSelection.create([EditorSelection.cursor(mappedLineStart + indent + level + 1)]);
     }
   }
 

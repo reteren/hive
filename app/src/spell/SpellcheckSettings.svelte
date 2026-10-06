@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { spellSettings, setSpellcheckEnabled, setSpellcheckLanguage } from "./settings.svelte";
+  import { spellSettings, setInlineSpellSuggestions, setSpellcheckEnabled, setSpellcheckLanguage } from "./settings.svelte";
 </script>
 
 <section class="settings-section" aria-labelledby="spellcheck-settings-title">
@@ -9,6 +9,10 @@
     <input type="checkbox" checked={spellSettings.enabled} onchange={(event) => setSpellcheckEnabled(event.currentTarget.checked)} />
   </label>
   {#if spellSettings.enabled}
+    <label class="setting-row">
+      <span class="setting-copy"><span>Inline suggestions</span><span class="setting-description">Show spelling suggestions above a misspelled word when the caret is on it.</span></span>
+      <input type="checkbox" checked={spellSettings.inlineSuggestions} onchange={(event) => setInlineSpellSuggestions(event.currentTarget.checked)} />
+    </label>
     {#each spellSettings.availableLanguages as language (language.tag)}
       <label class="setting-row spell-language-row">
         <span class="setting-copy"><span>{language.name}</span></span>

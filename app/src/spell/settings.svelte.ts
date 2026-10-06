@@ -6,6 +6,7 @@ const DEFAULT_LANGUAGES = ["en", "ru"];
 
 export const spellSettings = $state({
   enabled: true,
+  inlineSuggestions: false,
   languages: [...DEFAULT_LANGUAGES],
   availableLanguages: [
     { tag: "en", name: "English" },
@@ -21,8 +22,9 @@ export async function initializeSpellSettings(): Promise<void> {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
-      const value = JSON.parse(saved) as { enabled?: unknown; languages?: unknown };
+      const value = JSON.parse(saved) as { enabled?: unknown; inlineSuggestions?: unknown; languages?: unknown };
       if (typeof value.enabled === "boolean") spellSettings.enabled = value.enabled;
+      if (typeof value.inlineSuggestions === "boolean") spellSettings.inlineSuggestions = value.inlineSuggestions;
       if (Array.isArray(value.languages)) {
         spellSettings.languages = value.languages.filter((tag): tag is string => typeof tag === "string");
       }
@@ -48,6 +50,12 @@ export function setSpellcheckEnabled(enabled: boolean): void {
   refreshAllSpellcheckEditors();
 }
 
+export function setInlineSpellSuggestions(enabled: boolean): void {
+  spellSettings.inlineSuggestions = enabled;
+  persist();
+  refreshAllSpellcheckEditors();
+}
+
 export function setSpellcheckLanguage(tag: string, selected: boolean): void {
   const next = new Set(spellSettings.languages);
   if (selected) next.add(tag);
@@ -59,7 +67,11 @@ export function setSpellcheckLanguage(tag: string, selected: boolean): void {
 
 function persist(): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ enabled: spellSettings.enabled, languages: spellSettings.languages }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      enabled: spellSettings.enabled,
+      inlineSuggestions: spellSettings.inlineSuggestions,
+      languages: spellSettings.languages,
+    }));
   } catch {
     // Settings still apply for this session if storage is unavailable.
   }

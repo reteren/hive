@@ -6,6 +6,7 @@
   import { board } from "../model/board.svelte";
   import { links, canLink, linkRefusalReason } from "../model/links.svelte";
   import { ME_OBJECT_ID, type Link, type LinkAnchor } from "../model/link";
+  import { hasMeBeacon } from "../beacons/beaconState.svelte";
   import { BEACON_SIZE, newId } from "../model/note";
   import { noteBounds, type Bounds } from "../notes/layout.svelte";
   import { captureSelectionSnapshot, setSelectionUndoable } from "../selection/selection.svelte";
@@ -247,7 +248,7 @@
 
     function objectAt(point: Point, preferredTarget: EventTarget | null): string | null {
       const target = preferredTarget instanceof Element ? preferredTarget : null;
-      if (target?.closest(`[data-beacon-id="${ME_OBJECT_ID}"]`)) return ME_OBJECT_ID;
+      if (hasMeBeacon() && target?.closest(`[data-beacon-id="${ME_OBJECT_ID}"]`)) return ME_OBJECT_ID;
       const noteRoot = target?.closest<HTMLElement>("[data-note-id]");
       const directId = noteRoot?.dataset.noteId;
       if (directId && board.notes[directId]) return directId;
@@ -639,11 +640,12 @@
   }
 
   function isBeacon(id: string): boolean {
-    return id === ME_OBJECT_ID || board.notes[id]?.type === "beacon";
+    return id === ME_OBJECT_ID ? hasMeBeacon() : board.notes[id]?.type === "beacon";
   }
 
   function objectBounds(id: string): Bounds | null {
     if (id === ME_OBJECT_ID) {
+      if (!hasMeBeacon()) return null;
       return { x: ME_POSITION.x - ME_RADIUS, y: ME_POSITION.y - ME_RADIUS, width: ME_RADIUS * 2, height: ME_RADIUS * 2 };
     }
     const note = board.notes[id];

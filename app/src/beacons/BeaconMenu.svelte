@@ -15,6 +15,7 @@
   import { allBeacons, beaconName, clearFocus, setFocused, validFocused } from "./focus.svelte";
   import { beaconFocusActionLabel, beaconMarkActionLabel, focusBeaconFromMenu } from "./focusCommands";
   import { toggleBeaconMark } from "./marks.svelte";
+  import { deleteMeBeacon } from "../trash/trashActions.svelte";
   import "./focus.css";
 
   let beacons = $derived(allBeacons());
@@ -59,7 +60,7 @@
       event.stopImmediatePropagation();
       closeLinkContextMenu();
       meContextMenuZoomAtOpen = camera.zoom;
-      meContextMenu = fitBoardPopupAnchor(camera, viewport, boardPoint(event.clientX, event.clientY), { width: 180, height: 84 });
+      meContextMenu = fitBoardPopupAnchor(camera, viewport, boardPoint(event.clientX, event.clientY), { width: 180, height: 116 });
     }
     window.addEventListener("contextmenu", onMeContextMenu, true);
     return () => window.removeEventListener("contextmenu", onMeContextMenu, true);
@@ -131,6 +132,7 @@
       <button type="button" role="menuitem" onclick={() => { focusBeaconFromMenu(ME_OBJECT_ID); meContextMenu = null; }}>
         {beaconFocusActionLabel(ME_OBJECT_ID)}
       </button>
+      <button type="button" role="menuitem" data-me-delete onclick={() => { deleteMeBeacon(); meContextMenu = null; }}>Delete ME</button>
     </div>
   {/if}
 </div>

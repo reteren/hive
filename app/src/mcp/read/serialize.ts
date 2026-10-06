@@ -6,6 +6,7 @@ import { zones } from "../../model/zones.svelte";
 import { zoneOf } from "../../zones/membership.svelte";
 import { noteBounds } from "../../notes/layout.svelte";
 import { inlineImageTextForFit } from "../../editor/markdownSyntax";
+import { hasMeBeacon } from "../../beacons/beaconState.svelte";
 
 export interface LinkInfo {
   id: string;
@@ -110,7 +111,7 @@ export function plainTextPreview(markdown: string, maxCharacters = 160): string 
 }
 
 export function objectName(id: string): string {
-  if (id === ME_OBJECT_ID) return "ME";
+  if (id === ME_OBJECT_ID) return hasMeBeacon() ? "ME" : "Missing ME";
   return board.notes[id]?.name ?? id;
 }
 

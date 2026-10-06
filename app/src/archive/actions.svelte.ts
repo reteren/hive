@@ -5,6 +5,7 @@ import { execute, type HistoryCommand } from "../history/history.svelte";
 import { addNote, board, removeNote, updateNote } from "../model/board.svelte";
 import { addLink, links, linksOf, removeLink } from "../model/links.svelte";
 import { ME_OBJECT_ID } from "../model/link";
+import { hasMeBeacon } from "../beacons/beaconState.svelte";
 import { calculatorKey, parseCalculatorData, type CalculatorData } from "../model/nodeData";
 import { newId, type Note } from "../model/note";
 import { archive, type ArchiveEntry } from "../model/retention.svelte";
@@ -80,8 +81,8 @@ export function archiveNotes(noteIds: readonly string[]): number {
         if (restorable.has(entry.note.id)) restoreCalculatorIfAbsent(entry.note, entry.calculatorData);
       }
       removedLinks.forEach((link) => {
-        const fromPresent = link.from === ME_OBJECT_ID || !!board.notes[link.from];
-        const toPresent = link.to === ME_OBJECT_ID || !!board.notes[link.to];
+        const fromPresent = link.from === ME_OBJECT_ID ? hasMeBeacon() : !!board.notes[link.from];
+        const toPresent = link.to === ME_OBJECT_ID ? hasMeBeacon() : !!board.notes[link.to];
         if (fromPresent && toPresent && !links.byId[link.id]) addLink(copyArchivedLink(link));
       });
       const ids = beforeSelection.ids.filter((id) => !!board.notes[id]);
@@ -115,7 +116,7 @@ export function restoreArchived(
   if (!entry || board.notes[entry.note.id]) return null;
   const index = archive.entries.indexOf(entry);
   const plan = planArchiveRestore(entry, placement, camera, Object.values(board.notes), Object.values(links.byId),
-    Object.keys(calculators.byKey));
+    Object.keys(calculators.byKey), hasMeBeacon());
   const timeNotes = { ...board.notes, [plan.note.id]: plan.note };
   const linkedTimes = plan.note.task
     ? linkedTimeStatesForTask(plan.note.id, plan.links, timeNotes)

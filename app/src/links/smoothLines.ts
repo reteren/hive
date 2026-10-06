@@ -2,6 +2,7 @@ import type { Point } from "../board/cameraMath";
 import { registerCommand } from "../commands/registry.svelte";
 import { BEACON_SIZE } from "../model/note";
 import { ME_OBJECT_ID, type Link, type LinkAnchor } from "../model/link";
+import { hasMeBeacon } from "../beacons/beaconState.svelte";
 import { board, updateNote } from "../model/board.svelte";
 import { links, linksOf, registerLinkLifecycle, updateLink } from "../model/links.svelte";
 import { execute } from "../history/history.svelte";
@@ -39,6 +40,12 @@ interface AnchorGroup {
   candidates: AnchorCandidate[];
 }
 
+interface CircleAnchorCandidate {
+  linkId: string;
+  side: LinkSide;
+  angle: number;
+}
+
 interface FittingAnchor {
   edge: FrameEdge;
   anchor: LinkAnchor;
@@ -70,6 +77,10 @@ export function smoothLinesForObjects(objectIds: readonly string[]): boolean {
   const ids = new Set(objectIds);
   if (ids.size === 0) return false;
   const affected = Object.values(links.byId).filter((link) => ids.has(link.from) || ids.has(link.to));
+  for (const link of affected) {
+    if (isSmoothEnabledEndpoint(link.from)) ids.add(link.from);
+    if (isSmoothEnabledEndpoint(link.to)) ids.add(link.to);
+  }
   return smoothLinks(affected, ids, objectIds.length === 1 ? objectName(objectIds[0]) : `${ids.size} objects`);
 }
 
@@ -134,9 +145,16 @@ export function toggleSmoothLinesForNote(noteId: string): boolean {
 
 /** Reflow all enabled notes after board geometry or link topology changes; anchors are derived state. */
 export function reflowSmoothLineAnchorsRaw(): void {
+  const enabled = new Set<string>(hasMeBeacon() ? [ME_OBJECT_ID] : []);
+  for (const note of Object.values(board.notes)) {
+    if (note.type === "beacon" || note.smoothLines === true) enabled.add(note.id);
+  }
+  const affected = Object.values(links.byId).filter((link) => enabled.has(link.from) || enabled.has(link.to));
+  if (affected.length === 0) return;
+
   for (const noteId of board.order) {
     const note = board.notes[noteId];
-    if (!note || note.smoothLines !== true || note.type === "beacon") continue;
+    if (!note || note.smoothLines !== true) continue;
     const affected = linksOf(noteId);
     if (affected.length === 0) continue;
     const snapshot = copySmoothSnapshot(note.smoothLineAnchors) ?? Object.create(null) as SmoothLineAnchorSnapshot;
@@ -147,10 +165,10 @@ export function reflowSmoothLineAnchorsRaw(): void {
       snapshotChanged = true;
     }
 
-    const changes = calculateSmoothLinkChanges(affected, new Set([noteId]), true);
-    changes.forEach(({ id, anchors }) => setAnchors(id, anchors));
     if (snapshotChanged) updateNote(noteId, { smoothLineAnchors: snapshot });
   }
+
+  calculateSmoothLinkChanges(affected, enabled, true).forEach(({ id, anchors }) => setAnchors(id, anchors));
 }
 
 function queueSmoothReflow(): void {
@@ -193,6 +211,7 @@ function calculateSmoothLinkChanges(
   freezeOtherSides: boolean,
 ): Array<{ id: string; anchors: SmoothAnchors }> {
   const groups = new Map<string, AnchorGroup>();
+  const circleGroups = new Map<string, { bounds: Bounds; candidates: CircleAnchorCandidate[] }>();
 
   for (const link of affected) {
     for (const side of ["from", "to"] as const) {
@@ -201,9 +220,21 @@ function calculateSmoothLinkChanges(
 
       const endpoint = endpointFor(objectId);
       const otherEndpoint = endpointFor(side === "from" ? link.to : link.from);
-      if (!endpoint || endpoint.circular || !otherEndpoint) continue;
+      if (!endpoint || !otherEndpoint) continue;
 
       const targetCenter = boundsCenter(otherEndpoint.bounds);
+      if (endpoint.circular) {
+        const center = boundsCenter(endpoint.bounds);
+        const group = circleGroups.get(objectId) ?? { bounds: endpoint.bounds, candidates: [] };
+        group.candidates.push({
+          linkId: link.id,
+          side,
+          angle: Math.atan2(targetCenter.y - center.y, targetCenter.x - center.x),
+        });
+        circleGroups.set(objectId, group);
+        continue;
+      }
+
       const facing = rayFacingAnchor(endpoint.bounds, targetCenter);
       const angle = Math.atan2(targetCenter.y - (endpoint.bounds.y + endpoint.bounds.height / 2), targetCenter.x - (endpoint.bounds.x + endpoint.bounds.width / 2));
       const candidate: AnchorCandidate = {
@@ -249,6 +280,36 @@ function calculateSmoothLinkChanges(
         nextById.set(candidate.linkId, next);
       });
     }
+  }
+
+  for (const group of circleGroups.values()) {
+    const ordered = [...group.candidates].sort((first, second) =>
+      normalizeAngle(first.angle) - normalizeAngle(second.angle) || first.linkId.localeCompare(second.linkId),
+    );
+    const radius = Math.max(0, Math.min(group.bounds.width, group.bounds.height) / 2);
+    if (ordered.length === 1 || radius <= 0) {
+      for (const candidate of ordered) {
+        const next = nextById.get(candidate.linkId) ?? {};
+        const anchor = circleAnchor(candidate.angle);
+        if (candidate.side === "from") next.fromAnchor = anchor;
+        else next.toAnchor = anchor;
+        nextById.set(candidate.linkId, next);
+      }
+      continue;
+    }
+
+    const circumference = Math.PI * 2 * radius;
+    const spacing = Math.min(MIN_ANCHOR_SPACING, circumference / ordered.length);
+    const start = ordered[0]!.angle;
+    const desired = ordered.map((candidate) => normalizeAngle(candidate.angle - start) * radius);
+    const positions = spreadAlongEdge(desired, 0, Math.max(0, circumference - spacing * (ordered.length - 1)));
+    ordered.forEach((candidate, index) => {
+      const anchor = circleAnchor(start + positions[index]! / radius);
+      const next = nextById.get(candidate.linkId) ?? {};
+      if (candidate.side === "from") next.fromAnchor = anchor;
+      else next.toAnchor = anchor;
+      nextById.set(candidate.linkId, next);
+    });
   }
 
   const changes = affected.flatMap((link) => {
@@ -440,12 +501,29 @@ function edgeLength(bounds: Bounds, edge: FrameEdge): number {
   return edge === "top" || edge === "bottom" ? bounds.width : bounds.height;
 }
 
+function isSmoothEnabledEndpoint(id: string): boolean {
+  return id === ME_OBJECT_ID ? hasMeBeacon() : board.notes[id]?.type === "beacon" || board.notes[id]?.smoothLines === true;
+}
+
+function normalizeAngle(angle: number): number {
+  const turn = Math.PI * 2;
+  return ((angle % turn) + turn) % turn;
+}
+
+function circleAnchor(angle: number): LinkAnchor {
+  const dx = Math.cos(angle);
+  const dy = Math.sin(angle);
+  const scale = 0.5 / Math.max(Math.abs(dx), Math.abs(dy));
+  return { x: 0.5 + dx * scale, y: 0.5 + dy * scale };
+}
+
 function angleForEdge(edge: FrameEdge, angle: number): number {
   return edge === "left" && angle < 0 ? angle + Math.PI * 2 : angle;
 }
 
 function endpointFor(id: string): SmoothEndpoint | null {
   if (id === ME_OBJECT_ID) {
+    if (!hasMeBeacon()) return null;
     return {
       bounds: {
         x: ME_POSITION.x - BEACON_SIZE / 2,

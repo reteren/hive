@@ -58,6 +58,25 @@ export function removeMarkAsTag(noteId: string, markId: string): void {
   if (command) execute(command);
 }
 
+/** Recolour one existing tag as a single undoable change without changing its text. */
+export function recolorMarkAsTag(noteId: string, markId: string, color: string): void {
+  const note = board.notes[noteId];
+  if (note?.type !== "markas") return;
+  const marks = note.customMarks ?? [];
+  const existing = marks.find((mark) => mark.id === markId);
+  if (!existing) return;
+  const validated = validateCustomMark(existing.text, color);
+  if (!validated.ok || validated.value.color.toLowerCase() === existing.color.toLowerCase()) return;
+  const next = marks.map((mark) => mark.id === markId ? { ...mark, color: validated.value.color } : { ...mark });
+  const command = createMarkAsPatchCommand(
+    note,
+    { customMarks: next },
+    writeMarkAsPatch,
+    "Recolour Mark as tag",
+  );
+  if (command) execute(command);
+}
+
 export function setCustomMarkFrame(noteId: string, enabled: boolean): void {
   const note = board.notes[noteId];
   if (!note) return;

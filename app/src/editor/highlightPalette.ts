@@ -15,6 +15,11 @@ const paletteColors = [
 
 const palettes = new WeakMap<EditorView, HTMLDivElement>();
 const pickers = new WeakMap<EditorView, Record<string, unknown>>();
+const paletteListeners = new WeakMap<EditorView, {
+  pointerdown: (event: PointerEvent) => void;
+  keydown: (event: KeyboardEvent) => void;
+}>();
+const paletteCommits = new WeakMap<EditorView, () => void>();
 let lastColor = DEFAULT_HIGHLIGHT_COLOR;
 
 export function applyHighlightColor(view: EditorView, color: string): boolean {
@@ -47,6 +52,13 @@ function placePalette(view: EditorView, palette: HTMLElement): void {
 }
 
 export function closeHighlightPalette(view: EditorView): void {
+  const listeners = paletteListeners.get(view);
+  if (listeners) {
+    document.removeEventListener("pointerdown", listeners.pointerdown, true);
+    document.removeEventListener("keydown", listeners.keydown, true);
+    paletteListeners.delete(view);
+  }
+  paletteCommits.delete(view);
   const picker = pickers.get(view);
   if (picker) void unmount(picker);
   pickers.delete(view);
@@ -55,6 +67,11 @@ export function closeHighlightPalette(view: EditorView): void {
 }
 
 export function openHighlightPalette(view: EditorView): boolean {
+  const commitExisting = paletteCommits.get(view);
+  if (commitExisting) {
+    commitExisting();
+    return true;
+  }
   if (view.state.selection.main.empty) return true;
   closeHighlightPalette(view);
 
@@ -69,12 +86,31 @@ export function openHighlightPalette(view: EditorView): boolean {
     event.stopPropagation();
   });
   palette.addEventListener("click", (event) => event.stopPropagation());
-  palette.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape") return;
-    event.preventDefault();
+  let draftColor = lastColor;
+  let dirty = false;
+  const commitDraft = () => {
+    if (dirty) {
+      lastColor = draftColor;
+      applyHighlightColor(view, draftColor);
+    }
     closeHighlightPalette(view);
     view.focus();
-  });
+  };
+  paletteCommits.set(view, commitDraft);
+  const onPointerDown = (event: PointerEvent) => {
+    if (event.target instanceof Node && palette.contains(event.target)) return;
+    commitDraft();
+  };
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    closeHighlightPalette(view);
+    view.focus();
+  };
+  paletteListeners.set(view, { pointerdown: onPointerDown, keydown: onKeyDown });
+  document.addEventListener("pointerdown", onPointerDown, true);
+  document.addEventListener("keydown", onKeyDown, true);
 
   const label = document.createElement("span");
   label.className = "hive-highlight-title";
@@ -93,10 +129,8 @@ export function openHighlightPalette(view: EditorView): boolean {
     );
     if (index === 0) button.setAttribute("data-last-color", "true");
     button.addEventListener("click", () => {
-      lastColor = color;
-      applyHighlightColor(view, color);
-      closeHighlightPalette(view);
-      view.focus();
+      draftColor = color;
+      dirty = true;
     });
     palette.append(button);
   }
@@ -109,11 +143,13 @@ export function openHighlightPalette(view: EditorView): boolean {
     props: {
       value: lastColor,
       label: "Highlight colour",
+      oninput: (color: string) => {
+        draftColor = color;
+        dirty = true;
+      },
       onchange: (color: string) => {
-        lastColor = color;
-        applyHighlightColor(view, color);
-        closeHighlightPalette(view);
-        view.focus();
+        draftColor = color;
+        dirty = true;
       },
     },
   });

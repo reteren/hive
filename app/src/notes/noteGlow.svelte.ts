@@ -36,7 +36,7 @@ export const noteGlowPopover = $state({ current: null as NoteGlowPopoverState | 
 /** The context node, or all existing selected nodes when it belongs to the selection. */
 export function noteGlowTargets(noteId: string): string[] {
   const ids = selection.ids.includes(noteId) ? selection.ids : [noteId];
-  return [...new Set(ids)].filter((id) => Boolean(board.notes[id]));
+  return [...new Set(ids)].filter((id) => Boolean(board.notes[id] && board.notes[id]?.type !== "beacon"));
 }
 
 /** Apply a set of per-node glow values as one history command. */
@@ -169,7 +169,7 @@ registerNoteMenuItem({
     const note = board.notes[noteId];
     if (note) addOrEditNoteGlow(noteId, { x: note.x, y: note.y }, camera.zoom);
   },
-  visible: (noteId) => Boolean(board.notes[noteId]),
+  visible: (noteId) => Boolean(board.notes[noteId] && board.notes[noteId]?.type !== "beacon"),
   order: 23,
 });
 
@@ -177,6 +177,6 @@ registerNoteMenuItem({
   id: "notes.glow.remove",
   label: () => "Remove glow",
   run: removeNoteGlow,
-  visible: (noteId) => Boolean(board.notes[noteId]?.glow),
+  visible: (noteId) => Boolean(board.notes[noteId]?.type !== "beacon" && board.notes[noteId]?.glow),
   order: 24,
 });

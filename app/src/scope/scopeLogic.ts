@@ -8,13 +8,15 @@ export interface ScopeSources {
   zones: Readonly<Record<string, unknown>>;
   zoneMembers(zoneId: string): readonly string[];
   beaconDescendants(beaconId: string): ReadonlySet<string>;
+  /** Older pure callers default to the legacy always-present virtual ME beacon. */
+  mePresent?: boolean;
 }
 
 export function scopeExistsIn(scope: NodeScope, sources: ScopeSources): boolean {
   if (scope.kind === "auto") return true;
   if (scope.kind === "board") return true;
   if (scope.kind === "zone") return sources.zones[scope.id] !== undefined;
-  return scope.id === ME_OBJECT_ID || sources.notes[scope.id]?.type === "beacon";
+  return scope.id === ME_OBJECT_ID ? sources.mePresent !== false : sources.notes[scope.id]?.type === "beacon";
 }
 
 /** Resolve a scope to distinct, existing board note IDs. Missing scopes count nothing. */

@@ -13,7 +13,7 @@
   import { geometryFromListStatisticsFrame, listStatisticsFrameLimits, listStatisticsWidth } from "../stats/listStatsLayout";
   import { raiseMovingCards } from "../stats/movingCards";
 import { MIN_NOTE_WIDTH, maximumResizableHeight, maximumResizableHeightForNote, minimumTextWidthForNote, noteBounds, renderedNoteMetrics, type Bounds } from "../notes/layout.svelte";
-import { minimumManualTextHeight } from "../notes/textScroll";
+import { isTextNoteKind, minimumManualTextHeight } from "../notes/textScroll";
 import { preferences } from "../settings/preferences.svelte";
 import { inboxAutoHeight, inboxMinHeight } from "../inbox/inboxLayout";
 import { userDictionary } from "../spell/dictionary.svelte";
@@ -1669,7 +1669,10 @@ type PendingBoardMove =
         if (change) {
           const note = boardState.notes[change.before[0].id];
           const scaleChanged = normalizeNoteScale(change.before[0].scale) !== normalizeNoteScale(change.after[0].scale);
-          recordGeometryChange(scaleChanged ? "Scale" : "Resize", note?.name ?? "", change);
+          const widthChanged = !nearlyEqual(change.before[0].width, change.after[0].width);
+          const lockWidth = Boolean(note && isTextNoteKind(note.type) && widthChanged && !scaleChanged);
+          if (lockWidth && note) recordManualWidthResize(note.id, note.name, change, note.widthLocked === true);
+          else recordGeometryChange(scaleChanged ? "Scale" : "Resize", note?.name ?? "", change);
         }
       }
     } else if (gesture.kind === "zone-move") {
@@ -2097,6 +2100,23 @@ type PendingBoardMove =
 
   function recordGeometryChange(label: "Move" | "Resize" | "Scale", target: string, change: GeometryChange): void {
     record(geometryCommand(label, target, change.before, change.after));
+  }
+
+  function recordManualWidthResize(noteId: string, target: string, change: GeometryChange, wasLocked: boolean): void {
+    const geometry = geometryCommand("Resize", target, change.before, change.after);
+    updateNote(noteId, { widthLocked: true });
+    record({
+      label: "Resize",
+      target,
+      do() {
+        geometry.do();
+        updateNote(noteId, { widthLocked: true });
+      },
+      undo() {
+        geometry.undo();
+        updateNote(noteId, { widthLocked: wasLocked ? true : undefined });
+      },
+    });
   }
 
   function geometryCommand(

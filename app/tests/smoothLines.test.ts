@@ -4,7 +4,7 @@ import { addLink, links, replaceLinks } from "../src/model/links.svelte";
 import { clear as clearHistory, history, undo } from "../src/history/history.svelte";
 import { removeLink } from "../src/model/links.svelte";
 import { notifySelectionInteraction } from "../src/selection/selection.svelte";
-import { smoothLinesForObjects, toggleSmoothLinesForNote } from "../src/links/smoothLines";
+import { reflowSmoothLineAnchorsRaw, smoothLinesForLinks, smoothLinesForObjects, toggleSmoothLinesForNote } from "../src/links/smoothLines";
 import { anchorAlongRay, pointAtAnchor, resolveLinkEndpoints } from "../src/links/anchors";
 import { noteMenuItems } from "../src/notes/noteMenu";
 import { ME_OBJECT_ID, type Link } from "../src/model/link";
@@ -329,15 +329,54 @@ describe("Smooth lines", () => {
     }
   });
 
-  it("does not invent a frame anchor for ME or beacon circles", () => {
+  it("always spaces beacon links around their circular perimeter", () => {
     const beacon = { ...note("beacon", 20, 0, 7.2, 7.2), type: "beacon" as const };
-    const target = note("target", 60, -10, 30, 20);
-    replaceBoard([beacon, target]);
-    const link: Link = { id: "me-link", from: ME_OBJECT_ID, to: beacon.id, kind: "strong", shape: "base" };
-    addLink(link);
+    const targets = [-10, -5, 0, 5].map((y, index) => note(`target-${index}`, 60, y, 30, 20));
+    replaceBoard([beacon, ...targets]);
+    const circleBounds = { x: beacon.x, y: beacon.y, width: 7.2, height: 7.2 };
+    targets.forEach((target, index) => addLink({
+      id: `beacon-link-${index}`, from: beacon.id, to: target.id, kind: "strong", shape: "base",
+    }));
 
-    expect(smoothLinesForObjects([beacon.id])).toBe(false);
-    expect(history.cursor).toBe(0);
-    expect(links.byId[link.id]).toEqual(link);
+    // Beacons are always smooth, so link insertion already derives these anchors.
+    reflowSmoothLineAnchorsRaw();
+    const anchors = targets.map((_, index) => links.byId[`beacon-link-${index}`]!.fromAnchor);
+    expect(anchors.every(Boolean)).toBe(true);
+    const points = targets.map((target, index) => resolveLinkEndpoints(
+      circleBounds,
+      { x: target.x, y: target.y, width: target.width, height: target.height ?? 20 },
+      anchors[index],
+      undefined,
+      true,
+      false,
+    ).start);
+    for (let first = 0; first < points.length; first += 1) {
+      for (let second = first + 1; second < points.length; second += 1) {
+        expect(Math.hypot(points[first]!.x - points[second]!.x, points[first]!.y - points[second]!.y)).toBeGreaterThanOrEqual(0.95);
+      }
+    }
+  });
+
+  it("distributes selected links at both endpoints when both nodes have smoothing enabled", () => {
+    const sourceA = { ...note("source-a", 0, 0, 20, 20), smoothLines: true };
+    const sourceB = { ...note("source-b", 0, 4, 20, 20), smoothLines: true };
+    const targetA = { ...note("target-a", 60, 0, 20, 20), smoothLines: true };
+    const targetB = { ...note("target-b", 60, 4, 20, 20), smoothLines: true };
+    replaceBoard([sourceA, sourceB, targetA, targetB]);
+    const pairs = [
+      [sourceA, targetA], [sourceA, targetB], [sourceB, targetA], [sourceB, targetB],
+    ] as const;
+    pairs.forEach(([from, to], index) => addLink({
+      id: `both-${index}`, from: from.id, to: to.id, kind: "strong", shape: "base",
+    }));
+
+    // Reflow treats both smooth endpoints as one batch when links are added.
+    reflowSmoothLineAnchorsRaw();
+    for (let index = 0; index < pairs.length; index += 1) {
+      expect(links.byId[`both-${index}`]?.fromAnchor).toBeDefined();
+      expect(links.byId[`both-${index}`]?.toAnchor).toBeDefined();
+    }
+    expect(links.byId["both-0"]?.fromAnchor).not.toEqual(links.byId["both-1"]?.fromAnchor);
+    expect(links.byId["both-0"]?.toAnchor).not.toEqual(links.byId["both-2"]?.toAnchor);
   });
 });

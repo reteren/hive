@@ -71,13 +71,14 @@ function includePoint(bounds: { left: number; top: number; right: number; bottom
   bounds.bottom = Math.max(bounds.bottom, point.y);
 }
 
-/** Bounds of all notes and zone contours, always including ME at the origin. */
+/** Bounds of all notes, zone contours, and ME when it is present. */
 export function wholeBoardBounds(
   notes: readonly MapNoteBounds[],
   zones: readonly MapZoneShape[],
-  me: Point = { x: 0, y: 0 },
+  me: Point | null = { x: 0, y: 0 },
 ): WorldRect {
-  const bounds = { left: me.x, top: me.y, right: me.x, bottom: me.y };
+  const bounds = { left: Number.POSITIVE_INFINITY, top: Number.POSITIVE_INFINITY, right: Number.NEGATIVE_INFINITY, bottom: Number.NEGATIVE_INFINITY };
+  if (me) includePoint(bounds, me);
   for (const note of notes) {
     if (![note.x, note.y, note.width, note.height].every(Number.isFinite)) continue;
     includePoint(bounds, { x: note.x, y: note.y });
@@ -85,6 +86,9 @@ export function wholeBoardBounds(
   }
   for (const zone of zones) {
     for (const part of zone.parts) for (const point of part) includePoint(bounds, point);
+  }
+  if (![bounds.left, bounds.top, bounds.right, bounds.bottom].every(Number.isFinite)) {
+    return { x: 0, y: 0, width: 0, height: 0 };
   }
   return {
     x: bounds.left,
@@ -156,12 +160,13 @@ export function projectMapLinks(
   links: readonly MapLinkInput[],
   notes: readonly MapNoteBounds[],
   transform: MapTransform,
-  meId = "me",
+  meId: string | null = "me",
   me: Point = { x: 0, y: 0 },
   maximumLinks = MAX_PROJECTED_MAP_LINKS,
 ): ProjectedMapLink[] {
   if (links.length > maximumLinks) return [];
-  const centers = new Map<string, Point>([[meId, me]]);
+  const centers = new Map<string, Point>();
+  if (meId !== null) centers.set(meId, me);
   for (const note of notes) {
     centers.set(note.id, { x: note.x + note.width / 2, y: note.y + note.height / 2 });
   }

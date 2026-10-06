@@ -1,7 +1,7 @@
 import { isolateHistory } from "@codemirror/commands";
 import { syntaxTree } from "@codemirror/language";
-import { Transaction, type Extension } from "@codemirror/state";
-import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from "@codemirror/view";
+import { Prec, StateEffect, StateField, Transaction, type Extension } from "@codemirror/state";
+import { Decoration, EditorView, ViewPlugin, WidgetType, keymap, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 import {
   attachmentUrl,
   clipboardImageFiles,
@@ -11,11 +11,34 @@ import {
   reportImportError,
 } from "../attachments/service";
 import type { ImageRef } from "../attachments/types";
-import { mountInlineGifDom } from "../attachments/gifDom";
+import { mountInlineGifDom, updateInlineGifDom } from "../attachments/gifDom";
 import { formatInlineImageToken, parseInlineImageToken } from "./markdownSyntax";
 
 export type BreakHistoryGroup = () => void;
 type ParsedInlineImage = NonNullable<ReturnType<typeof parseInlineImageToken>>;
+
+export interface InlineImageSelection {
+  from: number;
+  to: number;
+}
+
+export const inlineImageSelectionEffect = StateEffect.define<InlineImageSelection | null>();
+
+export const inlineImageSelectionField = StateField.define<InlineImageSelection | null>({
+  create: () => null,
+  update(value, transaction) {
+    let next = transaction.docChanged || transaction.selection !== undefined ? null : value;
+    for (const effect of transaction.effects) {
+      if (effect.is(inlineImageSelectionEffect)) next = effect.value;
+    }
+    return next;
+  },
+});
+
+type ImageInsertionTarget = number | { from: number; to: number };
+type ResizeEdge = "n" | "e" | "s" | "w" | "ne" | "se" | "sw" | "nw";
+
+const RESIZE_EDGES: ResizeEdge[] = ["n", "e", "s", "w", "ne", "se", "sw", "nw"];
 
 export function inlineImagesExtension(breakHistoryGroup: BreakHistoryGroup, noteId: string): Extension[] {
   const plugin = ViewPlugin.fromClass(
@@ -38,7 +61,10 @@ export function inlineImagesExtension(breakHistoryGroup: BreakHistoryGroup, note
       }
 
       update(update: ViewUpdate): void {
-        if (update.docChanged || update.selectionSet || update.viewportChanged) {
+        const imageSelectionChanged = update.transactions.some((transaction) =>
+          transaction.effects.some((effect) => effect.is(inlineImageSelectionEffect)),
+        );
+        if (update.docChanged || update.selectionSet || update.viewportChanged || imageSelectionChanged) {
           this.decorations = imageDecorations(update.view, breakHistoryGroup, noteId);
         }
       }
@@ -59,10 +85,25 @@ export function inlineImagesExtension(breakHistoryGroup: BreakHistoryGroup, note
         if (files.length === 0) return false;
         event.preventDefault();
         const startDoc = view.state.doc;
-        void importFiles(view, files, startDoc, breakHistoryGroup);
+        const startSelection = view.state.selection.main;
+        void importFiles(view, files, startDoc, { from: startSelection.from, to: startSelection.to }, breakHistoryGroup);
         return true;
       },
+      mousedown(event, view) {
+        const target = event.target instanceof Element ? event.target.closest("[data-inline-image-widget]") : null;
+        if (!target) clearImageSelectionState(view);
+        return false;
+      },
     }),
+    inlineImageSelectionField,
+    EditorView.atomicRanges.of((view) => view.plugin(plugin)?.decorations ?? Decoration.none),
+    Prec.highest(keymap.of([
+      { key: "Backspace", run: (view) => deleteSelectedInlineImage(view, breakHistoryGroup) },
+      { key: "Delete", run: (view) => deleteSelectedInlineImage(view, breakHistoryGroup) },
+      { key: "ArrowLeft", run: (view) => moveCaretFromSelectedImage(view, -1) },
+      { key: "ArrowRight", run: (view) => moveCaretFromSelectedImage(view, 1) },
+      { key: "Escape", run: (view) => clearSelectedInlineImage(view) },
+    ])),
     EditorView.baseTheme({
       ".cm-inline-image-widget": {
         position: "relative",
@@ -71,7 +112,66 @@ export function inlineImagesExtension(breakHistoryGroup: BreakHistoryGroup, note
         margin: "0.35em 0",
         overflow: "visible",
         boxSizing: "border-box",
+        userSelect: "none",
+        touchAction: "pan-y",
       },
+      ".cm-inline-image-widget[data-selected='true']": {
+        outline: "2px solid var(--accent)",
+        outlineOffset: "1px",
+      },
+      ".cm-inline-image-widget[data-dragging='true']": {
+        opacity: "0.55",
+      },
+      ".cm-inline-image-resize-frame": {
+        position: "absolute",
+        inset: "-5px",
+        pointerEvents: "none",
+      },
+      ".cm-inline-image-resize": {
+        position: "absolute",
+        zIndex: "2",
+        display: "none",
+        width: "12px",
+        height: "12px",
+        padding: "0",
+        border: "1px solid #171717",
+        borderRadius: "3px",
+        backgroundColor: "var(--accent)",
+        cursor: "nwse-resize",
+        pointerEvents: "auto",
+        touchAction: "none",
+      },
+      ".cm-inline-image-widget[data-selected='true'] .cm-inline-image-resize": {
+        display: "block",
+      },
+      ".cm-inline-image-resize[data-edge='n']": {
+        top: "-6px",
+        left: "50%",
+        transform: "translateX(-50%)",
+        cursor: "ns-resize",
+      },
+      ".cm-inline-image-resize[data-edge='s']": {
+        bottom: "-6px",
+        left: "50%",
+        transform: "translateX(-50%)",
+        cursor: "ns-resize",
+      },
+      ".cm-inline-image-resize[data-edge='e']": {
+        top: "50%",
+        right: "-6px",
+        transform: "translateY(-50%)",
+        cursor: "ew-resize",
+      },
+      ".cm-inline-image-resize[data-edge='w']": {
+        top: "50%",
+        left: "-6px",
+        transform: "translateY(-50%)",
+        cursor: "ew-resize",
+      },
+      ".cm-inline-image-resize[data-edge='ne']": { top: "-6px", right: "-6px", cursor: "nesw-resize" },
+      ".cm-inline-image-resize[data-edge='nw']": { top: "-6px", left: "-6px", cursor: "nwse-resize" },
+      ".cm-inline-image-resize[data-edge='se']": { bottom: "-6px", right: "-6px", cursor: "nwse-resize" },
+      ".cm-inline-image-resize[data-edge='sw']": { bottom: "-6px", left: "-6px", cursor: "nesw-resize" },
       ".cm-inline-image-widget img": {
         display: "block",
         width: "100%",
@@ -114,21 +214,6 @@ export function inlineImagesExtension(breakHistoryGroup: BreakHistoryGroup, note
         fontSize: "12px",
         overflowWrap: "anywhere",
       },
-      ".cm-inline-image-resize": {
-        position: "absolute",
-        zIndex: "1",
-        top: "50%",
-        right: "-5px",
-        width: "10px",
-        height: "24px",
-        padding: "0",
-        transform: "translateY(-50%)",
-        border: "1px solid #171717",
-        borderRadius: "3px",
-        backgroundColor: "var(--accent)",
-        cursor: "ew-resize",
-        touchAction: "none",
-      },
       ".cm-inline-image-resize:focus-visible": {
         outline: "2px solid #fff",
         outlineOffset: "2px",
@@ -150,12 +235,21 @@ function imageDecorations(view: EditorView, breakHistoryGroup: BreakHistoryGroup
         const to = node.to;
         const raw = state.sliceDoc(from, to);
         const token = parseInlineImageToken(raw);
-        if (!token || selectionTouchesToken(state, from, to)) return;
+        if (!token) return;
+        const selected = state.field(inlineImageSelectionField, false);
         ranges.push({
           from,
           to,
           value: Decoration.replace({
-            widget: new InlineImageWidget(from, to, raw, token, breakHistoryGroup, noteId),
+            widget: new InlineImageWidget(
+              from,
+              to,
+              raw,
+              token,
+              breakHistoryGroup,
+              noteId,
+              selected?.from === from && selected.to === to,
+            ),
             // Block decorations are not allowed from a ViewPlugin (CodeMirror throws "No tile at position");
             // the widget is inline and laid out as a block by its own CSS instead.
             block: false,
@@ -168,48 +262,56 @@ function imageDecorations(view: EditorView, breakHistoryGroup: BreakHistoryGroup
   return ranges.length ? Decoration.set(ranges, true) : Decoration.none;
 }
 
-function selectionTouchesToken(state: EditorView["state"], from: number, to: number): boolean {
-  return state.selection.ranges.some((range) =>
-    range.empty ? range.head > from && range.head < to : range.from < to && range.to > from,
-  );
-}
+const currentImageWidget = new WeakMap<HTMLElement, InlineImageWidget>();
+const inlineGifCleanups = new WeakMap<HTMLElement, () => void>();
 
 class InlineImageWidget extends WidgetType {
-  private gifCleanup: (() => void) | null = null;
-
   constructor(
-    private readonly from: number,
-    private readonly to: number,
-    private readonly raw: string,
-    private readonly token: ParsedInlineImage,
-    private readonly breakHistoryGroup: BreakHistoryGroup,
-    private readonly noteId: string,
+    readonly from: number,
+    readonly to: number,
+    readonly raw: string,
+    readonly token: ParsedInlineImage,
+    readonly breakHistoryGroup: BreakHistoryGroup,
+    readonly noteId: string,
+    readonly selected: boolean,
   ) {
     super();
   }
 
   eq(other: InlineImageWidget): boolean {
-    return other.from === this.from && other.to === this.to && other.raw === this.raw && other.noteId === this.noteId;
+    return other.from === this.from && other.to === this.to && other.raw === this.raw &&
+      other.noteId === this.noteId && other.selected === this.selected;
+  }
+
+  private sameImage(other: InlineImageWidget): boolean {
+    return other.token.file === this.token.file && other.token.alt === this.token.alt &&
+      other.token.widthPercent === this.token.widthPercent && other.noteId === this.noteId;
+  }
+
+  updateDOM(dom: HTMLElement, _view: EditorView, from?: WidgetType): boolean {
+    const previous = from instanceof InlineImageWidget ? from : currentImageWidget.get(dom);
+    if (!previous || !this.sameImage(previous)) return false;
+    currentImageWidget.set(dom, this);
+    syncWidgetAttributes(dom, this);
+    updateInlineGifDom(dom, this.from);
+    return true;
   }
 
   toDOM(view: EditorView): HTMLElement {
     const wrapper = view.dom.ownerDocument.createElement("span");
+    currentImageWidget.set(wrapper, this);
     wrapper.className = "cm-inline-image-widget";
-    wrapper.dataset.inlineImageWidget = "";
-    wrapper.dataset.attachmentFile = this.token.file;
-    wrapper.setAttribute("role", "group");
-    wrapper.setAttribute("aria-label", this.token.alt || this.token.file);
-    wrapper.style.width = `${this.token.widthPercent}%`;
+    syncWidgetAttributes(wrapper, this);
 
     const url = attachmentUrl(this.token.file);
     if (this.token.file.toLowerCase().endsWith(".gif")) {
       wrapper.setAttribute("aria-busy", "true");
-      this.gifCleanup = mountInlineGifDom(wrapper, {
+      inlineGifCleanups.set(wrapper, mountInlineGifDom(wrapper, {
         file: this.token.file,
         alt: this.token.alt,
         noteId: this.noteId,
         position: this.from,
-      });
+      }));
     } else if (url) {
       const image = view.dom.ownerDocument.createElement("img");
       image.alt = this.token.alt;
@@ -226,47 +328,78 @@ class InlineImageWidget extends WidgetType {
       showMissingFile(wrapper, this.token.alt, this.token.file);
     }
 
-    const handle = view.dom.ownerDocument.createElement("button");
-    handle.type = "button";
-    handle.className = "cm-inline-image-resize";
-    handle.dataset.inlineImageResize = "";
-    handle.setAttribute("aria-label", "Resize image");
-    handle.title = "Drag to resize image";
-    wrapper.append(handle);
+    const frame = view.dom.ownerDocument.createElement("span");
+    frame.className = "cm-inline-image-resize-frame";
+    for (const edge of RESIZE_EDGES) {
+      const handle = view.dom.ownerDocument.createElement("button");
+      handle.type = "button";
+      handle.className = "cm-inline-image-resize";
+      handle.dataset.inlineImageResize = "";
+      handle.dataset.edge = edge;
+      handle.setAttribute("aria-label", `Resize image ${edge}`);
+      handle.title = "Drag to resize image";
+      handle.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const current = currentImageWidget.get(wrapper) ?? this;
+        selectInlineImage(view, current.from, current.to, current.from);
+        startResize(event, wrapper, view, current, edge);
+      });
+      handle.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      handle.addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+        event.preventDefault();
+        event.stopPropagation();
+        const current = currentImageWidget.get(wrapper) ?? this;
+        const positive = event.key === "ArrowRight" || event.key === "ArrowDown";
+        commitInlineImageResize(view, current.from, current.to, current.raw, current.token,
+          current.token.widthPercent + (positive ? 5 : -5), current.breakHistoryGroup);
+      });
+      frame.append(handle);
+    }
+    wrapper.append(frame);
 
-    wrapper.addEventListener("mousedown", (event) => {
-      if (handle.contains(event.target as Node)) return;
+    const selectAndStartDrag = (event: PointerEvent) => {
+      if (event.button !== 0 || (event.target instanceof Element && event.target.closest("[data-inline-image-resize]"))) return;
       event.preventDefault();
       event.stopPropagation();
+      const current = currentImageWidget.get(wrapper) ?? this;
       const bounds = wrapper.getBoundingClientRect();
-      const position = event.clientX < bounds.left + bounds.width / 2 ? this.from : this.to;
-      view.dispatch({ selection: { anchor: position } });
-      view.focus();
-    });
-
-    handle.addEventListener("pointerdown", (event) => {
-      if (event.button !== 0) return;
+      const position = event.clientX < bounds.left + bounds.width / 2 ? current.from : current.to;
+      selectInlineImage(view, current.from, current.to, position);
+      startImageDrag(event, wrapper, view, current, current.breakHistoryGroup);
+    };
+    wrapper.addEventListener("pointerdown", selectAndStartDrag);
+    wrapper.addEventListener("mousedown", (event) => {
+      if (event.target instanceof Element && event.target.closest("[data-inline-image-resize]")) return;
       event.preventDefault();
       event.stopPropagation();
-      startResize(event, handle, wrapper, view, this.from, this.to, this.raw, this.token, this.breakHistoryGroup);
-    });
-    handle.addEventListener("keydown", (event) => {
-      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-      event.preventDefault();
-      const delta = event.key === "ArrowRight" ? 5 : -5;
-      commitInlineImageResize(view, this.from, this.to, this.raw, this.token, this.token.widthPercent + delta, this.breakHistoryGroup);
     });
     return wrapper;
   }
 
-  destroy(): void {
-    this.gifCleanup?.();
-    this.gifCleanup = null;
+  destroy(dom: HTMLElement): void {
+    inlineGifCleanups.get(dom)?.();
+    inlineGifCleanups.delete(dom);
   }
 
   ignoreEvent(): boolean {
     return true;
   }
+}
+
+function syncWidgetAttributes(wrapper: HTMLElement, widget: InlineImageWidget): void {
+  wrapper.dataset.inlineImageWidget = "";
+  wrapper.dataset.attachmentFile = widget.token.file;
+  wrapper.dataset.selected = String(widget.selected);
+  wrapper.setAttribute("role", "group");
+  wrapper.setAttribute("aria-label", widget.token.alt || widget.token.file);
+  wrapper.setAttribute("aria-selected", String(widget.selected));
+  wrapper.style.width = `${widget.token.widthPercent}%`;
 }
 
 function showMissingFile(wrapper: HTMLElement, alt: string, file: string): void {
@@ -279,30 +412,40 @@ function showMissingFile(wrapper: HTMLElement, alt: string, file: string): void 
 
 function startResize(
   event: PointerEvent,
-  handle: HTMLButtonElement,
   wrapper: HTMLElement,
   view: EditorView,
-  from: number,
-  to: number,
-  raw: string,
-  token: ParsedInlineImage,
-  breakHistoryGroup: BreakHistoryGroup,
+  widget: InlineImageWidget,
+  edge: ResizeEdge,
 ): void {
   const startX = event.clientX;
-  const startWidth = token.widthPercent;
+  const startY = event.clientY;
+  const startWidth = widget.token.widthPercent;
+  const image = wrapper.querySelector<HTMLElement>("img, canvas") ?? wrapper;
+  const imageBounds = image.getBoundingClientRect();
+  const startPixelWidth = Math.max(1, imageBounds.width || wrapper.getBoundingClientRect().width);
+  const startPixelHeight = Math.max(1, imageBounds.height || wrapper.getBoundingClientRect().height);
   const columnWidth = Math.max(1, view.contentDOM.clientWidth);
   let nextWidth = startWidth;
 
   const move = (moveEvent: PointerEvent) => {
     if (moveEvent.pointerId !== event.pointerId) return;
-    nextWidth = clampWidth(startWidth + ((moveEvent.clientX - startX) / columnWidth) * 100);
+    nextWidth = resizedInlineImageWidth(
+      edge,
+      startWidth,
+      startPixelWidth,
+      startPixelHeight,
+      moveEvent.clientX - startX,
+      moveEvent.clientY - startY,
+      columnWidth,
+    );
     wrapper.style.width = `${nextWidth}%`;
   };
   const finish = (commit: boolean) => {
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", pointerUp);
     window.removeEventListener("pointercancel", pointerCancel);
-    if (commit) commitInlineImageResize(view, from, to, raw, token, nextWidth, breakHistoryGroup);
+    const current = currentImageWidget.get(wrapper) ?? widget;
+    if (commit) commitInlineImageResize(view, current.from, current.to, current.raw, current.token, nextWidth, current.breakHistoryGroup);
     else wrapper.style.width = `${startWidth}%`;
   };
   const pointerUp = (upEvent: PointerEvent) => {
@@ -315,7 +458,26 @@ function startResize(
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", pointerUp);
   window.addEventListener("pointercancel", pointerCancel);
-  handle.focus({ preventScroll: true });
+}
+
+export function resizedInlineImageWidth(
+  edge: ResizeEdge,
+  startPercent: number,
+  startWidthPx: number,
+  startHeightPx: number,
+  dx: number,
+  dy: number,
+  columnWidthPx: number,
+): number {
+  const widthToHeight = startHeightPx > 0 ? startWidthPx / startHeightPx : 1;
+  const horizontalDelta = edge.includes("e") ? dx : edge.includes("w") ? -dx : 0;
+  const verticalMovement = edge.includes("s") ? dy : edge.includes("n") ? -dy : 0;
+  const verticalDelta = verticalMovement * widthToHeight;
+  const selectedDelta = horizontalDelta === 0 ? verticalDelta
+    : verticalDelta === 0 ? horizontalDelta
+      : Math.abs(horizontalDelta) >= Math.abs(verticalDelta) ? horizontalDelta : verticalDelta;
+  const safeColumnWidth = Math.max(1, columnWidthPx);
+  return clampWidth(startPercent + selectedDelta / safeColumnWidth * 100);
 }
 
 export function commitInlineImageResize(
@@ -333,8 +495,11 @@ export function commitInlineImageResize(
   breakHistoryGroup();
   view.dispatch({
     changes: { from, to, insert: replacement },
+    selection: { anchor: from + replacement.length },
+    effects: inlineImageSelectionEffect.of({ from, to: from + replacement.length }),
     annotations: [Transaction.userEvent.of("input.inlineImageResize"), isolateHistory.of("full")],
   });
+  focusEditor(view);
   breakHistoryGroup();
 }
 
@@ -342,6 +507,7 @@ async function importFiles(
   view: EditorView,
   files: File[],
   startDoc: EditorView["state"]["doc"],
+  startSelection: { from: number; to: number },
   breakHistoryGroup: BreakHistoryGroup,
 ): Promise<void> {
   try {
@@ -351,7 +517,7 @@ async function importFiles(
       return result.image;
     }));
     if (!view.dom.isConnected) return;
-    const position = view.state.doc === startDoc ? undefined : view.state.selection.main.head;
+    const position = view.state.doc === startDoc ? startSelection : view.state.selection.main.head;
     insertImportedImages(view, images, position, breakHistoryGroup);
   } catch (error) {
     reportImportError(errorMessage(error));
@@ -384,14 +550,19 @@ async function importPaths(
 export function insertImportedImages(
   view: EditorView,
   images: ImageRef[],
-  requestedPosition: number | undefined,
+  requestedPosition: ImageInsertionTarget | undefined,
   breakHistoryGroup: BreakHistoryGroup,
 ): void {
   if (images.length === 0) return;
   const state = view.state;
-  const selection = requestedPosition === undefined
+  const requestedFrom = typeof requestedPosition === "number" ? requestedPosition : requestedPosition?.from;
+  const requestedTo = typeof requestedPosition === "number" ? requestedPosition : requestedPosition?.to;
+  const selection = requestedFrom === undefined || requestedTo === undefined
     ? state.selection.main
-    : { from: Math.max(0, Math.min(state.doc.length, requestedPosition)), to: Math.max(0, Math.min(state.doc.length, requestedPosition)) };
+    : {
+      from: Math.max(0, Math.min(state.doc.length, requestedFrom)),
+      to: Math.max(0, Math.min(state.doc.length, requestedTo)),
+    };
   const startLine = state.doc.lineAt(selection.from);
   const endLine = state.doc.lineAt(selection.to);
   const prefix = state.sliceDoc(startLine.from, selection.from);
@@ -409,7 +580,147 @@ export function insertImportedImages(
     selection: { anchor: cursor },
     annotations: [Transaction.userEvent.of("input.inlineImageInsert"), isolateHistory.of("full")],
   });
+  focusEditor(view);
   breakHistoryGroup();
+}
+
+export function selectInlineImage(view: EditorView, from: number, to: number, cursor = to): void {
+  view.dispatch({
+    selection: { anchor: cursor },
+    effects: inlineImageSelectionEffect.of({ from, to }),
+  });
+  focusEditor(view);
+}
+
+export function selectedInlineImageDeletionRange(
+  doc: EditorView["state"]["doc"],
+  selection: InlineImageSelection,
+): { from: number; to: number; cursor: number } {
+  const from = Math.max(0, Math.min(selection.from, doc.length));
+  const to = Math.max(from, Math.min(selection.to, doc.length));
+  const line = doc.lineAt(from);
+  const aloneOnLine = doc.lineAt(to).number === line.number
+    && doc.sliceString(line.from, from).trim() === ""
+    && doc.sliceString(to, line.to).trim() === "";
+  let deleteFrom = from;
+  let deleteTo = to;
+  if (aloneOnLine) {
+    if (line.number < doc.lines) {
+      deleteFrom = line.from;
+      deleteTo = doc.line(line.number + 1).from;
+    } else if (line.number > 1) {
+      deleteFrom = doc.line(line.number - 1).to;
+      deleteTo = line.to;
+    } else {
+      deleteFrom = line.from;
+      deleteTo = line.to;
+    }
+  }
+  return { from: deleteFrom, to: deleteTo, cursor: deleteFrom };
+}
+
+function deleteSelectedInlineImage(view: EditorView, breakHistoryGroup: BreakHistoryGroup): boolean {
+  const selection = view.state.field(inlineImageSelectionField, false);
+  if (!selection) return false;
+  const { from, to, cursor } = selectedInlineImageDeletionRange(view.state.doc, selection);
+  breakHistoryGroup();
+  view.dispatch({
+    changes: { from, to },
+    selection: { anchor: cursor },
+    effects: inlineImageSelectionEffect.of(null),
+    annotations: [Transaction.userEvent.of("delete.inlineImage"), isolateHistory.of("full")],
+  });
+  breakHistoryGroup();
+  focusEditor(view);
+  return true;
+}
+
+function moveCaretFromSelectedImage(view: EditorView, direction: -1 | 1): boolean {
+  const selection = view.state.field(inlineImageSelectionField, false);
+  if (!selection) return false;
+  view.dispatch({
+    selection: { anchor: direction < 0 ? selection.from : selection.to },
+    effects: inlineImageSelectionEffect.of(null),
+  });
+  focusEditor(view);
+  return true;
+}
+
+function clearSelectedInlineImage(view: EditorView): boolean {
+  if (!view.state.field(inlineImageSelectionField, false)) return false;
+  view.dispatch({ effects: inlineImageSelectionEffect.of(null) });
+  focusEditor(view);
+  return true;
+}
+
+function startImageDrag(
+  event: PointerEvent,
+  wrapper: HTMLElement,
+  view: EditorView,
+  widget: InlineImageWidget,
+  breakHistoryGroup: BreakHistoryGroup,
+): void {
+  const pointerId = event.pointerId;
+  const startX = event.clientX;
+  const startY = event.clientY;
+  let moved = false;
+  const move = (moveEvent: PointerEvent) => {
+    if (moveEvent.pointerId !== pointerId) return;
+    if (!moved && Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) < 5) return;
+    moved = true;
+    wrapper.dataset.dragging = "true";
+    moveEvent.preventDefault();
+  };
+  const finish = (finishEvent: PointerEvent, cancelled: boolean) => {
+    if (finishEvent.pointerId !== pointerId) return;
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", pointerUp);
+    window.removeEventListener("pointercancel", pointerCancel);
+    delete wrapper.dataset.dragging;
+    if (!moved || cancelled || !view.dom.isConnected) return;
+    const destination = view.posAtCoords({ x: finishEvent.clientX, y: finishEvent.clientY });
+    const current = currentImageWidget.get(wrapper) ?? widget;
+    if (destination !== null) moveInlineImage(view, current, destination, breakHistoryGroup);
+  };
+  const pointerUp = (finishEvent: PointerEvent) => finish(finishEvent, false);
+  const pointerCancel = (finishEvent: PointerEvent) => finish(finishEvent, true);
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", pointerUp);
+  window.addEventListener("pointercancel", pointerCancel);
+}
+
+function moveInlineImage(
+  view: EditorView,
+  widget: InlineImageWidget,
+  destination: number,
+  breakHistoryGroup: BreakHistoryGroup,
+): void {
+  const { from, to, raw } = widget;
+  if (view.state.sliceDoc(from, to) !== raw || destination >= from && destination <= to) return;
+  const target = Math.max(0, Math.min(view.state.doc.length, destination));
+  const afterDrop = target > to ? target - (to - from) : target;
+  const changes = target < from
+    ? [{ from: target, to: target, insert: raw }, { from, to, insert: "" }]
+    : [{ from, to, insert: "" }, { from: target, to: target, insert: raw }];
+  breakHistoryGroup();
+  view.dispatch({
+    changes,
+    selection: { anchor: afterDrop + raw.length },
+    effects: inlineImageSelectionEffect.of(null),
+    annotations: [Transaction.userEvent.of("input.inlineImageMove"), isolateHistory.of("full")],
+  });
+  focusEditor(view);
+  breakHistoryGroup();
+}
+
+function clearImageSelectionState(view: EditorView): void {
+  if (view.state.field(inlineImageSelectionField, false)) {
+    view.dispatch({ effects: inlineImageSelectionEffect.of(null) });
+  }
+}
+
+function focusEditor(view: EditorView): void {
+  if (typeof view.focus === "function") view.focus();
 }
 
 function clampWidth(width: number): number {

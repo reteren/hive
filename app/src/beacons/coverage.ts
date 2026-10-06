@@ -2,6 +2,7 @@ import { board } from "../model/board.svelte";
 import { ME_OBJECT_ID, type Link } from "../model/link";
 import type { Note, NoteKind } from "../model/note";
 import { links } from "../model/links.svelte";
+import { hasMeBeacon } from "./beaconState.svelte";
 
 interface NoteSnapshot {
   note: Note;
@@ -28,7 +29,7 @@ let coverageGraph: CoverageGraph | null = null;
 
 /** Every board object reachable through strong outgoing links, counted once. */
 export function beaconDescendants(beaconId: string): Set<string> {
-  if (beaconId !== ME_OBJECT_ID && board.notes[beaconId]?.type !== "beacon") return new Set();
+  if (beaconId === ME_OBJECT_ID ? !hasMeBeacon() : board.notes[beaconId]?.type !== "beacon") return new Set();
 
   const graph = currentCoverageGraph();
   const cached = graph.descendantsByBeacon.get(beaconId);

@@ -43,7 +43,8 @@ const noteKindLabels: Record<NoteKind, string> = {
 };
 
 /** Format one grouped delete entry for the list without counting its attached links as objects. */
-export function summarizeTrashEntry(entry: Pick<TrashListItem, "notes" | "zones">): TrashEntrySummary {
+export function summarizeTrashEntry(entry: Pick<TrashListItem, "notes" | "zones" | "meBeacon">): TrashEntrySummary {
+  if (entry.meBeacon) return { kind: "beacon", label: "Beacon ME", objectCount: 1 };
   const objectCount = entry.notes.length + entry.zones.length;
   if (objectCount === 1) {
     const note = entry.notes[0];

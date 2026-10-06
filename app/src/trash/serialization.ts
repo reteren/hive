@@ -51,7 +51,10 @@ export function sanitizeTrashEntries(value: unknown): { entries: TrashEntry[]; w
     }
     const safeNotes = notes as Note[];
     const safeZones = zones as Zone[];
-    if (safeNotes.length === 0 && safeZones.length === 0 ||
+    const meBeacon = candidate.meBeacon === true;
+    if (candidate.meBeacon !== undefined && typeof candidate.meBeacon !== "boolean" ||
+      safeNotes.length === 0 && safeZones.length === 0 && !meBeacon ||
+      meBeacon && (safeNotes.length !== 0 || safeZones.length !== 0) ||
       safeNotes.some((note) => noteIds.has(note.id)) || safeZones.some((zone) => zoneIds.has(zone.id)) ||
       safeNotes.some((note) => safeZones.some((zone) => zone.id === note.id))) {
       invalid = true;
@@ -98,6 +101,7 @@ export function sanitizeTrashEntries(value: unknown): { entries: TrashEntry[]; w
       notes: safeNotes,
       zones: safeZones,
       links,
+      ...(meBeacon ? { meBeacon: true as const } : {}),
       ...(Object.keys(calculators).length > 0 ? { calculators } : {}),
     });
     entryIds.add(candidate.id);

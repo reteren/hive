@@ -1,8 +1,10 @@
 <script lang="ts">
   import type { CustomMark } from "../model/nodeData";
+  import { updateNote } from "../model/board.svelte";
+  import { liveColorSession, type LiveColorSession } from "../color/liveColor";
   import HexColorPicker from "../color/HexColorPicker.svelte";
   import { MARKAS_PALETTE } from "./markasLogic";
-  import { removeMarkAsTag, saveMarkAsTag, setCustomMarkFrame } from "./markasActions.svelte";
+  import { recolorMarkAsTag, removeMarkAsTag, saveMarkAsTag, setCustomMarkFrame } from "./markasActions.svelte";
   import { isMarkAsEditorCollapsed, toggleMarkAsEditor } from "./markasUi.svelte";
 
   let { note }: { note: { id: string; type: string; customMarks?: CustomMark[]; customMarkFrame?: boolean } } = $props();
@@ -15,6 +17,8 @@
   let error = $state("");
   /** The Color button unfolds the HEX palette inside the node; pressing it again folds it. */
   let colorOpen = $state(false);
+  let colorSession: LiveColorSession | null = null;
+  let colorSessionOriginal: string | null = null;
   let textInput = $state<HTMLInputElement | null>(null);
 
   const HEX = /^#[0-9a-f]{6}$/i;
@@ -35,8 +39,10 @@
 
   function submit(event?: Event): void {
     event?.preventDefault();
+    finishColorSession(true, true);
     const result = saveMarkAsTag(note.id, editingId, draftText, draftColor);
     if (!result.ok) {
+      if (editingId) recolorMarkAsTag(note.id, editingId, draftColor);
       error = result.error;
       return;
     }
@@ -54,9 +60,79 @@
   }
 
   function removeMark(mark: CustomMark): void {
+    finishColorSession(true);
     if (editingId === mark.id) resetDraft();
     removeMarkAsTag(note.id, mark.id);
   }
+
+  function previewMarkColor(markId: string, color: string): void {
+    const current = note.customMarks ?? [];
+    if (!current.some((mark) => mark.id === markId)) return;
+    updateNote(note.id, {
+      customMarks: current.map((mark) => mark.id === markId ? { ...mark, color } : { ...mark }),
+    });
+  }
+
+  function beginColorSession(): void {
+    const existing = editingId ? marks.find((mark) => mark.id === editingId) : undefined;
+    const original = existing?.color ?? draftColor;
+    colorSessionOriginal = original;
+    colorSession = liveColorSession(
+      original,
+      (color) => {
+        draftColor = color;
+        if (editingId) previewMarkColor(editingId, color);
+      },
+      (color) => {
+        if (editingId) recolorMarkAsTag(note.id, editingId, color);
+      },
+    );
+  }
+
+  /** keep commits an existing tag's colour; deferToSave folds it into the tag's Save transaction. */
+  function finishColorSession(keep: boolean, deferToSave = false): void {
+    const session = colorSession;
+    const original = colorSessionOriginal;
+    const selected = draftColor;
+    colorSession = null;
+    colorSessionOriginal = null;
+    colorOpen = false;
+    session?.finish(keep && !deferToSave);
+    draftColor = keep || deferToSave ? selected : original ?? selected;
+  }
+
+  function toggleColorPicker(): void {
+    if (colorOpen) {
+      finishColorSession(true);
+      return;
+    }
+    colorOpen = true;
+    beginColorSession();
+  }
+
+  $effect(() => {
+    if (!colorOpen) return;
+    const onPointerDown = (event: PointerEvent): void => {
+      if (!(event.target instanceof Element)) {
+        finishColorSession(true);
+        return;
+      }
+      if (event.target.closest("[data-markas-picker]") || event.target.closest("[data-markas-color-toggle]")) return;
+      finishColorSession(true, Boolean(event.target.closest("[data-markas-add]")));
+    };
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      finishColorSession(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
+  });
 </script>
 
 <div class="markas-node" data-selection-ignore>
@@ -122,7 +198,7 @@
           aria-expanded={colorOpen}
           data-markas-color-toggle
           onpointerdown={(event) => event.preventDefault()}
-          onclick={() => { colorOpen = !colorOpen; }}
+          onclick={toggleColorPicker}
         >
           <span class="markas-dot" aria-hidden="true"></span>
           <span class="markas-color-code">{draftColor}</span>
@@ -131,7 +207,12 @@
       </div>
       {#if colorOpen}
         <div class="markas-picker" data-markas-picker>
-          <HexColorPicker value={draftColor} label="Tag colour" oninput={(color) => { draftColor = color; }} />
+          <HexColorPicker
+            value={draftColor}
+            label="Tag colour"
+            oninput={(color) => colorSession?.preview(color)}
+            onchange={(color) => colorSession?.preview(color)}
+          />
         </div>
       {/if}
 

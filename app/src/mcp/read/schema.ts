@@ -10,6 +10,7 @@ import {
 import type { Link } from "../../model/link";
 import { MODULE_NOTE_WIDTH } from "../../modules/moduleLogic";
 import { overviewLabelFor } from "../../overview/overviewLogic";
+import { ME_OBJECT_ID } from "../../model/link";
 
 interface KindDefinition {
   description: string;
@@ -115,7 +116,7 @@ function defaultWidth(type: NoteKind): number {
 
 export const NOTE_KINDS = Object.keys(KIND_DEFINITIONS) as NoteKind[];
 
-export function buildMcpSchema() {
+export function buildMcpSchema(meBeaconPresent = true) {
   return {
     kinds: NOTE_KINDS.map((type) => {
       const definition = KIND_DEFINITIONS[type];
@@ -139,6 +140,16 @@ export function buildMcpSchema() {
       moods: [...MOOD_KINDS],
       linkKinds: [...LINK_KINDS],
       linkShapes: [...LINK_SHAPES],
+    },
+    virtualObjects: {
+      meBeacon: {
+        id: ME_OBJECT_ID,
+        label: "ME",
+        kind: "beacon",
+        present: meBeaconPresent,
+        deletable: true,
+        deletion: "Moving ME to trash is undoable; a new project starts with ME present.",
+      },
     },
     markdown: "Text notes use CommonMark/GFM (including tables, task lists, strikethrough, and autolinks), hive highlights `==text==` with optional colour suffix `{{#rrggbb}}`, and text links `hive://point/x,y` or `hive://note/<id>` (also usable as Markdown link destinations). Inline project images use `![alt](att:<encoded-attachment-basename>){w=NN}`; width is 5–100 percent and defaults to 50 percent.",
   };

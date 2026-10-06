@@ -67,6 +67,26 @@ describe("project index", () => {
     expect(parseProjectIndex(shown).notes[0]?.headerHidden).toBeUndefined();
   });
 
+  it("persists a user's manual text width lock", () => {
+    const locked: Note = {
+      id: "locked-width", type: "note", name: "Locked", text: "Long line", x: 0, y: 0, width: 64,
+      height: null, widthLocked: true,
+    };
+    const index = parseProjectIndex(serializeProjectIndex([locked]));
+    expect(index.notes[0]?.widthLocked).toBe(true);
+    expect(mergeLoadedNotes(index, [{
+      id: locked.id, name: locked.name, file: index.notes[0]!.file, text: locked.text,
+      x: locked.x, y: locked.y, width: locked.width, height: locked.height,
+    }])[0]?.widthLocked).toBe(true);
+
+    const invalid = parseProjectIndexWithWarnings(JSON.stringify({
+      version: 3,
+      notes: [{ id: "bad-width-lock", name: "Bad", type: "note", x: 0, y: 0, width: 30, widthLocked: "yes" }],
+    }));
+    expect(invalid.index.notes[0]?.widthLocked).toBeUndefined();
+    expect(invalid.warnings).toContain("Invalid width lock for note bad-width-lock; automatic width will be enabled.");
+  });
+
   it("persists smooth state and pre-smoothing anchors on live, archived, and trashed notes", () => {
     const smooth: Note = {
       id: "smooth-live", type: "note", name: "Smooth", text: "Body", x: 0, y: 0, width: 30, height: 20,

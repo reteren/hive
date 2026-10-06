@@ -7,6 +7,7 @@ import type { Link } from "../src/model/link";
 import type { CustomMark } from "../src/model/nodeData";
 import type { Note } from "../src/model/note";
 import { extractModuleFromNote, tryInsertModuleOnDrop } from "../src/modules/moduleActions.svelte";
+import { recolorMarkAsTag } from "../src/markas/markasActions.svelte";
 import {
   createMarkAsPatchCommand,
   customMarkGradientFor,
@@ -139,6 +140,23 @@ describe("Mark as tag rules", () => {
     stack.redo();
     expect(current.customMarks).toEqual([mark]);
     expect(current.customMarkFrame).toBe(true);
+  });
+
+  it("recolours an existing tag as one reversible command without changing its text", () => {
+    const markAs = note({
+      id: "markas",
+      type: "markas",
+      customMarks: [{ id: "m1", text: "Review", color: "#cf91ae" }],
+    });
+    replaceBoard([markAs]);
+
+    recolorMarkAsTag(markAs.id, "m1", "#245678");
+    expect(board.notes.markas?.customMarks).toEqual([{ id: "m1", text: "Review", color: "#245678" }]);
+    expect(history.entries).toHaveLength(1);
+    undo();
+    expect(board.notes.markas?.customMarks).toEqual([{ id: "m1", text: "Review", color: "#cf91ae" }]);
+    redo();
+    expect(board.notes.markas?.customMarks).toEqual([{ id: "m1", text: "Review", color: "#245678" }]);
   });
 
   it("builds the frame gradient from only the configured tag colours", () => {

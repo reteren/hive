@@ -4,20 +4,20 @@ import { captureSelectionSnapshot, selection, setSelectionUndoable } from "../se
 import { editing } from "../notes/editing.svelte";
 import { links } from "../model/links.svelte";
 import { selectLinks, selectedLinkIds } from "../links/selection.svelte";
-import { beaconState } from "./beaconState.svelte";
+import { beaconState, hasMeBeacon } from "./beaconState.svelte";
 import { beaconDescendants } from "./coverage";
 
 export function isBeacon(id: string): boolean {
-  return id === ME_OBJECT_ID || board.notes[id]?.type === "beacon";
+  return id === ME_OBJECT_ID ? hasMeBeacon() : board.notes[id]?.type === "beacon";
 }
 
 export function allBeacons(): string[] {
-  return [ME_OBJECT_ID, ...board.order.filter((id) => board.notes[id]?.type === "beacon")];
+  return [...(hasMeBeacon() ? [ME_OBJECT_ID] : []), ...board.order.filter((id) => board.notes[id]?.type === "beacon")];
 }
 
 export function selectedBeacons(): string[] {
   const selected = selection.ids.filter(isBeacon);
-  return selected.length ? selected : selection.ids.length === 0 ? [ME_OBJECT_ID] : [];
+  return selected.length ? selected : selection.ids.length === 0 && hasMeBeacon() ? [ME_OBJECT_ID] : [];
 }
 
 export function validFocused(): string[] {

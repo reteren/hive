@@ -1,6 +1,7 @@
 import { board } from "../model/board.svelte";
 import { links } from "../model/links.svelte";
 import { noteBounds } from "../notes/layout.svelte";
+import { hasMeBeacon } from "../beacons/beaconState.svelte";
 import { reflowSmoothLineAnchorsRaw } from "./smoothLines";
 
 let started = false;
@@ -35,8 +36,10 @@ export function startSmoothLineSync(): void {
  * note on every pointer move made dragging on a big board stutter.
  */
 function geometrySignature(): string {
-  const smooth = new Set<string>();
-  for (const note of Object.values(board.notes)) if (note.smoothLines === true) smooth.add(note.id);
+  const smooth = new Set<string>(hasMeBeacon() ? ["me"] : []);
+  for (const note of Object.values(board.notes)) {
+    if (note.type === "beacon" || note.smoothLines === true) smooth.add(note.id);
+  }
   const relevant = new Set(smooth);
   const linkTopology: unknown[] = [];
   for (const link of Object.values(links.byId)) {

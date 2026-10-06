@@ -12,6 +12,7 @@ import { searchNotes, type SearchNote } from "../search/matching";
 import { zoneMembers } from "../zones/membership.svelte";
 import type { Note, NoteKind } from "../model/note";
 import { ME_OBJECT_ID } from "../model/link";
+import { hasMeBeacon } from "../beacons/beaconState.svelte";
 import { noteBounds } from "../notes/layout.svelte";
 import { trashEntrySummary } from "../trash/trash";
 import { asParams, McpError, registerMcpMethod } from "./registry";
@@ -147,6 +148,7 @@ registerMcpMethod({
       appVersion: packageMetadata.version,
       protocol: MCP_PROTOCOL_VERSION,
       project: { name: project.name, root: displayPath(project.path) },
+      meBeacon: { id: ME_OBJECT_ID, present: hasMeBeacon() },
       counts: {
         nodes: Object.keys(board.notes).length,
         links: Object.keys(links.byId).length,
@@ -169,7 +171,7 @@ registerMcpMethod({
 registerMcpMethod({
   name: "schema",
   mutating: false,
-  run: () => buildMcpSchema(),
+  run: () => buildMcpSchema(hasMeBeacon()),
 });
 
 registerMcpMethod({
@@ -205,7 +207,7 @@ registerMcpMethod({
     if (linkedTo !== undefined && typeof linkedTo !== "string") {
       throw new McpError("invalid_params", "linkedTo must be a node id string.");
     }
-    if (typeof linkedTo === "string" && linkedTo !== ME_OBJECT_ID && !board.notes[linkedTo]) {
+    if (typeof linkedTo === "string" && (linkedTo === ME_OBJECT_ID ? !hasMeBeacon() : !board.notes[linkedTo])) {
       throw new McpError("not_found", `Node '${linkedTo}' not found. Use nodes.list or search to get ids.`);
     }
 
@@ -305,7 +307,7 @@ registerMcpMethod({
     if (params.nodeId !== undefined) {
       if (typeof params.nodeId !== "string") throw new McpError("invalid_params", "nodeId must be a node id string.");
       nodeId = params.nodeId;
-      if (nodeId !== ME_OBJECT_ID && !board.notes[nodeId]) {
+      if (nodeId === ME_OBJECT_ID ? !hasMeBeacon() : !board.notes[nodeId]) {
         throw new McpError("not_found", `Node '${nodeId}' not found. Use nodes.list or search to get ids.`);
       }
     }

@@ -8,6 +8,7 @@
   import { ME_POSITION, camera, cameraSettings, refreshPointerWorld, viewport } from "../board/camera.svelte";
   import { zoomAt, type Point } from "../board/cameraMath";
   import { ME_OBJECT_ID } from "../model/link";
+  import { hasMeBeacon } from "../beacons/beaconState.svelte";
   import { links as boardLinks } from "../model/links.svelte";
   import {
     cameraViewportRect,
@@ -69,7 +70,7 @@
     beacons: MapDotMark[];
     links: { id: string; kind: "strong" | "weak"; from: Point; to: Point }[];
     linksSkipped: boolean;
-    me: Point;
+    me: Point | null;
     viewport: WorldRect;
     camera: CameraSnapshot;
     internalZoom: number;
@@ -182,9 +183,9 @@
       })),
       notes: mapNotes,
       beacons,
-      links: projectMapLinks(linkSnapshots, notes, transform, ME_OBJECT_ID, ME_POSITION),
+      links: projectMapLinks(linkSnapshots, notes, transform, hasMeBeacon() ? ME_OBJECT_ID : null, ME_POSITION),
       linksSkipped,
-      me: worldToMap(ME_POSITION, transform),
+      me: hasMeBeacon() ? worldToMap(ME_POSITION, transform) : null,
       viewport: cameraViewportRect(camera, viewport, transform),
       camera: cameraSnapshot(),
       internalZoom: mapViewState.zoom,
@@ -197,9 +198,10 @@
     const sourceLinks = Object.values(boardLinks.byId);
     const linksSkipped = sourceLinks.length > MAX_PROJECTED_MAP_LINKS;
     const linkSnapshots: MapLinkInput[] = linksSkipped ? [] : sourceLinks.map(({ id, from, to, kind }) => ({ id, from, to, kind }));
-    const key = geometryKey(notes, boardZones);
+    const mePresent = hasMeBeacon();
+    const key = `${mePresent}:${geometryKey(notes, boardZones)}`;
     if (key !== cachedBoundsKey) {
-      cachedBounds = wholeBoardBounds(notes, boardZones, ME_POSITION);
+      cachedBounds = wholeBoardBounds(notes, boardZones, mePresent ? ME_POSITION : null);
       cachedBoundsKey = key;
     }
     return makeFrame(notes, boardZones, linkSnapshots, linksSkipped, cachedBounds);
@@ -407,8 +409,10 @@
   {#each frame.beacons as beacon (beacon.id)}
     <circle cx={beacon.x} cy={beacon.y} r={beacon.radius} fill={beacon.color} stroke="#171717" stroke-width="0.7" data-map-beacon={beacon.id} />
   {/each}
-  <circle cx={frame.me.x} cy={frame.me.y} r="3" fill="#f4f4ef" stroke="#181818" stroke-width="1" data-map-me={ME_OBJECT_ID} />
-  <path d={`M${frame.me.x - 5},${frame.me.y}h10M${frame.me.x},${frame.me.y - 5}v10`} stroke="#fff" stroke-opacity="0.75" stroke-width="0.7" vector-effect="non-scaling-stroke" aria-hidden="true" />
+  {#if frame.me}
+    <circle cx={frame.me.x} cy={frame.me.y} r="3" fill="#f4f4ef" stroke="#181818" stroke-width="1" data-map-me={ME_OBJECT_ID} />
+    <path d={`M${frame.me.x - 5},${frame.me.y}h10M${frame.me.x},${frame.me.y - 5}v10`} stroke="#fff" stroke-opacity="0.75" stroke-width="0.7" vector-effect="non-scaling-stroke" aria-hidden="true" />
+  {/if}
   <rect
     class="map-viewport"
     x={frame.viewport.x}

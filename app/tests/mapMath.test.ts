@@ -23,6 +23,15 @@ describe("map geometry", () => {
     expect(corners.every((point) => point.x >= 20 - 1e-8 && point.x <= 380 + 1e-8 && point.y >= 20 - 1e-8 && point.y <= 280 + 1e-8)).toBe(true);
   });
 
+  it("omits the deleted ME beacon from map bounds and projected links", () => {
+    const bounds = wholeBoardBounds([{ id: "note", x: 50, y: 40, width: 20, height: 10 }], [], null);
+    const transform = fitMap(bounds, { width: 400, height: 300 }, 10);
+    expect(bounds).toEqual({ x: 50, y: 40, width: 20, height: 10 });
+    expect(projectMapLinks([
+      { id: "gone", from: "me", to: "note", kind: "strong" },
+    ], [{ id: "note", x: 50, y: 40, width: 20, height: 10 }], transform, null)).toEqual([]);
+  });
+
   it("converts map coordinates back to the same world point", () => {
     const transform = fitMap({ x: -70, y: 25, width: 300, height: 180 }, { width: 400, height: 300 }, 18);
     const world = { x: 41.25, y: 116.5 };

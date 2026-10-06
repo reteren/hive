@@ -47,6 +47,11 @@ export function defaultNoteGlow(note: Pick<Note, "type" | "color">): NoteGlow {
   return { color: mainNoteColor(note), opacity: DEFAULT_GLOW_OPACITY, size: DEFAULT_GLOW_SIZE };
 }
 
+/** Beacon glow is fixed to its main colour and geometry, independent of stored legacy values. */
+export function defaultBeaconGlow(note: Pick<Note, "type" | "color">): NoteGlow {
+  return { color: mainNoteColor({ ...note, type: "beacon" }), opacity: 1, size: 6.2 };
+}
+
 export function noteGlowShadow(glow: NoteGlow): string {
   const red = Number.parseInt(glow.color.slice(1, 3), 16);
   const green = Number.parseInt(glow.color.slice(3, 5), 16);

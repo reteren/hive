@@ -1,27 +1,26 @@
-import { defaultKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { defaultHighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { EditorState, Transaction } from "@codemirror/state";
-import { Decoration, drawSelection, EditorView, keymap, ViewPlugin, type DecorationSet } from "@codemirror/view";
+import { Decoration, drawSelection, EditorView, ViewPlugin, type DecorationSet } from "@codemirror/view";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Note } from "../model/note";
 import { history, record, type HistoryCommand } from "../history/history.svelte";
 import { board, updateNote } from "../model/board.svelte";
 import { preferences } from "../settings/preferences.svelte";
-import { growWidthToTextMinimum, maximumNoteWidthForKind } from "../notes/layout.svelte";
+import { maximumNoteWidthForKind } from "../notes/layout.svelte";
 import { runCommand } from "../commands/registry.svelte";
 import { teleportToObject, teleportToPoint } from "../navigation/navigate";
 import { showLinkStatus } from "../links-in-text/contextMenu.svelte";
 import { parseTextLink, textLinkStyleClass } from "../links-in-text/format";
 import { attachEditor, editorForNote, exitNoteEditing } from "./editorSession";
-import { toggleHeading, toggleWrapper } from "./formatting";
+import { noteEditorKeymap } from "./noteEditorKeymap";
 import { coloredHighlights, getContrastingTextColor } from "./highlight";
 import { openHighlightPalette } from "./highlightPalette";
 import { hiveMarkdownExtensions, inlineImageTextForFit } from "./markdownSyntax";
 import { collapsedLinkMarkup, visibleMarkdownLinksInTree } from "./linkPreview";
 import { inlineImagesExtension } from "./inlineImages";
 import { applyTextEditEffects, captureTextEditEffects } from "../transfer/textEditHooks";
-import { measureAndCacheTextMinimumWidth } from "./textFitWidth";
+import { measureAndCacheTextMinimumWidth, nextTextWidthAfterEdit } from "./textFitWidth";
 import { spellcheckExtension } from "../spell/spellcheck";
 import { spellSettings } from "../spell/settings.svelte";
 import {
@@ -113,7 +112,11 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
     highlightColors,
     linkPreview,
     inlineImagesExtension(breakTextEditGroup, note.id),
-    spellcheckExtension(() => ({ enabled: spellSettings.enabled, languages: spellSettings.languages })),
+    spellcheckExtension(() => ({
+      enabled: spellSettings.enabled,
+      languages: spellSettings.languages,
+      inlineSuggestions: spellSettings.inlineSuggestions,
+    })),
     EditorView.atomicRanges.of((view) => view.plugin(linkPreview)?.atomicRanges ?? Decoration.none),
     EditorView.domEventHandlers({
       mousedown(event) {
@@ -128,19 +131,12 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
         return true;
       },
     }),
-    keymap.of([
-      { key: "Escape", run: (view) => (exitNoteEditing(view), true) },
-      { key: "Mod-b", run: (view) => toggleWrapper(view, "**") },
-      { key: "Mod-i", run: (view) => toggleWrapper(view, "*") },
-      { key: "Mod-Shift-x", run: (view) => toggleWrapper(view, "~~") },
-      { key: "Mod-e", run: (view) => toggleWrapper(view, "`") },
-      { key: "Mod-1", run: toggleHeading },
-      { key: "Mod-Shift-h", run: openHighlightPalette },
-      { key: "Mod-z", run: () => (runCommand("edit.undo"), true) },
-      { key: "Mod-Shift-z", run: () => (runCommand("edit.redo"), true) },
-      { key: "Mod-y", run: () => (runCommand("edit.redo"), true) },
-      ...defaultKeymap,
-    ]),
+    noteEditorKeymap({
+      exit: (view) => (exitNoteEditing(view), true),
+      undo: () => (runCommand("edit.undo"), true),
+      redo: () => (runCommand("edit.redo"), true),
+      highlight: openHighlightPalette,
+    }),
     EditorView.contentAttributes.of({
       "aria-label": `Text for ${note.name}`,
       spellcheck: "false",
@@ -182,9 +178,10 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
         update.view.contentDOM,
         note.type,
       );
-      const currentWidth = board.notes[noteId]?.width ?? note.width;
+      const currentNote = board.notes[noteId] ?? note;
+      const currentWidth = currentNote.width;
       const nextWidth = preferences.fitWidthToText && textMinimum !== null
-        ? growWidthToTextMinimum(currentWidth, textMinimum, maximumNoteWidthForKind(note.type))
+        ? nextTextWidthAfterEdit(currentWidth, textMinimum, maximumNoteWidthForKind(note.type), currentNote.widthLocked === true)
         : currentWidth;
       if (nextWidth > currentWidth) {
         edit.widthBefore = currentWidth;
@@ -214,7 +211,7 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
         },
         ".cm-content": {
           padding: "0",
-          caretColor: "var(--accent)",
+          caretColor: "#fff",
           userSelect: "text",
         },
         ".cm-line": {
@@ -223,7 +220,7 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
           overflowWrap: "anywhere",
         },
         ".cm-gutters": { display: "none" },
-        ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--accent)" },
+        ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#fff" },
         ".cm-selectionBackground, ::selection": {
           backgroundColor: "var(--bg-active) !important",
         },
@@ -256,7 +253,7 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
   return view;
 }
 
-function followTextLink(value: string): void {
+export function followTextLink(value: string): void {
   const target = parseTextLink(value);
   if (!target) return;
 

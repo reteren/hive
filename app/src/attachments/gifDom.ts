@@ -14,10 +14,17 @@ export interface InlineGifDomOptions {
   position: number;
 }
 
+const updateGifPosition = new WeakMap<HTMLElement, (position: number) => void>();
+
+/** Keep a mounted GIF's playback key in sync when its text widget shifts. */
+export function updateInlineGifDom(parent: HTMLElement, position: number): void {
+  updateGifPosition.get(parent)?.(position);
+}
+
 /** Mount the CodeMirror GIF surface without mounting a Svelte component inside its widget. */
 export function mountInlineGifDom(parent: HTMLElement, options: InlineGifDomOptions): () => void {
   const doc = parent.ownerDocument;
-  const target: GifPlaybackTarget = { kind: "inline", noteId: options.noteId, position: options.position };
+  const target = { kind: "inline" as const, noteId: options.noteId, position: options.position };
   const source = attachmentUrl(options.file);
   const surface = doc.createElement("div");
   surface.className = "cm-inline-gif-surface";
@@ -26,6 +33,10 @@ export function mountInlineGifDom(parent: HTMLElement, options: InlineGifDomOpti
   surface.dataset.gifNoteId = target.noteId;
   surface.dataset.gifPosition = String(target.position);
   surface.dataset.gifFile = options.file;
+  updateGifPosition.set(parent, (position) => {
+    target.position = position;
+    surface.dataset.gifPosition = String(position);
+  });
 
   const canvas = doc.createElement("canvas");
   canvas.className = "cm-inline-gif-picture";
@@ -126,6 +137,7 @@ export function mountInlineGifDom(parent: HTMLElement, options: InlineGifDomOpti
   sync();
 
   return () => {
+    updateGifPosition.delete(parent);
     parent.removeEventListener("pointerenter", onEnter);
     parent.removeEventListener("pointerleave", onLeave);
     doc.defaultView?.removeEventListener(GIF_PLAYBACK_CHANGE_EVENT, onPlaybackChange);

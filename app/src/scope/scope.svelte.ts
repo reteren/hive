@@ -5,6 +5,7 @@ import type { NodeScope } from "../model/nodeData";
 import type { Note } from "../model/note";
 import { zones } from "../model/zones.svelte";
 import { beaconDescendants } from "../beacons/coverage";
+import { hasMeBeacon } from "../beacons/beaconState.svelte";
 import { zoneMembers, zoneOf } from "../zones/membership.svelte";
 import { effectiveScope, resolveScopeIn, scopeExistsIn, type ScopeSources } from "./scopeLogic";
 
@@ -19,6 +20,7 @@ function currentSources(): ScopeSources {
     zones: zones.byId,
     zoneMembers,
     beaconDescendants,
+    mePresent: hasMeBeacon(),
   };
 }
 
@@ -62,7 +64,7 @@ export function scopeOptions(): ScopeOption[] {
     scope: { kind: "zone", id: zone.id },
     label: `Zone: ${zone.name}`,
   }));
-  const beaconIds = [ME_OBJECT_ID, ...board.order.filter((id) => board.notes[id]?.type === "beacon")];
+  const beaconIds = [...(hasMeBeacon() ? [ME_OBJECT_ID] : []), ...board.order.filter((id) => board.notes[id]?.type === "beacon")];
   const beaconOptions = beaconIds.flatMap((id): ScopeOption[] => {
     const name = id === ME_OBJECT_ID ? "ME" : board.notes[id]?.name;
     return name ? [{ scope: { kind: "beacon", id }, label: `Beacon: ${name}` }] : [];

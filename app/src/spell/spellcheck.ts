@@ -1,13 +1,13 @@
 import { syntaxTree } from "@codemirror/language";
 import { isolateHistory } from "@codemirror/commands";
-import { EditorState, StateEffect, Transaction, type Extension, type Range } from "@codemirror/state";
-import { Decoration, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
+import { EditorState, StateEffect, StateField, Transaction, type Extension, type Range } from "@codemirror/state";
+import { Decoration, EditorView, ViewPlugin, showTooltip, type DecorationSet, type Tooltip, type ViewUpdate } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 import { addSpellingWord, checkSpelling, clearSpellcheckSuggestionCache, suggestSpelling } from "./engine";
 
 export type SpellcheckContext = { from: number; to: number; word: string; languages: string[] };
 export type TextRange = { from: number; to: number };
-export type SpellcheckOptions = () => { enabled: boolean; languages: readonly string[] };
+export type SpellcheckOptions = () => { enabled: boolean; languages: readonly string[]; inlineSuggestions?: boolean };
 
 /** Translate UTF-16 offsets within an eligible segment into line-relative editor offsets. */
 export function mapSpellcheckRangesToLine(
@@ -28,6 +28,7 @@ const CODE_LINK_NODES = new Set([
 const ALWAYS_SKIP_NODES = new Set(["image", "url", "htmltag", "htmlblock"]);
 const spellMark = Decoration.mark({ class: "cm-hive-misspelled" });
 const spellcheckRefresh = StateEffect.define<null>();
+const inlineTooltipEffect = StateEffect.define<SpellcheckContext & { suggestions: string[] } | null>();
 const activePlugins = new Set<SpellcheckPlugin>();
 const spellcheckCache = new Map<string, Promise<TextRange[]>>();
 
@@ -160,12 +161,80 @@ function isExcludedAt(state: EditorState, pos: number): boolean {
   return false;
 }
 
+function wordAt(text: string, lineFrom: number, pos: number): TextRange | null {
+  for (const match of text.matchAll(/[\p{L}\p{M}\p{N}_'’\-]+/gu)) {
+    const from = lineFrom + (match.index ?? 0);
+    const to = from + match[0].length;
+    if (pos >= from && pos <= to) return { from, to };
+  }
+  return null;
+}
+
+function activeTypingRange(state: EditorState): TextRange | null {
+  const selection = state.selection.main;
+  if (!selection.empty) return null;
+  const line = state.doc.lineAt(selection.head);
+  const range = wordAt(line.text, line.from, selection.head);
+  return range && range.to === selection.head ? range : null;
+}
+
+function inlineTarget(state: EditorState, ranges: readonly TextRange[]): TextRange | null {
+  const selection = state.selection.main;
+  if (!selection.empty) return null;
+  const line = state.doc.lineAt(selection.head);
+  const target = wordAt(line.text, line.from, selection.head);
+  if (!target || isExcludedAt(state, selection.head)) return null;
+  return ranges.find((range) => range.from === target.from && range.to === target.to) ?? null;
+}
+
+function inlineTooltip(data: SpellcheckContext & { suggestions: string[] }): Tooltip {
+  return {
+    pos: data.from,
+    end: data.to,
+    above: true,
+    strictSide: true,
+    create(view) {
+      const dom = document.createElement("div");
+      dom.className = "cm-hive-spell-suggestions";
+      dom.setAttribute("role", "group");
+      dom.setAttribute("aria-label", "Spelling suggestions");
+      for (const suggestion of data.suggestions) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "cm-hive-spell-suggestion";
+        button.textContent = suggestion;
+        button.addEventListener("mousedown", (event) => event.preventDefault());
+        button.addEventListener("click", () => {
+          replaceSpellcheckWord(view, data, suggestion);
+          view.focus();
+        });
+        dom.append(button);
+      }
+      return { dom };
+    },
+  };
+}
+
+const inlineTooltipField = StateField.define<Tooltip | null>({
+  create: () => null,
+  update(value, transaction) {
+    for (const effect of transaction.effects) {
+      if (effect.is(inlineTooltipEffect)) return effect.value ? inlineTooltip(effect.value) : null;
+    }
+    return value;
+  },
+  provide: (field) => showTooltip.from(field),
+});
+
 class SpellcheckPlugin {
   decorations: DecorationSet = Decoration.none;
   private ranges: TextRange[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
   private revision = 0;
   private destroyed = false;
+  private typingRange: TextRange | null = null;
+  private tooltipKey: string | null = null;
+  private tooltipRevision = 0;
 
   constructor(private readonly view: EditorView, private readonly options: SpellcheckOptions) {
     activePlugins.add(this);
@@ -175,20 +244,32 @@ class SpellcheckPlugin {
   update(update: ViewUpdate): void {
     if (update.transactions.some((transaction) => transaction.effects.some((effect) => effect.is(spellcheckRefresh)))) return;
     if (update.docChanged || update.viewportChanged) {
-      if (update.docChanged) this.ranges = [];
+      if (update.docChanged) {
+        this.ranges = [];
+        this.typingRange = activeTypingRange(update.state);
+      }
       this.schedule(350);
     }
-    if (update.docChanged || update.selectionSet) this.rebuild(update.state);
+    if (update.selectionSet && this.typingRange) {
+      const selection = update.state.selection.main;
+      if (!selection.empty || selection.head < this.typingRange.from || selection.head > this.typingRange.to) this.typingRange = null;
+    }
+    if (update.docChanged || update.selectionSet) {
+      this.rebuild(update.state);
+      this.updateInlineTooltip(update.state);
+    }
   }
 
   destroy(): void {
     this.destroyed = true;
     activePlugins.delete(this);
     if (this.timer !== null) clearTimeout(this.timer);
+    this.tooltipRevision += 1;
   }
 
   contextAt(pos: number): SpellcheckContext | null {
-    const range = this.ranges.find((item) => pos >= item.from && pos <= item.to);
+    const range = this.ranges.find((item) => pos >= item.from && pos <= item.to
+      && (!this.typingRange || item.from !== this.typingRange.from || item.to !== this.typingRange.to));
     if (!range || isExcludedAt(this.view.state, pos)) return null;
     return {
       from: range.from,
@@ -206,6 +287,7 @@ class SpellcheckPlugin {
     if (!config.enabled || config.languages.length === 0) {
       this.ranges = [];
       this.rebuild(this.view.state);
+      this.updateInlineTooltip(this.view.state);
       this.dispatchRefresh();
       return;
     }
@@ -217,7 +299,12 @@ class SpellcheckPlugin {
     const doc = state.doc;
     const revision = ++this.revision;
     const languages = [...this.options().languages];
-    if (!this.options().enabled || languages.length === 0) { this.ranges = []; this.rebuild(this.view.state); return; }
+    if (!this.options().enabled || languages.length === 0) {
+      this.ranges = [];
+      this.rebuild(this.view.state);
+      this.updateInlineTooltip(this.view.state);
+      return;
+    }
     const lines = new Set<number>();
     for (const visible of this.view.visibleRanges) {
       const first = state.doc.lineAt(visible.from).number;
@@ -232,6 +319,7 @@ class SpellcheckPlugin {
     if (this.destroyed || revision !== this.revision || this.view.state.doc !== doc) return;
     this.ranges = checked.flat().filter((range) => range.to > range.from && range.to <= doc.length);
     this.rebuild(this.view.state);
+    this.updateInlineTooltip(this.view.state);
     this.dispatchRefresh();
   }
 
@@ -239,9 +327,40 @@ class SpellcheckPlugin {
     const config = this.options();
     const ranges: Range<Decoration>[] = config.enabled
       ? this.ranges.filter((range) => range.to <= state.doc.length && range.to > range.from)
+        .filter((range) => !this.typingRange || range.from !== this.typingRange.from || range.to !== this.typingRange.to)
         .map((range) => ({ from: range.from, to: range.to, value: spellMark }))
       : [];
     this.decorations = ranges.length ? Decoration.set(ranges, true) : Decoration.none;
+  }
+
+  private updateInlineTooltip(state: EditorState): void {
+    const config = this.options();
+    const target = config.enabled && config.inlineSuggestions
+      ? inlineTarget(state, this.ranges.filter((range) => !this.typingRange
+        || range.from !== this.typingRange.from || range.to !== this.typingRange.to))
+      : null;
+    if (!target) {
+      this.tooltipKey = null;
+      this.tooltipRevision += 1;
+      this.dispatchTooltip(null);
+      return;
+    }
+    const word = state.sliceDoc(target.from, target.to);
+    const key = JSON.stringify([target.from, target.to, word, [...config.languages]]);
+    if (key === this.tooltipKey) return;
+    this.tooltipKey = key;
+    const revision = ++this.tooltipRevision;
+    this.dispatchTooltip(null);
+    void suggestSpelling(word, config.languages).then((suggestions) => {
+      if (this.destroyed || revision !== this.tooltipRevision || key !== this.tooltipKey || suggestions.length === 0) return;
+      this.dispatchTooltip({ ...target, word, languages: [...config.languages], suggestions: suggestions.slice(0, 3) });
+    });
+  }
+
+  private dispatchTooltip(data: (SpellcheckContext & { suggestions: string[] }) | null): void {
+    queueMicrotask(() => {
+      if (!this.destroyed) this.view.dispatch({ effects: inlineTooltipEffect.of(data) });
+    });
   }
 
   private dispatchRefresh(): void {
@@ -287,8 +406,30 @@ export function replaceSpellcheckWord(view: EditorView, context: SpellcheckConte
 
 export function spellcheckExtension(options: SpellcheckOptions): Extension[] {
   return [
+    inlineTooltipField,
     EditorView.baseTheme({
       ".cm-hive-misspelled": { textDecoration: "underline wavy #ef6a67", textUnderlineOffset: "0.16em" },
+      ".cm-hive-spell-suggestions": {
+        display: "flex", alignItems: "center", gap: "4px", padding: "3px",
+        border: "1px solid #4b4b4b", borderRadius: "4px", backgroundColor: "var(--bg-panel)",
+        boxShadow: "0 3px 12px rgb(0 0 0 / 35%)",
+      },
+      ".cm-hive-spell-suggestion": {
+        padding: "3px 7px", border: "0", borderRadius: "3px", backgroundColor: "transparent",
+        color: "var(--text)", font: "inherit", fontWeight: "600", cursor: "pointer",
+      },
+      ".cm-hive-spell-suggestion:hover, .cm-hive-spell-suggestion:focus-visible": {
+        backgroundColor: "var(--bg-hover)", outline: "none",
+      },
+    }),
+    EditorView.domEventHandlers({
+      keydown(event, view) {
+        if (event.key !== "Escape" || !view.state.field(inlineTooltipField, false)) return false;
+        event.preventDefault();
+        event.stopPropagation();
+        view.dispatch({ effects: inlineTooltipEffect.of(null) });
+        return true;
+      },
     }),
     spellcheckPlugin.of(options),
   ];

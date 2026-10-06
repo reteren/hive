@@ -10,6 +10,7 @@ import { clearSelectedLink } from "../../links/selection.svelte";
 import { linkRefusalReason } from "../../links/rules";
 import { addLink, links, removeLink } from "../../model/links.svelte";
 import { ME_OBJECT_ID, type Link, type LineShape } from "../../model/link";
+import { hasMeBeacon } from "../../beacons/beaconState.svelte";
 import {
   IMPORTANCE_LEVELS,
   MOOD_KINDS,
@@ -246,7 +247,7 @@ function planCreatedPositions(
     if (!hasX || !hasY) continue;
     const position = { x: requireFinite(item.spec.x, `nodes[${index}].x`), y: requireFinite(item.spec.y, `nodes[${index}].y`) };
     const obstacle = creationObstacleForNote({ ...item.note, ...position }, heightFor(item.note));
-    if (overlapsAny(obstacle, [...obstacles, meObstacle])) invalid(`nodes[${index}].x`, "This position overlaps another node; choose free coordinates.");
+    if (overlapsAny(obstacle, hasMeBeacon() ? [...obstacles, meObstacle] : obstacles)) invalid(`nodes[${index}].x`, "This position overlaps another node; choose free coordinates.");
     positions.set(item.note.id, position);
     obstacles.push(obstacle);
     positioned.add(item.note.id);
@@ -266,7 +267,7 @@ function planCreatedPositions(
       const plannedAnchor = planned.find((candidate) => candidate.note.id === anchorId);
       if (plannedAnchor && !positioned.has(anchorId)) invalid(`nodes[${index}].near.node`, "A near ref must refer to a node with explicit coordinates or a non-circular near ref.");
       const anchor = plannedAnchor?.note ?? board.notes[anchorId];
-      if (!anchor && anchorId !== ME_OBJECT_ID) throw new McpError("not_found", `Node '${anchorId}' not found. Use nodes.list or search to get ids.`);
+      if (!anchor && (anchorId !== ME_OBJECT_ID || !hasMeBeacon())) throw new McpError("not_found", `Node '${anchorId}' not found. Use nodes.list or search to get ids.`);
       const side = near.side === undefined ? "right" : requireEnum(near.side, ["right", "left", "below", "above"] as const, `nodes[${index}].near.side`);
       const nearGap = readGap(near.gap, `nodes[${index}].near.gap`, gap);
       const anchorPosition = plannedAnchor ? positions.get(anchorId)! : undefined;

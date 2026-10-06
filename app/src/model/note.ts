@@ -110,6 +110,8 @@ export interface Note {
   x: number;
   y: number;
   width: number;
+  /** A user-adjusted text note width must not be changed by typing. */
+  widthLocked?: boolean;
   /** Manual height in u, or null while the note grows with its text. */
   height: number | null;
   /** Uniform visual scale, omitted for the default 1× size. */

@@ -1,6 +1,7 @@
 import { ME_POSITION } from "../board/camera.svelte";
 import { board, updateNote } from "../model/board.svelte";
 import { ME_OBJECT_ID } from "../model/link";
+import { hasMeBeacon } from "../beacons/beaconState.svelte";
 import { BEACON_SIZE } from "../model/note";
 import { zoneBounds, type Zone, type ZoneBounds } from "../model/zone";
 import { zones } from "../model/zones.svelte";
@@ -46,6 +47,11 @@ function syncIdentity(): void {
 
 function membershipFor(objectId: string, candidates = availableZones()): string | null {
   syncIdentity();
+  if (objectId === ME_OBJECT_ID && !hasMeBeacon()) {
+    tieChoices.delete(objectId);
+    resolved.delete(objectId);
+    return null;
+  }
   const note = board.notes[objectId];
   if (batchDepth > 0) return note?.zoneId ?? tieChoices.get(objectId) ?? null;
   const half = BEACON_SIZE / 2;
@@ -70,7 +76,7 @@ export function zoneOf(objectId: string): string | null {
 export function zoneMembers(zoneId: string): string[] {
   if (!zones.byId[zoneId]) return [];
   const candidates = availableZones();
-  return [...board.order, ME_OBJECT_ID].filter((id) => membershipFor(id, candidates) === zoneId);
+  return [...board.order, ...(hasMeBeacon() ? [ME_OBJECT_ID] : [])].filter((id) => membershipFor(id, candidates) === zoneId);
 }
 
 /** Derived memory is updated only when membership changes, never as a history command. */
@@ -98,7 +104,11 @@ export function recomputeZoneMembership(): void {
     resolved.set(note.id, { key, zoneId: next });
     if ((note.zoneId ?? null) !== next) updateNote(note.id, { zoneId: next });
   }
-  membershipFor(ME_OBJECT_ID, candidates);
+  if (hasMeBeacon()) membershipFor(ME_OBJECT_ID, candidates);
+  else {
+    resolved.delete(ME_OBJECT_ID);
+    tieChoices.delete(ME_OBJECT_ID);
+  }
 }
 
 const resolved = new Map<string, { key: string; zoneId: string | null }>();

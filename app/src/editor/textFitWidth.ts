@@ -2,11 +2,10 @@ import type { NoteKind } from "../model/note";
 import {
   cacheMinimumTextWidth,
   clearMinimumTextWidth,
-  MIN_NOTE_WIDTH,
+  growWidthToTextMinimum,
   maximumNoteWidthForKind,
   minimumWidthForText,
 } from "../notes/layout.svelte";
-import { isTextNoteKind } from "../notes/textScroll";
 
 interface NoteLineWidthCache {
   font: string;
@@ -60,6 +59,16 @@ export function widestNaturalLineWidth(
   return widest;
 }
 
+/** Apply text-driven width growth unless the user has manually fixed a width. */
+export function nextTextWidthAfterEdit(
+  currentWidth: number,
+  textMinimum: number,
+  maxWidth: number,
+  widthLocked: boolean,
+): number {
+  return widthLocked ? currentWidth : growWidthToTextMinimum(currentWidth, textMinimum, maxWidth);
+}
+
 /** Measure using the note's current font, then cache the board-space minimum for resize gestures. */
 export function measureAndCacheTextMinimumWidth(
   noteId: string,
@@ -67,11 +76,6 @@ export function measureAndCacheTextMinimumWidth(
   source: HTMLElement,
   kind: NoteKind,
 ): number | null {
-  // Text notes always wrap at their chosen width; an unbroken line must not widen them.
-  if (isTextNoteKind(kind)) {
-    cacheMinimumTextWidth(noteId, MIN_NOTE_WIDTH);
-    return MIN_NOTE_WIDTH;
-  }
   if (typeof document === "undefined" || typeof getComputedStyle === "undefined") return null;
   const root = source.matches(".note-card") ? source : source.closest<HTMLElement>(".note-card");
   const content = root?.querySelector<HTMLElement>(".note-content");

@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { board } from "../../model/board.svelte";
 import { ME_OBJECT_ID } from "../../model/link";
+import { hasMeBeacon } from "../../beacons/beaconState.svelte";
 import { BEACON_SIZE, type Note } from "../../model/note";
 import { noteBounds } from "../../notes/layout.svelte";
 import { asParams, McpError } from "../registry";
@@ -93,6 +94,7 @@ function requestedBounds(params: CaptureParams): BBox | null {
   const bounds: BBox[] = params.bbox ? [params.bbox] : [];
   for (const id of params.ids ?? []) {
     if (id === ME_OBJECT_ID) {
+      if (!hasMeBeacon()) throw new McpError("not_found", `Node '${id}' not found. Use nodes.list or search to get valid ids.`);
       bounds.push({ x: -BEACON_SIZE / 2, y: -BEACON_SIZE / 2, width: BEACON_SIZE, height: BEACON_SIZE });
       continue;
     }

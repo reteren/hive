@@ -7,7 +7,7 @@
   import { PX_PER_UNIT } from "../board/cameraMath";
   import { BEACON_SIZE, normalizeNoteScale } from "../model/note";
   import { BEACON_PALETTE } from "./beaconPalette";
-  import { noteGlowShadow } from "../notes/noteGlowLogic";
+  import { defaultBeaconGlow, noteGlowShadow } from "../notes/noteGlowLogic";
   import { beaconEditor, closeBeaconEditor, openBeaconEditor, recolorBeacon, renameBeacon } from "./beaconActions.svelte";
   import { isDimmed } from "./focus.svelte";
   import { isMarked } from "./marks.svelte";
@@ -61,7 +61,10 @@
 
   onMount(() => {
     function onPointerDown(event: PointerEvent): void {
-      if (beaconEditor.noteId && event.target instanceof Element && !event.target.closest("[data-beacon-editor]")) closeBeaconEditor();
+      if (beaconEditor.noteId && event.target instanceof Element && !event.target.closest("[data-beacon-editor]")) {
+        if (beaconEditor.mode === "color") endColorSession(true);
+        closeBeaconEditor();
+      }
     }
     function onKeyDown(event: KeyboardEvent): void {
       if (event.key !== "Escape" || !beaconEditor.noteId) return;
@@ -91,6 +94,8 @@
     {#each board.order as id (id)}
       {@const note = board.notes[id]}
       {#if note?.type === "beacon"}
+        {@const color = note.color ?? BEACON_PALETTE[0]}
+        {@const glow = defaultBeaconGlow(note)}
         {@const memberZone = zones.byId[zoneOf(id) ?? ""]}
         {@const scale = normalizeNoteScale(note.scale)}
         <div
@@ -98,7 +103,7 @@
           data-note-id={id}
           data-kind="beacon"
           data-note-scale={scale === 1 ? undefined : scale}
-          data-note-glow={note.glow ? "true" : undefined}
+          data-note-glow="true"
           data-dimmed={isDimmed(id)}
           data-member-zone-id={memberZone?.id}
           style:left={`${note.x * PX_PER_UNIT}px`}
@@ -114,13 +119,13 @@
             type="button"
             aria-label={`Beacon ${note.name}${memberZone ? `, Zone: ${memberZone.name}` : ""}`}
             class:in-zone={Boolean(memberZone)}
-            style:--beacon-color={note.color ?? BEACON_PALETTE[0]}
-            style:--note-glow-shadow={note.glow ? noteGlowShadow(note.glow) : undefined}
+            style:--beacon-color={color}
+            style:--note-glow-shadow={noteGlowShadow(glow)}
             style:--zone-color={memberZone?.color ?? "transparent"}
             ondblclick={(event) => { event.preventDefault(); event.stopPropagation(); openBeaconEditor(id, "rename"); }}
           ></button>
           {#if isMarked(id)}<span class="beacon-mark" aria-label="Marked beacon"></span>{/if}
-          <span class="beacon-label" style:color={note.color ?? BEACON_PALETTE[0]}>{note.name}</span>
+          <span class="beacon-label" style:color={color}>{note.name}</span>
           {#if beaconEditor.noteId === id}
             {#if beaconEditor.mode === "color"}
               <div class="beacon-editor" data-beacon-editor data-selection-ignore role="dialog" tabindex="-1" aria-label="Beacon colour"

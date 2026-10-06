@@ -178,6 +178,7 @@ function applyProject(loaded: ProjectLoad): void {
     notes, parsedIndex, parsedIndex.links, parsedIndex.taskLog, parsedIndex.zones, parsedIndex.beaconMarks,
     parsedIndex.calculators, parsedIndex.archive, parsedIndex.trash,
     { createdAt: parsedIndex.createdAt, projectCounters: parsedIndex.projectCounters },
+    parsedIndex.meDeleted,
   );
   const sourceIndex = JSON.parse(loaded.indexJson) as { version?: unknown; createdAt?: unknown; projectCounters?: unknown };
   const sourceVersion = sourceIndex.version;
@@ -220,7 +221,7 @@ function applyProject(loaded: ProjectLoad): void {
   replaceBoard(notes);
   replaceLinks(parsedIndex.links ?? []);
   replaceZones(parsedIndex.zones.map(copyZone));
-  resetBeaconViewState(parsedIndex.beaconMarks);
+  resetBeaconViewState(parsedIndex.beaconMarks, parsedIndex.meDeleted);
   loading = false;
 }
 
@@ -260,6 +261,7 @@ function makeSnapshot(): ProjectSnapshot {
     indexJson: serializeProjectIndex(
       notes, indexTemplate, currentLinks, currentTaskLog, currentZones, beaconMarks, calculators.byKey,
       archive.entries, currentTrash, projectMetadata,
+      beaconState.meDeleted,
     ),
     notes,
     links: currentLinks,

@@ -8,6 +8,7 @@ import { uniqueName } from "../notes/naming";
 import { copyTierRows } from "../tierlist/logic";
 import { copyTimeForHost } from "../combo/data";
 import { copyAudioRecordings } from "../audio/recordingData";
+import { hasMeBeacon } from "../beacons/beaconState.svelte";
 
 export type RestorePlacement = "old" | "centre";
 
@@ -62,6 +63,7 @@ export function planArchiveRestore(
   activeNotes: readonly Note[],
   activeLinks: readonly Link[],
   activeCalculatorKeys: readonly string[] = [],
+  mePresent = hasMeBeacon(),
 ): ArchiveRestorePlan {
   const note = copyArchivedNote(entry.note);
   const name = uniqueName(note.name, activeNotes
@@ -78,7 +80,7 @@ export function planArchiveRestore(
 
   const occupiedPairs = new Set(activeLinks.map((link) => pairKey(link.from, link.to)));
   const occupiedIds = new Set(activeLinks.map((link) => link.id));
-  const available = new Set([ME_OBJECT_ID, note.id, ...activeNotes.map((item) => item.id)]);
+  const available = new Set([...(mePresent ? [ME_OBJECT_ID] : []), note.id, ...activeNotes.map((item) => item.id)]);
   const links: Link[] = [];
   const missingLinks: Link[] = [];
   for (const original of entry.links) {

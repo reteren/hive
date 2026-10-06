@@ -1,6 +1,7 @@
 import { board, updateNote } from "../model/board.svelte";
 import { canLink, linkRefusalReason as currentLinkRefusalReason, links } from "../model/links.svelte";
 import { ME_OBJECT_ID, type Link, type LineShape } from "../model/link";
+import { hasMeBeacon } from "../beacons/beaconState.svelte";
 import { newId, BEACON_SIZE } from "../model/note";
 import { zones } from "../model/zones.svelte";
 import { trash } from "../model/retention.svelte";
@@ -123,7 +124,7 @@ function createLinks(params: RecordValue): { links: LinkInfo[] } {
   const simulated: Pick<Link, "from" | "to" | "kind">[] = Object.values(links.byId)
     .map(({ from, to, kind }) => ({ from, to, kind }));
   const prepared = specs.map((spec, index) => {
-    if (spec.from !== ME_OBJECT_ID && !board.notes[spec.from]) throw notFound(`Source node '${spec.from}'`, "Use nodes.list or search to get valid ids.");
+    if (spec.from === ME_OBJECT_ID ? !hasMeBeacon() : !board.notes[spec.from]) throw notFound(`Source node '${spec.from}'`, "Use nodes.list or search to get valid ids.");
     if (!board.notes[spec.to]) throw notFound(`Target node '${spec.to}'`, "Use nodes.list or search to get valid ids.");
     const kind = effectiveLinkKind(spec.from, spec.to, spec.kind);
     const reason = linkRefusalReason(spec.from, spec.to, kind, simulated) ??
@@ -294,7 +295,10 @@ function boundsAround(value: unknown): ZoneBounds {
   const ids = uniqueStrings(around.ids, "around.ids");
   const padding = around.padding === undefined ? 20 : nonNegativeNumber(around.padding, "around.padding");
   const bounds = ids.map((id): ZoneBounds => {
-    if (id === ME_OBJECT_ID) return { x: ME_POSITION.x - BEACON_SIZE / 2, y: ME_POSITION.y - BEACON_SIZE / 2, width: BEACON_SIZE, height: BEACON_SIZE };
+    if (id === ME_OBJECT_ID) {
+      if (!hasMeBeacon()) throw notFound(`Node '${id}'`, "Use nodes.list or search to get valid ids.");
+      return { x: ME_POSITION.x - BEACON_SIZE / 2, y: ME_POSITION.y - BEACON_SIZE / 2, width: BEACON_SIZE, height: BEACON_SIZE };
+    }
     const note = board.notes[id];
     if (!note) throw notFound(`Node '${id}'`, "Use nodes.list or search to get valid ids.");
     return noteBounds(note);
@@ -337,6 +341,7 @@ function parseNearTarget(value: unknown): { bounds: ZoneBounds; side: "right" | 
   const side = enumValue(near.side, ["right", "left", "below", "above"] as const, "near.side", "right");
   const gap = near.gap === undefined ? 20 : nonNegativeNumber(near.gap, "near.gap");
   if (id === ME_OBJECT_ID) {
+    if (!hasMeBeacon()) throw notFound(`Node '${id}'`, "Use nodes.list or search to get valid ids.");
     return { bounds: { x: ME_POSITION.x - BEACON_SIZE / 2, y: ME_POSITION.y - BEACON_SIZE / 2, width: BEACON_SIZE, height: BEACON_SIZE }, side, gap };
   }
   const note = board.notes[id];
@@ -500,7 +505,10 @@ function focusView(params: RecordValue): { focused: { x: number; y: number; widt
   if (params.ids !== undefined) {
     const ids = uniqueStrings(params.ids, "ids");
     for (const id of ids) {
-      if (id === ME_OBJECT_ID) bounds.push({ x: ME_POSITION.x - BEACON_SIZE / 2, y: ME_POSITION.y - BEACON_SIZE / 2, width: BEACON_SIZE, height: BEACON_SIZE });
+      if (id === ME_OBJECT_ID) {
+        if (!hasMeBeacon()) throw notFound(`Node '${id}'`, "Use nodes.list or search to get valid ids.");
+        bounds.push({ x: ME_POSITION.x - BEACON_SIZE / 2, y: ME_POSITION.y - BEACON_SIZE / 2, width: BEACON_SIZE, height: BEACON_SIZE });
+      }
       else {
         const note = board.notes[id];
         if (!note) throw notFound(`Node '${id}'`, "Use nodes.list or search to get valid ids.");
@@ -570,13 +578,13 @@ function linkInfo(link: Link): LinkInfo {
     to: link.to,
     kind: link.kind,
     shape: link.shape,
-    fromName: link.from === ME_OBJECT_ID ? "ME" : board.notes[link.from]?.name ?? "",
-    toName: board.notes[link.to]?.name ?? (link.to === ME_OBJECT_ID ? "ME" : ""),
+    fromName: link.from === ME_OBJECT_ID ? (hasMeBeacon() ? "ME" : "Missing ME") : board.notes[link.from]?.name ?? "",
+    toName: board.notes[link.to]?.name ?? (link.to === ME_OBJECT_ID ? (hasMeBeacon() ? "ME" : "Missing ME") : ""),
   };
 }
 
 function objectName(id: string): string {
-  return id === ME_OBJECT_ID ? "ME" : board.notes[id]?.name ?? "Node";
+  return id === ME_OBJECT_ID ? (hasMeBeacon() ? "ME" : "Missing ME") : board.notes[id]?.name ?? "Node";
 }
 
 function unionBounds(bounds: readonly ZoneBounds[]): ZoneBounds {

@@ -95,6 +95,8 @@ export interface ProjectIndex {
   zones: Zone[];
   /** Ordered board marks are view state; beacon focus is intentionally transient. */
   beaconMarks: string[];
+  /** Whether the project's virtual ME beacon has been deleted. Missing in older projects means present. */
+  meDeleted: boolean;
   /** Completion history stays with the project snapshot and is separate from Undo. */
   taskLog: TaskLogEntry[];
   /** R5.6 shared calculator contents keyed by calculatorKey(name); optional for older boards. */
@@ -145,7 +147,8 @@ export function parseProjectIndexWithWarnings(contents: string, now = Date.now()
       note.zoneId = null;
     }
   }
-  const parsedLinks = sanitizeProjectLinks(parsed.links, noteIds);
+  const meDeleted = parsed.meDeleted === true;
+  const parsedLinks = sanitizeProjectLinks(parsed.links, noteIds, !meDeleted);
   const parsedTaskLog = sanitizeTaskLog(parsed.taskLog);
   const parsedCalculators = sanitizeCalculators(parsed.calculators);
   const parsedArchive = sanitizeArchiveEntries(parsed.archive);
@@ -160,7 +163,7 @@ export function parseProjectIndexWithWarnings(contents: string, now = Date.now()
   if ((version === 2 || version === 3) && parsed.taskLog === undefined) {
     parsedTaskLog.warnings.push("Missing task log in board.json; defaulted to an empty log.");
   }
-  const marks = sanitizeBeaconMarks(parsed.beaconMarks, notes);
+  const marks = sanitizeBeaconMarks(parsed.beaconMarks, notes, !meDeleted);
   if (version === 3 && parsed.beaconMarks === undefined) marks.warnings.push("Missing beacon marks in board.json; defaulted to none.");
   return {
     index: {
@@ -172,6 +175,7 @@ export function parseProjectIndexWithWarnings(contents: string, now = Date.now()
       links: parsedLinks.links,
       zones: uniqueZones,
       beaconMarks: marks.values,
+      meDeleted,
       taskLog: parsedTaskLog.entries,
       calculators: parsedCalculators.values,
       archive: parsedArchive.entries,
@@ -190,6 +194,9 @@ export function parseProjectIndexWithWarnings(contents: string, now = Date.now()
         ? ["Invalid project creation time in board.json; it was restored from note dates."]
         : []),
       ...(projectCounters.invalid ? ["Invalid project stopwatch counters in board.json were reset to zero."] : []),
+      ...(parsed.meDeleted !== undefined && typeof parsed.meDeleted !== "boolean"
+        ? ["Invalid ME beacon state in board.json; the default beacon was restored."]
+        : []),
     ],
   };
 }
@@ -206,6 +213,7 @@ export function serializeProjectIndex(
   nextArchive?: readonly ArchiveEntry[],
   nextTrash?: readonly TrashEntry[],
   nextProjectMetadata?: { createdAt: number; projectCounters: ProjectTimeCounters },
+  nextMeDeleted?: boolean,
 ): string {
   const extrasById = new Map(previous?.notes.map((note) => [note.id, note]) ?? []);
   const serializedZones = (nextZones ?? previous?.zones ?? []).map(copyZone);
@@ -221,6 +229,7 @@ export function serializeProjectIndex(
       x: note.x,
       y: note.y,
       width: note.width,
+      widthLocked: note.widthLocked === true ? true : undefined,
       height: note.height,
       scale: normalizeNoteScale(note.scale) > 1 ? normalizeNoteScale(note.scale) : undefined,
       ...(note.createdAt === undefined ? {} : { createdAt: note.createdAt }),
@@ -263,6 +272,7 @@ export function serializeProjectIndex(
   });
   validateUniqueNotes(indexedNotes);
   const serializedTrash = (nextTrash ?? previous?.trash ?? []).map(copyTrashEntry);
+  const meDeleted = nextMeDeleted ?? previous?.meDeleted ?? false;
   const calculatorData = Object.assign(
     Object.create(null) as Record<string, CalculatorData>,
     ...serializedTrash.map((entry) => entry.calculators ?? {}),
@@ -277,7 +287,8 @@ export function serializeProjectIndex(
     links: [...(nextLinks ?? previous?.links ?? [])],
     taskLog: [...(nextTaskLog ?? previous?.taskLog ?? [])].map((entry) => ({ ...entry })),
     zones: serializedZones,
-    beaconMarks: sanitizeBeaconMarks(nextBeaconMarks ?? previous?.beaconMarks ?? [], indexedNotes).values,
+    beaconMarks: sanitizeBeaconMarks(nextBeaconMarks ?? previous?.beaconMarks ?? [], indexedNotes, !meDeleted).values,
+    meDeleted,
     calculators: serializeCalculators(calculatorData, [
       ...notes,
       ...serializedTrash.flatMap((entry) => entry.notes),
@@ -308,6 +319,7 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       width: fixedDimensions?.width ?? entry.width,
       // Standalone Mood/Purpose nodes always size to their chips (auto height).
       height: fixedDimensions ? fixedDimensions.height : entry.type === "mood" || entry.type === "purpose" ? null : entry.height,
+      ...(entry.widthLocked === true ? { widthLocked: true } : {}),
       ...(entry.scale === undefined ? {} : { scale: entry.scale }),
       task: copyTaskState(entry.task),
       taskMemory: copyTaskState(entry.taskMemory),
@@ -478,6 +490,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
   const y = finiteNumber(value.y, `note ${id} y`);
   const width = finiteNumber(value.width, `note ${id} width`);
   if (width <= 0) throw new Error(`Project note ${id} has an invalid width.`);
+  const widthLocked = value.widthLocked === true ? true : undefined;
   let height: number | null = null;
   if (value.height !== undefined && value.height !== null) {
     height = finiteNumber(value.height, `note ${id} height`);
@@ -485,6 +498,9 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
   }
 
   const warnings: string[] = [];
+  if (value.widthLocked !== undefined && typeof value.widthLocked !== "boolean") {
+    warnings.push(`Invalid width lock for note ${id}; automatic width will be enabled.`);
+  }
   if (value.image !== undefined && !image || type === "image" && !image) {
     warnings.push(`Invalid or missing image data for note ${id}; the image placeholder will be shown.`);
   }
@@ -586,6 +602,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
       x,
       y,
       width,
+      widthLocked,
       height,
       scale: scale !== null && scale !== undefined && scale > 1 ? scale : undefined,
       type: type ?? "note",
@@ -789,11 +806,11 @@ function crossProduct(a: Point, b: Point, c: Point): number {
   return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
 }
 
-function sanitizeBeaconMarks(value: unknown, notes: readonly IndexedNote[]): { values: string[]; warnings: string[] } {
+function sanitizeBeaconMarks(value: unknown, notes: readonly IndexedNote[], mePresent = true): { values: string[]; warnings: string[] } {
   if (value === undefined) return { values: [], warnings: [] };
   if (!Array.isArray(value)) return { values: [], warnings: ["Invalid beacon marks were discarded."] };
   const validIds = new Set(notes.filter((note) => note.type === "beacon").map((note) => note.id));
-  validIds.add(ME_OBJECT_ID);
+  if (mePresent) validIds.add(ME_OBJECT_ID);
   const values: string[] = [];
   let invalid = false;
   for (const candidate of value) {
@@ -990,7 +1007,7 @@ function sanitizeTaskLog(value: unknown): { entries: TaskLogEntry[]; warnings: s
   };
 }
 
-function sanitizeProjectLinks(value: unknown, noteIds: ReadonlySet<string>): { links: Link[]; warnings: string[] } {
+function sanitizeProjectLinks(value: unknown, noteIds: ReadonlySet<string>, mePresent = true): { links: Link[]; warnings: string[] } {
   if (value === undefined) return { links: [], warnings: [] };
   if (!Array.isArray(value)) return { links: [], warnings: ["Invalid links in board.json were discarded."] };
 
@@ -1013,7 +1030,7 @@ function sanitizeProjectLinks(value: unknown, noteIds: ReadonlySet<string>): { l
     const fromAnchor = readAnchor(candidate, "fromAnchor");
     const toAnchor = readAnchor(candidate, "toAnchor");
     if (typeof id !== "string" || id.trim() === "" || id.length > 200 ||
-      typeof from !== "string" || (from !== ME_OBJECT_ID && !noteIds.has(from)) ||
+      typeof from !== "string" || (from === ME_OBJECT_ID ? !mePresent : !noteIds.has(from)) ||
       typeof to !== "string" || !noteIds.has(to) ||
       (kind !== "strong" && kind !== "weak") ||
       shape === null ||

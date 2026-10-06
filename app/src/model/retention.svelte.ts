@@ -16,6 +16,8 @@ export interface TrashEntry {
   notes: Note[];
   zones: Zone[];
   links: Link[];
+  /** The virtual ME beacon was moved here; restoring it makes the project beacon visible again. */
+  meBeacon?: true;
   /** Calculator contents of removed calculators (keyed by calculatorKey(name)); data is pruned from the board otherwise. */
   calculators?: Record<string, CalculatorData>;
 }

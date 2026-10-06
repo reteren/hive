@@ -39,10 +39,12 @@ export function planTrashRestore(
   entry: TrashEntry,
   existingNotes: readonly Note[],
   existingLinks: readonly Link[],
+  meAlreadyPresent = false,
 ): TrashRestorePlan {
   const existingIds = new Set(existingNotes.map((note) => note.id));
   const reservedNames = existingNotes.filter((note) => note.type !== "calculator").map((note) => note.name);
   const idConflicts: string[] = [];
+  if (entry.meBeacon && meAlreadyPresent) idConflicts.push(ME_OBJECT_ID);
   const renamed: TrashRename[] = [];
   const notes = entry.notes.map((note) => {
     if (existingIds.has(note.id)) idConflicts.push(note.id);
@@ -60,9 +62,10 @@ export function planTrashRestore(
 
   for (const source of entry.links) {
     const link = copyTrashLink(source);
-    const missingEndpoints = [link.from, link.to].filter((id) =>
-      !(id === ME_OBJECT_ID && link.from === id) && !existingIds.has(id) && !restoreNoteIds.has(id),
-    );
+    const missingEndpoints = [link.from, link.to].filter((id) => {
+      const meWillExist = id === ME_OBJECT_ID && (entry.meBeacon === true || meAlreadyPresent);
+      return !meWillExist && !existingIds.has(id) && !restoreNoteIds.has(id);
+    });
     if (missingEndpoints.length > 0) {
       linksBroken.push({ link, missingEndpoints, reason: "missing-endpoint" });
       continue;
@@ -84,7 +87,8 @@ export function planTrashRestore(
   return { notes, linksRestored, linksBroken, renamed, idConflicts };
 }
 
-export function trashEntrySummary(entry: Pick<TrashEntry, "notes" | "zones">): string {
+export function trashEntrySummary(entry: Pick<TrashEntry, "notes" | "zones" | "meBeacon">): string {
+  if (entry.meBeacon) return "ME";
   const names = [
     ...entry.notes.map((note) => note.name),
     ...entry.zones.map((zone) => zone.name),
@@ -102,6 +106,7 @@ export function copyTrashEntry(entry: TrashEntry): TrashEntry {
     notes: entry.notes.map(copyTrashNote),
     zones: entry.zones.map(copyTrashZone),
     links: entry.links.map(copyTrashLink),
+    ...(entry.meBeacon ? { meBeacon: true as const } : {}),
     ...(entry.calculators ? { calculators: Object.fromEntries(
       Object.entries(entry.calculators).map(([key, value]) => [key, copyTrashCalculatorData(value)]),
     ) } : {}),

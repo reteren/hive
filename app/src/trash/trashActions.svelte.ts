@@ -1,6 +1,7 @@
 import { addNote, board, removeNote } from "../model/board.svelte";
-import { addLink, linkBetween, links, removeLink } from "../model/links.svelte";
+import { addLink, linkBetween, links, linksOf, removeLink } from "../model/links.svelte";
 import { ME_OBJECT_ID, type Link } from "../model/link";
+import { beaconState, hasMeBeacon } from "../beacons/beaconState.svelte";
 import { newId } from "../model/note";
 import { trash, type TrashEntry } from "../model/retention.svelte";
 import { addZone, removeZone, zones } from "../model/zones.svelte";
@@ -144,6 +145,54 @@ export function moveToTrash(
   return entries.map(copyTrashEntry);
 }
 
+/** Move the project's virtual ME beacon to trash in one undoable action. */
+export function deleteMeBeacon(): TrashEntry | null {
+  if (!hasMeBeacon()) return null;
+  const entry = copyTrashEntry({
+    id: newId(),
+    deletedAt: Date.now(),
+    notes: [],
+    zones: [],
+    links: linksOf(ME_OBJECT_ID),
+    meBeacon: true,
+  });
+  const insertionIndex = trash.entries.length;
+  const previousFocus = [...beaconState.focused];
+  const previousMarks = [...beaconState.marked];
+  const previousMarkCursor = beaconState.markCursor;
+  let permanentlyDeletedEntry = false;
+  historyInvalidators.set(entry.id, () => { permanentlyDeletedEntry = true; });
+
+  execute({
+    label: "Delete",
+    target: "ME",
+    do: () => {
+      if (permanentlyDeletedEntry) return;
+      if (!trash.entries.some((candidate) => candidate.id === entry.id)) {
+        trash.entries.splice(Math.min(insertionIndex, trash.entries.length), 0, copyTrashEntry(entry));
+      }
+      beaconState.meDeleted = true;
+      beaconState.focused = beaconState.focused.filter((id) => id !== ME_OBJECT_ID);
+      beaconState.marked = beaconState.marked.filter((id) => id !== ME_OBJECT_ID);
+      beaconState.markCursor = 0;
+      entry.links.forEach((link) => removeLink(link.id));
+      clearSelectedLink();
+    },
+    undo: () => {
+      if (permanentlyDeletedEntry || !trash.entries.some((candidate) => candidate.id === entry.id)) return;
+      trash.entries = trash.entries.filter((candidate) => candidate.id !== entry.id);
+      beaconState.meDeleted = false;
+      entry.links.forEach((link) => {
+        if (!links.byId[link.id] && !linkBetween(link.from, link.to)) addLink(copyTrashLink(link));
+      });
+      beaconState.focused = [...previousFocus];
+      beaconState.marked = [...previousMarks];
+      beaconState.markCursor = previousMarkCursor;
+    },
+  });
+  return copyTrashEntry(entry);
+}
+
 /** Project-wide trash entries, newest first, with a concise object-name summary. */
 export function listTrashEntries(): TrashListItem[] {
   return [...trash.entries]
@@ -155,7 +204,7 @@ export function listTrashEntries(): TrashListItem[] {
 export function previewRestore(entryId: string): TrashRestorePreview | null {
   const entry = trash.entries.find((candidate) => candidate.id === entryId);
   if (!entry) return null;
-  const plan = planTrashRestore(entry, Object.values(board.notes), Object.values(links.byId));
+  const plan = planTrashRestore(entry, Object.values(board.notes), Object.values(links.byId), hasMeBeacon());
   return {
     linksRestored: plan.linksRestored,
     linksBroken: plan.linksBroken,
@@ -169,7 +218,7 @@ export function restoreTrashEntry(entryId: string): TrashRestorePreview | null {
   const entryIndex = trash.entries.findIndex((candidate) => candidate.id === entryId);
   if (entryIndex < 0) return null;
   const originalEntry = copyTrashEntry(trash.entries[entryIndex]);
-  const plan = planTrashRestore(originalEntry, Object.values(board.notes), Object.values(links.byId));
+  const plan = planTrashRestore(originalEntry, Object.values(board.notes), Object.values(links.byId), hasMeBeacon());
   if (plan.idConflicts.length > 0) {
     return {
       linksRestored: plan.linksRestored,
@@ -193,6 +242,7 @@ export function restoreTrashEntry(entryId: string): TrashRestorePreview | null {
     do: () => {
       const currentIndex = trash.entries.findIndex((candidate) => candidate.id === entryId);
       if (currentIndex >= 0) trash.entries.splice(currentIndex, 1);
+      if (originalEntry.meBeacon) beaconState.meDeleted = false;
       plan.notes.forEach((note) => addNote(copyTrashNote(note)));
       indexedZones.forEach(({ zone }) => addZone(copyTrashZone(zone)));
       const restoredNotesById = new Map(plan.notes.map((note) => [note.id, note]));
@@ -208,7 +258,7 @@ export function restoreTrashEntry(entryId: string): TrashRestorePreview | null {
       }
       restoredLinkIds = new Set();
       for (const link of plan.linksRestored) {
-        if (!canRestoreLink(link, new Set(plan.notes.map((note) => note.id)))) continue;
+        if (!canRestoreLink(link, new Set(plan.notes.map((note) => note.id)), originalEntry.meBeacon === true || hasMeBeacon())) continue;
         addLink(copyTrashLink(link));
         restoredLinkIds.add(link.id);
       }
@@ -223,6 +273,7 @@ export function restoreTrashEntry(entryId: string): TrashRestorePreview | null {
     undo: () => {
       for (const id of restoredLinkIds) removeLink(id);
       plan.notes.forEach((note) => removeNote(note.id));
+      if (originalEntry.meBeacon) beaconState.meDeleted = true;
       indexedZones.forEach(({ zone }) => removeZone(zone.id));
       trash.entries.splice(Math.min(entryIndex, trash.entries.length), 0, copyTrashEntry(originalEntry));
       restoreSelectionSnapshot(previousSelection);
@@ -277,10 +328,10 @@ function pruneUnusedCalculatorData(): void {
   }
 }
 
-function canRestoreLink(link: Link, restoringNoteIds: ReadonlySet<string>): boolean {
-  const hasEndpoint = (id: string, isFrom: boolean): boolean =>
-    (isFrom && id === ME_OBJECT_ID) || Boolean(board.notes[id]) || restoringNoteIds.has(id);
-  return hasEndpoint(link.from, true) && hasEndpoint(link.to, false) && !linkBetween(link.from, link.to);
+function canRestoreLink(link: Link, restoringNoteIds: ReadonlySet<string>, meAvailable = hasMeBeacon()): boolean {
+  const hasEndpoint = (id: string): boolean =>
+    (id === ME_OBJECT_ID && meAvailable) || Boolean(board.notes[id]) || restoringNoteIds.has(id);
+  return hasEndpoint(link.from) && hasEndpoint(link.to) && !linkBetween(link.from, link.to);
 }
 
 function selectionAvailableOnBoard(snapshot: SelectionSnapshot): SelectionSnapshot {

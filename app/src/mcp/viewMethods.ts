@@ -7,6 +7,8 @@ import { zoneBounds } from "../model/zone";
 import { noteBounds } from "../notes/layout.svelte";
 import { project } from "../project/project.svelte";
 import { zoneMembers } from "../zones/membership.svelte";
+import { hasMeBeacon } from "../beacons/beaconState.svelte";
+import { ME_OBJECT_ID } from "../model/link";
 import { displayPath, nodeSummary } from "./read/serialize";
 import { asParams, McpError, registerMcpMethod } from "./registry";
 import { clusterNodes } from "./view/clusters";
@@ -52,7 +54,9 @@ registerMcpMethod({
       if (!zone) return [];
       return [{ id: zone.id, name: zone.name, bbox: zoneBounds(zone), nodeIds: zoneMembers(id) }];
     });
-    const bounds = unionBounds([...noteBoxes, ...zoneList.map(({ bbox }) => bbox)]);
+    const mePresent = hasMeBeacon();
+    const meBounds = { x: -3.6, y: -3.6, width: 7.2, height: 7.2 };
+    const bounds = unionBounds([...noteBoxes, ...zoneList.map(({ bbox }) => bbox), ...(mePresent ? [meBounds] : [])]);
     const kinds: Partial<Record<NoteKind, number>> = {};
     const media = { images: 0, gifs: 0, pdfs: 0, audio: 0, video: 0, youtube: 0, formats: 0, sources: 0 };
     let openTasks = 0;
@@ -93,6 +97,7 @@ registerMcpMethod({
 
     return {
       project: { name: project.name, root: displayPath(project.path) },
+      meBeacon: { id: ME_OBJECT_ID, present: mePresent },
       counts: {
         nodes: notes.length,
         links: Object.keys(links.byId).length,
