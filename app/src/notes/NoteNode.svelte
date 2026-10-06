@@ -313,7 +313,9 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
     overflow: hidden;
     color: var(--text);
     background: var(--note-frame);
-    border: 1px solid #414141;
+    /* Debug 28 #2: no dark outline around the node; the 1 px border keeps the node's size and
+       takes the node colour (background is painted under it). The header divider stays. */
+    border: 1px solid transparent;
     border-radius: 5px;
     box-shadow: 0 3px 12px rgb(0 0 0 / 28%);
     pointer-events: auto;
@@ -383,6 +385,13 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
 
   .note-card[data-header-hidden="true"] {
     overflow: visible;
+  }
+
+  /* Debug 28 #1: the card cannot clip while its hidden header hit strip sits above it, so the
+     square frame clips itself to the card's inner radius instead of poking out at the corners. */
+  .note-card[data-header-hidden="true"] > .note-frame {
+    overflow: hidden;
+    border-radius: 4px;
   }
 
   .note-card[data-header-hidden="true"]:hover > .hidden-note-header {
