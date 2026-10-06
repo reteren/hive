@@ -31,9 +31,26 @@
 
   let board: HTMLDivElement;
 
+  /**
+   * Where the primary button went down. A click is dispatched to the common ancestor of the press
+   * and release targets, so dragging a text selection out of a note and releasing over the board
+   * produces a "board click" — it must not end the note's editing.
+   */
+  let pressStartedInNote = false;
+  const rememberPressOrigin = (event: PointerEvent): void => {
+    if (event.button !== 0) return;
+    pressStartedInNote = event.target instanceof Element && event.target.closest("[data-note-id]") !== null;
+  };
+
   const boardSurface: Action<HTMLDivElement> = (element) => {
+    element.addEventListener("pointerdown", rememberPressOrigin, true);
     element.addEventListener("click", onBoardClick);
-    return { destroy: () => element.removeEventListener("click", onBoardClick) };
+    return {
+      destroy: () => {
+        element.removeEventListener("pointerdown", rememberPressOrigin, true);
+        element.removeEventListener("click", onBoardClick);
+      },
+    };
   };
 
   onMount(() => {
@@ -54,6 +71,7 @@
   function onBoardClick(event: MouseEvent): void {
     if (!(event.target instanceof Element)) return;
     if (event.target.closest("[data-note-id], [data-create-menu], [data-selection-ignore]")) return;
+    if (pressStartedInNote) return;
 
     editing.noteId = null;
     if (!creationMenu.pinned) creationMenu.open = false;
