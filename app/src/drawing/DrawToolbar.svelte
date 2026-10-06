@@ -1,4 +1,7 @@
 <script lang="ts">
+  import ShapeOptions from "./shapes/ShapeOptions.svelte";
+  import BrushTipOptions from "./brushes/BrushTipOptions.svelte";
+  import EffectOptions from "./effects/EffectOptions.svelte";
   import MediaSlider from "../media-ui/MediaSlider.svelte";
   import HexColorPicker from "../color/HexColorPicker.svelte";
   import { tool } from "../tools/tool.svelte";
@@ -97,6 +100,10 @@
         />
       </label>
     {/if}
+    <!-- R10 delivery 2: each tool owns its options component (docs/handoff/d40_r10.md). -->
+    {#if drawingTools.active === "shape"}<ShapeOptions />{/if}
+    {#if drawingTools.active === "brush" || drawingTools.active === "spray"}<BrushTipOptions />{/if}
+    {#if drawingTools.active === "effect"}<EffectOptions />{/if}
   </aside>
   <DrawCursor />
   <TextEditorOverlay />

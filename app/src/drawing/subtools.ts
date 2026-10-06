@@ -17,4 +17,7 @@ export const DRAW_SUBTOOLS: readonly DrawSubtoolInfo[] = [
   { id: "select-lasso", label: "Lasso", key: "KeyL" },
   { id: "select-polygon", label: "Polygon", key: "KeyP" },
   { id: "text", label: "Text", key: "KeyT", hint: "Click to type; Enter adds a line; Ctrl+Enter commits; Esc cancels." },
+  { id: "shape", label: "Shape", key: "KeyU", hint: "Drag to draw; adjust, then Enter or click outside to commit; Esc cancels. Shift keeps proportions." },
+  { id: "spray", label: "Spray", key: "KeyY" },
+  { id: "effect", label: "Effects", key: "KeyJ", hint: "Blur, Smudge or Swirl — pick one in the Draw panel." },
 ];

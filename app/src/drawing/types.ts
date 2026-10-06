@@ -76,7 +76,8 @@ export interface DrawingIndex {
   tiles: TileKey[];
 }
 
-export type DrawTool = "brush" | "eraser" | "fill" | "text" | "select-rect" | "select-lasso" | "select-polygon";
+/** R10 delivery 2 adds "shape" (R10.5), "spray" (R10.6) and "effect" (R10.7: blur / smudge / swirl). */
+export type DrawTool = "brush" | "eraser" | "fill" | "text" | "select-rect" | "select-lasso" | "select-polygon" | "shape" | "spray" | "effect";
 
 export interface BrushSettings {
   /** "#rrggbb" */
