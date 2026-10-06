@@ -226,7 +226,9 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
           overflowWrap: "anywhere",
         },
         ".cm-gutters": { display: "none" },
-        ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#fff" },
+        // CodeMirror pulls the caret 0.6 px left; at the start of a line that half sits outside the
+        // GPU-composited cursor layer and WebView2 clips it to an invisible sliver (debug 28 #11).
+        ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#fff", marginLeft: "0" },
         ".cm-selectionBackground, ::selection": {
           backgroundColor: "var(--bg-active) !important",
         },

@@ -53,7 +53,7 @@ export function createFormatEditor(
       ".cm-gutters": { color: "var(--text-dim)", backgroundColor: "#252525", borderRight: "1px solid #414141" },
       ".cm-activeLineGutter": { backgroundColor: "#303030" },
       ".cm-activeLine": { backgroundColor: "rgb(255 255 255 / 3%)" },
-      ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--text)" },
+      ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--text)", marginLeft: "0" },
       "&.cm-focused": { outline: "none" },
     }),
   ];
