@@ -20,7 +20,9 @@
         "minHeight": 360,
         "backgroundColor": "#161616",
         "theme": "Dark",
-        "resizable": true
+        "resizable": true,
+        "decorations": false,
+        "shadow": true
       },
       {
         "label": "messages-overhive",

@@ -57,17 +57,17 @@ describe("appearance theme tokens", () => {
 describe("built-in appearance presets", () => {
   it("maps the eleven Rebuffer themes into Hive's five colour fields", () => {
     const expected = [
-      ["black", "#13141a", "#c2c2c2", "#ffffff", "#000000", "#292929"],
-      ["darkblue", "#1b1e28", "#7aa2ff", "#ffffff", "#0c0e13", "#2c2d32"],
-      ["dark-green", "#1a2a20", "#40ac3e", "#ffffff", "#0b130e", "#29362e"],
-      ["dark-purple", "#291f3d", "#9630c5", "#ffffff", "#14101f", "#332e41"],
-      ["ember", "#201915", "#ff9e5e", "#ffffff", "#110d0b", "#332e2b"],
-      ["grey", "#242424", "#a6a6a6", "#ffffff", "#1b1b1b", "#3b3b3b"],
-      ["light", "#e9ebf0", "#b5b5b5", "#171a21", "#f3f4f8", "#cfd1d7"],
-      ["ocean", "#13262c", "#3ad6d6", "#ffffff", "#0c171a", "#2c383b"],
-      ["paper", "#f1ece4", "#954a18", "#2a2119", "#f7f5f0", "#d4d1cb"],
-      ["skyblue", "#fdfdfe", "#c2e4ff", "#182a4c", "#e3eaf8", "#b5c3e0"],
-      ["wine", "#26171b", "#ff86a8", "#ffffff", "#160d10", "#382e31"],
+      ["black", "#13141a", "#c2c2c2", "#ffffff", "#000000", "#ffffff"],
+      ["darkblue", "#1b1e28", "#7aa2ff", "#ffffff", "#0c0e13", "#ffffff"],
+      ["dark-green", "#1a2a20", "#40ac3e", "#ffffff", "#0b130e", "#ffffff"],
+      ["dark-purple", "#291f3d", "#9630c5", "#ffffff", "#14101f", "#ffffff"],
+      ["ember", "#201915", "#ff9e5e", "#ffffff", "#110d0b", "#ffffff"],
+      ["grey", "#242424", "#a6a6a6", "#ffffff", "#1b1b1b", "#ffffff"],
+      ["light", "#e9ebf0", "#b5b5b5", "#171a21", "#f3f4f8", "#000000"],
+      ["ocean", "#13262c", "#3ad6d6", "#ffffff", "#0c171a", "#ffffff"],
+      ["paper", "#f1ece4", "#954a18", "#2a2119", "#f7f5f0", "#000000"],
+      ["skyblue", "#fdfdfe", "#c2e4ff", "#182a4c", "#e3eaf8", "#000000"],
+      ["wine", "#26171b", "#ff86a8", "#ffffff", "#160d10", "#ffffff"],
     ] as const;
 
     expect(REBUFFER_THEME_SOURCES).toHaveLength(11);

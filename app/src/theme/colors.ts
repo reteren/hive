@@ -52,6 +52,7 @@ export function deriveThemeTokens(colors: Readonly<ThemeColors>): ThemeTokens {
   const lightBase = relativeLuminance(colors.base) > 0.5;
   const accentRgb = rgbString(colors.accent);
   const gridRgb = rgbString(colors.grid);
+  const darkGrid = relativeLuminance(colors.grid) < 0.5;
   const iconRgb = rgbString(colors.icon);
 
   return {
@@ -66,8 +67,9 @@ export function deriveThemeTokens(colors: Readonly<ThemeColors>): ThemeTokens {
     "--icon": colors.icon,
     "--icon-dim": `rgba(${iconRgb}, 0.58)`,
     "--bg-board": colors.board,
-    "--grid-minor": `rgba(${gridRgb}, 0.05)`,
-    "--grid-major": `rgba(${gridRgb}, 0.1)`,
+    // Dark grid lines need more alpha than light ones to read equally on a light board.
+    "--grid-minor": `rgba(${gridRgb}, ${darkGrid ? 0.09 : 0.05})`,
+    "--grid-major": `rgba(${gridRgb}, ${darkGrid ? 0.17 : 0.1})`,
     "--axis": `rgba(${accentRgb}, 0.28)`,
     "--text": lightBase ? "#202124" : "#d6d6d6",
     "--text-dim": lightBase ? "#55585e" : "#a0a0a0",

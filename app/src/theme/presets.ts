@@ -61,7 +61,9 @@ export function mapRebufferTheme(source: RebufferThemeSource): ThemePreset {
       accent: source.accent,
       icon: relativeLuminance(source.board) > 0.5 ? source.text : source.brightText,
       board: source.board,
-      grid: blendColor(source.border, source.board, source.borderAlpha),
+      // Rebuffer borders are near the board colour, which made the grid almost invisible:
+      // white lines on dark boards (like Hive), black lines on light boards.
+      grid: relativeLuminance(source.board) > 0.5 ? "#000000" : "#ffffff",
     },
   };
 }

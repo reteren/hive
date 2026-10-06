@@ -4,6 +4,7 @@
   import GridControls from "./GridControls.svelte";
   import ConflictNotice from "./ConflictNotice.svelte";
   import MenuBar from "./menubar/MenuBar.svelte";
+  import WindowControls from "./WindowControls.svelte";
   import { project } from "../project/project.svelte";
 
   let { onMenuOpenChange = () => {} } = $props<{ onMenuOpenChange?: (open: boolean) => void }>();
@@ -12,8 +13,9 @@
 </script>
 
 <!-- Top toolbar (R0.4): general tools centred, Grid controls. -->
-<header class="top-bar">
-  <div class="brand" aria-label="hive">
+<!-- It is also the window title bar: empty areas drag the window (double-click maximises). -->
+<header class="top-bar" data-tauri-drag-region>
+  <div class="brand" aria-label="hive" data-tauri-drag-region>
     <span class="brand-mark">hive</span>
     <MenuBar onOpenChange={onMenuOpenChange} />
     <span class="project-name" title={`Project: ${project.name}`}>{project.name}</span>
@@ -24,7 +26,7 @@
       <span class="project-warning-indicator" role="status" title={project.warnings.join("\n")}>Warning: {project.warnings[0]}</span>
     {/if}
   </div>
-  <div class="toolbar-center">
+  <div class="toolbar-center" data-tauri-drag-region>
     <div class="view-commands" aria-label="View commands">
       <CommandButton commandId="view.zoomOut" />
       <output class="zoom-level" aria-label="Zoom level">{zoomPercent}%</output>
@@ -34,8 +36,9 @@
       <GridControls />
     </div>
   </div>
-  <div class="top-actions">
+  <div class="top-actions" data-tauri-drag-region>
     <CommandButton commandId="ui.settings" />
+    <WindowControls />
   </div>
   <div class="conflict-status">
     <ConflictNotice />
