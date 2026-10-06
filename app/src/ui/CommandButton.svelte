@@ -1,4 +1,5 @@
 <script lang="ts">
+  import settingsIcon from "./icons/settings.png";
   import type { Snippet } from "svelte";
   import { formatKey } from "../commands/keys";
   import { getCommand, runCommand } from "../commands/registry.svelte";
@@ -85,8 +86,7 @@
           <rect x="2.5" y="3" width="15" height="14" rx="1" />
           <path d="M11.5 3v14M14.5 7h1M14.5 10h1" />
         {:else if iconName === "settings"}
-          <path d="M10 3.1 11.2 2l1.6.6.4 1.6 1.4.8 1.6-.4 1.1 1.3-.8 1.5.3 1.6 1.3 1v1.8l-1.5.8-.5 1.6.7 1.4-1.2 1.3-1.6-.5-1.4.8-.4 1.6-1.7.5-1-1.3-1.6-.2-1.4.8-1.4-1-.1-1.7-1.2-1-.1-1.7 1.3-1 .3-1.6-.9-1.4.9-1.5 1.7.1 1.2-1.1.1-1.7 1.6-.6z" transform="translate(0 -1) scale(1 .95)" />
-          <circle cx="10" cy="10" r="2.4" />
+          <image href={settingsIcon} x="2" y="2" width="16" height="16" class="raster-icon" />
         {:else if iconName === "search"}
           <circle cx="8.5" cy="8.5" r="5.2" />
           <path d="m12.4 12.4 4.3 4.3" />
@@ -149,6 +149,16 @@
     stroke-linecap: round;
     stroke-linejoin: round;
     stroke-width: 1.35;
+  }
+
+  /* White raster icon: dimmed like the stroked icons, full brightness on hover/active. */
+  .raster-icon {
+    opacity: 0.78;
+  }
+
+  .command-button:hover .raster-icon,
+  .command-button.active .raster-icon {
+    opacity: 1;
   }
 
   .command-button:hover {

@@ -65,6 +65,15 @@
 
   .fixed-height.scrollable-text:not(.editing-body) { overflow-y: auto; }
 
+  /* The scrollbar of a long note shows only while the pointer is over that note (editing keeps it). */
+  .fixed-height.scrollable-text:not(.editing-body) {
+    scrollbar-color: transparent transparent !important;
+  }
+
+  :global([data-note-id]:hover) .fixed-height.scrollable-text:not(.editing-body) {
+    scrollbar-color: rgb(190 190 190 / 45%) transparent !important;
+  }
+
   .fixed-height :global(.editor-host),
   .fixed-height :global(.cm-editor) {
     height: 100%;

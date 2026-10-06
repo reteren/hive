@@ -2,6 +2,7 @@
   import { untrack } from "svelte";
   import { hexToHsv, hsvToHex, normalizeHex, type Hsv } from "./hex";
   import { pushRecentColor, recentColors } from "./recentColors.svelte";
+  import { pickScreenColor } from "./screenPicker.svelte";
 
   let { value, oninput, onchange, label = "Colour" } = $props<{
     /** Current colour as #rrggbb. */
@@ -40,6 +41,15 @@
     current = hsvToHex(next);
     if (!hexFocused) hexDraft = current.slice(1);
     oninput?.(current);
+  }
+
+  async function pickFromScreen(): Promise<void> {
+    const picked = await pickScreenColor();
+    const hex = picked ? normalizeHex(picked) : null;
+    if (!hex) return;
+    const next = hexToHsv(hex);
+    emitInput(next.s === 0 || next.v === 0 ? { ...next, h: hsv.h } : next);
+    commit(current);
   }
 
   function commit(hex = current): void {
@@ -172,6 +182,18 @@
         }}
       />
     </label>
+    <button
+      type="button"
+      class="eyedropper-button"
+      data-hex-eyedropper
+      title="Pick a colour from the screen · Esc cancels"
+      aria-label="Pick a colour from the screen"
+      onclick={() => void pickFromScreen()}
+    >
+      <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        <path d="M10.6 2.4a1.9 1.9 0 0 1 2.7 2.7l-1.5 1.5.6.6-1 1-.6-.6-5 5H3.9v-1.9l5-5-.6-.6 1-1 .6.6z" />
+      </svg>
+    </button>
   </div>
   {#if recentColors.list.length > 0}
     <div class="recent" role="group" aria-label="Recent colours">
@@ -303,5 +325,33 @@
   .recent-swatch:focus-visible {
     outline: 2px solid var(--accent, #c8a94e);
     outline-offset: 1px;
+  }
+
+  .eyedropper-button {
+    display: grid;
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    place-items: center;
+    border: 1px solid #484a50;
+    border-radius: 3px;
+    color: var(--text-dim);
+    background: #222428;
+    cursor: pointer;
+  }
+
+  .eyedropper-button:hover {
+    border-color: #6a6d74;
+    color: var(--text);
+  }
+
+  .eyedropper-button svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.3;
+    stroke-linejoin: round;
   }
 </style>

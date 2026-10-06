@@ -3,6 +3,7 @@
 </script>
 
 <script lang="ts">
+  import packageMetadata from "../../package.json";
   import { backupSettings, setBackupInterval } from "../backup/backupSettings.svelte";
   import { openBackupsPanel } from "../backup/panel.svelte";
   import { emptyTrash } from "../trash/trashActions.svelte";
@@ -359,6 +360,7 @@
             </button>
           </div>
         </section>
+        <p class="app-version" data-app-version>hive {packageMetadata.version}</p>
       </div>
     </div>
   </div>
@@ -665,5 +667,13 @@
   .transfer-actions {
     padding-top: 7px;
     border-top: 1px solid #3b3b3b;
+  }
+
+  .app-version {
+    margin: 4px 0 2px;
+    color: var(--text-dim);
+    font-size: 11px;
+    text-align: center;
+    user-select: text;
   }
 </style>

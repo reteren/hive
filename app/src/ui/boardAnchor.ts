@@ -1,5 +1,6 @@
 import type { Action } from "svelte/action";
 import { screenToWorld, worldToScreen, type Camera, type Point, type Size } from "../board/cameraMath";
+import { isScreenColorPicking } from "../color/screenPicker.svelte";
 
 export interface BoardPopupPlacement {
   x: number;
@@ -90,6 +91,8 @@ export interface DismissPopupOptions {
 export const dismissBoardPopup: Action<HTMLElement, DismissPopupOptions> = (element, initial) => {
   let options = initial;
   const onPointerDown = (event: PointerEvent) => {
+    // The HEX palette's eyedropper overlay takes clicks/Esc for itself; the popover must stay open.
+    if (isScreenColorPicking()) return;
     const path = event.composedPath();
     const ignored = options.ignoreSelector && event.target instanceof Element
       ? event.target.closest(options.ignoreSelector) : null;
@@ -98,7 +101,7 @@ export const dismissBoardPopup: Action<HTMLElement, DismissPopupOptions> = (elem
     }
   };
   const onKeyDown = (event: KeyboardEvent) => {
-    if (options.escape === false || event.code !== "Escape" || event.defaultPrevented) return;
+    if (options.escape === false || event.code !== "Escape" || event.defaultPrevented || isScreenColorPicking()) return;
     options.close();
     event.preventDefault();
     event.stopImmediatePropagation();
