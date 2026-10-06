@@ -1,0 +1,25 @@
+WAVE d39 = the user's "debug 30" (C:\hive\old debug message (do not touch)\debug 30.md — Russian wording binding, never edit it; no screenshots). Rules: C:\hive\docs\handoff\d31common.md (rules section). Installer 1.7.9.
+
+User request: fully customisable app colours. Settings get five colours:
+- **Base** (default #232323) — side panels, menus, popovers, top bar, settings, dock — "всё подобное".
+- **Accent** (default #e8b030) — everything that is yellow now: text selection, selection frames/handles, active buttons, focus rings, links accents, sliders, axis line, toggles, badges.
+- **Icons** (default: today's white/light icon colour) — every icon (stroked SVG icons AND the raster PNG icons: magnet on/off, settings gear, any other).
+- **Board background** («цвет квадратов сетки — цвет фона рабочей области»), default #161616.
+- **Grid lines** («цвет самой сетки»), default derived from today's --grid-minor/--grid-major.
+Text colour is NOT configurable («пока не надо»). Exception decided by the coordinator: when Base is light (relative luminance > 0.5) the UI text tokens switch to dark automatically so light themes stay readable — no user setting.
+Presets: today's hive look ("Hive") + the 11 themes of the user's Rebuffer app (C:\rebuffer-ref\src\lib\styles\themes\*.css: black, darkblue, dark-green, dark-purple, ember, grey, light, ocean, paper, skyblue, wine). Map each Rebuffer theme to the 5 colours: base = opaque blend of its --surface-2 over --bg-0, accent = --accent, icons = its --text (or --text-bright on dark), board = --bg-0, grid = --border-2 over --bg-0. Plus a preset editor: create a preset from the current colours, name it, save, rename, duplicate, delete user presets (built-ins are read-only), apply any preset with one click; "Reset to Hive".
+
+TASK T1 — theme engine + Settings UI + presets/editor.
+- New app/src/theme/*: `ThemeColors {base, accent, icon, board, grid}` (#rrggbb), derivation of the full token set written onto document.documentElement as CSS variables: --bg-panel (base), --bg-panel-raised (base lightened ~4 %), --bg-hover (~8 %), --border (base darkened), --accent, --accent-hover, --accent-rgb ("r, g, b" for rgba()), --on-accent (black/white by contrast), --icon, --icon-dim, --bg-board, --grid-minor / --grid-major (grid colour with alpha like today), --axis (accent at 28 %), and the text tokens --text/--text-dim (only auto-flipped for light bases). Hive defaults must reproduce TODAY's look exactly (compare against app/src/styles/theme.css).
+- Persistence with the other app settings (app/src/settings/*: validate on load, bad values → defaults); user presets persisted the same way. Applied before first paint (no flash of the default theme on start).
+- Settings → new section "Appearance": preset gallery (small swatch cards incl. the 12 built-ins and user presets, active one marked), five colour rows each opening the shared HexColorPicker (with its eyedropper), live preview while dragging, "Save as preset…", rename/duplicate/delete for user presets, "Reset to Hive".
+YOUR FILES: new app/src/theme/*, app/src/settings/* (+ SettingsPanel.svelte Appearance section only), app/src/styles/theme.css (token defaults only), main.ts/App.svelte (one line to apply on start), tests (derivation, contrast flip, validation, preset CRUD, Rebuffer mapping table).
+
+TASK T2 — token sweep (make every component obey the tokens).
+- Replace hard-coded accent colours (#e8b030, #f4c860, #f1c85b, rgba(232, 176, 48, …), yellow-ish variants used as accent) with var(--accent) / var(--accent-hover) / rgba(var(--accent-rgb), a) everywhere in app/src (grep all .svelte/.ts/.css, incl. CodeMirror themes in editor/*.ts — selection colour, cursor? (cursor stays white), highlight palette default stays a highlight colour, not accent).
+- Replace hard-coded panel/menu backgrounds (#232323, #2c2c2c, #26282c, #222428, #1d1e21, #18191c, #292929… used for chrome: menus, popovers, dock, top bar, settings, tooltips, context menus, create menu, palettes) with the base tokens. Do NOT recolour node bodies/frames (--note-frame/--note-body stay), semantic colours (red delete, green ok, media players' own UI), user content colours.
+- Icons: stroked SVG icons use `stroke/fill: var(--icon)` (via currentColor where the button colour is the icon colour); raster PNG icons (ui/icons/*.png) become CSS masks (`mask-image: url(...)`, `background: var(--icon)`) so they recolour — keep their dim/hover opacity behaviour.
+- Board: GridLayer already reads --grid-minor/--grid-major and --bg-board — make sure the axis and any other board chrome read tokens and repaint when tokens change (listen for a theme-change event from T1: `window.dispatchEvent(new Event("hive:themechange"))` — T1 dispatches it).
+YOUR FILES: any app/src component file EXCEPT app/src/theme/*, app/src/settings/*, SettingsPanel.svelte Appearance section; tests where colours are asserted. Keep each change a pure token substitution — no layout changes.
+
+Both: npm run check + npm test green; do NOT commit; worker_done in Russian once (if Orca rejects it, resend as --type question).
