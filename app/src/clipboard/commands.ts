@@ -274,6 +274,7 @@ type CopySource = Omit<Pick<Note,
   "type" | "name" | "text" | "x" | "y" | "width" | "height" | "createdAt" |
   "task" | "taskMemory" | "importance" | "purposes" | "embedSections" | "headerHidden" | "frameHidden" | "image" | "opacity" | "media" | "pdfZoom" | "recordings" | "youtube" | "source" | "flipX" | "flipY" | "gifStopped"
   | "glow" | "accentColor"
+  | "listItems" | "listStats" | "inboxGroup" | "randomPick" | "customMarks" | "customMarkFrame"
 >, "time" | "message"> & {
   time?: Note["time"] | null;
   message?: Note["message"] | null;
@@ -351,6 +352,12 @@ function createCopies(
       ...(note.flipX === true ? { flipX: true as const } : {}),
       ...(note.flipY === true ? { flipY: true as const } : {}),
       ...(note.gifStopped === true ? { gifStopped: true as const } : {}),
+      ...(note.listItems ? { listItems: note.listItems.map((item) => ({ ...item, targetId: item.targetId ? idMap.get(item.targetId) ?? item.targetId : null })) } : {}),
+      ...(note.listStats === true ? { listStats: true } : {}),
+      ...(note.inboxGroup ? { inboxGroup: note.inboxGroup } : {}),
+      ...(note.randomPick ? { randomPick: { ...note.randomPick, listId: idMap.get(note.randomPick.listId) ?? note.randomPick.listId } } : {}),
+      ...(note.customMarks ? { customMarks: note.customMarks.map((mark) => ({ ...mark })) } : {}),
+      ...(note.customMarkFrame === true ? { customMarkFrame: true } : {}),
       importance: note.importance ?? null,
       purposes: [...new Set(note.purposes ?? [])],
       ...(note.type === "beacon" ? { color: note.color ?? beaconPaletteColor(0) } : note.color ? { color: note.color } : {}),

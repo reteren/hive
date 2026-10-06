@@ -27,7 +27,16 @@ import { normalizeImageOpacity, parseImageRef } from "../images/imageLogic";
 import { normalizePdfZoom, parseMediaRef } from "../formats/formatLogic";
 import { copyAudioRecordings, parseAudioRecordings } from "../audio/recordingData";
 import { parseYouTubeRef } from "../youtube/logic";
-import { parseSource, type SourceData } from "../model/nodeData";
+import {
+  parseCustomMarks,
+  parseListItems,
+  parseRandomPick,
+  parseSource,
+  type CustomMark,
+  type ListItem,
+  type RandomPick,
+  type SourceData,
+} from "../model/nodeData";
 import { parseNoteGlow } from "../notes/noteGlowLogic";
 
 export const HIVE_CLIPBOARD_MARKER = "hive/nodes";
@@ -71,6 +80,16 @@ export interface ClipboardNode {
   flipX?: true;
   flipY?: true;
   gifStopped?: true;
+  /** List node items and its statistics extension. */
+  listItems?: ListItem[];
+  listStats?: true;
+  /** Inbox grouping. */
+  inboxGroup?: string;
+  /** Random Choice: the last pick (listId is remapped when its List is pasted too). */
+  randomPick?: RandomPick;
+  /** Mark as: its custom marks and frame option. */
+  customMarks?: CustomMark[];
+  customMarkFrame?: true;
 }
 
 export interface ClipboardZone extends Omit<Zone, "id"> {
@@ -116,6 +135,7 @@ export function serializeNotes(
     version: HIVE_CLIPBOARD_VERSION,
     nodes: notes.map(({
       id, type, name, text, x, y, width, height, createdAt, task, taskMemory, time, message, embedSections, importance, purposes, moods, color, accentColor, glow, zoneId, headerHidden, frameHidden, image, opacity, media, pdfZoom, recordings, youtube, source, flipX, flipY, gifStopped,
+      listItems, listStats, inboxGroup, randomPick, customMarks, customMarkFrame,
     }) => ({
       sourceId: id,
       type,
@@ -150,6 +170,12 @@ export function serializeNotes(
       ...(type === "image" && flipX === true ? { flipX: true } : {}),
       ...(type === "image" && flipY === true ? { flipY: true } : {}),
       ...(type === "image" && gifStopped === true ? { gifStopped: true } : {}),
+      ...(listItems ? { listItems: listItems.map((item) => ({ ...item })) } : {}),
+      ...(listStats === true ? { listStats: true } : {}),
+      ...(inboxGroup ? { inboxGroup } : {}),
+      ...(randomPick ? { randomPick: { ...randomPick } } : {}),
+      ...(customMarks ? { customMarks: customMarks.map((mark) => ({ ...mark })) } : {}),
+      ...(customMarkFrame === true ? { customMarkFrame: true } : {}),
     })),
     links: links.flatMap((link) => noteIds.has(link.from) && noteIds.has(link.to)
       ? [{
@@ -365,7 +391,10 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     (value.type !== "note" && value.type !== "pro" && value.type !== "con" &&
       value.type !== "importance" && value.type !== "purpose" && value.type !== "mood" && value.type !== "beacon" &&
       value.type !== "goal" && value.type !== "progress" && value.type !== "calculator" &&
-      value.type !== "tierlist" && value.type !== "stats" && value.type !== "time" && value.type !== "message" && value.type !== "calendar" && value.type !== "image" && value.type !== "pdf" && value.type !== "format" && value.type !== "audio" && value.type !== "video" && value.type !== "youtube" && value.type !== "source") ||
+      value.type !== "tierlist" && value.type !== "stats" && value.type !== "time" && value.type !== "message" && value.type !== "calendar" && value.type !== "image" && value.type !== "pdf" && value.type !== "format" && value.type !== "audio" && value.type !== "video" && value.type !== "youtube" && value.type !== "source" &&
+      // Organisational and project-wide view nodes (they used to paste back as plain notes).
+      value.type !== "markas" && value.type !== "archive" && value.type !== "trash" && value.type !== "list" &&
+      value.type !== "map" && value.type !== "glossary" && value.type !== "inbox" && value.type !== "random") ||
     typeof value.name !== "string" || typeof value.text !== "string" ||
     !finite(value.x) || !finite(value.y) || !finite(value.width) || value.width <= 0 ||
     !(value.height === null || (finite(value.height) && value.height > 0)) ||
@@ -408,6 +437,13 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
   const recordings = value.recordings === undefined ? undefined : parseAudioRecordings(value.recordings);
   const youtube = value.youtube === undefined ? null : parseYouTubeRef(value.youtube) ?? null;
   const source = value.source === undefined ? null : parseSource(value.source);
+  const listItems = value.listItems === undefined ? null : parseListItems(value.listItems);
+  if (value.listItems !== undefined && !listItems) return null;
+  const randomPick = value.randomPick === undefined ? null : parseRandomPick(value.randomPick);
+  if (value.randomPick !== undefined && !randomPick) return null;
+  const customMarks = value.customMarks === undefined ? null : parseCustomMarks(value.customMarks);
+  if (value.customMarks !== undefined && !customMarks) return null;
+  if (value.inboxGroup !== undefined && typeof value.inboxGroup !== "string") return null;
   if (value.image !== undefined && !image || value.type === "image" && (!image || !finite(value.height) || value.height <= 0) ||
     value.media !== undefined && !media || value.type === "pdf" && media?.kind !== "pdf" || value.type === "format" && media?.kind !== "text" || value.type === "audio" && media?.kind !== "audio" && !recordings || value.type === "video" && media?.kind !== "video" ||
     value.recordings !== undefined && (value.type !== "audio" || !recordings) ||
@@ -454,6 +490,12 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     ...(value.type === "image" && value.flipX === true ? { flipX: true } : {}),
     ...(value.type === "image" && value.flipY === true ? { flipY: true } : {}),
     ...(value.type === "image" && value.gifStopped === true ? { gifStopped: true } : {}),
+    ...(listItems ? { listItems } : {}),
+    ...(value.listStats === true ? { listStats: true } : {}),
+    ...(typeof value.inboxGroup === "string" && value.inboxGroup ? { inboxGroup: value.inboxGroup } : {}),
+    ...(randomPick ? { randomPick } : {}),
+    ...(customMarks ? { customMarks } : {}),
+    ...(value.customMarkFrame === true ? { customMarkFrame: true } : {}),
   };
 }
 
