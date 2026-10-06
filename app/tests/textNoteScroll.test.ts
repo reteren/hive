@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { measureAndCacheTextMinimumWidth } from "../src/editor/textFitWidth";
-import { minimumTextWidthForNote, clearMinimumTextWidth } from "../src/notes/layout.svelte";
+import { MIN_NOTE_WIDTH, minimumTextWidthForNote, clearMinimumTextWidth } from "../src/notes/layout.svelte";
 import { canScrollTextNote, minimumManualTextHeight, visualTextLineCount, wheelScrollsText } from "../src/notes/textScroll";
 
 const lines = (count: number): string => Array.from({ length: count }, (_, index) => `line ${index}`).join("\n");
@@ -51,7 +51,8 @@ describe("text note manual scrolling", () => {
       : { paddingLeft: "8px", paddingRight: "8px" });
     try {
       expect(measureAndCacheTextMinimumWidth(id, "x".repeat(600), source as unknown as HTMLElement, "note")).toBe(75);
-      expect(minimumTextWidthForNote(id, 75)).toBe(75);
+      // Measuring no longer constrains manual resizing: the user narrows text nodes freely.
+      expect(minimumTextWidthForNote(id, 75)).toBe(MIN_NOTE_WIDTH);
     } finally {
       clearMinimumTextWidth(id);
       vi.unstubAllGlobals();

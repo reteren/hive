@@ -1,6 +1,5 @@
 import type { NoteKind } from "../model/note";
 import {
-  cacheMinimumTextWidth,
   clearMinimumTextWidth,
   growWidthToTextMinimum,
   maximumNoteWidthForKind,
@@ -59,14 +58,25 @@ export function widestNaturalLineWidth(
   return widest;
 }
 
-/** Apply text-driven width growth unless the user has manually fixed a width. */
+/** Board units of slack when deciding whether the first line still fits on one row. */
+const FIRST_LINE_FIT_TOLERANCE = 0.5;
+
+/**
+ * Text-driven width growth (debug 28 #5): only the first line sets the width, and only while that
+ * line still fits on one row — i.e. while it is being typed into a node that follows it. Once the
+ * first line wraps (an existing note with a long first paragraph, or a manually narrowed node) the
+ * width never changes from typing.
+ */
 export function nextTextWidthAfterEdit(
   currentWidth: number,
   textMinimum: number,
   maxWidth: number,
   widthLocked: boolean,
+  previousTextMinimum: number | null = null,
 ): number {
-  return widthLocked ? currentWidth : growWidthToTextMinimum(currentWidth, textMinimum, maxWidth);
+  if (widthLocked) return currentWidth;
+  if (previousTextMinimum === null || previousTextMinimum > currentWidth + FIRST_LINE_FIT_TOLERANCE) return currentWidth;
+  return growWidthToTextMinimum(currentWidth, textMinimum, maxWidth);
 }
 
 /** Measure using the note's current font, then cache the board-space minimum for resize gestures. */
@@ -107,7 +117,7 @@ export function measureAndCacheTextMinimumWidth(
     horizontalChrome,
     maximumNoteWidthForKind(kind),
   );
-  cacheMinimumTextWidth(noteId, minimumWidth);
+  // The first line no longer constrains manual resizing (debug 28 #5): the user resizes freely.
   return minimumWidth;
 }
 

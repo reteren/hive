@@ -178,10 +178,16 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
         update.view.contentDOM,
         note.type,
       );
+      const previousTextMinimum = measureAndCacheTextMinimumWidth(
+        noteId,
+        inlineImageTextForFit(before.toString(), syntaxTree(update.startState)),
+        update.view.contentDOM,
+        note.type,
+      );
       const currentNote = board.notes[noteId] ?? note;
       const currentWidth = currentNote.width;
       const nextWidth = preferences.fitWidthToText && textMinimum !== null
-        ? nextTextWidthAfterEdit(currentWidth, textMinimum, maximumNoteWidthForKind(note.type), currentNote.widthLocked === true)
+        ? nextTextWidthAfterEdit(currentWidth, textMinimum, maximumNoteWidthForKind(note.type), currentNote.widthLocked === true, previousTextMinimum)
         : currentWidth;
       if (nextWidth > currentWidth) {
         edit.widthBefore = currentWidth;
