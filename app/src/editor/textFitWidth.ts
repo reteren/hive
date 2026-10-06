@@ -61,6 +61,9 @@ export function widestNaturalLineWidth(
 /** Board units of slack when deciding whether the first line still fits on one row. */
 const FIRST_LINE_FIT_TOLERANCE = 0.5;
 
+/** Board units added to the measured first line when the node grows with it (anti wrap flicker). */
+const FIRST_LINE_SLACK = 1.5;
+
 /**
  * Text-driven width growth (debug 28 #5): only the first line sets the width, and only while that
  * line still fits on one row — i.e. while it is being typed into a node that follows it. Once the
@@ -76,7 +79,10 @@ export function nextTextWidthAfterEdit(
 ): number {
   if (widthLocked) return currentWidth;
   if (previousTextMinimum === null || previousTextMinimum > currentWidth + FIRST_LINE_FIT_TOLERANCE) return currentWidth;
-  return growWidthToTextMinimum(currentWidth, textMinimum, maxWidth);
+  // Canvas measurement and the DOM line differ by a fraction of a pixel (kerning, spellcheck spans
+  // re-rendered after every keystroke). A node sized exactly to the line then wraps its last word on
+  // and off with each character — leave a little room so the first line always fits.
+  return growWidthToTextMinimum(currentWidth, textMinimum + FIRST_LINE_SLACK, maxWidth);
 }
 
 /** Measure using the note's current font, then cache the board-space minimum for resize gestures. */
