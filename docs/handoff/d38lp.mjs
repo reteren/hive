@@ -1,0 +1,37 @@
+// debug 22 part 2: line/draw sub-tools unfold under their hotbar button; draw panel has no tool grid.
+import { writeFileSync } from "node:fs";
+const OUT = "C:/Users/reteren/AppData/Local/Temp/claude";
+const page = (await fetch(`http://localhost:9334/json/list`).then((r) => r.json())).find((t) => t.type === "page" && t.url.includes("1450"));
+const ws = new WebSocket(page.webSocketDebuggerUrl); let id = 0; const pending = new Map(); const errors = [];
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.method === "Runtime.exceptionThrown") errors.push(m.params.exceptionDetails.exception?.description?.slice(0, 220)); if (pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+await new Promise((r) => (ws.onopen = r));
+const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+await send("Runtime.enable");
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const ev = async (expression) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); return r.result?.result?.value ?? r.result?.exceptionDetails?.exception?.description; };
+const mouse = (type, x, y) => send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" ? "none" : "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: type === "mouseMoved" ? 0 : 1 });
+const click = async (x, y) => { await mouse("mouseMoved", x, y); await mouse("mousePressed", x, y); await mouse("mouseReleased", x, y); await wait(300); };
+const key = async (k, code, vk, modifiers = 0) => { await send("Input.dispatchKeyEvent", { type: "keyDown", key: k, code, windowsVirtualKeyCode: vk, modifiers }); await send("Input.dispatchKeyEvent", { type: "keyUp", key: k, code, windowsVirtualKeyCode: vk, modifiers }); await wait(250); };
+const shot = async (n) => writeFileSync(`${OUT}/${n}.png`, Buffer.from((await send("Page.captureScreenshot", { format: "png" })).result.data, "base64"));
+const typeText = async (t) => { for (const ch of t) await send("Input.dispatchKeyEvent", { type: "char", text: ch }); await wait(60); };
+await send("Page.reload"); await wait(3000);
+await ev(`(async()=>{const b=await import('/src/model/board.svelte.ts');const c=await import('/src/board/camera.svelte.ts');c.camera.zoom=1.3;c.camera.x=0;c.camera.y=0;const n=String.fromCharCode(10);b.addNote({id:'t1',type:'note',name:'Fmt',text:'если ты сделал что-то **мелкое** то это засчитают'+n+'*курсив* и ~~зачёркнутый~~ и ==подсветка=='+n+n+'---'+n+n+'# Заголовок'+n+'- пункт'+n+'последняя строка',x:-25,y:-25,width:40,height:null,color:null,createdAt:Date.now()});return 1})()`);
+await wait(700);
+const p = await ev(`(()=>{const r=document.querySelector('[data-note-id="t1"] .note-body').getBoundingClientRect();return [r.x+r.width/2,r.y+r.height-10]})()`);
+await mouse("mouseMoved", p[0], p[1]); await send("Input.dispatchMouseEvent",{type:"mousePressed",x:p[0],y:p[1],button:"left",buttons:1,clickCount:2}); await send("Input.dispatchMouseEvent",{type:"mouseReleased",x:p[0],y:p[1],button:"left",buttons:0,clickCount:2}); await wait(500);
+await key("End","End",35,2); await wait(300);
+const box = JSON.parse(await ev(`JSON.stringify(document.querySelector('[data-note-id="t1"]').getBoundingClientRect())`));
+const snap = async (name) => { const s = await send("Page.captureScreenshot", { format: "png", clip: { x: box.x - 4, y: box.y - 4, width: box.width + 8, height: box.height + 8, scale: 1.6 } }); writeFileSync(`C:/Users/reteren/AppData/Local/Temp/claude/${name}.png`, Buffer.from(s.result.data, "base64")); };
+console.log("caret at end, visible text line1:", await ev(`document.querySelectorAll('[data-note-id="t1"] .cm-line')[0].innerText`));
+await snap("lp-away");
+// put caret right after closing ** of мелкое
+await ev(`(async()=>{const v=document.querySelector('[data-note-id="t1"] .cm-content').cmView?.view ?? null;return !!v})()`);
+await key("Home","Home",36,2); await wait(100);
+for (let i = 0; i < 32; i++) await key("ArrowRight","ArrowRight",39);
+await wait(300);
+console.log("caret next to bold, line1:", await ev(`document.querySelectorAll('[data-note-id="t1"] .cm-line')[0].innerText`));
+await snap("lp-near");
+for (let i = 0; i < 3; i++) await key("ArrowDown","ArrowDown",40);
+await wait(300);
+console.log("caret on hr line text:", JSON.stringify(await ev(`document.querySelectorAll('[data-note-id="t1"] .cm-line')[3].innerText`)));
+console.log("errors", errors); process.exit(0);

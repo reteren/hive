@@ -19,6 +19,7 @@ import { openHighlightPalette } from "./highlightPalette";
 import { hiveMarkdownExtensions, inlineImageTextForFit } from "./markdownSyntax";
 import { collapsedLinkMarkup, visibleMarkdownLinksInTree } from "./linkPreview";
 import { inlineImagesExtension } from "./inlineImages";
+import { livePreviewPlugin, livePreviewTheme } from "./livePreview";
 import { applyTextEditEffects, captureTextEditEffects } from "../transfer/textEditHooks";
 import { measureAndCacheTextMinimumWidth, nextTextWidthAfterEdit } from "./textFitWidth";
 import { spellcheckExtension } from "../spell/spellcheck";
@@ -112,6 +113,8 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
     highlightColors,
     linkPreview,
     inlineImagesExtension(breakTextEditGroup, note.id),
+    livePreviewPlugin,
+    livePreviewTheme,
     spellcheckExtension(() => ({
       enabled: spellSettings.enabled,
       languages: spellSettings.languages,
