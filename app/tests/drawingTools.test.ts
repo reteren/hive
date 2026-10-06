@@ -59,14 +59,20 @@ describe("drawing tools", () => {
   });
 
   it("persists brush settings with view settings and ignores removed presets", () => {
-    setBrushSettings({ color: "#123456", size: 72, opacity: 0.65, hardness: 0.3 });
+    setBrushSettings({
+      color: "#123456", size: 72, opacity: 0.65, hardness: 0.3,
+      tip: "charcoal", calligraphyAngle: 90, sprayDensity: 140, sprayDotSize: 5,
+    });
     const serialized = serializeViewSettings({
       ...DEFAULT_VIEW_SETTINGS,
       drawing: drawingPreferencesSnapshot(),
     });
     setBrushSettings({ size: 12, color: "#eeeeee" });
     loadDrawingPreferences(parseViewSettings(serialized, DEFAULT_VIEW_SETTINGS).drawing);
-    expect(drawingTools.brush).toMatchObject({ color: "#123456", size: 72, opacity: 0.65, hardness: 0.3 });
+    expect(drawingTools.brush).toMatchObject({
+      color: "#123456", size: 72, opacity: 0.65, hardness: 0.3,
+      tip: "charcoal", calligraphyAngle: 90, sprayDensity: 140, sprayDotSize: 5,
+    });
     expect(drawingPreferencesSnapshot()).toEqual({ brush: drawingTools.brush });
   });
 

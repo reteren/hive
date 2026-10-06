@@ -1,4 +1,4 @@
-import { DEFAULT_BRUSH, type BrushSettings } from "./types";
+import { DEFAULT_BRUSH, type BrushSettings, type BrushTip } from "./types";
 
 export interface DrawingPreferences {
   brush: BrushSettings;
@@ -16,6 +16,10 @@ export function normalizeBrushSettings(value: unknown, fallback: BrushSettings =
     size: clampNumber(source.size, fallback.size, 1, 400, true),
     opacity: clampNumber(source.opacity, fallback.opacity, 0.05, 1),
     hardness: clampNumber(source.hardness, fallback.hardness, 0, 1),
+    tip: isBrushTip(source.tip) ? source.tip : fallback.tip ?? "round",
+    calligraphyAngle: clampNumber(source.calligraphyAngle, fallback.calligraphyAngle ?? 45, 0, 180),
+    sprayDensity: clampNumber(source.sprayDensity, fallback.sprayDensity ?? 120, 1, 200, true),
+    sprayDotSize: clampNumber(source.sprayDotSize, fallback.sprayDotSize ?? 3, 1, 32),
   };
 }
 
@@ -38,6 +42,10 @@ function clampNumber(value: unknown, fallback: number, min: number, max: number,
 
 function isHexColor(value: unknown): value is string {
   return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
+}
+
+function isBrushTip(value: unknown): value is BrushTip {
+  return value === "round" || value === "marker" || value === "pencil" || value === "calligraphy" || value === "charcoal";
 }
 
 function isFiniteNumber(value: unknown): value is number {

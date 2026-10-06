@@ -3,4 +3,7 @@
 import "./stroke.svelte";
 import "./eraser";
 import "./fill";
+import "./brushes/spray";
+import "./shapes/shape.svelte";
+import "./effects/handler";
 import "./selection.svelte";

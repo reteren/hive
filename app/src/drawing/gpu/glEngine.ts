@@ -38,6 +38,20 @@ export interface DrawQuad {
   clip?: { texture: WebGLTexture; width: number; height: number; rect: TexRect } | null;
 }
 
+export interface DrawingEffectPass {
+  mode: "blur" | "smudge" | "swirl";
+  rect: TexRect;
+  /** Source region mapped over the target; normally a tile inside a padded tile neighborhood. */
+  sourceRect: TexRect;
+  path: { x: number; y: number; endX: number; endY: number };
+  radius: number;
+  core: number;
+  strength: number;
+  swirlAngle?: number;
+  drag?: { x: number; y: number };
+  clip?: { texture: WebGLTexture; width: number; height: number; rect: TexRect } | null;
+}
+
 const VERTEX_SHADER = `#version 300 es
 in vec2 a_pos;
 uniform vec4 u_dst;   // NDC x, y, w, h
@@ -71,6 +85,75 @@ void main() {
   outColor = color;
 }`;
 
+const EFFECT_SHADER = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+in vec2 v_clip;
+uniform sampler2D u_tex;
+uniform sampler2D u_clipTex;
+uniform int u_mode;
+uniform int u_useClip;
+uniform vec4 u_path;
+uniform float u_radius;
+uniform float u_core;
+uniform float u_strength;
+uniform float u_swirlAngle;
+uniform vec2 u_drag;
+out vec4 outColor;
+
+void main() {
+  vec4 original = texture(u_tex, v_uv);
+  vec2 point = gl_FragCoord.xy;
+  vec2 from = u_path.xy;
+  vec2 delta = u_path.zw - from;
+  float lengthSquared = dot(delta, delta);
+  float t = lengthSquared > 0.0 ? clamp(dot(point - from, delta) / lengthSquared, 0.0, 1.0) : 0.0;
+  float distanceToPath = length(point - (from + delta * t));
+  if (distanceToPath >= u_radius) {
+    outColor = original;
+    return;
+  }
+  float coverage = distanceToPath <= u_core ? 1.0 : 1.0 - smoothstep(u_core, u_radius, distanceToPath);
+  float selection = 1.0;
+  if (u_useClip == 1) {
+    float inside = step(0.0, v_clip.x) * step(0.0, v_clip.y) * step(v_clip.x, 1.0) * step(v_clip.y, 1.0);
+    selection = texture(u_clipTex, v_clip).r * inside;
+  }
+  float amount = coverage * selection;
+  if (amount <= 0.0) {
+    outColor = original;
+    return;
+  }
+
+  vec2 sourceSize = vec2(textureSize(u_tex, 0));
+  vec4 effected = original;
+  if (u_mode == 0) {
+    float blurRadius = max(0.7, u_radius * 0.24);
+    vec2 stepUv = vec2(blurRadius) / sourceSize;
+    effected = original * 0.20;
+    effected += texture(u_tex, v_uv + vec2(stepUv.x, 0.0)) * 0.12;
+    effected += texture(u_tex, v_uv - vec2(stepUv.x, 0.0)) * 0.12;
+    effected += texture(u_tex, v_uv + vec2(0.0, stepUv.y)) * 0.12;
+    effected += texture(u_tex, v_uv - vec2(0.0, stepUv.y)) * 0.12;
+    effected += texture(u_tex, v_uv + stepUv) * 0.08;
+    effected += texture(u_tex, v_uv - stepUv) * 0.08;
+    effected += texture(u_tex, v_uv + vec2(stepUv.x, -stepUv.y)) * 0.08;
+    effected += texture(u_tex, v_uv + vec2(-stepUv.x, stepUv.y)) * 0.08;
+    amount *= u_strength;
+  } else if (u_mode == 1) {
+    effected = texture(u_tex, v_uv - u_drag / sourceSize);
+    amount *= u_strength;
+  } else {
+    vec2 offset = point - from;
+    float angle = u_swirlAngle * pow(max(0.0, 1.0 - distanceToPath / u_radius), 2.0);
+    float cosine = cos(angle);
+    float sine = sin(angle);
+    vec2 rotated = vec2(cosine * offset.x - sine * offset.y, sine * offset.x + cosine * offset.y);
+    effected = texture(u_tex, v_uv + (rotated - offset) / sourceSize);
+  }
+  outColor = mix(original, effected, clamp(amount, 0.0, 1.0));
+}`;
+
 /**
  * One soft-brush pass over the segments of a pointer event, identical to accumulateStrokeSegment
  * (brush.ts) per pixel: within a pass alpha is the max, a return from further along the path is
@@ -89,9 +172,15 @@ uniform float u_radius;
 uniform float u_core;
 uniform float u_edge;
 uniform float u_pass;
+uniform int u_tip;
+uniform float u_tipAngle;
+uniform float u_seed;
 layout(location = 0) out vec4 outState;
 layout(location = 1) out vec4 outPos;
 float rnd(float v) { return floor(v + 0.5); }
+float grain(vec2 p, float seed) {
+  return fract(sin(dot(floor(p) + vec2(seed, seed * 0.754877666), vec2(12.9898, 78.233))) * 43758.5453);
+}
 void main() {
   ivec2 texel = ivec2(gl_FragCoord.xy);
   vec4 st = texelFetch(u_state, texel, 0) * 255.0;
@@ -100,9 +189,8 @@ void main() {
   float pass = rnd(st.b);
   float blend = rnd(st.a);
   float position = texelFetch(u_pos, texel, 0).r;
-  vec2 p = u_origin + vec2(texel) + 0.5;
-  float r2 = u_radius * u_radius;
-  float c2 = u_core * u_core;
+  vec2 p = vec2(texel) + 0.5;
+  vec2 grainPoint = u_origin + p;
   for (int i = 0; i < 64; i++) {
     if (i >= u_count) break;
     vec4 s = u_seg[i];
@@ -112,14 +200,37 @@ void main() {
     float l2 = dot(d, d);
     float t = l2 > 0.0 ? clamp(dot(q, d) / l2, 0.0, 1.0) : 0.0;
     vec2 o = q - t * d;
-    float dist2 = dot(o, o);
-    if (dist2 > r2) continue;
+    float radius = u_radius;
+    float core = u_core;
+    float edge = u_edge;
+    float distance = length(o);
+    if (u_tip == 1 || u_tip == 3) {
+      float angle = radians(u_tip == 1 ? 45.0 : u_tipAngle);
+      vec2 nib = vec2(cos(angle), sin(angle));
+      float along = dot(o, nib);
+      float across = dot(o, vec2(-nib.y, nib.x));
+      float aspect = u_tip == 1 ? 0.28 : 0.14;
+      distance = max(abs(along), abs(across) / aspect);
+      core = max(0.0, radius - 1.0);
+      edge = max(radius - core, 1e-6);
+    } else if (u_tip == 2) {
+      radius *= 0.32;
+      core = max(0.0, radius - 1.0);
+      edge = max(radius - core, 1e-6);
+    } else if (u_tip == 4) {
+      core = min(core, radius * 0.52);
+      edge = max(radius - core, 1e-6);
+    }
+    if (distance > radius) continue;
     float alpha = 255.0;
-    if (dist2 > c2) {
-      float e = clamp((sqrt(dist2) - u_core) / u_edge, 0.0, 1.0);
+    if (distance > core) {
+      float e = clamp((distance - core) / edge, 0.0, 1.0);
       alpha = rnd(255.0 * (1.0 - e * e * (3.0 - 2.0 * e)));
       if (alpha <= 0.0) continue;
     }
+    if (u_tip == 2) alpha *= 0.9 + 0.1 * grain(grainPoint * 1.7, u_seed);
+    else if (u_tip == 4) alpha *= 0.58 + 0.42 * grain(grainPoint * 0.8, u_seed);
+    alpha = rnd(alpha);
     float at = u_len[i].x + t * (u_len[i].y - u_len[i].x);
     float gap = at - position;
     if (gap > u_pass) {
@@ -148,9 +259,11 @@ export class DrawingGpu {
   readonly gl: WebGL2RenderingContext;
   private readonly composite: WebGLProgram;
   private readonly stroke: WebGLProgram;
+  private readonly effect: WebGLProgram;
   private readonly quad: WebGLVertexArrayObject;
   private readonly compositeUniforms: Record<string, WebGLUniformLocation | null>;
   private readonly strokeUniforms: Record<string, WebGLUniformLocation | null>;
+  private readonly effectUniforms: Record<string, WebGLUniformLocation | null>;
   private readonly emptyClip: WebGLTexture;
   private scratch: GpuTexture | null = null;
   /**
@@ -168,15 +281,17 @@ export class DrawingGpu {
     if (!gl.getExtension("EXT_color_buffer_float")) throw new Error("Drawing needs float render targets (EXT_color_buffer_float).");
     this.composite = link(gl, VERTEX_SHADER, COMPOSITE_SHADER);
     this.stroke = link(gl, VERTEX_SHADER, STROKE_SHADER);
+    this.effect = link(gl, VERTEX_SHADER, EFFECT_SHADER);
     this.compositeUniforms = uniforms(gl, this.composite, ["u_dst", "u_src", "u_clip", "u_tex", "u_clipTex", "u_mode", "u_useClip", "u_color"]);
-    this.strokeUniforms = uniforms(gl, this.stroke, ["u_dst", "u_src", "u_clip", "u_state", "u_pos", "u_origin", "u_seg", "u_len", "u_count", "u_radius", "u_core", "u_edge", "u_pass"]);
+    this.strokeUniforms = uniforms(gl, this.stroke, ["u_dst", "u_src", "u_clip", "u_state", "u_pos", "u_origin", "u_seg", "u_len", "u_count", "u_radius", "u_core", "u_edge", "u_pass", "u_tip", "u_tipAngle", "u_seed"]);
+    this.effectUniforms = uniforms(gl, this.effect, ["u_dst", "u_src", "u_clip", "u_tex", "u_clipTex", "u_mode", "u_useClip", "u_path", "u_radius", "u_core", "u_strength", "u_swirlAngle", "u_drag"]);
     const vao = gl.createVertexArray();
     const buffer = gl.createBuffer();
     if (!vao || !buffer) throw new Error("Could not create the drawing quad.");
     gl.bindVertexArray(vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
-    for (const program of [this.composite, this.stroke]) {
+    for (const program of [this.composite, this.stroke, this.effect]) {
       const location = gl.getAttribLocation(program, "a_pos");
       if (location >= 0) {
         gl.enableVertexAttribArray(location);
@@ -351,6 +466,48 @@ export class DrawingGpu {
     target.mipsDirty = target.mipmapped;
   }
 
+  /** Apply one selection-clipped effect pass from a padded source texture into a drawing tile. */
+  effectPass(target: GpuTexture, source: GpuTexture, pass: DrawingEffectPass): void {
+    const gl = this.gl;
+    const u = this.effectUniforms;
+    gl.useProgram(this.effect);
+    gl.bindVertexArray(this.quad);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
+    gl.viewport(0, 0, target.width, target.height);
+    gl.enable(gl.SCISSOR_TEST);
+    gl.scissor(pass.rect.x, pass.rect.y, pass.rect.width, pass.rect.height);
+    gl.disable(gl.BLEND);
+    gl.uniform4f(u.u_dst, -1, -1, 2, 2);
+    gl.uniform4f(u.u_src, pass.sourceRect.x / source.width, pass.sourceRect.y / source.height,
+      pass.sourceRect.width / source.width, pass.sourceRect.height / source.height);
+    gl.uniform4f(u.u_path, pass.path.x, pass.path.y, pass.path.endX, pass.path.endY);
+    gl.uniform1f(u.u_radius, pass.radius);
+    gl.uniform1f(u.u_core, pass.core);
+    gl.uniform1f(u.u_strength, pass.strength);
+    gl.uniform1f(u.u_swirlAngle, pass.swirlAngle ?? 0);
+    gl.uniform2f(u.u_drag, pass.drag?.x ?? 0, pass.drag?.y ?? 0);
+    gl.uniform1i(u.u_mode, pass.mode === "blur" ? 0 : pass.mode === "smudge" ? 1 : 2);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, source.tex);
+    gl.activeTexture(gl.TEXTURE1);
+    if (pass.clip) {
+      gl.bindTexture(gl.TEXTURE_2D, pass.clip.texture);
+      gl.uniform1i(u.u_useClip, 1);
+      gl.uniform4f(u.u_clip, pass.clip.rect.x / pass.clip.width, pass.clip.rect.y / pass.clip.height,
+        pass.clip.rect.width / pass.clip.width, pass.clip.rect.height / pass.clip.height);
+    } else {
+      gl.bindTexture(gl.TEXTURE_2D, this.emptyClip);
+      gl.uniform1i(u.u_useClip, 0);
+      gl.uniform4f(u.u_clip, 0, 0, 1, 1);
+    }
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindVertexArray(null);
+    gl.disable(gl.SCISSOR_TEST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    target.mipsDirty = target.mipmapped;
+  }
+
   /** Size the visible canvas to device px; returns its backing size. */
   fitCanvas(cssWidth: number, cssHeight: number, ratio: number): { width: number; height: number } {
     const width = Math.max(1, Math.round(cssWidth * ratio));
@@ -435,6 +592,9 @@ export class DrawingGpu {
     lengths: Float32Array,
     count: number,
     brush: { radius: number; core: number; edge: number; passWindow: number },
+    tip = 0,
+    tipAngle = 45,
+    seed = 0,
     commit = true,
   ): void {
     const gl = this.gl;
@@ -464,6 +624,9 @@ export class DrawingGpu {
     gl.uniform1f(u.u_core, brush.core);
     gl.uniform1f(u.u_edge, brush.edge);
     gl.uniform1f(u.u_pass, brush.passWindow);
+    gl.uniform1i(u.u_tip, tip);
+    gl.uniform1f(u.u_tipAngle, tipAngle);
+    gl.uniform1f(u.u_seed, seed);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.disable(gl.SCISSOR_TEST);
     gl.bindVertexArray(null);

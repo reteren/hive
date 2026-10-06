@@ -39,7 +39,7 @@ describe("view settings serialization", () => {
       accessibility: { reduceAnimations: true },
       zones: { brushSize: 240 },
       drawing: {
-        brush: { color: "#336699", size: 42, opacity: 0.75, hardness: 0.4 },
+        brush: { ...DEFAULT_VIEW_SETTINGS.drawing.brush, color: "#336699", size: 42, opacity: 0.75, hardness: 0.4 },
       },
       keyOverrides: { "view.home": ["Ctrl+Alt+KeyH"], "edit.undo": [] },
       transferHintsShown: 3,
@@ -168,7 +168,7 @@ describe("view settings serialization", () => {
     const saved = serializeViewSettings(settings);
     const parsed = parseViewSettings(saved, DEFAULT_VIEW_SETTINGS);
     expect(parsed.drawing).toEqual({
-      brush: { color: "#123abc", size: 400, opacity: 0.73, hardness: 0 },
+      brush: { ...DEFAULT_VIEW_SETTINGS.drawing.brush, color: "#123abc", size: 400, opacity: 0.73, hardness: 0 },
     });
   });
 

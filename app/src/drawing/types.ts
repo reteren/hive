@@ -88,9 +88,22 @@ export interface BrushSettings {
   opacity: number;
   /** 0 (soft edge) .. 1 (hard edge). */
   hardness: number;
+  /** GPU brush shape used by the Brush tool. Missing in older saved settings. */
+  tip?: BrushTip;
+  /** Calligraphy nib orientation, degrees clockwise from horizontal (0..180). */
+  calligraphyAngle?: number;
+  /** Spray density in dots/second for a 24 px diameter brush, scaled by brush area. */
+  sprayDensity?: number;
+  /** Spray dot diameter in screen pixels. */
+  sprayDotSize?: number;
 }
 
-export const DEFAULT_BRUSH: BrushSettings = { color: "#e8e8e8", size: 10, opacity: 1, hardness: 0.85 };
+export type BrushTip = "round" | "marker" | "pencil" | "calligraphy" | "charcoal";
+
+export const DEFAULT_BRUSH: BrushSettings = {
+  color: "#e8e8e8", size: 10, opacity: 1, hardness: 0.85,
+  tip: "round", calligraphyAngle: 45, sprayDensity: 120, sprayDotSize: 3,
+};
 
 /** World rectangle in units. */
 export interface WorldRect { x: number; y: number; width: number; height: number }

@@ -4,6 +4,7 @@ import {
   levelPxPerUnit,
   type BrushSettings,
 } from "./types";
+import { brushTipShaderIndex } from "./brushes/tips";
 import { requireDrawingGpu, STROKE_SEGMENTS_PER_PASS, type StrokeStateTile } from "./gpu/glEngine";
 import type { GpuRasterSource, RasterPiece } from "./history";
 export { readRasterRect, writeRasterRect } from "./history";
@@ -86,6 +87,8 @@ export interface StrokeRasterRect {
 
 export interface DrawStroke {
   add(world: StrokePoint, pressure?: number): void;
+  /** Add independent circular dabs; unlike `add`, these are not interpolated into a connected line. */
+  addDabs(world: readonly StrokePoint[]): void;
   readonly level: number;
   readonly pixelsPerUnit: number;
   /** Straight 0..1 brush colour. */
@@ -422,6 +425,8 @@ export function createStroke(settings: BrushSettings, zoom: number, requestedLev
     size: clamp(settings.size, 1, 400, 10),
     opacity: clamp(settings.opacity, 0.05, 1, 1),
     hardness: clamp(settings.hardness, 0, 1, 0.85),
+    tip: settings.tip ?? "round",
+    calligraphyAngle: clamp(settings.calligraphyAngle ?? 45, 0, 180, 45),
   };
   const level = requestedLevel ?? strokeRasterLevel(
     brushWorldWidth(safeSettings.size, zoom) * levelPxPerUnit(currentDrawLevel(zoom)),
@@ -431,6 +436,9 @@ export function createStroke(settings: BrushSettings, zoom: number, requestedLev
   const pixelsPerUnit = levelPxPerUnit(level);
   const baseDiameter = brushWorldWidth(safeSettings.size, zoom) * pixelsPerUnit;
   const shape = brushShape(baseDiameter, safeSettings.hardness);
+  const tip = brushTipShaderIndex(safeSettings.tip);
+  const tipAngle = safeSettings.calligraphyAngle;
+  const textureSeed = nextTextureSeed++;
   const color: [number, number, number] = [
     Number.parseInt(safeSettings.color.slice(1, 3), 16) / 255,
     Number.parseInt(safeSettings.color.slice(3, 5), 16) / 255,
@@ -486,7 +494,7 @@ export function createStroke(settings: BrushSettings, zoom: number, requestedLev
    * Run the pending segments on the GPU over their bounding box. A provisional run (the tail up to
    * the pointer, redrawn on every event) only updates what the preview shows.
    */
-  function flushSegments(commit = true): void {
+  function flushSegments(commit = true, maxSegments = STROKE_SEGMENTS_PER_PASS): void {
     const count = pendingLengths.length / 2;
     if (count === 0) return;
     if (commit) dropProvisional();
@@ -496,8 +504,8 @@ export function createStroke(settings: BrushSettings, zoom: number, requestedLev
     pendingLengths = [];
     const segmentData = new Float32Array(STROKE_SEGMENTS_PER_PASS * 4);
     const lengthData = new Float32Array(STROKE_SEGMENTS_PER_PASS * 2);
-    for (let first = 0; first < count; first += STROKE_SEGMENTS_PER_PASS) {
-      const n = Math.min(STROKE_SEGMENTS_PER_PASS, count - first);
+    for (let first = 0; first < count; first += maxSegments) {
+      const n = Math.min(maxSegments, count - first);
       let left = Infinity;
       let top = Infinity;
       let right = -Infinity;
@@ -539,7 +547,7 @@ export function createStroke(settings: BrushSettings, zoom: number, requestedLev
           }
           const state = tileFor(col, row);
           const rect = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
-          gpu.strokePass(state, { x: 0, y: 0 }, rect, segmentData, lengthData, n, shape, commit);
+          gpu.strokePass(state, { x: originX, y: originY }, rect, segmentData, lengthData, n, shape, tip, tipAngle, textureSeed, commit);
           if (!commit) provisional.push({ state, rect });
         }
       }
@@ -569,6 +577,20 @@ export function createStroke(settings: BrushSettings, zoom: number, requestedLev
     }
     flushSegments();
     drawProvisionalTail();
+  }
+
+  function addDabs(world: readonly StrokePoint[]): void {
+    if (closed || world.length === 0) return;
+    lastDirtyRect = null;
+    dropProvisional();
+    for (const point of world) {
+      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) continue;
+      const raster = { x: point.x * pixelsPerUnit, y: point.y * pixelsPerUnit };
+      segment(raster, raster);
+    }
+    // Spray dabs are sparse and often far apart. Drawing each small dab bbox avoids shading the
+    // empty rectangle between random points in one large spray circle.
+    flushSegments(true, 1);
   }
 
   /** Show the stroke right up to the pointer: the last piece, drawn only into the preview buffers. */
@@ -606,6 +628,7 @@ export function createStroke(settings: BrushSettings, zoom: number, requestedLev
 
   return {
     add,
+    addDabs,
     level,
     pixelsPerUnit,
     color,
@@ -677,6 +700,8 @@ export function createStroke(settings: BrushSettings, zoom: number, requestedLev
     },
   };
 }
+
+let nextTextureSeed = 1;
 
 function safeZoom(zoom: number): number {
   return Number.isFinite(zoom) && zoom > 0 ? zoom : 1;

@@ -175,7 +175,8 @@ export function attachDrawInput(boardElement: HTMLElement): () => void {
       // Right button = eyedropper while held; release confirms the colour into the brush.
       setSelectionMoveHover(false);
       consume(event);
-      if (gesturePointerId !== null) return;
+      // R10.8: in Effects the right button does not pick a colour.
+      if (gesturePointerId !== null || drawingTools.active === "effect") return;
       eyedropperPointerId = event.pointerId;
       const point = pointerEvent(event);
       const usesCaptureOverlay = beginEyedropper(point, boardElement, event);

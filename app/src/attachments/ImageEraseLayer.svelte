@@ -29,7 +29,10 @@
       return;
     }
     if (imageErase.noteId && (!activeNote || !isErasablePhoto(activeNote))) finishImageErase();
-    if (imageErase.noteId && drawingTools.active !== "eraser") drawingTools.active = "eraser";
+    if (imageErase.noteId) {
+      const expected = imageErase.mode === "blur" ? "effect" : "eraser";
+      if (drawingTools.active !== expected) drawingTools.active = expected;
+    }
   });
 
   onMount(() => {
@@ -86,7 +89,7 @@
       activePointerId = event.pointerId;
       if (event.target instanceof Element && event.target.closest("[data-selection-ignore]")) return;
 
-      // Erasing shows on the picture right away; the file is written once, when the mode ends.
+      // Photo edits show on the working copy right away; the file is written once when the mode ends.
       stroking = beginImageEraseStroke(imageErase.noteId, worldPoint(event), camera.zoom);
     }
 
@@ -142,7 +145,7 @@
         else undoImageEraseStroke();
         return;
       }
-      if (["KeyB", "KeyF", "KeyM", "KeyL", "KeyP", "KeyT"].includes(event.code) &&
+      if (["KeyB", "KeyE", "KeyF", "KeyJ", "KeyL", "KeyM", "KeyP", "KeyT", "KeyU", "KeyY"].includes(event.code) &&
         !event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) consume(event);
     }
 

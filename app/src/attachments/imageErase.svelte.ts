@@ -5,6 +5,7 @@ import type { DrawTool } from "../drawing/types";
 import { drawingTools, setActiveDrawTool } from "../drawing/tools.svelte";
 import { brushWorldWidth } from "../drawing/brush";
 import { encodeRgbaPng } from "../drawing/png";
+import { drawingEffects } from "../drawing/effects/effectSettings.svelte";
 import { tool } from "../tools/tool.svelte";
 import { registerNoteMenuItem } from "../notes/noteMenu";
 import { attachmentUrl, importImageFile, reportImportError } from "./service";
@@ -18,20 +19,23 @@ import type { ImageRef } from "./types";
  */
 export const imageErase = $state({
   noteId: null as string | null,
+  mode: null as "erase" | "blur" | null,
   /** Bumps when the working canvas appears or goes away (ImageNodeBody swaps it in). */
   revision: 0,
 });
 
 interface EraseSession {
   noteId: string;
+  mode: "erase" | "blur";
   original: ImageRef;
   canvas: HTMLCanvasElement;
   context: CanvasRenderingContext2D;
   undo: HTMLCanvasElement[];
   redo: HTMLCanvasElement[];
+  scratch: HTMLCanvasElement | null;
   dirty: boolean;
   last: { x: number; y: number } | null;
-  stroke: { radius: number; core: number } | null;
+  stroke: { radius: number; core: number; mode: "erase" | "blur"; strength: number } | null;
 }
 
 const MAX_UNDO_STEPS = 40;
@@ -45,23 +49,24 @@ export function eraseSessionCanvas(noteId: string): HTMLCanvasElement | null {
   return session?.noteId === noteId ? session.canvas : null;
 }
 
-/** Enter a scoped image erase mode while exposing the shared brush controls. */
-export function enterImageErase(noteId: string): boolean {
+/** Enter a scoped image erase/blur mode while exposing the shared brush controls. */
+export function enterImageErase(noteId: string, mode: "erase" | "blur" = "erase"): boolean {
   const note = board.notes[noteId];
   if (!note || !isErasablePhoto(note) || !note.image) return false;
   if (imageErase.noteId === null) previousMode = { tool: tool.active, drawTool: drawingTools.active };
   imageErase.noteId = noteId;
-  setActiveDrawTool("eraser");
+  imageErase.mode = mode;
+  setActiveDrawTool(mode === "blur" ? "effect" : "eraser");
   tool.active = "draw";
   const image = note.image;
-  void committing.then(() => openSession(noteId, image)).catch((error: unknown) => {
+  void committing.then(() => openSession(noteId, image, mode)).catch((error: unknown) => {
     reportImportError(error instanceof Error ? error.message : String(error));
     finishImageErase();
   });
   return true;
 }
 
-async function openSession(noteId: string, image: ImageRef): Promise<void> {
+async function openSession(noteId: string, image: ImageRef, mode: "erase" | "blur"): Promise<void> {
   if (imageErase.noteId !== noteId) return;
   const url = attachmentUrl(image.file);
   if (!url) throw new Error(`Could not load image attachment: ${image.name ?? "Image"}`);
@@ -77,7 +82,7 @@ async function openSession(noteId: string, image: ImageRef): Promise<void> {
     const context = canvas.getContext("2d");
     if (!context) throw new Error("Could not prepare the picture for erasing.");
     context.drawImage(bitmap, 0, 0);
-    session = { noteId, original: image, canvas, context, undo: [], redo: [], dirty: false, last: null, stroke: null };
+    session = { noteId, mode, original: image, canvas, context, undo: [], redo: [], scratch: null, dirty: false, last: null, stroke: null };
     imageErase.revision += 1;
   } finally {
     bitmap.close();
@@ -124,13 +129,19 @@ export function beginImageEraseStroke(noteId: string, world: { x: number; y: num
   // Brush size is in screen px like the drawing eraser; convert to picture px.
   const radius = Math.max(0.5, brushWorldWidth(drawingTools.brush.size, zoom) / 2 * geometry.naturalWidth / geometry.width);
   const hardness = Math.min(1, Math.max(0, drawingTools.brush.hardness));
-  current.stroke = { radius, core: Math.max(0, Math.min(radius * hardness, radius - 1)) };
+  const mode = imageErase.mode === "blur" ? "blur" : "erase";
+  current.stroke = {
+    radius,
+    core: Math.max(0, Math.min(radius * hardness, radius - 1)),
+    mode,
+    strength: mode === "blur" ? drawingEffects.blurStrength : 1,
+  };
   current.last = null;
   extendImageEraseStroke(world);
   return true;
 }
 
-/** Erase along the stroke up to this world point, on screen immediately. */
+/** Apply the selected photo operation along the stroke up to this world point, on screen immediately. */
 export function extendImageEraseStroke(world: { x: number; y: number }): void {
   const current = session;
   const note = current ? board.notes[current.noteId] : undefined;
@@ -138,10 +149,7 @@ export function extendImageEraseStroke(world: { x: number; y: number }): void {
   if (!current || !current.stroke || !geometry) return;
   const point = toPicture(world, geometry);
   const from = current.last ?? point;
-  const { radius, core } = current.stroke;
-  const context = current.context;
-  context.save();
-  context.globalCompositeOperation = "destination-out";
+  const { radius, core, mode, strength } = current.stroke;
   const distance = Math.hypot(point.x - from.x, point.y - from.y);
   // Soft dabs close enough together that the edge reads as one smooth stroke.
   const spacing = Math.max(0.75, radius * 0.12);
@@ -149,18 +157,73 @@ export function extendImageEraseStroke(world: { x: number; y: number }): void {
   for (let step = current.last ? 1 : 0; step <= steps; step += 1) {
     const x = from.x + (point.x - from.x) * (step / steps);
     const y = from.y + (point.y - from.y) * (step / steps);
-    const gradient = context.createRadialGradient(x, y, core, x, y, radius);
-    gradient.addColorStop(0, "rgba(0,0,0,1)");
-    gradient.addColorStop(0.5, "rgba(0,0,0,0.5)");
-    gradient.addColorStop(1, "rgba(0,0,0,0)");
-    context.fillStyle = core >= radius - 1 ? "#000" : gradient;
-    context.beginPath();
-    context.arc(x, y, radius, 0, Math.PI * 2);
-    context.fill();
+    if (mode === "blur") blurImageDab(current, x, y, radius, core, strength);
+    else eraseImageDab(current, x, y, radius, core);
   }
-  context.restore();
   current.last = point;
-  current.dirty = true;
+  if (mode === "erase" || strength > 0) current.dirty = true;
+}
+
+function eraseImageDab(current: EraseSession, x: number, y: number, radius: number, core: number): void {
+  const context = current.context;
+  context.save();
+  context.globalCompositeOperation = "destination-out";
+  const gradient = context.createRadialGradient(x, y, core, x, y, radius);
+  gradient.addColorStop(0, "rgba(0,0,0,1)");
+  gradient.addColorStop(0.5, "rgba(0,0,0,0.5)");
+  gradient.addColorStop(1, "rgba(0,0,0,0)");
+  context.fillStyle = core >= radius - 1 ? "#000" : gradient;
+  context.beginPath();
+  context.arc(x, y, radius, 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+}
+
+function blurImageDab(current: EraseSession, x: number, y: number, radius: number, core: number, strength: number): void {
+  if (strength <= 0) return;
+  const blurRadius = Math.max(0.7, radius * 0.24);
+  const padding = Math.ceil(blurRadius * 3) + 2;
+  const reach = Math.ceil(radius + padding);
+  const left = Math.floor(x - reach);
+  const top = Math.floor(y - reach);
+  const size = reach * 2;
+  const scratch = current.scratch ?? document.createElement("canvas");
+  if (scratch.width !== size || scratch.height !== size) {
+    scratch.width = size;
+    scratch.height = size;
+  }
+  scratch.dataset.imageBlurScratch = "";
+  current.scratch = scratch;
+  const context = scratch.getContext("2d");
+  if (!context) throw new Error("Could not prepare the picture blur.");
+  context.clearRect(0, 0, size, size);
+  context.save();
+  context.filter = `blur(${blurRadius}px)`;
+  const sourceLeft = Math.max(0, left);
+  const sourceTop = Math.max(0, top);
+  const sourceRight = Math.min(current.canvas.width, left + size);
+  const sourceBottom = Math.min(current.canvas.height, top + size);
+  if (sourceRight > sourceLeft && sourceBottom > sourceTop) {
+    context.drawImage(current.canvas, sourceLeft, sourceTop, sourceRight - sourceLeft, sourceBottom - sourceTop,
+      sourceLeft - left, sourceTop - top, sourceRight - sourceLeft, sourceBottom - sourceTop);
+  }
+  context.filter = "none";
+  context.globalCompositeOperation = "destination-in";
+  const centerX = x - left;
+  const centerY = y - top;
+  const gradient = context.createRadialGradient(centerX, centerY, core, centerX, centerY, radius);
+  gradient.addColorStop(0, "rgba(0,0,0,1)");
+  gradient.addColorStop(1, "rgba(0,0,0,0)");
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, size, size);
+  context.restore();
+
+  const target = current.context;
+  target.save();
+  target.globalAlpha = Math.max(0, Math.min(1, strength));
+  target.globalCompositeOperation = "source-over";
+  target.drawImage(scratch, left, top);
+  target.restore();
 }
 
 export function endImageEraseStroke(): void {
@@ -194,6 +257,7 @@ export function redoImageEraseStroke(): boolean {
 export function finishImageErase(): void {
   if (imageErase.noteId === null) return;
   imageErase.noteId = null;
+  imageErase.mode = null;
   const ended = session;
   committing = committing.then(() => commitSession(ended)).catch((error: unknown) => {
     reportImportError(error instanceof Error ? error.message : String(error));
@@ -233,7 +297,7 @@ async function commitSession(ended: EraseSession | null): Promise<void> {
   if (!current || current.type !== "image" || current.image?.file !== before.file) return;
   updateNote(ended.noteId, { image: after });
   record({
-    label: "Erase image",
+    label: ended.mode === "blur" ? "Blur image" : "Erase image",
     target: note.name,
     do() {
       if (board.notes[ended.noteId]?.type === "image") updateNote(ended.noteId, { image: after });
@@ -258,4 +322,15 @@ registerNoteMenuItem({
     return Boolean(note && isErasablePhoto(note));
   },
   order: 13,
+});
+
+registerNoteMenuItem({
+  id: "image.blur",
+  label: () => "Blur",
+  run: (noteId) => { enterImageErase(noteId, "blur"); },
+  visible: (noteId) => {
+    const note = board.notes[noteId];
+    return Boolean(note && isErasablePhoto(note));
+  },
+  order: 14,
 });

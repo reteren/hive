@@ -52,20 +52,23 @@ let earlyBefore: TileSnapshot | null = null;
 const EARLY_COPIES_PER_MOVE = 16;
 
 function captureEarlyBefore(stroke: DrawStroke): void {
-  if (!earlyBefore || !stroke.bounds) return;
-  if (commitsInFlight > 0 || !drawingHistoryIdle()) {
-    earlyBefore = null;
-    return;
-  }
+  earlyBefore = captureStrokeBefore(stroke, earlyBefore);
+}
+
+/** Incrementally snapshot tiles before a long live stroke reaches them. */
+export function captureStrokeBefore(stroke: DrawStroke, current: TileSnapshot | null): TileSnapshot | null {
+  if (!current || !stroke.bounds) return current;
+  if (commitsInFlight > 0 || !drawingHistoryIdle()) return null;
   const bounds = stroke.bounds;
   const keys = affectedTileKeys(rasterRectToWorld(bounds.x, bounds.y, bounds.width, bounds.height, stroke.level), stroke.level, "paint");
   const missing: TileKey[] = [];
   for (const key of keys) {
-    if (earlyBefore.has(key)) continue;
+    if (current.has(key)) continue;
     missing.push(key);
     if (missing.length >= EARLY_COPIES_PER_MOVE) break;
   }
-  if (missing.length) for (const [key, copy] of drawingTileStore.snapshotNow(missing)) earlyBefore.set(key, copy);
+  if (missing.length) for (const [key, copy] of drawingTileStore.snapshotNow(missing)) current.set(key, copy);
+  return current;
 }
 
 /** Begin a brush gesture; the actual paint is committed as one action on endStroke. */
@@ -102,10 +105,21 @@ export async function endStroke(): Promise<void> {
     stroke.dispose();
     return;
   }
-  const selection = drawingSelection.area;
-  const rect = rasterRectToWorld(finished.rasterX, finished.rasterY, finished.width, finished.height, finished.level);
   const early = earlyBefore;
   earlyBefore = null;
+  await commitFinishedStroke(stroke, finished, settings, "Draw", drawingSelection.area, early);
+}
+
+/** Commit brush or spray output through the same queue so rapid tool switches keep Undo ordered. */
+export async function commitFinishedStroke(
+  stroke: DrawStroke,
+  finished: NonNullable<ReturnType<DrawStroke["finish"]>>,
+  settings: BrushSettings,
+  label: string,
+  selection: typeof drawingSelection.area,
+  early: TileSnapshot | null = null,
+): Promise<void> {
+  const rect = rasterRectToWorld(finished.rasterX, finished.rasterY, finished.width, finished.height, finished.level);
   commitsInFlight += 1;
   const operation = commitQueue.then(async () => {
     try {
@@ -123,7 +137,7 @@ export async function endStroke(): Promise<void> {
       const changed = applyAcrossLevels(finished.source, finished.rasterX, finished.rasterY, finished.level, "paint", settings.opacity, selection);
       // The live preview stays until the paint is in the tiles, so the stroke never blinks out.
       hideStrokePreview(stroke);
-      if (changed.length > 0) pushDrawingHistory("Draw", before, changed);
+      if (changed.length > 0) pushDrawingHistory(label, before, changed);
     } catch (error) {
       console.error("Could not finish drawing stroke", error);
       throw error;
