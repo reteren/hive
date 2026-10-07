@@ -1,7 +1,7 @@
 import { PX_PER_UNIT } from "../../board/cameraMath";
 import type { BrushSettings } from "../types";
 import { levelPxPerUnit } from "../types";
-import { rotatedShapeBounds, shapeCenter, shapeSize, traceClosedShape, type ShapeDraft, type ShapeFillMode } from "./shapeGeometry";
+import { localLineEnds, rotatedShapeBounds, shapeCenter, shapeSize, traceClosedShape, type ShapeDraft, type ShapeFillMode } from "./shapeGeometry";
 
 export interface RasterizedShape {
   canvas: HTMLCanvasElement;
@@ -65,10 +65,7 @@ export function rasterizeShape(draft: ShapeDraft, options: ShapeRasterOptions): 
   const shapeHeight = size.height * ppu;
   const lineLike = draft.kind === "line" || draft.kind === "arrow";
   if (lineLike) {
-    const x1 = draft.flipX ? shapeWidth / 2 : -shapeWidth / 2;
-    const y1 = draft.flipY ? shapeHeight / 2 : -shapeHeight / 2;
-    const x2 = -x1;
-    const y2 = -y1;
+    const { x1, y1, x2, y2 } = localLineEnds(shapeWidth, shapeHeight);
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);

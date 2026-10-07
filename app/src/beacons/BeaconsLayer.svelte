@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isScreenColorPicking } from "../color/screenPicker.svelte";
   import { onMount, tick } from "svelte";
   import { board, updateNote } from "../model/board.svelte";
   import HexColorPicker from "../color/HexColorPicker.svelte";
@@ -61,13 +62,15 @@
 
   onMount(() => {
     function onPointerDown(event: PointerEvent): void {
+      // The palette's eyedropper overlay takes the click; the editor stays open.
+      if (isScreenColorPicking()) return;
       if (beaconEditor.noteId && event.target instanceof Element && !event.target.closest("[data-beacon-editor]")) {
         if (beaconEditor.mode === "color") endColorSession(true);
         closeBeaconEditor();
       }
     }
     function onKeyDown(event: KeyboardEvent): void {
-      if (event.key !== "Escape" || !beaconEditor.noteId) return;
+      if (event.key !== "Escape" || !beaconEditor.noteId || isScreenColorPicking()) return;
       if (beaconEditor.mode === "color") cancelColor();
       else closeBeaconEditor();
       event.preventDefault();

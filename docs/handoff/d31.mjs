@@ -1,0 +1,65 @@
+import { writeFileSync } from "node:fs";
+const OUT = "C:/Users/reteren/AppData/Local/Temp/claude";
+const page = (await fetch(`http://localhost:9334/json/list`).then((r) => r.json())).find((t) => t.type === "page" && t.url.includes("1450"));
+const ws = new WebSocket(page.webSocketDebuggerUrl); let id = 0; const pending = new Map(); const errors = [];
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.method === "Runtime.exceptionThrown") errors.push(m.params.exceptionDetails.exception?.description?.slice(0, 220)); if (pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+await new Promise((r) => (ws.onopen = r));
+const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+await send("Runtime.enable");
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const ev = async (expression) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); return r.result?.result?.value ?? r.result?.exceptionDetails?.exception?.description; };
+const mouse = (type, x, y) => send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" ? "none" : "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: type === "mouseMoved" ? 0 : 1 });
+const click = async (x, y) => { await mouse("mouseMoved", x, y); await mouse("mousePressed", x, y); await mouse("mouseReleased", x, y); await wait(300); };
+const key = async (k, code, vk, modifiers = 0) => { await send("Input.dispatchKeyEvent", { type: "keyDown", key: k, code, windowsVirtualKeyCode: vk, modifiers }); await send("Input.dispatchKeyEvent", { type: "keyUp", key: k, code, windowsVirtualKeyCode: vk, modifiers }); await wait(250); };
+const shot = async (n) => writeFileSync(`${OUT}/${n}.png`, Buffer.from((await send("Page.captureScreenshot", { format: "png" })).result.data, "base64"));
+const alphaAt = (sx, sy) => ev(`(async()=>{const cam=await import('/src/board/camera.svelte.ts');const cm=await import('/src/board/cameraMath.ts');const h=await import('/src/drawing/history.ts');const t=await import('/src/drawing/types.ts');const b=document.querySelector('.board').getBoundingClientRect();const w=cm.screenToWorld(cam.camera,cam.viewport??(await import('/src/board/camera.svelte.ts')).viewport,{x:${sx}-b.left,y:${sy}-b.top});const px=Math.floor(w.x*t.DRAW_PX_PER_UNIT),py=Math.floor(w.y*t.DRAW_PX_PER_UNIT);const img=h.readRasterRect(px,py,1,1);return img.data[3]})()`);
+const drag = async (pts, mods = 0) => { await mouse("mouseMoved", pts[0][0], pts[0][1]); await send("Input.dispatchMouseEvent", { type: "mousePressed", x: pts[0][0], y: pts[0][1], button: "left", buttons: 1, clickCount: 1, modifiers: mods }); for (const [x, y] of pts.slice(1)) { await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y, button: "left", buttons: 1, modifiers: mods }); await wait(10); } const l = pts.at(-1); await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: l[0], y: l[1], button: "left", buttons: 0, clickCount: 1, modifiers: mods }); await wait(600); };
+const line = (x1, y1, x2, y2, n = 16) => Array.from({ length: n + 1 }, (_, i) => [x1 + (x2 - x1) * i / n, y1 + (y2 - y1) * i / n]);
+const sel = () => ev(`(async()=>{const a=(await import('/src/drawing/selection.svelte.ts')).drawingSelection.area;return a?a.x+','+a.y+' '+a.width+'x'+a.height:'none'})()`);
+const hist = () => ev(`(async()=>{const h=await import('/src/history/history.svelte.ts');return h.history.entries.length+':'+(h.history.entries.at(-1)?.label??'')})()`);
+const countInk = (x, y, w, h) => ev(`(async()=>{const cam=await import('/src/board/camera.svelte.ts');const cm=await import('/src/board/cameraMath.ts');const hh=await import('/src/drawing/history.ts');const t=await import('/src/drawing/types.ts');const b=document.querySelector('.board').getBoundingClientRect();const a=cm.screenToWorld(cam.camera,cam.viewport,{x:${x}-b.left,y:${y}-b.top});const c=cm.screenToWorld(cam.camera,cam.viewport,{x:${x+w}-b.left,y:${y+h}-b.top});const px=Math.floor(a.x*t.DRAW_PX_PER_UNIT),py=Math.floor(a.y*t.DRAW_PX_PER_UNIT),pw=Math.max(1,Math.floor((c.x-a.x)*t.DRAW_PX_PER_UNIT)),ph=Math.max(1,Math.floor((c.y-a.y)*t.DRAW_PX_PER_UNIT));const img=hh.readRasterRect(px,py,pw,ph);let n=0;for(let i=3;i<img.data.length;i+=4)if(img.data[i]>8)n++;return n})()`);
+const frameProbe = async (fn) => { await ev(`window.__ft=[];(function loop(t){window.__ft.push(t);window.__fr=requestAnimationFrame(loop)})(performance.now())`); await fn(); return ev(`(()=>{cancelAnimationFrame(window.__fr);const f=window.__ft;const d=f.slice(1).map((t,i)=>t-f[i]);d.sort((a,b)=>a-b);return 'frames '+d.length+' median '+d[Math.floor(d.length/2)].toFixed(1)+'ms p95 '+d[Math.floor(d.length*0.95)].toFixed(1)+'ms'})()`); };
+const tool = (id) => ev(`(async()=>{const m=await import('/src/drawing/tools.svelte.ts');(m.setDrawingTool??m.selectDrawingTool??((x)=>{m.drawingTools.active=x}))('${id}');return m.drawingTools.active})()`);
+const pick = (sel) => ev(`(()=>{document.querySelector('${sel}')?.click();return 1})()`);
+const press = (x, y) => send("Input.dispatchMouseEvent",{type:"mousePressed",x,y,button:"left",buttons:1,clickCount:1});
+const release = (x, y) => send("Input.dispatchMouseEvent",{type:"mouseReleased",x,y,button:"left",buttons:0,clickCount:1});
+await send("Page.reload"); await wait(2500);
+await ev(`(async()=>{const c=await import('/src/board/camera.svelte.ts');c.camera.zoom=1;c.camera.x=0;c.camera.y=0;(await import('/src/history/history.svelte.ts')).clear()})()`);
+await mouse("mouseMoved", 700, 500); await key("d", "KeyD", 68, 2);
+await ev(`(async()=>{(await import('/src/drawing/tools.svelte.ts')).setBrushSettings({size:8,hardness:1,opacity:1,color:'#ff5050'})})()`);
+await key("u", "KeyU", 85); await pick('[data-shape-kind="arrow"]'); await wait(150);
+// arrow from (1000,200) towards lower-left at ~30° below horizontal
+await drag(line(1000, 200, 760, 340, 12));
+await shot("d31-arrow-preview");
+// second shape started by one press away from the first
+await pick('[data-shape-kind="line"]');
+const h1 = await hist();
+await drag(line(400, 600, 560, 520, 10));
+console.log("after 2nd press: hist", h1, "->", await hist(), "| draft present", await ev(`(async()=>!!(await import('/src/drawing/shapes/state.svelte.ts')).shapeUi.draft)()`));
+await key("Enter", "Enter", 13); await wait(600);
+console.log("arrow ink at start(1000,200)", await countInk(995,195,10,10), "| at mid", await countInk(875,265,10,10), "| mirrored spot (1000,340)", await countInk(990,330,20,20), "| line mid (480,560)", await countInk(475,555,10,10));
+await shot("d31-shapes");
+// spray look
+await ev(`(async()=>{(await import('/src/drawing/tools.svelte.ts')).setBrushSettings({size:60,sprayDotSize:6})})()`);
+await key("y", "KeyY", 89);
+await mouse("mouseMoved", 300, 300); await press(300, 300); await wait(900); await release(300, 300); await wait(500);
+await shot("d31-spray");
+// blur a stroke, then swirl with a small brush for 3 s
+await key("b", "KeyB", 66);
+await ev(`(async()=>{(await import('/src/drawing/tools.svelte.ts')).setBrushSettings({size:14,sprayDotSize:3})})()`);
+for (let i = 0; i < 4; i++) await drag(line(600, 420 + i * 8, 760, 420 + i * 8, 10));
+await key("j", "KeyJ", 74); await pick('[data-effect-choice="blur"]'); await wait(100);
+await ev(`(async()=>{(await import('/src/drawing/tools.svelte.ts')).setBrushSettings({size:60})})()`);
+for (let i = 0; i < 3; i++) await drag(line(600, 430, 760, 430, 20));
+await pick('[data-effect-choice="swirl"]');
+await ev(`(async()=>{(await import('/src/drawing/tools.svelte.ts')).setBrushSettings({size:24})})()`);
+const read = () => ev(`(async()=>{const cam=await import('/src/board/camera.svelte.ts');const cm=await import('/src/board/cameraMath.ts');const hh=await import('/src/drawing/history.ts');const t=await import('/src/drawing/types.ts');const b=document.querySelector('.board').getBoundingClientRect();const a=cm.screenToWorld(cam.camera,cam.viewport,{x:668-b.left,y:418-b.top});const px=Math.floor(a.x*t.DRAW_PX_PER_UNIT),py=Math.floor(a.y*t.DRAW_PX_PER_UNIT);const img=hh.readRasterRect(px,py,48,48);let s=0;for(let i=0;i<img.data.length;i+=4)s=(s*31+img.data[i+3])>>>0;return s})()`);
+const s0 = await read();
+await mouse("mouseMoved", 680, 430); await press(680, 430);
+const sums = [];
+for (let i = 0; i < 6; i++) { await wait(500); sums.push(await read()); }
+await release(680, 430); await wait(600);
+console.log("swirl small brush on blurred area: before", s0, "| every 0.5 s", sums.join(" "), "| all different:", new Set([s0, ...sums]).size === 7, "| hist", await hist());
+await shot("d31-swirl");
+console.log("errors:", errors.slice(0,5));
+process.exit(0);

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isScreenColorPicking } from "../color/screenPicker.svelte";
   import HexColorPicker from "../color/HexColorPicker.svelte";
   import { onMount, tick } from "svelte";
   import { flip } from "svelte/animate";
@@ -181,7 +182,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
 
   onMount(() => {
     const onDocumentPointerDown = (event: PointerEvent): void => {
-      if (!(event.target instanceof Element)) return;
+      if (!(event.target instanceof Element) || isScreenColorPicking()) return;
       if (!root?.contains(event.target) || !event.target.closest(".tier-context-menu")) {
         finishTierlistColor(true);
         contextRowId = null;

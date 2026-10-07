@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isScreenColorPicking } from "../color/screenPicker.svelte";
   import type { CustomMark } from "../model/nodeData";
   import { updateNote } from "../model/board.svelte";
   import { liveColorSession, type LiveColorSession } from "../color/liveColor";
@@ -113,6 +114,7 @@
   $effect(() => {
     if (!colorOpen) return;
     const onPointerDown = (event: PointerEvent): void => {
+      if (isScreenColorPicking()) return;
       if (!(event.target instanceof Element)) {
         finishColorSession(true);
         return;
@@ -121,7 +123,7 @@
       finishColorSession(true, Boolean(event.target.closest("[data-markas-add]")));
     };
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || isScreenColorPicking()) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       finishColorSession(false);

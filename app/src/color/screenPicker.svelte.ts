@@ -138,9 +138,16 @@ export function pickScreenColor(): Promise<string | null> {
       }
       if (event.button !== 0) return;
       queue(event.clientX, event.clientY);
-      void settled().then(() => finish(color));
     });
-    overlay.addEventListener("pointerup", stop);
+    // The colour is taken on release: closing on press let the release and its click fall through
+    // to whatever was under the overlay (a board click that closed the colour popover).
+    overlay.addEventListener("pointerup", (event) => {
+      stop(event);
+      if (event.button !== 0) return;
+      queue(event.clientX, event.clientY);
+      // A task later, so this release's mouseup and click still land on the overlay.
+      void settled().then(() => setTimeout(() => finish(color), 0));
+    });
     overlay.addEventListener("click", stop);
     overlay.addEventListener("contextmenu", stop);
     overlay.addEventListener("wheel", stop, { passive: false });

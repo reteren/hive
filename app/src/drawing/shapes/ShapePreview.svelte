@@ -5,7 +5,7 @@
   import { PX_PER_UNIT } from "../../board/cameraMath";
   import { drawingTools } from "../tools.svelte";
   import { shapeSettings, shapeUi } from "./state.svelte";
-  import { shapeCenter, shapeSize, traceClosedShape, type ShapeDraft } from "./shapeGeometry";
+  import { isLineShape, lineEndpoints, localLineEnds, shapeCenter, shapeSize, traceClosedShape, type ShapeDraft } from "./shapeGeometry";
 
   let scheduleRender: (() => void) | null = null;
 
@@ -116,10 +116,7 @@
     ctx.lineJoin = "round";
 
     if (lineLike) {
-      const x1 = draft.flipX ? width / 2 : -width / 2;
-      const y1 = draft.flipY ? height / 2 : -height / 2;
-      const x2 = -x1;
-      const y2 = -y1;
+      const { x1, y1, x2, y2 } = localLineEnds(width, height);
       ctx.beginPath();
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
@@ -159,6 +156,21 @@
     clientPoint: (x: number, y: number) => { x: number; y: number },
     screenScale: number,
   ): void {
+    if (isLineShape(draft.kind)) {
+      // Lines and arrows have no frame: a round handle on each end.
+      const { start, end } = lineEndpoints(draft);
+      for (const point of [start, end]) {
+        const at = clientPoint(point.x, point.y);
+        ctx.beginPath();
+        ctx.arc(at.x, at.y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = "#fff";
+        ctx.fill();
+        ctx.strokeStyle = "#262626";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+      return;
+    }
     const centerWorld = shapeCenter(draft);
     const center = clientPoint(centerWorld.x, centerWorld.y);
     const size = shapeSize(draft);

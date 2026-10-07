@@ -27,16 +27,15 @@ export function shapeDraftFromDrag(
   current: ShapePoint,
   modifiers: { shift: boolean; alt: boolean },
 ): ShapeDraft {
+  if (isLineShape(kind)) {
+    // Lines run from the press to the pointer; Alt mirrors the start around the press point.
+    const end = modifiers.shift ? snapLineEnd(start, current) : current;
+    const from = modifiers.alt ? { x: 2 * start.x - end.x, y: 2 * start.y - end.y } : start;
+    return lineDraft(kind, from, end);
+  }
   let dx = current.x - start.x;
   let dy = current.y - start.y;
-  if (kind === "line" || kind === "arrow") {
-    if (modifiers.shift) {
-      const length = Math.hypot(dx, dy);
-      const angle = Math.round(Math.atan2(dy, dx) / (Math.PI / 12)) * (Math.PI / 12);
-      dx = Math.cos(angle) * length;
-      dy = Math.sin(angle) * length;
-    }
-  } else if (modifiers.shift) {
+  if (modifiers.shift) {
     const side = Math.max(Math.abs(dx), Math.abs(dy));
     dx = Math.sign(dx || 1) * side;
     dy = Math.sign(dy || 1) * side;
@@ -57,6 +56,49 @@ export function shapeDraftFromDrag(
     flipX: dx < 0,
     flipY: dy < 0,
   };
+}
+
+export function isLineShape(kind: ShapeKind): boolean {
+  return kind === "line" || kind === "arrow";
+}
+
+/** Snap `point` around `anchor` to 15° steps (Shift for lines and arrows). */
+export function snapLineEnd(anchor: ShapePoint, point: ShapePoint): ShapePoint {
+  const length = Math.hypot(point.x - anchor.x, point.y - anchor.y);
+  const angle = Math.round(Math.atan2(point.y - anchor.y, point.x - anchor.x) / (Math.PI / 12)) * (Math.PI / 12);
+  return { x: anchor.x + Math.cos(angle) * length, y: anchor.y + Math.sin(angle) * length };
+}
+
+/** A line/arrow draft that runs from `start` to `end` (the arrow head sits at `end`). */
+export function lineDraft(kind: ShapeKind, start: ShapePoint, end: ShapePoint): ShapeDraft {
+  return {
+    kind,
+    left: Math.min(start.x, end.x),
+    top: Math.min(start.y, end.y),
+    right: Math.max(start.x, end.x),
+    bottom: Math.max(start.y, end.y),
+    rotation: 0,
+    flipX: end.x < start.x,
+    flipY: end.y < start.y,
+  };
+}
+
+/** World start and end of a line/arrow draft. */
+export function lineEndpoints(draft: ShapeDraft): { start: ShapePoint; end: ShapePoint } {
+  const center = shapeCenter(draft);
+  const halfX = (draft.right - draft.left) / 2 * (draft.flipX ? -1 : 1);
+  const halfY = (draft.bottom - draft.top) / 2 * (draft.flipY ? -1 : 1);
+  return {
+    start: rotatePoint({ x: center.x - halfX, y: center.y - halfY }, center, draft.rotation),
+    end: rotatePoint({ x: center.x + halfX, y: center.y + halfY }, center, draft.rotation),
+  };
+}
+
+/** Line endpoints in the local frame used by the renderers (origin = centre, before the flip scale). */
+export function localLineEnds(width: number, height: number): { x1: number; y1: number; x2: number; y2: number } {
+  // The canvas is already mirrored by the draft's flips, so the unflipped diagonal lands on the
+  // real start → end direction (flipping here as well drew lines dragged left-down mirrored).
+  return { x1: -width / 2, y1: -height / 2, x2: width / 2, y2: height / 2 };
 }
 
 export function shapeCenter(draft: ShapeDraft): ShapePoint {

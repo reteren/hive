@@ -7,7 +7,7 @@ import { registerDrawTool } from "../toolRegistry";
 import type { DrawPointerEvent, DrawToolHandler } from "../types";
 import { currentDrawLevel } from "../types";
 import { drawingTools } from "../tools.svelte";
-import { editShapeDraft, shapeCenter, shapeDraftFromDrag, shapeSize, worldToLocal, type ShapeDraft, type ShapePoint } from "./shapeGeometry";
+import { editShapeDraft, isLineShape, lineDraft, lineEndpoints, shapeCenter, shapeDraftFromDrag, shapeSize, snapLineEnd, worldToLocal, type ShapeDraft, type ShapePoint } from "./shapeGeometry";
 import { rasterizeShape } from "./rasterize";
 import { shapeSettings, shapeUi } from "./state.svelte";
 
@@ -15,7 +15,8 @@ type Gesture =
   | { kind: "create"; start: ShapePoint; shape: ShapeDraft["kind"] }
   | { kind: "move"; startDraft: ShapeDraft; startLocal: ShapePoint }
   | { kind: "resize"; startDraft: ShapeDraft; startLocal: ShapePoint; handle: number }
-  | { kind: "rotate"; startDraft: ShapeDraft; startAngle: number };
+  | { kind: "rotate"; startDraft: ShapeDraft; startAngle: number }
+  | { kind: "line-end"; startDraft: ShapeDraft; fixed: ShapePoint; movesStart: boolean };
 
 let gesture: Gesture | null = null;
 let ignorePointerUp = false;
@@ -28,20 +29,16 @@ export const shapeToolHandler: DrawToolHandler = {
     if (draft) {
       const action = hitTest(draft, event);
       if (!action) {
-        ignorePointerUp = true;
+        // A press away from the shape commits it and already starts the next one.
         void commitShape();
+      } else if (action.kind === "line-end") {
+        const ends = lineEndpoints(draft);
+        gesture = { kind: "line-end", startDraft: { ...draft }, fixed: action.start ? ends.end : ends.start, movesStart: action.start };
+        return;
+      } else {
+        startEdit(draft, action, event);
         return;
       }
-      const local = worldToLocal(event.world, draft);
-      if (action.kind === "rotate") {
-        const center = shapeCenter(draft);
-        gesture = { kind: "rotate", startDraft: { ...draft }, startAngle: Math.atan2(event.world.y - center.y, event.world.x - center.x) };
-      } else if (action.kind === "resize") {
-        gesture = { kind: "resize", startDraft: { ...draft }, startLocal: local, handle: action.handle };
-      } else {
-        gesture = { kind: "move", startDraft: { ...draft }, startLocal: local };
-      }
-      return;
     }
     gesture = { kind: "create", start: { ...event.world }, shape: shapeSettings.kind };
     shapeUi.draft = shapeDraftFromDrag(shapeSettings.kind, event.world, event.world, event);
@@ -55,6 +52,11 @@ export const shapeToolHandler: DrawToolHandler = {
       return;
     }
     const startDraft = gesture.startDraft;
+    if (gesture.kind === "line-end") {
+      const moved = event.shift ? snapLineEnd(gesture.fixed, event.world) : { ...event.world };
+      shapeUi.draft = gesture.movesStart ? lineDraft(startDraft.kind, moved, gesture.fixed) : lineDraft(startDraft.kind, gesture.fixed, moved);
+      return;
+    }
     if (gesture.kind === "move") {
       shapeUi.draft = editShapeDraft(startDraft, worldToLocal(event.world, startDraft), { kind: "move" }, startDraft, gesture.startLocal);
     } else if (gesture.kind === "resize") {
@@ -139,11 +141,30 @@ async function commitShape(): Promise<void> {
   }
 }
 
-type HitAction = { kind: "move" } | { kind: "resize"; handle: number } | { kind: "rotate" };
+type HitAction = { kind: "move" } | { kind: "resize"; handle: number } | { kind: "rotate" } | { kind: "line-end"; start: boolean };
+
+function startEdit(draft: ShapeDraft, action: Exclude<HitAction, { kind: "line-end" }>, event: DrawPointerEvent): void {
+  const local = worldToLocal(event.world, draft);
+  if (action.kind === "rotate") {
+    const center = shapeCenter(draft);
+    gesture = { kind: "rotate", startDraft: { ...draft }, startAngle: Math.atan2(event.world.y - center.y, event.world.x - center.x) };
+  } else if (action.kind === "resize") {
+    gesture = { kind: "resize", startDraft: { ...draft }, startLocal: local, handle: action.handle };
+  } else {
+    gesture = { kind: "move", startDraft: { ...draft }, startLocal: local };
+  }
+}
 
 function hitTest(draft: ShapeDraft, event: DrawPointerEvent): HitAction | null {
   const scale = Math.max(0.05, event.zoom) * PX_PER_UNIT;
   const tolerance = 10 / scale;
+  if (isLineShape(draft.kind)) {
+    const { start, end } = lineEndpoints(draft);
+    if (distance(end, event.world) <= tolerance) return { kind: "line-end", start: false };
+    if (distance(start, event.world) <= tolerance) return { kind: "line-end", start: true };
+    const reach = Math.max(tolerance, drawingTools.brush.size / 2 / scale + 4 / scale);
+    return distanceToSegment(event.world, start, end) <= reach ? { kind: "move" } : null;
+  }
   const center = shapeCenter(draft);
   const width = Math.max(draft.right - draft.left, 12 / scale);
   const height = Math.max(draft.bottom - draft.top, 12 / scale);
@@ -179,6 +200,14 @@ function rotateAround(point: ShapePoint, center: ShapePoint, angle: number): Sha
   const dx = point.x - center.x;
   const dy = point.y - center.y;
   return { x: center.x + dx * Math.cos(angle) - dy * Math.sin(angle), y: center.y + dx * Math.sin(angle) + dy * Math.cos(angle) };
+}
+
+function distanceToSegment(point: ShapePoint, a: ShapePoint, b: ShapePoint): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lengthSquared = dx * dx + dy * dy;
+  const t = lengthSquared > 0 ? Math.min(1, Math.max(0, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared)) : 0;
+  return Math.hypot(point.x - (a.x + dx * t), point.y - (a.y + dy * t));
 }
 
 function distance(a: ShapePoint, b: ShapePoint): number {

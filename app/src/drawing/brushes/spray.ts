@@ -1,10 +1,10 @@
-import { createStroke, type DrawStroke } from "../brush";
+import { brushWorldWidth, createStroke, type DrawStroke } from "../brush";
 import { currentDrawLevel, type BrushSettings, type DrawPointerEvent, type DrawToolHandler, type TileSnapshot } from "../types";
 import { drawingSelection } from "../selection.svelte";
 import { drawingTools } from "../tools.svelte";
 import { registerDrawTool } from "../toolRegistry";
 import { captureStrokeBefore, commitFinishedStroke, hideStrokePreview, showStrokePreview } from "../stroke.svelte";
-import { createSeededRandom, newSpraySeed, randomSprayDabs, sprayRate } from "./sprayMath";
+import { createSeededRandom, newSpraySeed, randomSprayDabs, sprayBlobs, sprayRate, SPRAY_BASE_DOT } from "./sprayMath";
 
 let activeStroke: DrawStroke | null = null;
 let activeSettings: BrushSettings | null = null;
@@ -22,14 +22,9 @@ function publish(): void {
 
 function emit(count: number): void {
   if (!activeStroke || !activeSettings || !latest || !random || count <= 0) return;
-  const points = randomSprayDabs(
-    latest.world,
-    activeSettings.size,
-    activeSettings.sprayDotSize ?? 3,
-    count,
-    random,
-  );
-  activeStroke.addDabs(points);
+  const dotSize = activeSettings.sprayDotSize ?? 3;
+  const centers = randomSprayDabs(latest.world, activeSettings.size, dotSize, count, random);
+  activeStroke.addDabs(sprayBlobs(centers, brushWorldWidth(dotSize, latest.zoom), random));
   before = captureStrokeBefore(activeStroke, before);
   publish();
 }
@@ -59,7 +54,7 @@ function begin(event: DrawPointerEvent): void {
   const settings = { ...requested, sprayDotSize: Math.min(requested.sprayDotSize ?? 3, requested.size) };
   activeSettings = settings;
   const level = currentDrawLevel(event.zoom);
-  const dotSettings: BrushSettings = { ...settings, size: settings.sprayDotSize ?? 3, tip: "round" };
+  const dotSettings: BrushSettings = { ...settings, size: Math.max(1, (settings.sprayDotSize ?? 3) * SPRAY_BASE_DOT), tip: "round" };
   activeStroke = createStroke(dotSettings, event.zoom, level);
   latest = event;
   random = createSeededRandom(newSpraySeed());

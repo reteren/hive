@@ -9,6 +9,14 @@ import { requireDrawingGpu, STROKE_SEGMENTS_PER_PASS, type StrokeStateTile } fro
 import type { GpuRasterSource, RasterPiece } from "./history";
 export { readRasterRect, writeRasterRect } from "./history";
 
+/** One spray dab: a dot at x/y, or a short capsule to x + dx, y + dy. */
+export interface SprayDab {
+  x: number;
+  y: number;
+  dx?: number;
+  dy?: number;
+}
+
 export interface StrokePoint {
   x: number;
   y: number;
@@ -88,7 +96,8 @@ export interface StrokeRasterRect {
 export interface DrawStroke {
   add(world: StrokePoint, pressure?: number): void;
   /** Add independent circular dabs; unlike `add`, these are not interpolated into a connected line. */
-  addDabs(world: readonly StrokePoint[]): void;
+  /** Separate dabs; `dx`/`dy` (world units) stretch a dab into a short capsule. */
+  addDabs(world: readonly SprayDab[]): void;
   readonly level: number;
   readonly pixelsPerUnit: number;
   /** Straight 0..1 brush colour. */
@@ -579,14 +588,16 @@ export function createStroke(settings: BrushSettings, zoom: number, requestedLev
     drawProvisionalTail();
   }
 
-  function addDabs(world: readonly StrokePoint[]): void {
+  function addDabs(world: readonly SprayDab[]): void {
     if (closed || world.length === 0) return;
     lastDirtyRect = null;
     dropProvisional();
     for (const point of world) {
       if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) continue;
       const raster = { x: point.x * pixelsPerUnit, y: point.y * pixelsPerUnit };
-      segment(raster, raster);
+      const dx = Number.isFinite(point.dx) ? point.dx! * pixelsPerUnit : 0;
+      const dy = Number.isFinite(point.dy) ? point.dy! * pixelsPerUnit : 0;
+      segment(raster, { x: raster.x + dx, y: raster.y + dy });
     }
     // Spray dabs are sparse and often far apart. Drawing each small dab bbox avoids shading the
     // empty rectangle between random points in one large spray circle.

@@ -1,4 +1,4 @@
-import type { StrokePoint } from "../brush";
+import type { SprayDab, StrokePoint } from "../brush";
 
 /** Xorshift32 generator; the stroke owns one instance so dot placement is repeatable. */
 export function createSeededRandom(seed: number): () => number {
@@ -51,4 +51,30 @@ export function newSpraySeed(): number {
     return crypto.getRandomValues(new Uint32Array(1))[0] ?? 1;
   }
   return Math.floor(Math.random() * 0xffff_ffff) || 1;
+}
+
+/** The rendered dab is this fraction of the chosen dot size; stretched and paired dabs grow from it. */
+export const SPRAY_BASE_DOT = 0.7;
+
+/**
+ * Turn dot centres into irregular blobs of varied size: each dot is a short capsule of random
+ * length and direction, and about a third get a second, offset dab that makes a bigger lump.
+ * `dotWorld` is the chosen dot diameter in world units.
+ */
+export function sprayBlobs(centers: readonly StrokePoint[], dotWorld: number, random: () => number): SprayDab[] {
+  const dabs: SprayDab[] = [];
+  const base = Math.max(0, dotWorld) * SPRAY_BASE_DOT;
+  for (const center of centers) {
+    const stretch = base * (0.1 + random() * 0.7);
+    const angle = random() * Math.PI * 2;
+    const dx = Math.cos(angle) * stretch;
+    const dy = Math.sin(angle) * stretch;
+    dabs.push({ x: center.x - dx / 2, y: center.y - dy / 2, dx, dy });
+    if (random() < 0.33) {
+      const offsetAngle = random() * Math.PI * 2;
+      const offset = base * (0.3 + random() * 0.3);
+      dabs.push({ x: center.x + Math.cos(offsetAngle) * offset, y: center.y + Math.sin(offsetAngle) * offset });
+    }
+  }
+  return dabs;
 }
