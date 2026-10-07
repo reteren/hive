@@ -1,5 +1,7 @@
 mod attachments;
 mod backup;
+mod board_store;
+mod board_watch;
 mod capture;
 mod drawing;
 mod export;

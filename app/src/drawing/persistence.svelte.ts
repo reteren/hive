@@ -8,6 +8,9 @@ import {
   type TileKey,
 } from "./types";
 import { project } from "../project/project.svelte";
+import { isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { clear as clearHistory } from "../history/history.svelte";
 
 const SAVE_DEBOUNCE_MS = 300;
 
@@ -109,8 +112,30 @@ export function startDrawingPersistence(): () => void {
     });
   });
 
+  /** Tiles changed on disk from outside (a Git pull): write own pending strokes, then reload. */
+  async function reloadFromDisk(): Promise<void> {
+    if (stopped || !project.ready || !project.path) return;
+    if (saveTimer !== undefined) clearTimeout(saveTimer);
+    saveTimer = undefined;
+    await savePending();
+    await saveQueue;
+    const path = project.path;
+    if (stopped || !path) return;
+    // Drawing Undo steps hold tiles from before the pull.
+    clearHistory();
+    await loadProject(path);
+  }
+  let stopListening: (() => void) | undefined;
+  if (isTauri()) {
+    void listen("project-drawing-changed", () => void reloadFromDisk()).then((stop) => {
+      if (stopped) stop();
+      else stopListening = stop;
+    }).catch(() => undefined);
+  }
+
   drawingTileStore.setCommitListener((changedKeys) => scheduleSave(changedKeys));
   return () => {
+    stopListening?.();
     stopped = true;
     generation += 1;
     drawingTileStore.setCommitListener(null);

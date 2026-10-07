@@ -61,11 +61,9 @@ pub(crate) fn migrate_attachments(root: &Path) -> Result<(), String> {
             journal
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            let contents = fs::read(root.join(INDEX_FILE)).map_err(|error| {
-                format!("could not read board.json for attachment migration: {error}")
+            let (index, _) = crate::board_store::read_document(&root).map_err(|error| {
+                format!("could not read the board for attachment migration: {error}")
             })?;
-            let index: Value = serde_json::from_slice(&contents)
-                .map_err(|error| format!("board.json is invalid: {error}"))?;
             let mut references = Vec::new();
             collect_legacy_references(&index, "attachment", &mut HashSet::new(), &mut references);
             collect_markdown_references(&root, &mut references)?;
@@ -128,14 +126,16 @@ pub(crate) fn migrate_attachments(root: &Path) -> Result<(), String> {
     }
 
     let index_path = root.join(INDEX_FILE);
-    let contents =
-        fs::read(&index_path).map_err(|error| format!("could not read board.json: {error}"))?;
-    let mut index: Value = serde_json::from_slice(&contents)
-        .map_err(|error| format!("board.json is invalid: {error}"))?;
+    let (mut index, _) = crate::board_store::read_document(&root)?;
     if rewrite_json(&mut index, &journal.mappings) {
-        let contents = serde_json::to_vec_pretty(&index)
-            .map_err(|error| format!("could not encode board.json: {error}"))?;
-        write_atomically(&index_path, &contents)?;
+        if crate::board_store::is_legacy(&root)? {
+            let contents = serde_json::to_vec_pretty(&index)
+                .map_err(|error| format!("could not encode board.json: {error}"))?;
+            write_atomically(&index_path, &contents)?;
+        } else {
+            let plan = crate::board_store::plan_write(&root, &index, None)?;
+            crate::board_store::apply_plan(&plan)?;
+        }
     }
 
     let mut markdown_files = Vec::new();

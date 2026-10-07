@@ -30,6 +30,10 @@ pub struct DrawingIndex {
     px_per_unit: u32,
     tile_size_px: u32,
     tiles: Vec<String>,
+    /// Set once the tile list is taken from the files in drawing/tiles instead of this index, so
+    /// two people drawing in different places never edit the same file (Git).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    tiles_from_files: bool,
 }
 
 #[derive(Serialize)]
@@ -46,8 +50,10 @@ pub struct DrawingTileChange {
 #[tauri::command]
 pub fn drawing_load(state: State<'_, ProjectState>) -> Result<DrawingLoadResponse, String> {
     let root = active_project_root(&state)?;
+    let index = load_index_at(&root)?;
+    crate::board_watch::reset_drawing(&root);
     Ok(DrawingLoadResponse {
-        index: load_index_at(&root)?,
+        index,
     })
 }
 
@@ -157,10 +163,55 @@ fn load_index_at(root: &Path) -> Result<Option<DrawingIndex>, String> {
     }
     let bytes =
         fs::read(&path).map_err(|error| format!("could not read drawing index: {error}"))?;
-    let index: DrawingIndex = serde_json::from_slice(&bytes)
+    let mut index: DrawingIndex = serde_json::from_slice(&bytes)
         .map_err(|error| format!("drawing index is invalid: {error}"))?;
     validate_index(&index)?;
+    let tiles = drawing.join(TILES_DIRECTORY);
+    if !index.tiles_from_files {
+        // One-time switch: tiles the old list did not mention are leftovers of erased drawings.
+        let listed: HashSet<String> = index.tiles.iter().cloned().collect();
+        for key in tile_keys_on_disk(&tiles) {
+            if !listed.contains(&key) {
+                let _ = fs::remove_file(tile_path(root, &key)?);
+            }
+        }
+        let meta = DrawingIndex { tiles: Vec::new(), tiles_from_files: true, ..index.clone() };
+        let encoded = serde_json::to_vec(&meta)
+            .map_err(|error| format!("could not encode drawing index: {error}"))?;
+        atomic_write(&path, &encoded)?;
+    }
+    index.tiles = tile_keys_on_disk(&tiles);
+    index.tiles_from_files = true;
+    validate_index(&index)?;
     Ok(Some(index))
+}
+
+/// Tile keys of the PNG files in drawing/tiles ("col:row" for level 0, "level:col:row" otherwise).
+fn tile_keys_on_disk(tiles: &Path) -> Vec<String> {
+    let Ok(entries) = fs::read_dir(tiles) else { return Vec::new() };
+    let mut keys: Vec<String> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let stem = name.strip_suffix(".png")?;
+            let key = match stem.strip_prefix('L') {
+                Some(rest) => rest.replace('_', ":"),
+                None => stem.replace('_', ":"),
+            };
+            (validate_key(&key).is_ok() && tile_path_matches(tiles, &key, &name)).then_some(key)
+        })
+        .collect();
+    keys.sort();
+    keys
+}
+
+fn tile_path_matches(tiles: &Path, key: &str, name: &str) -> bool {
+    tiles
+        .parent()
+        .and_then(Path::parent)
+        .and_then(|root| tile_path(root, key).ok())
+        .and_then(|path| path.file_name().map(|file| file.to_string_lossy() == name))
+        .unwrap_or(false)
 }
 
 pub(crate) fn health_findings(root: &Path) -> Vec<String> {
@@ -252,7 +303,9 @@ fn save_at(root: &Path, changes: &[DrawingTileChange], index: &DrawingIndex) -> 
             validate_png(png)?;
         }
     }
-    let bytes = serde_json::to_vec(index)
+    // The tile list lives in the file names; drawing.json only keeps the format (see tiles_from_files).
+    let meta = DrawingIndex { tiles: Vec::new(), tiles_from_files: true, ..index.clone() };
+    let bytes = serde_json::to_vec(&meta)
         .map_err(|error| format!("could not encode drawing index: {error}"))?;
     if bytes.len() as u64 > MAX_INDEX_BYTES {
         return Err("drawing index exceeds the 8 MB limit".to_string());
@@ -270,12 +323,9 @@ fn save_at(root: &Path, changes: &[DrawingTileChange], index: &DrawingIndex) -> 
     for path in &targets {
         check_regular_file(path)?;
     }
-    for key in &index.tiles {
-        if !changed.contains(key.as_str()) && !check_regular_file(&tile_path(root, key)?)? {
-            return Err(format!("drawing index lists a missing tile: {key}"));
-        }
-    }
     for (change, path) in changes.iter().zip(targets) {
+        let file_name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+        crate::board_watch::record_drawing_write(root, &file_name, change.png.as_deref());
         if let Some(png) = &change.png {
             atomic_write(&path, png)?;
         } else if path.exists() {
@@ -284,7 +334,10 @@ fn save_at(root: &Path, changes: &[DrawingTileChange], index: &DrawingIndex) -> 
             })?;
         }
     }
-    atomic_write(&index_path, &bytes)
+    if fs::read(&index_path).ok().as_deref() != Some(bytes.as_slice()) {
+        atomic_write(&index_path, &bytes)?;
+    }
+    Ok(())
 }
 
 fn check_directory(path: &Path, create: bool) -> Result<bool, String> {
@@ -400,6 +453,7 @@ mod tests {
             px_per_unit: PX_PER_UNIT,
             tile_size_px: TILE_PX,
             tiles: keys.iter().map(|key| (*key).into()).collect(),
+            tiles_from_files: false,
         }
     }
 
@@ -499,18 +553,6 @@ mod tests {
         assert_eq!(read_tile_at(&root, "-2:3").unwrap(), tile);
         assert_eq!(load_index_at(&root).unwrap().unwrap().tiles, vec!["-2:3"]);
         assert!(health_findings(&root).is_empty());
-        let mut replacement = tile.clone();
-        replacement.push(7);
-        assert!(save_at(
-            &root,
-            &[DrawingTileChange {
-                key: "-2:3".into(),
-                png: Some(replacement)
-            }],
-            &index(&["-2:3", "9:9"])
-        )
-        .is_err());
-        assert_eq!(read_tile_at(&root, "-2:3").unwrap(), tile);
         assert!(save_at(
             &root,
             &[DrawingTileChange {
@@ -536,7 +578,7 @@ mod tests {
     }
 
     #[test]
-    fn health_reports_tiles_listed_but_missing_on_disk() {
+    fn a_removed_tile_file_just_leaves_the_drawing() {
         let root = test_root("health");
         save_at(
             &root,
@@ -548,9 +590,9 @@ mod tests {
         )
         .unwrap();
         fs::remove_file(tile_path(&root, "1:2").unwrap()).unwrap();
-        assert!(health_findings(&root)
-            .iter()
-            .any(|finding| finding == "Missing drawing tile: 1:2"));
+        // The tile list is the set of files (Git pulls add and remove them), not a separate list.
+        assert!(load_index_at(&root).unwrap().unwrap().tiles.is_empty());
+        assert!(health_findings(&root).is_empty());
         fs::remove_dir_all(root).unwrap();
     }
 }

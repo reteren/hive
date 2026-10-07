@@ -58,6 +58,7 @@ import {
   type LoadedProjectNote,
   type ProjectIndex,
 } from "./index";
+import { mergeBoardDocuments } from "./boardMerge";
 import { decideExternalNoteChange } from "./externalChanges";
 import { project, type ProjectConflict } from "./project.svelte";
 
@@ -70,7 +71,21 @@ interface ProjectLoad {
   notes: LoadedProjectNote[];
   warnings: string[];
   missingFiles: string[];
+  /** Board revision on disk; saves send it back so a save never undoes a pull it has not seen. */
+  revision?: number;
 }
+
+/** The board after someone else changed its files (a Git pull), from board_watch.rs. */
+interface BoardChange {
+  indexJson: string;
+  notes: LoadedProjectNote[];
+  warnings: string[];
+  missingFiles: string[];
+  revision: number;
+}
+
+/** Rust refuses a save made from an older board revision (see board_store.rs). */
+const STALE_SAVE_ERROR = "BOARD_CHANGED_ON_DISK";
 
 interface SavedNote {
   file: string;
@@ -112,6 +127,8 @@ let externalDeleteWarnings = new Map<string, string>();
 let writeQueue: Promise<void> = Promise.resolve();
 let projectFileEventUnlisten: UnlistenFn | undefined;
 let projectFileEventQueue: Promise<void> = Promise.resolve();
+let boardChangeUnlisten: UnlistenFn | undefined;
+let boardRevision: number | undefined;
 
 /** Load the current project before mounting the board, then begin autosaving edits. */
 export function initializeProjectPersistence(): Promise<void> {
@@ -141,6 +158,27 @@ async function initialize(): Promise<void> {
       );
     } catch (error) {
       project.warnings = ["External note monitoring could not start: " + errorMessage(error)];
+    }
+  }
+  if (!boardChangeUnlisten) {
+    try {
+      const stopChanged = await listen<BoardChange>("project-board-changed", (event) => {
+        // Same queue as note file events, so a pulled note body and its board entry apply in order.
+        projectFileEventQueue = projectFileEventQueue
+          .then(() => applyExternalBoard(event.payload))
+          .catch((error: unknown) => {
+            project.error = errorMessage(error);
+          });
+      });
+      const stopFailed = await listen<string>("project-board-change-failed", (event) => {
+        project.warnings = [...new Set([...project.warnings, `Board files changed on disk but could not be read: ${event.payload}`])];
+      });
+      boardChangeUnlisten = () => {
+        stopChanged();
+        stopFailed();
+      };
+    } catch (error) {
+      project.warnings = [...project.warnings, "Changes from Git pulls will appear after reopening the project: " + errorMessage(error)];
     }
   }
 
@@ -194,6 +232,7 @@ function applyProject(loaded: ProjectLoad): void {
   clearHistory();
 
   loading = true;
+  boardRevision = loaded.revision;
   indexTemplate = parsedIndex;
   setProjectStopwatchData(parsedIndex.createdAt, parsedIndex.projectCounters);
   lastSavedById = new Map(
@@ -307,7 +346,7 @@ function persistSnapshot(snapshot: ProjectSnapshot): Promise<void> {
     project.saving = true;
     try {
       const result = await invoke<{ warnings: string[] }>("save_project", {
-        request: { indexJson: snapshot.indexJson, changedFiles: files },
+        request: { indexJson: snapshot.indexJson, changedFiles: files, baseRevision: boardRevision },
       });
       indexTemplate = parseProjectIndex(snapshot.indexJson);
       lastSavedIndex = snapshot.indexJson;
@@ -337,6 +376,9 @@ function persistSnapshot(snapshot: ProjectSnapshot): Promise<void> {
       project.error = "";
       project.warnings = [...new Set([...result.warnings, ...externalDeleteWarnings.values()])];
     } catch (error) {
+      // The board changed on disk (a pull) after this snapshot was taken: the change is merged
+      // into the window first, then the observer saves the merged board again.
+      if (errorMessage(error).includes(STALE_SAVE_ERROR)) return;
       project.error = errorMessage(error);
       throw error;
     } finally {
@@ -347,6 +389,78 @@ function persistSnapshot(snapshot: ProjectSnapshot): Promise<void> {
   return queued;
 }
 
+/** A board index in the exact form makeSnapshot() produces (note bodies are not part of it). */
+function normalizeIndexJson(indexJson: string): string {
+  const { index } = parseProjectIndexWithWarnings(indexJson);
+  const notes = mergeLoadedNotes(index, index.notes.map((entry) => ({
+    id: entry.id, name: entry.name, file: entry.file, text: "", x: entry.x, y: entry.y, width: entry.width, height: entry.height,
+  })));
+  return serializeProjectIndex(
+    notes, index, index.links, index.taskLog, index.zones, index.beaconMarks, index.calculators, index.archive, index.trash,
+    { createdAt: index.createdAt, projectCounters: index.projectCounters }, index.meDeleted,
+  );
+}
+
+/**
+ * Merge a board that changed on disk (a Git pull) into the open window: objects only the pull
+ * changed are taken from disk, local unsaved edits stay, and the result is saved back if needed.
+ */
+function applyExternalBoard(change: BoardChange): void {
+  if (!project.ready || !project.path || loading) return;
+  // All three in the window's own serialisation, or format differences would look like edits.
+  const theirsJson = normalizeIndexJson(change.indexJson);
+  const base = JSON.parse(lastSavedIndex ? normalizeIndexJson(lastSavedIndex) : theirsJson) as Record<string, unknown>;
+  const mine = JSON.parse(makeSnapshot().indexJson) as Record<string, unknown>;
+  const theirs = JSON.parse(theirsJson) as Record<string, unknown>;
+  const { document, conflicts } = mergeBoardDocuments(base, mine, theirs);
+  const merged = parseProjectIndexWithWarnings(JSON.stringify(document)).index;
+
+  // Note bodies: a note this window already had keeps its text (body changes from disk arrive as
+  // note file events); a note that came with the pull gets the text read from disk.
+  const diskText = new Map(change.notes.map((note) => [note.id, note.text]));
+  const loadedNotes: LoadedProjectNote[] = merged.notes.map((entry) => ({
+    id: entry.id,
+    name: entry.name,
+    file: entry.file,
+    text: board.notes[entry.id]?.text ?? diskText.get(entry.id) ?? "",
+    x: entry.x,
+    y: entry.y,
+    width: entry.width,
+    height: entry.height,
+  }));
+  const notes = mergeLoadedNotes(merged, loadedNotes);
+
+  loading = true;
+  try {
+    boardRevision = change.revision;
+    // What is on disk now is the new saved baseline; whatever differs from it is saved next.
+    indexTemplate = parseProjectIndexWithWarnings(theirsJson).index;
+    lastSavedIndex = theirsJson;
+    const missingFiles = new Set(change.missingFiles);
+    for (const note of change.notes) {
+      if (!missingFiles.has(note.file)) lastSavedById.set(note.id, { file: note.file, text: note.text });
+    }
+    // Undo steps were recorded against the board before the pull.
+    clearHistory();
+    if (editing.noteId && !merged.notes.some((note) => note.id === editing.noteId)) editing.noteId = null;
+    taskLog.entries = merged.taskLog.map((entry) => ({ ...entry }));
+    replaceCalculators(merged.calculators ?? {});
+    replaceArchive(merged.archive.map(copyArchiveEntry));
+    replaceTrash(merged.trash.map(copyTrashEntry));
+    replaceBoard(notes);
+    replaceLinks(merged.links ?? []);
+    replaceZones(merged.zones.map(copyZone));
+    resetBeaconViewState(merged.beaconMarks, merged.meDeleted);
+    const notices = [...change.warnings];
+    if (conflicts.length > 0) {
+      notices.push(`${conflicts.length} object(s) were changed both here and in the pulled version; this window's version was kept.`);
+    }
+    project.warnings = [...new Set([...project.warnings, ...notices])];
+  } finally {
+    loading = false;
+  }
+}
+
 async function flushProject(): Promise<void> {
   if (!project.path) return;
   if (timer !== null) {
@@ -354,9 +468,14 @@ async function flushProject(): Promise<void> {
     timer = null;
   }
   await writeQueue;
-  const snapshot = makeSnapshot();
-  if (isDirty(snapshot)) await persistSnapshot(snapshot);
-  await writeQueue;
+  // A save refused because a pull arrived meanwhile is retried once the pull is merged.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await projectFileEventQueue;
+    const snapshot = makeSnapshot();
+    if (!isDirty(snapshot)) break;
+    await persistSnapshot(snapshot);
+    await writeQueue;
+  }
   if (project.error) throw new Error(project.error);
 }
 

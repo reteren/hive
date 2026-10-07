@@ -28,6 +28,16 @@ pub(crate) fn active_project_root(state: &ProjectState) -> Result<PathBuf, Strin
         .ok_or_else(|| "no project is open".to_string())
 }
 
+/// The board index from disk (single-file or split layout) plus warnings for skipped object files.
+fn load_index(root: &Path) -> Result<(BoardIndex, Vec<String>), String> {
+    let (document, warnings) = crate::board_store::read_document(root)?;
+    let mut index: BoardIndex = serde_json::from_value(document)
+        .map_err(|error| format!("{INDEX_FILE_NAME} is invalid: {error}"))?;
+    migrate_index(&mut index)?;
+    validate_index(&index)?;
+    Ok((index, warnings))
+}
+
 pub(crate) fn validate_project_index_contents(contents: &[u8]) -> Result<usize, String> {
     let mut index: BoardIndex = serde_json::from_slice(contents)
         .map_err(|error| format!("board.json is invalid: {error}"))?;
@@ -62,9 +72,9 @@ struct BoardNote {
     extra: Map<String, Value>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ProjectNote {
+pub(crate) struct ProjectNote {
     id: String,
     name: String,
     file: String,
@@ -84,6 +94,65 @@ pub struct ProjectLoad {
     notes: Vec<ProjectNote>,
     warnings: Vec<String>,
     missing_files: Vec<String>,
+    /// Board revision the window starts from; saves send it back (see board_store::REVISION).
+    revision: u64,
+}
+
+/// The board as it is on disk after someone else changed it (a Git pull), for the open window.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct BoardChange {
+    index_json: String,
+    notes: Vec<ProjectNote>,
+    warnings: Vec<String>,
+    missing_files: Vec<String>,
+    revision: u64,
+}
+
+/// `Some` when the board files differ from what this app last loaded or saved.
+pub(crate) fn external_board_change(root: &Path) -> Result<Option<BoardChange>, String> {
+    let (index, mut warnings) = load_index(root)?;
+    let document = serde_json::to_value(&index).map_err(|error| format!("could not encode the board: {error}"))?;
+    if crate::board_store::synced(root).as_ref() == Some(&document) {
+        return Ok(None);
+    }
+    crate::board_store::set_synced(root, &document);
+    let revision = crate::board_store::bump_revision();
+    let notes_directory = ensure_notes_directory(root)?;
+    let (notes, note_warnings, missing_files) = read_note_texts(&notes_directory, &index)?;
+    warnings.extend(note_warnings);
+    let index_json = serde_json::to_string(&index).map_err(|error| format!("could not encode the board: {error}"))?;
+    Ok(Some(BoardChange { index_json, notes, warnings, missing_files, revision }))
+}
+
+/// Read every note's Markdown; a missing file opens as empty and is reported.
+fn read_note_texts(notes_directory: &Path, index: &BoardIndex) -> Result<(Vec<ProjectNote>, Vec<String>, Vec<String>), String> {
+    let mut notes = Vec::with_capacity(index.notes.len());
+    let mut warnings = Vec::new();
+    let mut missing_files = Vec::new();
+    for entry in &index.notes {
+        let path = safe_note_path(notes_directory, &entry.file)?;
+        let text = match read_note_file(&path) {
+            Ok(text) => text,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                warnings.push(format!("Missing note file: {} (opened as empty)", entry.file));
+                missing_files.push(entry.file.clone());
+                String::new()
+            }
+            Err(error) => return Err(format!("could not read note file {}: {error}", entry.file)),
+        };
+        notes.push(ProjectNote {
+            id: entry.id.clone(),
+            name: entry.name.clone(),
+            file: entry.file.clone(),
+            text,
+            x: entry.x,
+            y: entry.y,
+            width: entry.width,
+            height: entry.height,
+        });
+    }
+    Ok((notes, warnings, missing_files))
 }
 
 #[derive(Deserialize)]
@@ -98,6 +167,9 @@ pub struct ChangedFile {
 pub struct SaveRequest {
     index_json: String,
     changed_files: Vec<ChangedFile>,
+    /// Board revision the window's state is based on; None skips the check (older callers).
+    #[serde(default)]
+    base_revision: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -316,13 +388,7 @@ pub fn write_conflict_copy(
     }
 
     let notes_directory = ensure_notes_directory(&root)?;
-    let index_path = root.join(INDEX_FILE_NAME);
-    let index_contents = fs::read(&index_path)
-        .map_err(|error| format!("could not read {INDEX_FILE_NAME}: {error}"))?;
-    let mut index: BoardIndex = serde_json::from_slice(&index_contents)
-        .map_err(|error| format!("{INDEX_FILE_NAME} is invalid: {error}"))?;
-    migrate_index(&mut index)?;
-    validate_index(&index)?;
+    let (index, _) = load_index(&root)?;
     let tracked_files = index
         .notes
         .iter()
@@ -381,6 +447,9 @@ fn enable_project_watch(app: &AppHandle, watcher: &ProjectWatcher, project: &mut
     if let Err(error) = crate::attachments::refresh_asset_protocol_scope(app, &project.root) {
         project.load.warnings.push(format!("Project images may not load: {error}"));
     }
+    if let Err(error) = crate::board_watch::watch(app, &project.root) {
+        project.load.warnings.push(format!("Changes from Git pulls will appear after reopening the project: {error}"));
+    }
     let notes_directory = project.root.join(NOTES_DIRECTORY);
     if let Err(error) = watcher.watch_notes(&notes_directory) {
         project
@@ -426,42 +495,23 @@ fn open_project_root(selected: &Path) -> Result<OpenedProject, String> {
     let index_path = root.join(INDEX_FILE_NAME);
     ensure_regular_or_missing(&index_path)?;
     crate::attachments::migrate_attachments(&root)?;
-    let contents = fs::read(&index_path)
-        .map_err(|error| format!("could not read {INDEX_FILE_NAME}: {error}"))?;
-    let mut index: BoardIndex = serde_json::from_slice(&contents)
-        .map_err(|error| format!("{INDEX_FILE_NAME} is invalid: {error}"))?;
-    migrate_index(&mut index)?;
-    validate_index(&index)?;
-    let notes_directory = ensure_notes_directory(&root)?;
-
-    let mut notes = Vec::with_capacity(index.notes.len());
-    let mut warnings = Vec::new();
-    let mut missing_files = Vec::new();
-    for entry in &index.notes {
-        let path = safe_note_path(&notes_directory, &entry.file)?;
-        let text = match read_note_file(&path) {
-            Ok(text) => text,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                warnings.push(format!(
-                    "Missing note file: {} (opened as empty)",
-                    entry.file
-                ));
-                missing_files.push(entry.file.clone());
-                String::new()
-            }
-            Err(error) => return Err(format!("could not read note file {}: {error}", entry.file)),
-        };
-        notes.push(ProjectNote {
-            id: entry.id.clone(),
-            name: entry.name.clone(),
-            file: entry.file.clone(),
-            text,
-            x: entry.x,
-            y: entry.y,
-            width: entry.width,
-            height: entry.height,
-        });
+    // One-time move to the Git-friendly layout (one file per object); a safety copy comes first.
+    if crate::board_store::is_legacy(&root)? {
+        let (legacy, _) = load_index(&root)?;
+        if !legacy.notes.is_empty() {
+            crate::backup::create_backup_before_migration(&root)?;
+        }
+        crate::board_store::migrate_to_split(&root)?;
     }
+    crate::board_store::ensure_gitignore(&root);
+    let (index, mut warnings) = load_index(&root)?;
+    let notes_directory = ensure_notes_directory(&root)?;
+    if let Ok(document) = serde_json::to_value(&index) {
+        crate::board_store::set_synced(&root, &document);
+    }
+
+    let (notes, note_warnings, missing_files) = read_note_texts(&notes_directory, &index)?;
+    warnings.extend(note_warnings);
 
     let index_json = serde_json::to_string(&index)
         .map_err(|error| format!("could not encode migrated {INDEX_FILE_NAME}: {error}"))?;
@@ -478,6 +528,7 @@ fn open_project_root(selected: &Path) -> Result<OpenedProject, String> {
             notes,
             warnings,
             missing_files,
+            revision: crate::board_store::revision(),
         },
         root,
     })
@@ -589,14 +640,22 @@ fn save_project_files(
     watcher: &ProjectWatcher,
 ) -> Result<SaveResult, String> {
     let root = canonical_project_root(root)?;
+    let _store = crate::board_store::STORE_LOCK.lock().map_err(|_| "project storage is busy")?;
     let notes_directory = ensure_notes_directory(&root)?;
     let mut pending_watch_writes = PendingWatchWrites::new(watcher.clone());
     let index_path = root.join(INDEX_FILE_NAME);
     ensure_regular_or_missing(&index_path)?;
-    let old_index_bytes = fs::read(&index_path)
-        .map_err(|error| format!("could not read current board index: {error}"))?;
-    let mut old_index: BoardIndex = serde_json::from_slice(&old_index_bytes)
-        .map_err(|error| format!("current board index is invalid: {error}"))?;
+    // Compare with what this app last loaded or saved, not with the disk: objects that arrived
+    // from a pull are not ours to delete or to treat as renamed.
+    if request.base_revision.is_some_and(|revision| revision != crate::board_store::revision()) {
+        return Err(crate::board_store::STALE_SAVE_ERROR.to_string());
+    }
+    let known_document = crate::board_store::synced(&root);
+    let mut old_index: BoardIndex = match &known_document {
+        Some(document) => serde_json::from_value(document.clone())
+            .map_err(|error| format!("current board index is invalid: {error}"))?,
+        None => load_index(&root)?.0,
+    };
     migrate_index(&mut old_index)?;
     validate_index(&old_index)?;
     let mut new_index: BoardIndex = serde_json::from_str(&request.index_json)
@@ -722,16 +781,20 @@ fn save_project_files(
         }
     }
 
-    if old_index != new_index {
-        let serialized_index = match serde_json::to_vec_pretty(&new_index) {
-            Ok(serialized) => serialized,
-            Err(error) => {
-                cleanup_staged(&staged);
-                return Err(format!("could not encode board index: {error}"));
-            }
-        };
-        stage_or_cleanup(&mut staged, &index_path, &serialized_index)?;
-    }
+    let new_document = match serde_json::to_value(&new_index) {
+        Ok(document) => document,
+        Err(error) => {
+            cleanup_staged(&staged);
+            return Err(format!("could not encode board index: {error}"));
+        }
+    };
+    let board_plan = match crate::board_store::plan_write(&root, &new_document, known_document.as_ref()) {
+        Ok(plan) => plan,
+        Err(error) => {
+            cleanup_staged(&staged);
+            return Err(error);
+        }
+    };
 
     for write in &staged {
         if write.target.parent() == Some(notes_directory.as_path()) {
@@ -778,6 +841,10 @@ fn save_project_files(
     }
 
     pending_watch_writes.finish(true);
+    if let Err(error) = crate::board_store::apply_plan(&board_plan) {
+        return Err(format!("note files were saved, but the board could not be: {error}"));
+    }
+    crate::board_store::set_synced(&root, &new_document);
     Ok(SaveResult { warnings })
 }
 

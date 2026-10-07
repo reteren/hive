@@ -117,13 +117,18 @@ pub fn check_project_health(state: State<'_, ProjectState>) -> Result<HealthRepo
     Ok(check_project_health_at(&root))
 }
 
+/// Safety copy taken right before a project is converted to the per-object file layout.
+pub(crate) fn create_backup_before_migration(root: &Path) -> Result<(), String> {
+    create_backup_at(root).map(|_| ())
+}
+
 fn create_backup_at(root: &Path) -> Result<BackupInfo, String> {
     let root = fs::canonicalize(root)
         .map_err(|error| format!("could not resolve project folder: {error}"))?;
     let index_path = root.join(INDEX_FILE);
     ensure_regular_file(&index_path)?;
-    let index_contents =
-        fs::read(&index_path).map_err(|error| format!("could not read board.json: {error}"))?;
+    // A snapshot keeps the whole board in one board.json, whatever the project's layout.
+    let index_contents = crate::board_store::read_document_bytes(&root)?;
     let note_count = project::validate_project_index_contents(&index_contents)?;
     let notes_path = root.join(NOTES_DIRECTORY);
     ensure_real_directory(&notes_path)?;
@@ -142,7 +147,8 @@ fn create_backup_at(root: &Path) -> Result<BackupInfo, String> {
         .map_err(|error| format!("could not create temporary snapshot: {error}"))?;
 
     let result = (|| {
-        copy_file(&index_path, &temp.join(INDEX_FILE))?;
+        write_new_file(&temp.join(INDEX_FILE), &index_contents)
+            .map_err(|error| format!("could not write the snapshot board: {error}"))?;
         copy_directory_tree(&notes_path, &temp.join(NOTES_DIRECTORY))?;
         if has_drawing { copy_directory_tree(&drawing_path, &temp.join(DRAWING_DIRECTORY))?; }
         let attachment_files = if has_attachments {
@@ -566,7 +572,10 @@ fn restore_snapshot_at(root: &Path, backup: &Path) -> Result<(), String> {
     }
 
     fs::remove_dir_all(&transaction)
-        .map_err(|error| format!("restored project, but could not clean restore staging: {error}"))
+        .map_err(|error| format!("restored project, but could not clean restore staging: {error}"))?;
+    crate::board_store::migrate_to_split(root)
+        .map(|_| ())
+        .map_err(|error| format!("restored project, but could not lay out its board files: {error}"))
 }
 
 fn move_directory_children(
@@ -613,11 +622,10 @@ fn install_directory_children(
 
 fn check_project_health_at(root: &Path) -> HealthReport {
     let mut findings = Vec::new();
-    let index_path = root.join(INDEX_FILE);
-    let contents = match fs::read(&index_path) {
+    let contents = match crate::board_store::read_document_bytes(root) {
         Ok(contents) => contents,
         Err(error) => {
-            findings.push(format!("Could not read board.json: {error}"));
+            findings.push(format!("Could not read the board: {error}"));
             return HealthReport { findings };
         }
     };
@@ -856,7 +864,8 @@ fn legacy_project_fingerprint(root: &Path) -> Result<String, String> {
 
 fn project_fingerprint_with(root: &Path, attachments_by_size: bool) -> Result<String, String> {
     let mut files = vec![root.join(INDEX_FILE)];
-    for directory_name in [NOTES_DIRECTORY, ATTACHMENTS_DIRECTORY, DRAWING_DIRECTORY] {
+    let board_directories = crate::board_store::COLLECTIONS.iter().map(|(_, directory)| *directory).chain(["calculators"]);
+    for directory_name in [NOTES_DIRECTORY, ATTACHMENTS_DIRECTORY, DRAWING_DIRECTORY].into_iter().chain(board_directories) {
         let directory = root.join(directory_name);
         if optional_directory_present(&directory)? {
             collect_files(&directory, &mut files)?;
@@ -1343,7 +1352,7 @@ mod tests {
         restore_snapshot_at(&root, &root.join(".hive/backups").join(&snapshot.id)).expect("restore drawing");
         assert_eq!(fs::read(&tile).unwrap(), b"original drawing bytes");
         fs::remove_file(&tile).expect("remove listed tile");
-        assert!(check_project_health_at(&root).findings.iter().any(|finding| finding == "Missing drawing tile: -1:2"));
+        assert!(!check_project_health_at(&root).findings.iter().any(|finding| finding.contains("Missing drawing tile")));
         fs::remove_dir_all(root).expect("remove fixture");
     }
 

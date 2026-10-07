@@ -305,18 +305,11 @@ pub(crate) fn refresh_asset_protocol_scope(
 }
 
 pub(crate) fn external_video_paths(project_root: &Path) -> Result<Vec<PathBuf>, String> {
-    let index_path = project_root.join("board.json");
-    let contents = match fs::read(&index_path) {
-        Ok(contents) => contents,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) => {
-            return Err(format!(
-                "could not read board.json for external media: {error}"
-            ))
-        }
-    };
-    let index: Value = serde_json::from_slice(&contents)
-        .map_err(|error| format!("board.json is invalid: {error}"))?;
+    if !project_root.join("board.json").exists() {
+        return Ok(Vec::new());
+    }
+    let (index, _) = crate::board_store::read_document(project_root)
+        .map_err(|error| format!("could not read the board for external media: {error}"))?;
     let mut paths = HashSet::new();
     collect_external_video_paths(&index, &mut paths)?;
     Ok(paths.into_iter().collect())
