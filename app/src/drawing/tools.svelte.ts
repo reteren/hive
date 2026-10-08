@@ -1,4 +1,5 @@
 import type { BrushSettings, DrawTool } from "./types";
+import { effectSettingsSnapshot, loadEffectSettings } from "./effects/effectSettings.svelte";
 import {
   DEFAULT_DRAWING_PREFERENCES,
   normalizeBrushSettings,
@@ -27,10 +28,11 @@ export function adjustBrushSize(delta: number): void {
 export function loadDrawingPreferences(value: unknown): void {
   const preferences = normalizeDrawingPreferences(value);
   drawingTools.brush = preferences.brush;
+  loadEffectSettings(preferences.effects);
 }
 
 export function drawingPreferencesSnapshot(): DrawingPreferences {
-  return { brush: { ...drawingTools.brush } };
+  return { brush: { ...drawingTools.brush }, effects: effectSettingsSnapshot() };
 }
 
 export type BrushWheelSetting = "size" | "opacity" | "hardness";

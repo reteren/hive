@@ -1,5 +1,6 @@
-import type { BrushSettings, DrawPointerEvent } from "./types";
+import type { BrushSettings, DrawPointerEvent, DrawToolHandler } from "./types";
 import { createStroke, type DrawStroke, type StrokePoint } from "./brush";
+import { sprayToolHandler } from "./brushes/spray";
 import { drawingTools } from "./tools.svelte";
 import { registerDrawTool } from "./toolRegistry";
 import { drawingTileStore } from "./tileStore.svelte";
@@ -173,12 +174,38 @@ function toPoint(event: DrawPointerEvent): StrokePoint {
   return event.world;
 }
 
+let delegatedBrushHandler: DrawToolHandler | null = null;
+
 registerDrawTool("brush", {
-  down(event) { beginStroke(drawingTools.brush, toPoint(event), event.zoom, event.pressure); },
-  move(event) { extendStroke(toPoint(event), event.pressure); },
+  down(event) {
+    delegatedBrushHandler?.cancel();
+    delegatedBrushHandler = null;
+    if (drawingTools.brush.tip === "spray") {
+      cancelStroke();
+      delegatedBrushHandler = sprayToolHandler;
+      delegatedBrushHandler.down(event);
+      return;
+    }
+    beginStroke(drawingTools.brush, toPoint(event), event.zoom, event.pressure);
+  },
+  move(event) {
+    if (delegatedBrushHandler) delegatedBrushHandler.move(event);
+    else extendStroke(toPoint(event), event.pressure);
+  },
   up(event) {
+    if (delegatedBrushHandler) {
+      const handler = delegatedBrushHandler;
+      delegatedBrushHandler = null;
+      handler.up(event);
+      return;
+    }
     extendStroke(toPoint(event), event.pressure);
     void endStroke().catch((error: unknown) => console.error("Drawing stroke failed", error));
   },
-  cancel: cancelStroke,
+  cancel() {
+    const handler = delegatedBrushHandler;
+    delegatedBrushHandler = null;
+    handler?.cancel();
+    cancelStroke();
+  },
 });

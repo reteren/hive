@@ -24,6 +24,7 @@ interface EffectGesture {
   size: number;
   hardness: number;
   strength: number;
+  speed: number;
   direction: 1 | -1;
   selection: SelectionClipMask | null;
   last: EffectPoint;
@@ -215,16 +216,13 @@ function applyEffectSegment(
   }
 }
 
-/** Radians per second at strength 1, at the centre of the swirl. */
-const SWIRL_SPEED = 2.4;
-
 function startSwirlLoop(gesture: EffectGesture, isCurrent: () => boolean): void {
   const tick = (now: number) => {
     if (gesture.cancelled || gesture.released || !isCurrent()) return;
     const elapsed = Math.min(0.05, Math.max(0, (now - gesture.lastSwirlAt) / 1000));
     gesture.lastSwirlAt = now;
     if (elapsed > 0 && gesture.strength > 0) {
-      gesture.swirlTotal += elapsed * SWIRL_SPEED * gesture.strength * gesture.direction;
+      gesture.swirlTotal += elapsed * gesture.speed * gesture.strength * gesture.direction;
       const angle = gesture.swirlTotal;
       enqueue(gesture, () => applyEffectSegment(gesture, "swirl", gesture.last, gesture.last, 1, angle));
     }
@@ -288,6 +286,7 @@ export function createEffectHandler(): DrawToolHandler {
         size: drawingTools.brush.size,
         hardness: drawingTools.brush.hardness,
         strength,
+        speed: drawingEffects.swirlSpeed,
         direction: drawingEffects.swirlDirection === "cw" ? 1 : -1,
         selection: drawingSelection.area,
         last: { ...event.world },
@@ -347,7 +346,7 @@ export function createEffectHandler(): DrawToolHandler {
           const elapsed = Math.min(0.05, Math.max(0, (now - gesture.lastSwirlAt) / 1000));
           gesture.lastSwirlAt = now;
           if (elapsed > 0 && gesture.strength > 0) {
-            gesture.swirlTotal += elapsed * SWIRL_SPEED * gesture.strength * gesture.direction;
+            gesture.swirlTotal += elapsed * gesture.speed * gesture.strength * gesture.direction;
             applyEffectSegment(gesture, "swirl", gesture.last, gesture.last, 1, gesture.swirlTotal);
           }
         });

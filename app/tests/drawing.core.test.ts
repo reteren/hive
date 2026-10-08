@@ -3,10 +3,13 @@ import {
   accumulateDabMaxAlpha,
   accumulateSegmentMaxAlpha,
   accumulateStrokeSegment,
+  calligraphySegmentAlpha,
+  calligraphySegmentDistance,
   brushWorldWidth,
   createStrokeCoverage,
   interpolateStrokePoints,
   sourceOverAlpha,
+  strokePassBatchCount,
 } from "../src/drawing/brush";
 import { isRgbaTransparent, tileKeysInRect } from "../src/drawing/tileStore.svelte";
 import { drawLevelForZoom, levelPxPerUnit, levelTileUnits, parseTileKey, tileKey, type TileKey } from "../src/drawing/types";
@@ -115,6 +118,54 @@ describe("drawing core", () => {
         expect(single.value[offset]).toBeGreaterThanOrEqual(Math.max(horizontalOnly.value[offset]!, verticalOnly.value[offset]!));
       }
     }
+  });
+});
+
+describe("calligraphy nib sweep", () => {
+  it("covers every point of a fast segment plus the fixed-angle nib", () => {
+    const from = { x: 10, y: 20 };
+    const to = { x: 90, y: 100 };
+    const angle = 28;
+    const radians = angle * Math.PI / 180;
+    const radius = 12;
+    for (let step = 0; step <= 20; step += 1) {
+      const t = step / 20;
+      for (const nibOffset of [-radius, -radius / 2, 0, radius / 2, radius]) {
+        const point = {
+          x: from.x + (to.x - from.x) * t + Math.cos(radians) * nibOffset,
+          y: from.y + (to.y - from.y) * t + Math.sin(radians) * nibOffset,
+        };
+        expect(calligraphySegmentDistance(point, from, to, angle)).toBeLessThanOrEqual(radius + 1e-8);
+      }
+    }
+  });
+
+  it("stays thin along the nib angle and spans the nib length across it", () => {
+    const radius = 10;
+    const horizontal = { from: { x: 0, y: 20 }, to: { x: 100, y: 20 } };
+    expect(calligraphySegmentDistance({ x: 50, y: 21.3 }, horizontal.from, horizontal.to, 0)).toBeLessThan(radius);
+    expect(calligraphySegmentDistance({ x: 50, y: 21.5 }, horizontal.from, horizontal.to, 0)).toBeGreaterThan(radius);
+
+    const vertical = { from: { x: 20, y: 0 }, to: { x: 20, y: 100 } };
+    expect(calligraphySegmentDistance({ x: 29, y: 50 }, vertical.from, vertical.to, 0)).toBeLessThan(radius);
+    expect(calligraphySegmentDistance({ x: 31, y: 50 }, vertical.from, vertical.to, 0)).toBeGreaterThan(radius);
+  });
+
+  it("uses the Round edge falloff so hardness changes calligraphy coverage", () => {
+    const soft = calligraphySegmentAlpha(5, 10, 0);
+    const hard = calligraphySegmentAlpha(5, 10, 0.9);
+    expect(soft).toBeGreaterThan(0);
+    expect(soft).toBeLessThan(hard);
+    expect(hard).toBe(255);
+  });
+});
+
+describe("GPU stroke segment batches", () => {
+  it("keeps every shader pass within its 64-segment capacity", () => {
+    expect(strokePassBatchCount(0)).toBe(0);
+    expect(strokePassBatchCount(64)).toBe(1);
+    expect(strokePassBatchCount(65)).toBe(2);
+    expect(strokePassBatchCount(130)).toBe(3);
   });
 });
 

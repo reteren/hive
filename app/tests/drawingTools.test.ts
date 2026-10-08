@@ -4,6 +4,15 @@ import { DEFAULT_VIEW_SETTINGS, parseViewSettings, serializeViewSettings } from 
 import { tool } from "../src/tools/tool.svelte";
 import { drawCursorDiameter } from "../src/drawing/settings";
 import { brushWheelSetting, drawShortcutForKey } from "../src/drawing/drawInput";
+import { DRAW_SUBTOOLS } from "../src/drawing/subtools";
+import {
+  drawingEffects,
+  effectSettingsSnapshot,
+  setEffectMode,
+  setEffectStrength,
+  setSwirlDirection,
+  setSwirlSpeed,
+} from "../src/drawing/effects/effectSettings.svelte";
 import {
   drawingPreferencesSnapshot,
   drawingTools,
@@ -45,6 +54,8 @@ describe("drawing tools", () => {
     expect(drawShortcutForKey("KeyM", true)).toEqual({ kind: "tool", tool: "select-rect" });
     expect(drawShortcutForKey("KeyL", true)).toEqual({ kind: "tool", tool: "select-lasso" });
     expect(drawShortcutForKey("KeyP", true)).toEqual({ kind: "tool", tool: "select-polygon" });
+    expect(drawShortcutForKey("KeyY", true)).toBeNull();
+    expect(DRAW_SUBTOOLS.some(({ id }) => id === "spray")).toBe(false);
     expect(drawShortcutForKey("BracketLeft", true)).toEqual({ kind: "size", delta: -5 });
     expect(drawShortcutForKey("BracketRight", true)).toEqual({ kind: "size", delta: 5 });
     expect(drawShortcutForKey("KeyM", false)).toBeNull();
@@ -58,11 +69,22 @@ describe("drawing tools", () => {
     expect(drawCursorDiameter(900)).toBe(400);
   });
 
+  it("loads saved Marker and Pencil tips as Round", () => {
+    for (const tip of ["marker", "pencil"]) {
+      const parsed = parseViewSettings(JSON.stringify({ drawing: { brush: { tip } } }), DEFAULT_VIEW_SETTINGS);
+      expect(parsed.drawing.brush.tip).toBe("round");
+    }
+  });
+
   it("persists brush settings with view settings and ignores removed presets", () => {
     setBrushSettings({
       color: "#123456", size: 72, opacity: 0.65, hardness: 0.3,
       tip: "charcoal", calligraphyAngle: 90, sprayDensity: 140, sprayDotSize: 5,
     });
+    setEffectMode("swirl");
+    setEffectStrength("swirl", 0.73);
+    setSwirlDirection("ccw");
+    setSwirlSpeed(4.1);
     const serialized = serializeViewSettings({
       ...DEFAULT_VIEW_SETTINGS,
       drawing: drawingPreferencesSnapshot(),
@@ -73,7 +95,8 @@ describe("drawing tools", () => {
       color: "#123456", size: 72, opacity: 0.65, hardness: 0.3,
       tip: "charcoal", calligraphyAngle: 90, sprayDensity: 140, sprayDotSize: 5,
     });
-    expect(drawingPreferencesSnapshot()).toEqual({ brush: drawingTools.brush });
+    expect(drawingEffects).toMatchObject({ mode: "swirl", swirlStrength: 0.73, swirlDirection: "ccw", swirlSpeed: 4.1 });
+    expect(drawingPreferencesSnapshot()).toEqual({ brush: drawingTools.brush, effects: effectSettingsSnapshot() });
   });
 
   it("maps Ctrl/Alt/Shift + wheel to size, opacity and hardness", () => {

@@ -7,7 +7,9 @@ import {
   effectWorldRadius,
 } from "../src/drawing/effects/effectMath";
 import {
+  DEFAULT_EFFECT_SETTINGS,
   normalizeEffectMode,
+  normalizeEffectSettings,
   normalizeEffectStrength,
 } from "../src/drawing/effects/effectSettings.svelte";
 
@@ -46,5 +48,9 @@ describe("drawing effects", () => {
     expect(normalizeEffectStrength(1.4, 0.5)).toBe(1);
     expect(normalizeEffectStrength(-0.3, 0.5)).toBe(0);
     expect(normalizeEffectStrength(Number.NaN, 0.5)).toBe(0.5);
+    expect(DEFAULT_EFFECT_SETTINGS.swirlSpeed).toBe(2.4);
+    expect(normalizeEffectSettings({ swirlSpeed: 12 }).swirlSpeed).toBe(8);
+    expect(normalizeEffectSettings({ swirlSpeed: 0 }).swirlSpeed).toBe(0.1);
+    expect(normalizeEffectSettings({ swirlSpeed: Number.NaN }).swirlSpeed).toBe(2.4);
   });
 });

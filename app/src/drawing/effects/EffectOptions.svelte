@@ -1,10 +1,12 @@
 <script lang="ts">
   import { imageErase } from "../../attachments/imageErase.svelte";
+  import MediaSlider from "../../media-ui/MediaSlider.svelte";
   import {
     drawingEffects,
     setEffectMode,
     setEffectStrength,
     setSwirlDirection,
+    setSwirlSpeed,
   } from "./effectSettings.svelte";
 
   const effectModes = [
@@ -16,10 +18,14 @@
   let activeMode = $derived(photoBlurActive ? "blur" : drawingEffects.mode);
   let activeStrength = $derived(activeMode === "blur" ? drawingEffects.blurStrength
     : activeMode === "smudge" ? drawingEffects.smudgeStrength : drawingEffects.swirlStrength);
+  let swirlSpeedSlider = $derived(Math.round((drawingEffects.swirlSpeed - 0.1) * 10));
 
-  function updateStrength(event: Event): void {
-    const value = Number((event.currentTarget as HTMLInputElement).value) / 100;
-    setEffectStrength(activeMode, value);
+  function updateStrength(value: number): void {
+    setEffectStrength(activeMode, value / 100);
+  }
+
+  function updateSwirlSpeed(value: number): void {
+    setSwirlSpeed((value + 1) / 10);
   }
 </script>
 
@@ -39,17 +45,15 @@
     </div>
   </div>
 
-  <label class="field strength-field">
+  <label class="field strength-field" data-effect-strength={activeMode}>
     <span><span>Strength</span><strong>{Math.round(activeStrength * 100)}%</strong></span>
-    <input
-      type="range"
-      min="0"
-      max="100"
-      step="1"
+    <MediaSlider
       value={Math.round(activeStrength * 100)}
-      aria-label={`${activeMode[0]!.toUpperCase()}${activeMode.slice(1)} strength`}
-      data-effect-strength={activeMode}
+      max={100}
+      step={1}
+      label={`${activeMode[0]!.toUpperCase()}${activeMode.slice(1)} strength`}
       oninput={updateStrength}
+      onchange={updateStrength}
     />
   </label>
 
@@ -68,11 +72,17 @@
   {/if}
 
   {#if activeMode === "swirl" && !photoBlurActive}
-    <p class="hint">Press and hold at a point to twist the drawing.</p>
-  {:else if activeMode === "blur"}
-    <p class="hint">Drag over drawing or a photo to soften detail.</p>
-  {:else}
-    <p class="hint">Drag to pull nearby colour along the stroke.</p>
+    <label class="field" data-swirl-speed>
+      <span>Speed <strong>{drawingEffects.swirlSpeed.toFixed(1)} rad/s</strong></span>
+      <MediaSlider
+        value={swirlSpeedSlider}
+        max={79}
+        step={1}
+        label="Swirl speed in radians per second at full strength"
+        oninput={updateSwirlSpeed}
+        onchange={updateSwirlSpeed}
+      />
+    </label>
   {/if}
 </section>
 
@@ -99,11 +109,9 @@
     background: var(--bg-hover);
   }
   .mode-options button:disabled { opacity: 0.65; cursor: default; }
-  input[type="range"] { width: 100%; accent-color: var(--accent); }
   fieldset { min-width: 0; margin: 0; padding: 6px 7px; border: 1px solid var(--border, #454545); border-radius: 3px; }
   legend { padding: 0 4px; color: var(--text-dim, #bcbcbc); }
   .direction-field { display: flex; gap: 8px; flex-wrap: wrap; }
   .direction-field label { display: inline-flex; align-items: center; gap: 4px; }
   .direction-field input { accent-color: var(--accent); }
-  .hint { margin: 0; color: var(--text-dim, #bcbcbc); line-height: 1.35; }
 </style>

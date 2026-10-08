@@ -1,7 +1,9 @@
 import { DEFAULT_BRUSH, type BrushSettings, type BrushTip } from "./types";
+import { DEFAULT_EFFECT_SETTINGS, normalizeEffectSettings, type DrawingEffectSettings } from "./effects/effectSettings.svelte";
 
 export interface DrawingPreferences {
   brush: BrushSettings;
+  effects?: DrawingEffectSettings;
 }
 
 export const DEFAULT_DRAWING_PREFERENCES: DrawingPreferences = {
@@ -26,7 +28,10 @@ export function normalizeBrushSettings(value: unknown, fallback: BrushSettings =
 export function normalizeDrawingPreferences(value: unknown, fallback = DEFAULT_DRAWING_PREFERENCES): DrawingPreferences {
   const source = isRecord(value) ? value : {};
   // Brush presets were removed; an old `presets` field in saved settings is ignored.
-  return { brush: normalizeBrushSettings(source.brush, fallback.brush) };
+  const preferences: DrawingPreferences = { brush: normalizeBrushSettings(source.brush, fallback.brush) };
+  const effects = source.effects ?? fallback.effects;
+  if (effects !== undefined) preferences.effects = normalizeEffectSettings(effects, fallback.effects ?? DEFAULT_EFFECT_SETTINGS);
+  return preferences;
 }
 
 /** Brush diameters are CSS screen pixels and intentionally do not depend on camera zoom. */
@@ -45,7 +50,7 @@ function isHexColor(value: unknown): value is string {
 }
 
 function isBrushTip(value: unknown): value is BrushTip {
-  return value === "round" || value === "marker" || value === "pencil" || value === "calligraphy" || value === "charcoal";
+  return value === "round" || value === "calligraphy" || value === "charcoal" || value === "spray";
 }
 
 function isFiniteNumber(value: unknown): value is number {

@@ -36,7 +36,6 @@ const DRAW_SHORTCUTS: Record<string, DrawShortcut> = {
   KeyP: { kind: "tool", tool: "select-polygon" },
   KeyT: { kind: "tool", tool: "text" },
   KeyU: { kind: "tool", tool: "shape" },
-  KeyY: { kind: "tool", tool: "spray" },
   KeyJ: { kind: "tool", tool: "effect" },
   BracketLeft: { kind: "size", delta: -5 },
   BracketRight: { kind: "size", delta: 5 },

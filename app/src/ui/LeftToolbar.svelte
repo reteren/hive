@@ -99,9 +99,6 @@
           {:else if option.id === "shape"}
             <rect x="3" y="9" width="7.5" height="7.5" rx="0.6" />
             <circle cx="12.6" cy="7.2" r="4.2" />
-          {:else if option.id === "spray"}
-            <path d="M7.5 8.5h5v8h-5zM8.8 8.5V6.2h2.4v2.3M11.2 6.2h1.6" />
-            <path d="M15 4.2h.01M16.8 6h.01M15.4 7.4h.01M17.4 3.4h.01" stroke-width="1.8" stroke-linecap="round" />
           {:else if option.id === "effect"}
             <path d="M10 3.2c2.2 2.6 4.6 5.2 4.6 7.9a4.6 4.6 0 0 1-9.2 0c0-2.7 2.4-5.3 4.6-7.9z" />
             <path d="M8 12.2c.4 1.1 1.2 1.7 2.3 1.8" />

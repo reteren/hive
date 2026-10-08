@@ -204,21 +204,41 @@ void main() {
     float core = u_core;
     float edge = u_edge;
     float distance = length(o);
-    if (u_tip == 1 || u_tip == 3) {
-      float angle = radians(u_tip == 1 ? 45.0 : u_tipAngle);
+    if (u_tip == 1) {
+      float angle = radians(45.0);
       vec2 nib = vec2(cos(angle), sin(angle));
       float along = dot(o, nib);
       float across = dot(o, vec2(-nib.y, nib.x));
-      float aspect = u_tip == 1 ? 0.28 : 0.14;
+      float aspect = 0.28;
       distance = max(abs(along), abs(across) / aspect);
       core = max(0.0, radius - 1.0);
       edge = max(radius - core, 1e-6);
+    } else if (u_tip == 3) {
+      // Measure the whole segment in nib space. Its radius-length ellipse is swept along the path,
+      // so a fast segment is one continuous band instead of separate nib stamps at its samples.
+      // The anisotropic transform keeps the nib full-size along its angle and thin across it.
+      float angle = radians(u_tipAngle);
+      vec2 nib = vec2(cos(angle), sin(angle));
+      vec2 acrossNib = vec2(-nib.y, nib.x);
+      float aspect = 0.14;
+      vec2 nibQ = vec2(dot(q, nib), dot(q, acrossNib) / aspect);
+      vec2 nibD = vec2(dot(d, nib), dot(d, acrossNib) / aspect);
+      float nibLengthSquared = dot(nibD, nibD);
+      t = nibLengthSquared > 0.0 ? clamp(dot(nibQ, nibD) / nibLengthSquared, 0.0, 1.0) : 0.0;
+      distance = length(nibQ - t * nibD);
     } else if (u_tip == 2) {
       radius *= 0.32;
       core = max(0.0, radius - 1.0);
       edge = max(radius - core, 1e-6);
     } else if (u_tip == 4) {
       core = min(core, radius * 0.52);
+      edge = max(radius - core, 1e-6);
+    }
+    if (u_tip == 3) {
+      // The nib is much thinner than a round brush, so preserve its subpixel coverage at tiny sizes.
+      float antialias = max(fwidth(distance) * 0.5, 0.5);
+      core = max(0.0, core - antialias);
+      radius += antialias;
       edge = max(radius - core, 1e-6);
     }
     if (distance > radius) continue;

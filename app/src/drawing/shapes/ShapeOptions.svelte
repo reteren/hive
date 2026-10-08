@@ -1,4 +1,5 @@
 <script lang="ts">
+  import MediaSlider from "../../media-ui/MediaSlider.svelte";
   import ShapePreview from "./ShapePreview.svelte";
   import { setCornerRadius, setPolygonSides, setShapeFillMode, setShapeKind, shapeSettings, shapeUi } from "./state.svelte";
 
@@ -12,6 +13,14 @@
     ["star", "5-point star"],
     ["polygon", "Polygon"],
   ] as const;
+
+  function updatePolygonSides(value: number): void {
+    setPolygonSides(value + 3);
+  }
+
+  function updateCornerRadius(value: number): void {
+    setCornerRadius(value);
+  }
 </script>
 
 <section class="shape-options" data-shape-options data-draw-overlay-control aria-label="Shape options">
@@ -39,33 +48,29 @@
   </div>
 
   {#if shapeSettings.kind === "polygon"}
-    <label class="option range-option">
+    <label class="option range-option" data-polygon-sides>
       <span>Sides <strong>{shapeSettings.polygonSides}</strong></span>
-      <input
-        type="range"
-        min="3"
-        max="12"
-        step="1"
-        aria-label="Polygon sides"
-        data-polygon-sides
-        value={shapeSettings.polygonSides}
-        oninput={(event) => setPolygonSides(event.currentTarget.valueAsNumber)}
+      <MediaSlider
+        value={shapeSettings.polygonSides - 3}
+        max={9}
+        step={1}
+        label="Polygon sides"
+        oninput={updatePolygonSides}
+        onchange={updatePolygonSides}
       />
     </label>
   {/if}
 
   {#if shapeSettings.kind === "rounded-rectangle"}
-    <label class="option range-option">
+    <label class="option range-option" data-corner-radius>
       <span>Corner radius <strong>{shapeSettings.cornerRadius}px</strong></span>
-      <input
-        type="range"
-        min="0"
-        max="100"
-        step="1"
-        aria-label="Rounded rectangle corner radius in screen pixels"
-        data-corner-radius
+      <MediaSlider
         value={shapeSettings.cornerRadius}
-        oninput={(event) => setCornerRadius(event.currentTarget.valueAsNumber)}
+        max={100}
+        step={1}
+        label="Rounded rectangle corner radius in screen pixels"
+        oninput={updateCornerRadius}
+        onchange={updateCornerRadius}
       />
     </label>
   {/if}
@@ -95,7 +100,6 @@
   .choices button[aria-pressed="true"] { border-color: var(--accent); color: var(--text, #ededed); background: var(--bg-hover); }
   .choices button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .shape-choices button { flex: 1 0 42%; }
-  input[type="range"] { width: 100%; accent-color: var(--accent); }
   .help, .status, .error { margin: 0; line-height: 1.4; }
   .help { color: var(--text-dim, #bcbcbc); }
   .status { color: var(--text, #ededed); }

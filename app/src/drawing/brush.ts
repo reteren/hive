@@ -422,6 +422,53 @@ export function brushShape(diameter: number, hardness: number): { radius: number
   return { radius, core, edge: Math.max(radius - core, 1e-6), passWindow: Math.max(4, radius * 1.5) };
 }
 
+/** CPU reference for the GPU calligraphy nib: distance to a path segment in the nib's anisotropic space. */
+export function calligraphySegmentDistance(
+  point: StrokePoint,
+  from: StrokePoint,
+  to: StrokePoint,
+  angleDegrees: number,
+  aspect = 0.14,
+): number {
+  if (![point.x, point.y, from.x, from.y, to.x, to.y, angleDegrees, aspect].every(Number.isFinite) || aspect <= 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const angle = angleDegrees * Math.PI / 180;
+  const nibX = Math.cos(angle);
+  const nibY = Math.sin(angle);
+  const acrossX = -nibY;
+  const acrossY = nibX;
+  const qx = point.x - from.x;
+  const qy = point.y - from.y;
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const qAlong = qx * nibX + qy * nibY;
+  const qAcross = (qx * acrossX + qy * acrossY) / aspect;
+  const dAlong = dx * nibX + dy * nibY;
+  const dAcross = (dx * acrossX + dy * acrossY) / aspect;
+  const lengthSquared = dAlong * dAlong + dAcross * dAcross;
+  const t = lengthSquared > 0 ? Math.min(1, Math.max(0, (qAlong * dAlong + qAcross * dAcross) / lengthSquared)) : 0;
+  return Math.hypot(qAlong - t * dAlong, qAcross - t * dAcross);
+}
+
+/** Soft edge used by the calligraphy shader, with the same radius/core model as Round. */
+export function calligraphySegmentAlpha(distance: number, radius: number, hardness: number): number {
+  if (!Number.isFinite(distance) || !Number.isFinite(radius) || radius <= 0) return 0;
+  const hard = Number.isFinite(hardness) ? Math.min(1, Math.max(0, hardness)) : 0;
+  const core = Math.max(0, Math.min(radius * hard, radius - 1));
+  const edge = Math.max(radius - core, 1e-6);
+  if (distance > radius) return 0;
+  if (distance <= core) return 255;
+  const t = Math.min(1, Math.max(0, (distance - core) / edge));
+  return Math.round(255 * (1 - t * t * (3 - 2 * t)));
+}
+
+/** Number of GPU passes required for an ordered segment list (the shader processes 64 per pass). */
+export function strokePassBatchCount(segmentCount: number): number {
+  const count = Number.isFinite(segmentCount) ? Math.max(0, Math.floor(segmentCount)) : 0;
+  return Math.ceil(count / STROKE_SEGMENTS_PER_PASS);
+}
+
 /**
  * Create a soft-brush stroke at a pyramid level (by default the working level for `zoom`). The path
  * is smoothed on the CPU; every pixel is computed by the drawing GPU (gpu/glEngine.ts STROKE_SHADER),
@@ -503,7 +550,7 @@ export function createStroke(settings: BrushSettings, zoom: number, requestedLev
    * Run the pending segments on the GPU over their bounding box. A provisional run (the tail up to
    * the pointer, redrawn on every event) only updates what the preview shows.
    */
-  function flushSegments(commit = true, maxSegments = STROKE_SEGMENTS_PER_PASS): void {
+  function flushSegments(commit = true): void {
     const count = pendingLengths.length / 2;
     if (count === 0) return;
     if (commit) dropProvisional();
@@ -513,8 +560,10 @@ export function createStroke(settings: BrushSettings, zoom: number, requestedLev
     pendingLengths = [];
     const segmentData = new Float32Array(STROKE_SEGMENTS_PER_PASS * 4);
     const lengthData = new Float32Array(STROKE_SEGMENTS_PER_PASS * 2);
-    for (let first = 0; first < count; first += maxSegments) {
-      const n = Math.min(maxSegments, count - first);
+    const batchCount = strokePassBatchCount(count);
+    for (let batch = 0; batch < batchCount; batch += 1) {
+      const first = batch * STROKE_SEGMENTS_PER_PASS;
+      const n = Math.min(STROKE_SEGMENTS_PER_PASS, count - first);
       let left = Infinity;
       let top = Infinity;
       let right = -Infinity;
@@ -599,9 +648,9 @@ export function createStroke(settings: BrushSettings, zoom: number, requestedLev
       const dy = Number.isFinite(point.dy) ? point.dy! * pixelsPerUnit : 0;
       segment(raster, { x: raster.x + dx, y: raster.y + dy });
     }
-    // Spray dabs are sparse and often far apart. Drawing each small dab bbox avoids shading the
-    // empty rectangle between random points in one large spray circle.
-    flushSegments(true, 1);
+    // The shader applies each segment in order, so groups of 64 preserve per-dab compositing while
+    // avoiding one GPU pass per dot. Each group's bbox stays within the small spray circle.
+    flushSegments(true);
   }
 
   /** Show the stroke right up to the pointer: the last piece, drawn only into the preview buffers. */

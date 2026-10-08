@@ -98,7 +98,7 @@ export interface BrushSettings {
   sprayDotSize?: number;
 }
 
-export type BrushTip = "round" | "marker" | "pencil" | "calligraphy" | "charcoal";
+export type BrushTip = "round" | "calligraphy" | "charcoal" | "spray";
 
 export const DEFAULT_BRUSH: BrushSettings = {
   color: "#e8e8e8", size: 10, opacity: 1, hardness: 0.85,

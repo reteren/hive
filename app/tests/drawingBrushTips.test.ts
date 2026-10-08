@@ -6,8 +6,8 @@ import { normalizeBrushSettings } from "../src/drawing/settings";
 
 describe("brush tips and spray settings", () => {
   it("keeps the named tips mapped to stable shader values", () => {
-    expect(BRUSH_TIPS.map(({ id }) => id)).toEqual(["round", "marker", "pencil", "calligraphy", "charcoal"]);
-    expect(BRUSH_TIPS.map(({ id }) => brushTipShaderIndex(id))).toEqual([0, 1, 2, 3, 4]);
+    expect(BRUSH_TIPS.map(({ id }) => id)).toEqual(["round", "calligraphy", "charcoal", "spray"]);
+    expect(BRUSH_TIPS.map(({ id }) => brushTipShaderIndex(id))).toEqual([0, 3, 4, 0]);
   });
 
   it("upgrades old brush settings and clamps persisted tip and spray options", () => {
@@ -16,6 +16,9 @@ describe("brush tips and spray settings", () => {
     });
     expect(normalizeBrushSettings({ tip: "unknown", calligraphyAngle: 240, sprayDensity: 0, sprayDotSize: 99 }))
       .toMatchObject({ tip: "round", calligraphyAngle: 180, sprayDensity: 1, sprayDotSize: 32 });
+    expect(normalizeBrushSettings({ tip: "marker" }).tip).toBe("round");
+    expect(normalizeBrushSettings({ tip: "pencil" }).tip).toBe("round");
+    expect(normalizeBrushSettings({ tip: "spray" }).tip).toBe("spray");
   });
 
   it("uses a repeatable per-stroke random sequence and stays inside the brush circle", () => {
