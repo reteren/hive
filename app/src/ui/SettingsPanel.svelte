@@ -28,6 +28,7 @@
   import ExportStatus from "../export/ExportStatus.svelte";
   import SpellcheckSettings from "../spell/SpellcheckSettings.svelte";
   import AppearanceSettings from "../theme/AppearanceSettings.svelte";
+  import ProfileSettings from "../settings/ProfileSettings.svelte";
   import Select from "./Select.svelte";
   import { setMcpBridgeEnabled } from "../mcp/bridge";
   import { mcpBridge } from "../mcp/bridge.svelte";
@@ -173,6 +174,8 @@
       </header>
 
       <div class="settings-content">
+        <ProfileSettings />
+
         <section class="settings-section" aria-labelledby="general-settings-title">
           <h2 id="general-settings-title">General</h2>
           <label class="setting-row">

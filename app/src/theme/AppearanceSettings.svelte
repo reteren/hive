@@ -161,7 +161,10 @@
 <style>
   .appearance-settings {
     --appearance-gap: 5px;
+    padding: 9px 0 3px;
   }
+
+  h2 { margin: 0 0 7px; color: var(--text-dim); font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
 
   .preset-gallery {
     display: grid;

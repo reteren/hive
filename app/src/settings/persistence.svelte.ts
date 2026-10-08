@@ -29,9 +29,21 @@ import {
 import {
   parseTimeCounters,
   parseViewSettings,
+  serializeViewSettings,
   serializeViewSettingsWithTimeCounters,
   type ViewSettings,
 } from "./viewSettings";
+import {
+  createProfileId,
+  MAX_PROFILES,
+  normalizeProfileName,
+  parseSettingsProfiles,
+  pickProfileSettings,
+  serializeSettingsProfiles,
+  uniqueProfileName,
+  withProfileSettings,
+} from "./profiles";
+import { setSettingsProfiles, settingsProfiles } from "./profileState.svelte";
 
 const SAVE_DEBOUNCE_MS = 400;
 const TIME_COUNTER_SAVE_INTERVAL_MS = 15_000;
@@ -64,6 +76,7 @@ async function initialize(): Promise<void> {
   }
 
   applySettings(settings);
+  setSettingsProfiles(parseSettingsProfiles(storedProfiles(serialized), serializedSettings()));
   cacheThemeBootstrap(settings.appearance);
   setTimeCounters(parseTimeCounters(serialized));
   lastPersistedSnapshot = currentSettingsSnapshot();
@@ -107,7 +120,75 @@ async function flushViewSettings(): Promise<void> {
 }
 
 function currentSettingsSnapshot(): string {
-  return serializeViewSettingsWithTimeCounters(currentSettings(), timeCounters);
+  const snapshot = JSON.parse(serializeViewSettingsWithTimeCounters(currentSettings(), timeCounters)) as Record<string, unknown>;
+  snapshot.profiles = serializeSettingsProfiles(settingsProfiles, snapshot);
+  return JSON.stringify(snapshot);
+}
+
+function serializedSettings(): Record<string, unknown> {
+  return JSON.parse(serializeViewSettings(currentSettings())) as Record<string, unknown>;
+}
+
+function storedProfiles(serialized: string | null): unknown {
+  if (serialized == null) return undefined;
+  try {
+    return (JSON.parse(serialized) as { profiles?: unknown }).profiles;
+  } catch {
+    return undefined;
+  }
+}
+
+/** R11.4: keep the current settings in the active profile, then load `id`'s settings. */
+export function switchSettingsProfile(id: string): void {
+  if (id === settingsProfiles.active) return;
+  const target = settingsProfiles.list.find((profile) => profile.id === id);
+  if (!target) return;
+  const current = serializedSettings();
+  const active = settingsProfiles.list.find((profile) => profile.id === settingsProfiles.active);
+  if (active) active.settings = pickProfileSettings(current);
+  const next = parseViewSettings(JSON.stringify(withProfileSettings(current, target.settings)), currentSettings());
+  // The view stays where it is; only its zoom is pulled into the new profile's limits.
+  next.camera = {
+    x: camera.x,
+    y: camera.y,
+    zoom: Math.min(next.cameraSettings.maxZoom, Math.max(next.cameraSettings.minZoom, camera.zoom)),
+  };
+  settingsProfiles.active = id;
+  applySettings(next);
+}
+
+/** R11.4: a new profile starting as a copy of the current settings; it becomes the active one. */
+export function createSettingsProfile(name?: string): string | null {
+  if (settingsProfiles.list.length >= MAX_PROFILES) return null;
+  const current = serializedSettings();
+  const active = settingsProfiles.list.find((profile) => profile.id === settingsProfiles.active);
+  if (active) active.settings = pickProfileSettings(current);
+  const id = createProfileId(settingsProfiles.list);
+  const profileName = uniqueProfileName(settingsProfiles.list, name ?? active?.name ?? "Profile");
+  settingsProfiles.list = [...settingsProfiles.list, { id, name: profileName, settings: pickProfileSettings(current) }];
+  settingsProfiles.active = id;
+  return id;
+}
+
+/** Rename a profile; returns the name actually used ("" when the name was empty). */
+export function renameSettingsProfile(id: string, name: string): string {
+  const profile = settingsProfiles.list.find((entry) => entry.id === id);
+  const normalized = normalizeProfileName(name);
+  if (!profile || !normalized) return "";
+  profile.name = uniqueProfileName(settingsProfiles.list, normalized, id);
+  return profile.name;
+}
+
+/** Delete a profile (never the last one); deleting the active one switches to a neighbour first. */
+export function deleteSettingsProfile(id: string): boolean {
+  const index = settingsProfiles.list.findIndex((profile) => profile.id === id);
+  if (index < 0 || settingsProfiles.list.length <= 1) return false;
+  if (id === settingsProfiles.active) {
+    const neighbour = settingsProfiles.list[index + 1] ?? settingsProfiles.list[index - 1];
+    switchSettingsProfile(neighbour.id);
+  }
+  settingsProfiles.list = settingsProfiles.list.filter((profile) => profile.id !== id);
+  return true;
 }
 
 function differsOnlyByTimeCounters(current: string, persisted: string): boolean {
