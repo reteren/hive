@@ -31,7 +31,7 @@ describe("YouTube loop and hidden-frame persistence", () => {
     expect(mergeLoadedNotes(project, [{
       id: youtubeNote.id,
       name: youtubeNote.name,
-      file: `${youtubeNote.name}.md`,
+      file: project.notes[0].file,
       text: youtubeNote.text,
       x: youtubeNote.x,
       y: youtubeNote.y,

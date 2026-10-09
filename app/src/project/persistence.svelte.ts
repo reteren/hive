@@ -689,13 +689,18 @@ async function handleExternalDelete(file: string): Promise<void> {
   await acknowledgeExternalChange(file, undefined);
 }
 
+/** Note id → Markdown file as last loaded or saved; notes keep these files while their names match. */
+export function savedNoteFiles(): Map<string, string> {
+  return new Map(indexTemplate?.notes.map((note) => [note.id, note.file]) ?? []);
+}
+
 function noteForFile(file: string): Note | undefined {
   const key = file.toLowerCase();
   const notes = board.order.flatMap((id) => {
     const note = board.notes[id];
     return note ? [note] : [];
   });
-  const currentFiles = projectNoteFiles(notes);
+  const currentFiles = projectNoteFiles(notes, savedNoteFiles());
   return notes.find((note) => {
     const currentFile = currentFiles.get(note.id);
     const savedFile = lastSavedById.get(note.id)?.file;

@@ -198,7 +198,7 @@ describe("Mood modules", () => {
       { type: "mood", moods: ["curiosity"] },
     ]);
     const loaded = mergeLoadedNotes(parsed, values.map(({ id, name, text, x, y, width, height }) => ({
-      id, name, text, file: name + ".md", x, y, width, height,
+      id, name, text, file: parsed.notes.find((entry) => entry.id === id)!.file, x, y, width, height,
     })));
     expect(loaded).toMatchObject([values[0], { ...values[1], height: null }]);
     expect(loaded[1]?.type).toBe("mood");

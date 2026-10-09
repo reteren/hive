@@ -58,7 +58,7 @@ describe("video node persistence", () => {
     const loaded = mergeLoadedNotes(project, notes.map((note) => ({
       id: note.id,
       name: note.name,
-      file: `${note.name}.md`,
+      file: project.notes.find((entry) => entry.id === note.id)!.file,
       text: note.text,
       x: note.x,
       y: note.y,

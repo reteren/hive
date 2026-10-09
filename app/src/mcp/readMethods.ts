@@ -7,6 +7,7 @@ import { links } from "../model/links.svelte";
 import { zones } from "../model/zones.svelte";
 import { project } from "../project/project.svelte";
 import { projectNoteFiles } from "../project/index";
+import { savedNoteFiles } from "../project/persistence.svelte";
 import { selection } from "../selection/selection.svelte";
 import { searchNotes, type SearchNote } from "../search/matching";
 import { zoneMembers } from "../zones/membership.svelte";
@@ -251,7 +252,7 @@ registerMcpMethod({
     }
 
     const notes = orderedNotes();
-    const filesById = projectNoteFiles(notes);
+    const filesById = projectNoteFiles(notes, savedNoteFiles());
     const found = new Map<string, Note>();
     const missing: string[] = [];
     for (const id of ids ?? []) {

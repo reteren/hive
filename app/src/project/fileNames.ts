@@ -40,6 +40,39 @@ export function noteMarkdownFileName(note: ProjectNoteIdentity): string {
     : `${sanitizeNoteName(note.name)}.md`;
 }
 
+/** Shortest id prefix used in a file name; longer prefixes only when two notes share a name and a prefix. */
+const ID_SUFFIX_LENGTH = 4;
+
+function compactId(id: string): string {
+  return id.replace(/[^0-9a-z]/gi, "").toLowerCase() || "0";
+}
+
+/**
+ * File for a new or renamed text note: its name plus a short id piece ("Note 7 3f2a.md"), so two
+ * people who each create "Note 7" in their copy of a Git project write different files.
+ */
+export function noteMarkdownFileNameWithId(note: ProjectNoteIdentity, length = ID_SUFFIX_LENGTH): string {
+  const suffix = compactId(note.id).slice(0, length);
+  const base = sanitizeNoteName(note.name);
+  return `${truncateUtf16(base, MAX_BASE_NAME_UNITS - suffix.length - 1).replace(/[. ]+$/g, "") || "Note"} ${suffix}.md`;
+}
+
+/**
+ * True when `file` still belongs to the note's current name: "<name>.md" from older versions or
+ * "<name> <id piece>.md". A note keeps such a file, so existing projects are not renamed.
+ */
+export function noteFileMatchesName(note: ProjectNoteIdentity, file: string): boolean {
+  if (!file.toLowerCase().endsWith(".md")) return false;
+  const base = noteFileKey(file.slice(0, -3));
+  const name = noteFileKey(note.name);
+  if (base === name) return true;
+  const id = compactId(note.id);
+  for (let length = ID_SUFFIX_LENGTH; length <= id.length; length += 1) {
+    if (base === noteFileKey(noteMarkdownFileNameWithId(note, length).slice(0, -3))) return true;
+  }
+  return false;
+}
+
 function truncateUtf16(value: string, maxUnits: number): string {
   let result = "";
   let usedUnits = 0;

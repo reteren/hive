@@ -151,7 +151,7 @@ describe("project index", () => {
     ];
 
     const index = parseProjectIndex(serializeProjectIndex(notes));
-    expect(index.notes.map((note) => note.file)).toEqual(["Calculator-calc-id 2.md", "Calculator-calc-id.md"]);
+    expect(index.notes.map((note) => note.file)).toEqual(["Calculator-calc-id.md", "Calculator-calc-id note.md"]);
     expect(new Set(index.notes.map((note) => note.file.toLowerCase())).size).toBe(2);
   });
 
@@ -303,7 +303,7 @@ describe("project index", () => {
     };
     const parsed = parseProjectIndex(serializeProjectIndex([beacon], undefined, [], [], [zone], ["beacon-a", "me"]));
     const loaded = mergeLoadedNotes(parsed, [{
-      id: beacon.id, name: beacon.name, file: "North.md", text: "", x: beacon.x, y: beacon.y,
+      id: beacon.id, name: beacon.name, file: parsed.notes[0].file, text: "", x: beacon.x, y: beacon.y,
       width: beacon.width, height: beacon.height,
     }]);
 
@@ -386,7 +386,7 @@ describe("project index", () => {
     const taskLog = [{ noteId: "pro-1", name: "Benefit", doneAt: 1_700_000_000_000 }];
     const parsed = parseProjectIndex(serializeProjectIndex(notes, undefined, [], taskLog));
     const loadedNotes = mergeLoadedNotes(parsed, notes.map(({ id, name, text, x, y, width, height }) => ({
-      id, name, file: `${name}.md`, text, x, y, width, height,
+      id, name, file: parsed.notes.find((entry) => entry.id === id)!.file, text, x, y, width, height,
     })));
 
     expect(loadedNotes).toEqual(notes);

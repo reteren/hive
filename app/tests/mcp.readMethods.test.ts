@@ -171,7 +171,7 @@ describe("MCP read methods", () => {
     expect(result.nodes).toHaveLength(1);
     expect(result.nodes[0]).toMatchObject({
       id: "n1",
-      file: "Alpha.md",
+      file: "Alpha n1.md",
       height: 18,
       links: [{ id: "l1", fromName: "Alpha", toName: "Beta", shape: "wave" }],
       zone: { id: "z1", name: "Research" },

@@ -20,7 +20,14 @@ import { isFrameAnchor, parseSmoothLineAnchorSnapshot } from "../links/anchors";
 import type { Zone } from "../model/zone";
 import type { Point } from "../board/cameraMath";
 import { beaconPaletteColor, normalizeBeaconColor } from "../beacons/beaconPalette";
-import { calculatorNoteFileName, noteFileKey, noteMarkdownFileName, sanitizeNoteName } from "./fileNames";
+import {
+  calculatorNoteFileName,
+  noteFileKey,
+  noteFileMatchesName,
+  noteMarkdownFileName,
+  noteMarkdownFileNameWithId,
+  sanitizeNoteName,
+} from "./fileNames";
 import type { TaskLogEntry } from "../tasks/taskLog.svelte";
 import { calculatorKey, parseCalculatorData, parseScope, parseTiers, type CalculatorData, type NodeScope, type TierRow, parseListItems, parseRandomPick, parseSource, parseCustomMarks, type CustomMark, type ListItem, type RandomPick, type SourceData } from "../model/nodeData";
 import type { ArchiveEntry, TrashEntry } from "../model/retention.svelte";
@@ -218,7 +225,7 @@ export function serializeProjectIndex(
   const extrasById = new Map(previous?.notes.map((note) => [note.id, note]) ?? []);
   const serializedZones = (nextZones ?? previous?.zones ?? []).map(copyZone);
   const validZoneIds = new Set(serializedZones.map((zone) => zone.id));
-  const filesById = projectNoteFiles(notes);
+  const filesById = projectNoteFiles(notes, new Map(previous?.notes.map((note) => [note.id, note.file]) ?? []));
   const indexedNotes = notes.map((note) => {
     const previousNote = extrasById.get(note.id);
     return {
@@ -402,13 +409,36 @@ function sanitizeCalculators(value: unknown): { values: Record<string, Calculato
   };
 }
 
-/** Prefer named Markdown files for text nodes and reserve collision-free id-based paths for calculators. */
-export function projectNoteFiles(notes: readonly Note[]): Map<string, string> {
+/**
+ * Markdown file of every note. A text note keeps its saved file while that still matches its name
+ * (`previousFiles`, id → file); a new or renamed note gets "<name> <id piece>.md" so notes created
+ * with the same name in two Git clones never share a file. Calculators get id-based paths.
+ */
+export function projectNoteFiles(
+  notes: readonly Note[],
+  previousFiles?: ReadonlyMap<string, string>,
+): Map<string, string> {
   const files = new Map<string, string>();
   const occupied = new Set<string>();
+  const fresh: Note[] = [];
   for (const note of notes) {
     if (note.type === "calculator") continue;
-    const file = noteMarkdownFileName(note);
+    const previous = previousFiles?.get(note.id);
+    const key = previous ? noteFileKey(previous.slice(0, -3)) : "";
+    if (previous && noteFileMatchesName(note, previous) && !occupied.has(key)) {
+      files.set(note.id, previous);
+      occupied.add(key);
+    } else {
+      fresh.push(note);
+    }
+  }
+  for (const note of fresh) {
+    let length = 4;
+    let file = noteMarkdownFileNameWithId(note, length);
+    while (occupied.has(noteFileKey(file.slice(0, -3))) && length < 64) {
+      length += 1;
+      file = noteMarkdownFileNameWithId(note, length);
+    }
     files.set(note.id, file);
     occupied.add(noteFileKey(file.slice(0, -3)));
   }
