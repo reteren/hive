@@ -3,7 +3,7 @@ import { snapToGrid } from "../board/gridMath";
 import type { Bounds } from "../notes/layout.svelte";
 import type { HistoryCommand } from "../history/historyStack";
 import { hasResizeHandle, resizeNote, resizeEdgeAxes, type ResizeEdge } from "./resize";
-import { MAX_NOTE_SCALE, normalizeNoteScale, type NoteKind } from "../model/note";
+import { MAX_NOTE_SCALE, MIN_NOTE_SCALE, normalizeNoteScale, type NoteKind } from "../model/note";
 
 export const GESTURE_THRESHOLD_PX = 4;
 
@@ -140,7 +140,7 @@ export function updateScaleModeGesture(gesture: ScaleModeGesture, cursorWorld: P
   // Images can scale without a maximum and pass through zero; other kinds keep their scale range.
   const regularFrames = gesture.before.filter((frame) => frame.type !== "image");
   const minFactor = regularFrames.length > 0
-    ? Math.max(...regularFrames.map((frame) => 1 / normalizeNoteScale(frame.scale)))
+    ? Math.max(...regularFrames.map((frame) => MIN_NOTE_SCALE / normalizeNoteScale(frame.scale)))
     : 1;
   const maxFactor = regularFrames.length > 0
     ? Math.min(...regularFrames.map((frame) => MAX_NOTE_SCALE / normalizeNoteScale(frame.scale)))
@@ -177,9 +177,9 @@ export function normalizeScaleModeAtCommit(gesture: ScaleModeGesture): NoteFrame
       };
     }
     const initialScale = normalizeNoteScale(before.scale);
-    const unroundedScale = Math.min(MAX_NOTE_SCALE, Math.max(1, initialScale * factor));
+    const unroundedScale = Math.min(MAX_NOTE_SCALE, Math.max(MIN_NOTE_SCALE, initialScale * factor));
     const roundedScale = Math.round(unroundedScale * 1000) / 1000;
-    const scale = roundedScale < 1.001 ? 1 : Math.min(MAX_NOTE_SCALE, roundedScale);
+    const scale = Math.abs(roundedScale - 1) < 0.001 ? 1 : Math.min(MAX_NOTE_SCALE, Math.max(MIN_NOTE_SCALE, roundedScale));
     const extension = before.baseStatisticsExtensionWidth ??
       (before.statisticsExtensionWidth ?? 0) / initialScale;
     const baseWidth = before.baseWidth ??
@@ -196,7 +196,7 @@ export function normalizeScaleModeAtCommit(gesture: ScaleModeGesture): NoteFrame
       y: afterY,
       width: (baseWidth + extension) * scale,
       height: baseHeight === null ? null : baseHeight * scale,
-      scale: scale > 1 ? scale : undefined,
+      scale: scale !== 1 ? scale : undefined,
       baseWidth,
       baseHeight,
       baseStatisticsExtensionWidth: extension,
@@ -261,7 +261,7 @@ function scaleModeFrames(frames: readonly NoteFrame[], pivot: Point, factor: num
       };
     }
     const initialScale = normalizeNoteScale(frame.scale);
-    const scale = Math.min(MAX_NOTE_SCALE, Math.max(1, initialScale * factor));
+    const scale = Math.min(MAX_NOTE_SCALE, Math.max(MIN_NOTE_SCALE, initialScale * factor));
     const ratio = scale / initialScale;
     return {
       ...frame,
@@ -362,7 +362,7 @@ export function normalizeScaleResizeAtCommit(gesture: ResizeGesture): NoteFrame 
 
   const initialScale = normalizeNoteScale(gesture.before.scale);
   const roundedScale = Math.round(normalizeNoteScale(frame.scale) * 1000) / 1000;
-  const scale = roundedScale < 1.001 ? 1 : Math.min(MAX_NOTE_SCALE, roundedScale);
+  const scale = Math.abs(roundedScale - 1) < 0.001 ? 1 : Math.min(MAX_NOTE_SCALE, Math.max(MIN_NOTE_SCALE, roundedScale));
   const extension = gesture.before.baseStatisticsExtensionWidth ??
     (gesture.before.statisticsExtensionWidth ?? 0) / initialScale;
   const baseWidth = gesture.before.baseWidth ??
@@ -387,7 +387,7 @@ export function normalizeScaleResizeAtCommit(gesture: ResizeGesture): NoteFrame 
       : axes.vertical === null ? gesture.before.y - (visualHeight - gesture.visualHeight) / 2 : gesture.before.y,
     width,
     height,
-    scale: scale > 1 ? scale : undefined,
+    scale: scale !== 1 ? scale : undefined,
     baseWidth,
     baseHeight,
     baseStatisticsExtensionWidth: extension,
@@ -427,7 +427,7 @@ function scaleResizeFrame(gesture: ResizeGesture, cursorWorld: Point, snap: bool
     ? Math.abs(scaleX - 1) >= Math.abs(scaleY - 1) ? scaleX : scaleY
     : axes.horizontal !== null ? scaleX : scaleY;
   const currentScale = normalizeNoteScale(frame.scale);
-  const nextScale = Math.min(MAX_NOTE_SCALE, Math.max(1, currentScale * factor));
+  const nextScale = Math.min(MAX_NOTE_SCALE, Math.max(MIN_NOTE_SCALE, currentScale * factor));
   const ratio = nextScale / currentScale;
   const nextWidth = width * ratio;
   const nextHeight = height * ratio;

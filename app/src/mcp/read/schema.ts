@@ -25,7 +25,7 @@ const COMMON_FIELDS: Record<string, string> = {
   y: "Top-left Y coordinate in board units (u); Y grows downward.",
   width: "Width in board units (u).",
   height: "Manual height in board units (u), or null for automatic height.",
-  scale: "Optional uniform scale from 1 to 4; absent means 1.",
+  scale: "Optional uniform scale from 0.5 to 4; absent means 1.",
   task: "Optional task state {done:boolean, doneAt:number|null}; absent or null means not a task.",
   importance: `Optional importance value: ${IMPORTANCE_LEVELS.join(", ")}, or null.`,
   purposes: `Optional array of purpose values: ${PURPOSE_KINDS.join(", ")}.`,

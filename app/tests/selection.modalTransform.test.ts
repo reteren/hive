@@ -53,13 +53,14 @@ describe("selection transform modes", () => {
     ]);
   });
 
-  it("does nothing below 100 %: pulling the cursor inside the start radius neither shrinks nor slides the node", () => {
+  it("shrinks down to 50 % and no further when the cursor moves inside the start radius", () => {
     const frame: NoteFrame = { id: "a", x: 0, y: 0, width: 20, height: 10, scale: 1, baseWidth: 20, baseHeight: 10 };
     const gesture = createScaleModeGesture([frame], { x: 10, y: 5 }, { x: 30, y: 5 });
-    const inward = updateScaleModeGesture(gesture, { x: 15, y: 5 });
 
-    expect(inward.factor).toBe(1);
-    expect(inward.after[0]).toEqual(expect.objectContaining({ x: 0, y: 0, width: 20, height: 10 }));
+    expect(updateScaleModeGesture(gesture, { x: 25, y: 5 }).factor).toBe(0.75);
+    const inward = updateScaleModeGesture(gesture, { x: 11, y: 5 });
+    expect(inward.factor).toBe(0.5);
+    expect(inward.after[0]).toEqual(expect.objectContaining({ x: 5, y: 2.5, width: 10, height: 5 }));
   });
 
   it("keeps a zero-distance start finite and restores original sizes when a scale is cancelled", () => {

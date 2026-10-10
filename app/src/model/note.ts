@@ -188,10 +188,12 @@ export interface Note {
   listStats?: boolean;
 }
 
+/** Uniform node scale range: 50 % … 400 %; absent scale means 100 %. */
+export const MIN_NOTE_SCALE = 0.5;
 export const MAX_NOTE_SCALE = 4;
 
 export function isValidNoteScale(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 1 && value <= MAX_NOTE_SCALE;
+  return typeof value === "number" && Number.isFinite(value) && value >= MIN_NOTE_SCALE && value <= MAX_NOTE_SCALE;
 }
 
 export function normalizeNoteScale(value: unknown): number {

@@ -142,7 +142,7 @@ function parseArchivedNote(value: unknown): Note | null {
     y: value.y,
     width: value.width,
     height: value.height ?? null,
-    ...(typeof value.scale === "number" && value.scale > 1 ? { scale: value.scale } : {}),
+    ...(typeof value.scale === "number" && value.scale !== 1 ? { scale: value.scale } : {}),
     ...(task ? { task } : {}),
     ...(taskMemory ? { taskMemory } : {}),
     ...(time ? { time: copyTimeForHost(value.type as NoteKind, time) } : {}),

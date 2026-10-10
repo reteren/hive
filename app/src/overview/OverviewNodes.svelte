@@ -24,7 +24,7 @@
       if (!note) return [];
       if (note.type === "beacon") {
         const size = BEACON_SIZE * PX_PER_UNIT;
-        const scale = note.scale && note.scale > 1 ? note.scale : 1;
+        const scale = note.scale && note.scale !== 1 ? note.scale : 1;
         return [{
           id, beacon: true, x: note.x * PX_PER_UNIT, y: note.y * PX_PER_UNIT, w: size * scale, h: size * scale,
           kind: "Beacon", title: overviewLabelFor("beacon", note.name).title, color: note.color ?? BEACON_PALETTE[0],

@@ -10,7 +10,7 @@
 {#if updater.phase !== "idle"}
   <div class="update-banner" role="alertdialog" aria-label="Update available" data-update-banner data-selection-ignore>
     <div class="update-copy">
-      <strong>ОБНОВИТЬ?</strong>
+      <strong>Update?</strong>
       <span class="update-version">hive {updater.version} is available.</span>
       {#if updater.phase === "downloading"}
         <span class="update-status">Downloading… {Math.round(updater.progress * 100)}%</span>

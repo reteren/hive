@@ -54,7 +54,7 @@ describe("universal node scale", () => {
     expect(updateResizeGesture(grow, { x: 200, y: 30 }, false, 1, true).after.scale).toBe(4);
   });
 
-  it("returns to exact base dimensions when Shift-drag shrinks past scale 1", () => {
+  it("stops at 50 % when Shift-drag shrinks far past scale 1, keeping exact base dimensions", () => {
     const base = {
       id: "note", type: "note" as const, x: 10, y: 20, width: 25, height: null,
       scale: 1, baseWidth: 25, baseHeight: null, baseStatisticsExtensionWidth: 0,
@@ -66,8 +66,8 @@ describe("universal node scale", () => {
     const shrink = createResizeGesture(enlarged, 40, "bottom-right", { x: 60, y: 60 });
     const crossedOrigin = updateResizeGesture(shrink, { x: -400, y: -200 }, false, 1, true);
     const normalized = normalizeScaleResizeAtCommit(crossedOrigin);
-    expect(normalized.scale).toBeUndefined();
-    expect(normalized.width).toBe(25);
+    expect(normalized.scale).toBe(0.5);
+    expect(normalized.width).toBe(12.5);
     expect(normalized.baseWidth).toBe(25);
 
     const tierBase = { ...base, id: "tier", type: "tierlist" as const, width: 60, baseWidth: 60 };
@@ -75,8 +75,8 @@ describe("universal node scale", () => {
     const tierEnlarged = updateResizeGesture(tierGrow, { x: 120, y: 60 }, false, 1, true).after;
     const tierShrink = createResizeGesture(tierEnlarged, 40, "bottom-right", { x: 120, y: 60 });
     const tierReturn = normalizeScaleResizeAtCommit(updateResizeGesture(tierShrink, { x: -400, y: -200 }, false, 1, true));
-    expect(tierReturn.scale).toBeUndefined();
-    expect(tierReturn.width).toBe(60);
+    expect(tierReturn.scale).toBe(0.5);
+    expect(tierReturn.width).toBe(30);
     expect(tierReturn.baseWidth).toBe(60);
   });
 
@@ -112,7 +112,7 @@ describe("universal node scale", () => {
 
   it("defaults invalid project scale to 1 with a warning and rejects invalid retention snapshots", () => {
     const raw = JSON.parse(serializeProjectIndex([note()])) as { notes: Array<Record<string, unknown>> };
-    raw.notes[0]!.scale = 0.5;
+    raw.notes[0]!.scale = 0.25;
     const parsed = parseProjectIndexWithWarnings(JSON.stringify(raw));
     expect(parsed.index.notes[0]?.scale).toBeUndefined();
     expect(parsed.warnings).toContain("Invalid scale for note scaled; defaulted to 1.");
