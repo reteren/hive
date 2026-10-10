@@ -24,6 +24,7 @@ if (typeof document !== "undefined") {
   host.dataset.spellcheckOverlay = "";
   document.body.append(host);
   mount(SpellcheckContextMenu, { target: host });
+  let suggestionRequest = 0;
   window.addEventListener("contextmenu", (event) => {
     if (!(event.target instanceof Element)) return;
     const content = event.target.closest<HTMLElement>(".cm-content");
@@ -56,9 +57,11 @@ if (typeof document !== "undefined") {
     spellcheckMenu.suggestions = [];
     spellcheckMenu.loading = Boolean(context);
     spellcheckMenu.error = "";
+    // A request number, not the context object: $state stores a proxy of it, so `===` never matches.
+    const request = ++suggestionRequest;
     if (context) {
       void suggestSpelling(context.word, context.languages).then((suggestions) => {
-        if (spellcheckMenu.context !== context) return;
+        if (request !== suggestionRequest || !spellcheckMenu.open) return;
         spellcheckMenu.suggestions = suggestions.slice(0, 5);
         spellcheckMenu.loading = false;
       });

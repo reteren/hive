@@ -3,6 +3,7 @@ mod backup;
 mod board_store;
 mod board_watch;
 mod capture;
+mod clipboard_permission;
 mod drawing;
 mod export;
 mod mcp_bridge;
@@ -127,6 +128,9 @@ pub fn run() {
         .manage(overhive::OverhiveState::default())
         .manage(project::ProjectState::default())
         .setup(|app| {
+            for window in app.webview_windows().values() {
+                clipboard_permission::allow_clipboard_reads(window);
+            }
             // Project state first: the main window already exists and may call initialize_project.
             app.manage(watcher::ProjectWatcher::new(app.handle().clone()));
             app.manage(quick_input_shortcut::QuickInputShortcutService::new(app.handle().clone()));
