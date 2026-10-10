@@ -1,7 +1,7 @@
 import type { Note, NoteKind } from "../model/note";
 import { PX_PER_UNIT } from "../board/cameraMath";
 
-const KIND_LABELS: Record<NoteKind, string> = {
+export const KIND_LABELS: Record<NoteKind, string> = {
   note: "Text",
   pro: "Plus",
   con: "Minus",

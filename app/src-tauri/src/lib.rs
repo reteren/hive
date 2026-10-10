@@ -8,6 +8,7 @@ mod clipboard_permission;
 mod drawing;
 mod export;
 mod mcp_bridge;
+mod node_info;
 mod overhive;
 mod project;
 mod quick_input_shortcut;
@@ -260,6 +261,9 @@ pub fn run() {
             change_marks::load_seen_state,
             change_marks::save_seen_state,
             change_marks::change_authors,
+            node_info::node_info,
+            node_info::node_commit_diff,
+            node_info::reveal_node_file,
             spellcheck::spellcheck_languages,
             spellcheck::spellcheck_check,
             spellcheck::spellcheck_suggest,

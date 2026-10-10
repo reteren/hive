@@ -74,9 +74,10 @@ fn authors(root: &Path, nodes: &[(String, String)]) -> HashMap<String, String> {
     found
 }
 
-fn git(root: &Path, args: &[&str]) -> Option<String> {
+pub(crate) fn git(root: &Path, args: &[&str]) -> Option<String> {
     let mut command = std::process::Command::new("git");
-    command.arg("-C").arg(root).args(args);
+    // Readable (not octal-escaped) non-ASCII file names in diffs and logs.
+    command.arg("-C").arg(root).args(["-c", "core.quotepath=false"]).args(args);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;

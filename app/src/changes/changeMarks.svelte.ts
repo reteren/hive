@@ -5,10 +5,12 @@ import { editing } from "../notes/editing.svelte";
 import {
   externalMark,
   marksOnOpen,
+  parseEditTime,
   parseSeenState,
   seenAfterOwnSave,
   serializeSeenState,
   type ChangeKind,
+  type EditTimeMap,
   type SeenMap,
 } from "./changeLogic";
 import { nodeFingerprint, type NodeRecord } from "./fingerprint";
@@ -23,7 +25,13 @@ export const changeMarks = $state<{ byId: Record<string, ChangeKind>; authors: R
   authors: {},
 });
 
+/** Per node, how long this person has edited it (shown in the node's Info window). */
+export const editTime = $state<{ byId: EditTimeMap }>({ byId: {} });
+
 const SAVE_DELAY_MS = 800;
+const EDIT_TICK_MS = 1000;
+/** Edit time alone is written at most this often. */
+const EDIT_TIME_SAVE_DELAY_MS = 15_000;
 
 let seen: SeenMap = {};
 let projectPath = "";
@@ -48,8 +56,11 @@ export async function startChangeTracking(
   fileOf = noteFile;
   if (!isTauri()) return;
   let stored: SeenMap | null = null;
+  let storedEditTime: EditTimeMap = {};
   try {
-    stored = parseSeenState(await invoke<string | null>("load_seen_state", { projectPath: path }));
+    const serialized = await invoke<string | null>("load_seen_state", { projectPath: path });
+    stored = parseSeenState(serialized);
+    storedEditTime = parseEditTime(serialized);
   } catch (error) {
     console.warn("Could not read which changes were already seen.", error);
   }
@@ -57,8 +68,10 @@ export async function startChangeTracking(
   const result = marksOnOpen(opened, stored);
   seen = result.seen;
   changeMarks.byId = result.marks;
+  editTime.byId = storedEditTime;
   active = true;
   watchAcknowledgements();
+  startEditClock();
   scheduleSave();
   void loadAuthors(Object.keys(result.marks));
 }
@@ -71,6 +84,7 @@ export function stopChangeTracking(): void {
   seen = {};
   changeMarks.byId = {};
   changeMarks.authors = {};
+  editTime.byId = {};
 }
 
 /** This window saved `saved`: its own edits are seen, marked nodes keep waiting for a look. */
@@ -144,16 +158,31 @@ async function loadAuthors(ids: readonly string[]): Promise<void> {
   }
 }
 
-function scheduleSave(): void {
+function scheduleSave(delay = SAVE_DELAY_MS): void {
+  // A pending sooner save is kept; edit-time ticks never postpone it.
+  if (saveTimer !== null && delay > SAVE_DELAY_MS) return;
   if (saveTimer !== null) clearTimeout(saveTimer);
-  saveTimer = setTimeout(flushSave, SAVE_DELAY_MS);
+  saveTimer = setTimeout(flushSave, delay);
+}
+
+let editClock: ReturnType<typeof setInterval> | null = null;
+
+/** Counts a second for the edited node while the hive window has focus. */
+function startEditClock(): void {
+  if (editClock !== null || typeof document === "undefined") return;
+  editClock = setInterval(() => {
+    const id = editing.noteId;
+    if (!active || !id || document.hidden || !document.hasFocus()) return;
+    editTime.byId[id] = (editTime.byId[id] ?? 0) + EDIT_TICK_MS;
+    scheduleSave(EDIT_TIME_SAVE_DELAY_MS);
+  }, EDIT_TICK_MS);
 }
 
 function flushSave(): void {
   if (saveTimer !== null) clearTimeout(saveTimer);
   saveTimer = null;
   if (!active || !isTauri()) return;
-  void invoke("save_seen_state", { projectPath, contents: serializeSeenState(seen) }).catch((error: unknown) => {
+  void invoke("save_seen_state", { projectPath, contents: serializeSeenState(seen, $state.snapshot(editTime.byId)) }).catch((error: unknown) => {
     console.warn("Could not save which changes were seen.", error);
   });
 }

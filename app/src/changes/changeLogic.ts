@@ -59,8 +59,26 @@ export function parseSeenState(serialized: string | null): SeenMap | null {
   }
 }
 
-export function serializeSeenState(seen: SeenMap): string {
-  return JSON.stringify({ version: SEEN_STATE_VERSION, seen });
+/** Node id → milliseconds this person spent editing it with the hive window focused. */
+export type EditTimeMap = Record<string, number>;
+
+export function parseEditTime(serialized: string | null): EditTimeMap {
+  if (serialized == null) return {};
+  try {
+    const parsed = JSON.parse(serialized) as { editMs?: unknown };
+    if (!parsed.editMs || typeof parsed.editMs !== "object" || Array.isArray(parsed.editMs)) return {};
+    const result: EditTimeMap = {};
+    for (const [id, value] of Object.entries(parsed.editMs as Record<string, unknown>)) {
+      if (typeof value === "number" && Number.isFinite(value) && value > 0) result[id] = value;
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+export function serializeSeenState(seen: SeenMap, editMs: EditTimeMap = {}): string {
+  return JSON.stringify({ version: SEEN_STATE_VERSION, seen, editMs });
 }
 
 function fingerprints(notes: readonly NodeRecord[]): SeenMap {

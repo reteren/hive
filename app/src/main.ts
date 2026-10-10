@@ -27,6 +27,7 @@ import "./random/init";
 import "./quickInput/init";
 import "./source/init";
 import "./spell/init";
+import "./info/init";
 import "./inbox/init";
 import "./time/uiInit";
 import "./messages/init";

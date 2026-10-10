@@ -38,7 +38,7 @@ export interface NoteMenuItem {
 
 const items = new Map<string, NoteMenuItem>();
 const UNIVERSAL_MENU_IDS = new Set([
-  "object.scale", "object.grab", "object.delete", "notes.glow.edit", "notes.glow.remove",
+  "object.scale", "object.grab", "object.delete", "notes.glow.edit", "notes.glow.remove", "object.info",
 ]);
 
 /** A hidden header is a move handle only; its title can be renamed after it is shown. */
