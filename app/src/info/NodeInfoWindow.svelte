@@ -9,7 +9,9 @@
   import { savedNoteFiles } from "../project/persistence.svelte";
   import { KIND_LABELS } from "../overview/overviewLogic";
   import { attachmentUrl } from "../attachments/service";
+  import { zones } from "../model/zones.svelte";
   import { closeNodeInfo, infoWindow } from "./infoWindow.svelte";
+  import { describeVersion, type NodeVersionData, type VersionChanges } from "./versionChanges";
   import {
     collectionStats,
     formatAgo,
@@ -40,7 +42,11 @@
   let pdfPages = $state<number | null>(null);
   let logOpen = $state(false);
   let openCommit = $state<string | null>(null);
-  let diffs = $state<Record<string, string>>({});
+  let versions = $state<Record<string, VersionChanges | string>>({});
+  let windowElement = $state<HTMLDivElement | null>(null);
+  /** Top-left of the window; null until it is centred on open. */
+  let position = $state<{ x: number; y: number } | null>(null);
+  let drag: { pointerId: number; dx: number; dy: number } | null = null;
   let revealError = $state("");
   let now = $state(Date.now());
   let closeButton = $state<HTMLButtonElement | null>(null);
@@ -68,7 +74,8 @@
     pdfPages = null;
     logOpen = false;
     openCommit = null;
-    diffs = {};
+    versions = {};
+    position = null;
     revealError = "";
     now = Date.now();
     if (!id) return;
@@ -123,13 +130,50 @@
       return;
     }
     openCommit = hash;
-    if (diffs[hash] !== undefined || !note) return;
+    if (versions[hash] !== undefined || !note) return;
     try {
-      const diff = await invoke<string>("node_commit_diff", { hash, id: note.id, file: noteFile });
-      diffs = { ...diffs, [hash]: diff };
+      const version = await invoke<NodeVersionData>("node_commit_versions", { hash, id: note.id, file: noteFile });
+      versions = {
+        ...versions,
+        [hash]: describeVersion(version, {
+          noteName: (id) => board.notes[id]?.name,
+          zoneName: (id) => zones.byId[id]?.name,
+        }),
+      };
     } catch (error) {
-      diffs = { ...diffs, [hash]: `Could not load this version: ${String(error)}` };
+      versions = { ...versions, [hash]: `Could not load this version: ${String(error)}` };
     }
+  }
+
+  // Opens in the middle of the window; afterwards it stays where it was dragged.
+  $effect(() => {
+    if (!windowElement || position) return;
+    const rect = windowElement.getBoundingClientRect();
+    position = clampPosition({ x: (window.innerWidth - rect.width) / 2, y: (window.innerHeight - rect.height) / 2 });
+  });
+
+  function clampPosition(point: { x: number; y: number }): { x: number; y: number } {
+    const width = windowElement?.offsetWidth ?? 330;
+    return {
+      x: Math.min(Math.max(8 - width + 80, point.x), window.innerWidth - 80),
+      y: Math.min(Math.max(8, point.y), window.innerHeight - 40),
+    };
+  }
+
+  function startDrag(event: PointerEvent): void {
+    if (event.button !== 0 || !position || (event.target instanceof Element && event.target.closest("button"))) return;
+    drag = { pointerId: event.pointerId, dx: event.clientX - position.x, dy: event.clientY - position.y };
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+
+  function moveDrag(event: PointerEvent): void {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    position = clampPosition({ x: event.clientX - drag.dx, y: event.clientY - drag.dy });
+  }
+
+  function endDrag(event: PointerEvent): void {
+    if (drag?.pointerId === event.pointerId) drag = null;
   }
 
   async function reveal(relative: string): Promise<void> {
@@ -148,29 +192,6 @@
     closeNodeInfo();
   }
 
-  const DIFF_HEADER = /^(index |--- |\+\+\+ |new file mode|deleted file mode|similarity index|rename (from|to) |\\ No newline)/;
-
-  /** Git's diff without its file headers; each file part is labelled "Text" or "Node data". */
-  function diffLines(diff: string): { kind: string; text: string }[] {
-    const lines: { kind: string; text: string }[] = [];
-    for (const line of diff.split("\n")) {
-      if (line.startsWith("diff --git ")) {
-        lines.push({ kind: "file", text: line.includes(" b/notes/") ? "Text" : "Node data" });
-      } else if (DIFF_HEADER.test(line)) {
-        continue;
-      } else if (line.startsWith("@@")) {
-        lines.push({ kind: "hunk", text: "⋯" });
-      } else if (line.startsWith("+")) {
-        lines.push({ kind: "add", text: line });
-      } else if (line.startsWith("-")) {
-        lines.push({ kind: "remove", text: line });
-      } else if (line) {
-        lines.push({ kind: "context", text: line });
-      }
-    }
-    return lines;
-  }
-
   function percent(part: number, whole: number): string {
     return whole > 0 ? `${Math.round((part / whole) * 100)}%` : "0%";
   }
@@ -186,8 +207,22 @@
 
 {#if note}
   {@const height = note.height ?? measuredHeights[note.id] ?? null}
-  <div class="info-window" data-selection-ignore data-node-info role="dialog" aria-label={`Info: ${note.name}`} tabindex="-1" onkeydown={handleKeydown}>
-    <header class="info-heading">
+  <div
+    bind:this={windowElement}
+    class="info-window"
+    class:placed={position !== null}
+    style:left={position ? `${position.x}px` : undefined}
+    style:top={position ? `${position.y}px` : undefined}
+    style:max-height={position ? `min(620px, calc(100vh - ${Math.round(position.y) + 8}px))` : undefined}
+    data-selection-ignore
+    data-node-info
+    role="dialog"
+    aria-label={`Info: ${note.name}`}
+    tabindex="-1"
+    onkeydown={handleKeydown}
+  >
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <header class="info-heading" title="Drag to move" onpointerdown={startDrag} onpointermove={moveDrag} onpointerup={endDrag} onpointercancel={endDrag}>
       <div class="info-title">
         <h2>{note.name}</h2>
         <span>{KIND_LABELS[note.type] ?? note.type}</span>
@@ -311,7 +346,23 @@
                   <span class="commit-subject dim">{commit.subject}</span>
                 </button>
                 {#if openCommit === commit.hash}
-                  <pre class="diff">{#if diffs[commit.hash] === undefined}<span class="dim">Loading…</span>{:else if diffs[commit.hash] === ""}<span class="dim">No changes to this node in this version.</span>{:else}{#each diffLines(diffs[commit.hash]!) as line, index (index)}<span class={line.kind}>{line.text}{"\n"}</span>{/each}{/if}</pre>
+                  {@const version = versions[commit.hash]}
+                  <div class="changes" data-version-changes>
+                    {#if version === undefined}
+                      <p class="dim">Loading…</p>
+                    {:else if typeof version === "string"}
+                      <p class="error">{version}</p>
+                    {:else}
+                      {#if version.lines.length > 0}
+                        <ul class="change-lines">
+                          {#each version.lines as line, index (index)}<li>{line}</li>{/each}
+                        </ul>
+                      {/if}
+                      {#if version.text}
+                        <p class="text-change" aria-label="Text changes">{#each version.text as piece, index (index)}{#if piece.kind === "add"}<ins>{piece.text}</ins>{:else if piece.kind === "remove"}<del>{piece.text}</del>{:else}<span>{piece.text}</span>{/if}{/each}</p>
+                      {/if}
+                    {/if}
+                  </div>
                 {/if}
               </li>
             {/each}
@@ -326,8 +377,8 @@
   .info-window {
     position: fixed;
     z-index: 40;
-    top: 44px;
-    right: 8px;
+    top: 50%;
+    left: 50%;
     display: flex;
     width: min(330px, calc(100% - 16px));
     max-height: min(620px, calc(100% - 54px));
@@ -340,7 +391,14 @@
     color: var(--text);
     font-size: 11px;
     pointer-events: auto;
-    animation: info-in 140ms ease-out;
+  }
+
+  .info-window.placed { animation: info-in 140ms ease-out; }
+
+  /* Until it is measured and centred it sits roughly in the middle, invisible for one frame. */
+  .info-window:not(.placed) {
+    visibility: hidden;
+    transform: translate(-50%, -50%);
   }
 
   @keyframes info-in {
@@ -360,7 +418,12 @@
     padding: 6px 6px 6px 12px;
     border-bottom: 1px solid #3b3b3b;
     border-top: 2px solid var(--accent);
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
   }
+
+  .info-heading:active { cursor: grabbing; }
 
   .info-title { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
   .info-title > span { color: var(--text-dim); font-size: 9px; letter-spacing: 0.05em; text-transform: uppercase; }
@@ -556,37 +619,47 @@
   .commit-author { font-weight: 600; }
   .commit-subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  .diff {
-    max-height: 220px;
-    overflow: auto;
+  .changes {
     margin: 3px 0 6px;
-    padding: 6px 8px;
+    padding: 7px 9px;
     border: 1px solid #353535;
-    border-radius: 3px;
-    background: rgb(0 0 0 / 25%);
-    font-family: var(--mono-font);
-    font-size: 9.5px;
-    line-height: 1.45;
+    border-radius: 4px;
+    background: rgb(0 0 0 / 22%);
+  }
+
+  .changes p { margin: 0; }
+
+  .change-lines {
+    display: grid;
+    gap: 3px;
+    margin: 0;
+    padding-left: 14px;
+  }
+
+  .change-lines + .text-change { margin-top: 7px; padding-top: 7px; border-top: 1px solid #353535; }
+
+  .text-change {
+    max-height: 200px;
+    overflow: auto;
+    color: var(--text-dim);
+    line-height: 1.5;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
 
-  .diff .add { color: #8fd18f; }
-  .diff .remove { color: #f19a8f; }
-  .diff .hunk { color: #8fb7e8; }
-  .diff .file {
-    display: block;
-    margin-top: 4px;
-    color: var(--text-dim);
-    font-family: inherit;
-    font-size: 9px;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
+  .text-change ins {
+    border-radius: 2px;
+    background: rgb(110 200 120 / 22%);
+    color: #b9eab9;
+    text-decoration: none;
   }
 
-  .diff .file:first-child { margin-top: 0; }
-  .diff .context { color: var(--text-dim); }
+  .text-change del {
+    border-radius: 2px;
+    background: rgb(240 120 110 / 16%);
+    color: #f0a59c;
+    text-decoration: line-through;
+  }
 
   .close-button:focus-visible,
   .files button:focus-visible,
