@@ -53,6 +53,8 @@ export function describeVersion(version: NodeVersionData, names: NameLookup): Ve
   if (!before && after) lines.push(version.beforeLegacy ? "Project moved to the Git-friendly format" : "Created the node");
   else if (before && !after) lines.push("Deleted the node");
   else if (before && after) lines.push(...describeNode(before, after, names));
+  // Before the split format a node lived in board.json; its note file appearing means it was created.
+  else if (!before && !after && version.beforeText === null && version.afterText !== null) lines.push("Created the node");
 
   const beforeText = normalizeText(version.beforeText);
   const afterText = normalizeText(version.afterText);

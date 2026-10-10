@@ -237,13 +237,18 @@ fn changed_note_files(root: &Path, commit: &str) -> usize {
 /// note just before the commit, followed back up to `depth` moves.
 fn copied_from(root: &Path, commit: &str, content: &str, depth: u8) -> Option<String> {
     let parent = format!("{commit}^");
-    let found = git(root, &["grep", "-F", "-x", "-n", "--no-color", "-e", content, &parent, "--", "notes"])?;
-    let first = found.lines().next()?.strip_prefix(&format!("{parent}:"))?;
-    let marker = first.find(".md:")?;
-    let path = &first[..marker + 3];
-    let line_number: usize = first[marker + 4..].split(':').next()?.parse().ok()?;
+    let found = git(root, &["grep", "-F", "-n", "--no-color", "-e", content, &parent, "--", "notes"])?;
+    let prefix = format!("{parent}:");
+    // `rev:notes/Name.md:12:line`; git grep has no whole-line switch, so compare the line here.
+    let (path, line_number) = found.lines().find_map(|hit| {
+        let rest = hit.strip_prefix(&prefix)?;
+        let marker = rest.find(".md:")?;
+        let (number, text) = rest[marker + 4..].split_once(':')?;
+        (text.trim_end_matches('\r') == content).then(|| (rest[..marker + 3].to_string(), number.parse::<usize>().ok()))
+    })?;
+    let line_number = line_number?;
     let range = format!("{line_number},{line_number}");
-    let blame = git(root, &["blame", "-w", "--line-porcelain", "-L", &range, &parent, "--", path])?;
+    let blame = git(root, &["blame", "-w", "--line-porcelain", "-L", &range, &parent, "--", &path])?;
     let original_commit = blame.split(' ').next()?.to_string();
     let author = blame.lines().find_map(|line| line.strip_prefix("author "))?.to_string();
     if depth > 1 && changed_note_files(root, &original_commit) > 1 {

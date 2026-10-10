@@ -47,6 +47,7 @@ describe("readable version changes", () => {
     expect(describeVersion(version(null, node(), null, "hello"), names).lines).toEqual(["Created the node"]);
     expect(describeVersion({ ...version(null, node(), "hello", "hello"), beforeLegacy: true }, names).lines)
       .toEqual(["Project moved to the Git-friendly format"]);
+    expect(describeVersion(version(null, null, null, "first text"), names).lines).toEqual(["Created the node"]);
   });
 
   it("ignores line endings and bookkeeping fields", () => {
