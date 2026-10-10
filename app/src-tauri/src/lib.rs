@@ -3,6 +3,7 @@ mod backup;
 mod board_store;
 mod board_watch;
 mod capture;
+mod change_marks;
 mod clipboard_permission;
 mod drawing;
 mod export;
@@ -256,6 +257,9 @@ pub fn run() {
             source::source_path_exists,
             source::source_open_path,
             text_import::read_dropped_text,
+            change_marks::load_seen_state,
+            change_marks::save_seen_state,
+            change_marks::change_authors,
             spellcheck::spellcheck_languages,
             spellcheck::spellcheck_check,
             spellcheck::spellcheck_suggest,

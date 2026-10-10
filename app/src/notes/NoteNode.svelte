@@ -40,6 +40,7 @@ import { noteColorStyle } from "./noteColorLogic";
   import { isDimmed } from "../beacons/focus.svelte";
   import { listStatisticsWidth, widthWithListStatistics } from "../stats/listStatsLayout";
   import ComboHost from "../combo/ComboHost.svelte";
+  import { changeMarks } from "../changes/changeMarks.svelte";
 import { comboPullout } from "../combo/gestures.svelte";
 import { activeDropTarget } from "../selection/dropTargets";
 import { highlightsComboTextHost, isComboDropPlan } from "../combo/dropLogic";
@@ -55,6 +56,11 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
   let customMarkGradient = $derived(customMarkGradientFor(customMarkFrameColors));
   let paint = $derived(noteColorStyle(note));
   let scale = $derived(normalizeNoteScale(note.scale));
+
+  function changeLabel(id: string): string {
+    const author = changeMarks.authors[id];
+    return author ? `${changeMarks.byId[id]} · ${author}` : (changeMarks.byId[id] ?? "");
+  }
   let activeComboDropPlan = $derived(isComboDropPlan($activeDropTarget?.payload) ? $activeDropTarget.payload : null);
   let comboDropTarget = $derived(
     $activeDropTarget?.targetId === note.id && highlightsComboTextHost(activeComboDropPlan, note.id),
@@ -164,6 +170,8 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
   data-member-zone-id={memberZone?.id}
   data-node-color={note.type !== "beacon" && note.color ? "true" : undefined}
   data-note-glow={note.glow ? "true" : undefined}
+  data-change={changeMarks.byId[note.id]}
+  data-change-label={changeMarks.byId[note.id] ? changeLabel(note.id) : undefined}
   style:--custom-mark-gradient={customMarkGradient}
   style:--note-glow-shadow={note.glow ? noteGlowShadow(note.glow) : undefined}
   style:--note-frame={paint["--note-frame"]}
@@ -555,5 +563,44 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
     height: auto;
     min-height: 100px;
     overflow: visible;
+  }
+  /* Changed outside this window since this person last looked (src/changes): a ring and a tag. */
+  .note-card[data-change] {
+    --change-color: #f2c94c;
+  }
+
+  .note-card[data-change="changed"] {
+    --change-color: #f2994a;
+  }
+
+  .note-card[data-change]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    border: 2px solid var(--change-color);
+    border-radius: 5px;
+    pointer-events: none;
+  }
+
+  .note-card[data-change]::before {
+    content: attr(data-change-label);
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    z-index: 21;
+    max-width: calc(100% - 6px);
+    overflow: hidden;
+    padding: 1px 6px 2px;
+    border-radius: 999px;
+    background: var(--change-color);
+    color: #1b1b1b;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    line-height: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    pointer-events: none;
   }
 </style>

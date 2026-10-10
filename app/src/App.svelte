@@ -1,6 +1,7 @@
 <script module lang="ts">
   import "./commands/appCommands.svelte";
   import "./settings/commands.svelte";
+  import "./changes/commands";
   import "./beacons/focusCommands";
   import "./drawing/commands.svelte";
   import "./ui/dockVisibility.svelte";

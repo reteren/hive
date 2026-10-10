@@ -59,6 +59,13 @@ import {
   type ProjectIndex,
 } from "./index";
 import { mergeBoardDocuments } from "./boardMerge";
+import {
+  markExternalChanges,
+  recordOwnSave,
+  startChangeTracking,
+  stopChangeTracking,
+} from "../changes/changeMarks.svelte";
+import { nodeFingerprint, type NodeRecord } from "../changes/fingerprint";
 import { decideExternalNoteChange } from "./externalChanges";
 import { project, type ProjectConflict } from "./project.svelte";
 
@@ -262,10 +269,38 @@ function applyProject(loaded: ProjectLoad): void {
   replaceZones(parsedIndex.zones.map(copyZone));
   resetBeaconViewState(parsedIndex.beaconMarks, parsedIndex.meDeleted);
   loading = false;
+  const openedText = new Map(notes.map((note) => [note.id, note.text]));
+  void startChangeTracking(
+    loaded.path,
+    nodeRecords(normalizedIndex, (id) => openedText.get(id)),
+    currentNodeRecords,
+    (id) => indexTemplate?.notes.find((entry) => entry.id === id)?.file,
+  );
+}
+
+/** Board index entries plus note text: the saved form that "new" / "changed" marks compare. */
+function nodeRecords(indexJson: string, textOf: (id: string) => string | undefined): NodeRecord[] {
+  const index = JSON.parse(indexJson) as { notes?: Array<Record<string, unknown>> };
+  return (index.notes ?? []).flatMap((entry) => typeof entry.id === "string"
+    ? [{ ...entry, id: entry.id, text: textOf(entry.id) ?? "" }]
+    : []);
+}
+
+function currentNodeRecords(): NodeRecord[] {
+  return nodeRecords(makeSnapshot().indexJson, (id) => board.notes[id]?.text);
+}
+
+/** Ids whose saved entry differs between two board indexes (or is new in `after`). */
+function changedNodeIds(beforeJson: string, afterJson: string): string[] {
+  const before = new Map(nodeRecords(beforeJson, () => "").map((record) => [record.id, nodeFingerprint(record)]));
+  return nodeRecords(afterJson, () => "")
+    .filter((record) => before.get(record.id) !== nodeFingerprint(record))
+    .map((record) => record.id);
 }
 
 /** Reset state whose ids or navigation context belongs to the currently open project. */
 export function resetProjectScopedState(): void {
+  stopChangeTracking();
   cancelLineDraft();
   clearSelectedLink();
   tool.active = "select";
@@ -350,6 +385,8 @@ function persistSnapshot(snapshot: ProjectSnapshot): Promise<void> {
       });
       indexTemplate = parseProjectIndex(snapshot.indexJson);
       lastSavedIndex = snapshot.indexJson;
+      const savedText = new Map(snapshot.notes.map((note) => [note.id, note.text]));
+      recordOwnSave(nodeRecords(snapshot.indexJson, (id) => savedText.get(id)));
       const savedById = new Map(snapshot.notes.map((note) => {
         const entry = indexTemplate?.notes.find((item) => item.id === note.id);
         return [note.id, { file: entry?.file ?? `${note.name}.md`, text: note.text }];
@@ -429,6 +466,8 @@ function applyExternalBoard(change: BoardChange): void {
     height: entry.height,
   }));
   const notes = mergeLoadedNotes(merged, loadedNotes);
+  // Before the board shows them: nodes the pull added or changed get a "new" / "changed" mark.
+  markExternalChanges(changedNodeIds(JSON.stringify(base), theirsJson));
 
   loading = true;
   try {
@@ -613,6 +652,7 @@ async function handleExternalBody(event: ProjectFileEvent): Promise<void> {
   }
 
   lastSavedById.set(note.id, { file: event.file, text: event.text });
+  markExternalChanges([note.id]);
   if (decision === "reload") {
     project.conflicts = project.conflicts.filter((item) => item.noteId !== note.id);
     updateNote(note.id, { text: event.text });
