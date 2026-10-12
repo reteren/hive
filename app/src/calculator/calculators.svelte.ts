@@ -11,13 +11,18 @@ export const calculators = $state({
 });
 
 let changeRevision = 0;
-const mutationListeners = new Set<(revision: number) => void>();
+export interface CalculatorMutation {
+  upsertIds?: readonly string[];
+  deleteIds?: readonly string[];
+  all?: boolean;
+}
+const mutationListeners = new Set<(revision: number, mutation: CalculatorMutation) => void>();
 
 export function calculatorsRevision(): number {
   return changeRevision;
 }
 
-export function onCalculatorsMutation(listener: (revision: number) => void): () => void {
+export function onCalculatorsMutation(listener: (revision: number, mutation: CalculatorMutation) => void): () => void {
   mutationListeners.add(listener);
   return () => mutationListeners.delete(listener);
 }
@@ -33,23 +38,23 @@ export function setCalculatorData(name: string, data: CalculatorData): void {
   const next = Object.assign(Object.create(null) as Record<string, CalculatorData>, calculators.byKey);
   next[calculatorKey(name)] = data;
   calculators.byKey = next;
-  notifyChanged();
+  notifyChanged({ upsertIds: [calculatorKey(name)] });
 }
 
 export function deleteCalculatorData(name: string): void {
   const next = Object.assign(Object.create(null) as Record<string, CalculatorData>, calculators.byKey);
   delete next[calculatorKey(name)];
   calculators.byKey = next;
-  notifyChanged();
+  notifyChanged({ deleteIds: [calculatorKey(name)] });
 }
 
 export function replaceCalculators(next: Record<string, CalculatorData>): void {
   calculators.byKey = Object.assign(Object.create(null) as Record<string, CalculatorData>, next);
-  notifyChanged();
+  notifyChanged({ all: true });
 }
 
-function notifyChanged(): void {
+function notifyChanged(mutation: CalculatorMutation): void {
   changeRevision += 1;
   markProjectChanged();
-  for (const listener of mutationListeners) listener(changeRevision);
+  for (const listener of mutationListeners) listener(changeRevision, mutation);
 }

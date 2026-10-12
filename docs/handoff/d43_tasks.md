@@ -187,3 +187,12 @@ press on an empty DOM point at `min` tier picks the top-most note via `queryPoin
    or the model changes; per frame just set the transform and replay.
 4. Selected notes are drawn by the DOM layer on top; FarLayer skips them.
 Report `d43_report_b2.md`.
+
+## c2 — Pressing nodes that are drawn on the far canvas
+Yours: `src/selection/*`. At `lod.tier === "min"` agent b's FarLayer draws notes on one canvas, so most
+notes have no DOM element. When a select-tool press (or double-click, context menu, Alt/Ctrl variants)
+lands on no `[data-note-id]` element at `min` tier, find the top-most note under the cursor with
+`queryPoint(world)` + exact bounds + paint order (you already have this for Alt-click) and behave exactly
+as if the press hit that note's header: select, move-candidate drag, Ctrl/Alt rules, right-click opens the
+note menu for it. Presses on empty space keep their current behaviour (marquee etc.). Add tests for the
+decision logic. Report `d43_report_c2.md`.

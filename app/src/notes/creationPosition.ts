@@ -3,6 +3,7 @@ import { worldToScreen, type Camera, type Point, type Size } from "../board/came
 import { BEACON_SIZE, normalizeNoteScale } from "../model/note";
 import type { NoteKind } from "../model/note";
 import { inboxHeightForEntryCount } from "../inbox/inboxLayout";
+import { GridIndex } from "../board/spatialIndex";
 
 /** Keep newly created board objects visually distinct from their neighbours. */
 export const CREATION_GAP = 2;
@@ -110,6 +111,221 @@ export function creationObstacleForNote(note: PositionedCreationNote, measuredHe
     width: note.width * scale,
     height: estimatedCreationHeight(note, measuredHeight) * scale,
   };
+}
+
+/** Query only nearby board notes while looking for a random single-note placement. */
+export function randomFreeNoteCenterFromQuery(
+  center: Point,
+  width: number,
+  height: number,
+  queryObstacles: (bounds: CreationObstacle) => readonly CreationObstacle[],
+  snap: boolean,
+  step: number,
+  options: RandomPlacementOptions = {},
+): Point {
+  if (![center.x, center.y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
+    throw new RangeError("Creation position and size must be finite, with positive dimensions.");
+  }
+  if (snap && (!Number.isFinite(step) || step <= 0)) {
+    throw new RangeError("Grid step must be a positive finite number when snapping is enabled.");
+  }
+
+  const source = isValidObstacle(options.anchor)
+    ? options.anchor
+    : { x: center.x, y: center.y, width: 0, height: 0 };
+  const sourceCenter = { x: source.x + source.width / 2, y: source.y + source.height / 2 };
+  const fixed = [
+    ...(isValidObstacle(options.anchor) ? [options.anchor] : []),
+    ...(options.anchor ? [] : [source]),
+    { x: -BEACON_SIZE / 2, y: -BEACON_SIZE / 2, width: BEACON_SIZE, height: BEACON_SIZE },
+  ];
+  const rng = options.rng ?? Math.random;
+
+  for (let ring = 0; ring < 1_000_000; ring += 1) {
+    const candidates = shuffledDirections(rng).map((direction, order) => {
+      const candidate = randomDirectionalCenter(source, sourceCenter, direction, width, height, ring, rng);
+      return { center: snap ? snapToGrid(candidate, step) : candidate, order };
+    });
+    const free = candidates.filter(({ center: candidate }) => {
+      const nearby = queryObstacles(expandedCreationRect(candidate, width, height, RANDOM_CREATION_GAP_MIN));
+      return hasRandomClearance(candidate, width, height, [...nearby, ...fixed]);
+    });
+    free.sort((first, second) => {
+      const firstDistance = distanceSquared(first.center, sourceCenter);
+      const secondDistance = distanceSquared(second.center, sourceCenter);
+      return Math.abs(firstDistance - secondDistance) <= 1e-9
+        ? first.order - second.order
+        : firstDistance - secondDistance;
+    });
+    if (free[0]) return free[0].center;
+  }
+  throw new Error("Could not find a free random creation position.");
+}
+
+export interface CreationGridSize {
+  width: number;
+  height: number;
+}
+
+/** Lay out a batch as a compact grid, querying only the candidate rectangle in the board index. */
+export function placeCreationGrid<T extends CreationGridSize>(
+  items: readonly T[],
+  center: Point,
+  queryObstacles: (bounds: CreationObstacle) => readonly CreationObstacle[],
+  snap: boolean,
+  step: number,
+): Array<T & Point> {
+  if (items.length === 0) return [];
+  if (![center.x, center.y].every(Number.isFinite) || items.some((item) =>
+    ![item.width, item.height].every(Number.isFinite) || item.width <= 0 || item.height <= 0)) {
+    throw new RangeError("Creation batch sizes and position must be finite and positive.");
+  }
+  if (snap && (!Number.isFinite(step) || step <= 0)) {
+    throw new RangeError("Grid step must be a positive finite number when snapping is enabled.");
+  }
+
+  const columns = Math.ceil(Math.sqrt(items.length));
+  const rows = Math.ceil(items.length / columns);
+  const columnWidths = Array.from({ length: columns }, (_, column) => {
+    let width = 0;
+    for (let index = column; index < items.length; index += columns) width = Math.max(width, items[index]!.width);
+    return width;
+  });
+  const rowHeights = Array.from({ length: rows }, (_, row) =>
+    Math.max(...items.slice(row * columns, (row + 1) * columns).map((item) => item.height)),
+  );
+  const columnOffsets: number[] = [];
+  const rowOffsets: number[] = [];
+  let gridWidth = 0;
+  let gridHeight = 0;
+  for (let column = 0; column < columns; column += 1) {
+    columnOffsets.push(gridWidth);
+    gridWidth += columnWidths[column]! + (column + 1 < columns ? CREATION_GAP : 0);
+  }
+  for (let row = 0; row < rows; row += 1) {
+    rowOffsets.push(gridHeight);
+    gridHeight += rowHeights[row]! + (row + 1 < rows ? CREATION_GAP : 0);
+  }
+
+  const snappedCenter = snap ? snapToGrid(center, step) : center;
+  let left = snappedCenter.x - gridWidth / 2;
+  const top = snappedCenter.y - gridHeight / 2;
+  const fixed: CreationObstacle = {
+    x: -BEACON_SIZE / 2,
+    y: -BEACON_SIZE / 2,
+    width: BEACON_SIZE,
+    height: BEACON_SIZE,
+  };
+
+  for (let attempt = 0; attempt < 100_000; attempt += 1) {
+    const envelope = expandRect({ x: left, y: top, width: gridWidth, height: gridHeight }, CREATION_GAP);
+    const obstacles = [...queryObstacles(envelope), fixed].filter(isValidObstacle);
+    const index = new GridIndex(64, 256);
+    obstacles.forEach((obstacle, obstacleIndex) => index.set(`creation:${obstacleIndex}`, obstacle));
+    const placed = items.map((item, index) => ({
+      item,
+      x: left + columnOffsets[index % columns]! + columnWidths[index % columns]! / 2 - item.width / 2,
+      y: top + rowOffsets[Math.floor(index / columns)]! + rowHeights[Math.floor(index / columns)]! / 2 - item.height / 2,
+    }));
+    const blockers = new Map<string, CreationObstacle>();
+    for (const position of placed) {
+      const centerAt = { x: position.x + position.item.width / 2, y: position.y + position.item.height / 2 };
+      const nearby = index.query(expandedCreationRect(centerAt, position.item.width, position.item.height, CREATION_GAP));
+      for (const id of nearby) {
+        const obstacle = index.rectOf(id);
+        if (obstacle && rectangleDistance(centerAt, position.item.width, position.item.height, obstacle) < CREATION_GAP - 1e-9) {
+          blockers.set(id, obstacle);
+        }
+      }
+    }
+    if (blockers.size === 0) return placed.map(({ item, x, y }) => ({ ...item, x, y }));
+
+    let maxRight = Number.NEGATIVE_INFINITY;
+    for (const obstacle of blockers.values()) maxRight = Math.max(maxRight, obstacle.x + obstacle.width);
+    let shift = maxRight - left + CREATION_GAP;
+    if (!Number.isFinite(shift) || shift <= 0) shift = gridWidth + CREATION_GAP;
+    if (snap) shift = Math.ceil(shift / step) * step;
+    left += Math.max(shift, gridWidth + CREATION_GAP);
+  }
+  throw new Error("Could not find a free batch creation position.");
+}
+
+/** Shift a pasted group as one unit, retaining all of its internal spacing. */
+export function moveCreationGroupToFreeSpot<T extends PositionedCreationNote>(
+  notes: readonly T[],
+  queryObstacles: (bounds: CreationObstacle) => readonly CreationObstacle[],
+  snap: boolean,
+  step: number,
+  measuredHeightFor?: (note: T) => number | undefined,
+): T[] {
+  if (notes.length === 0) return [];
+  if (snap && (!Number.isFinite(step) || step <= 0)) {
+    throw new RangeError("Grid step must be a positive finite number when snapping is enabled.");
+  }
+  const sizes = notes.map((note) => ({
+    width: note.width * normalizeNoteScale(note.scale),
+    height: estimatedCreationHeight(note, measuredHeightFor?.(note)) * normalizeNoteScale(note.scale),
+  }));
+  let left = Math.min(...notes.map((note) => note.x));
+  const top = Math.min(...notes.map((note) => note.y));
+  const right = Math.max(...notes.map((note, index) => note.x + sizes[index]!.width));
+  const bottom = Math.max(...notes.map((note, index) => note.y + sizes[index]!.height));
+  const originalLeft = left;
+  const originalTop = top;
+  const groupWidth = right - left;
+  const fixed: CreationObstacle = {
+    x: -BEACON_SIZE / 2,
+    y: -BEACON_SIZE / 2,
+    width: BEACON_SIZE,
+    height: BEACON_SIZE,
+  };
+
+  for (let attempt = 0; attempt < 100_000; attempt += 1) {
+    const envelope = expandRect({ x: left, y: top, width: groupWidth, height: bottom - top }, CREATION_GAP);
+    const obstacles = [...queryObstacles(envelope), fixed].filter(isValidObstacle);
+    const index = new GridIndex(64, 256);
+    obstacles.forEach((obstacle, obstacleIndex) => index.set(`group:${obstacleIndex}`, obstacle));
+    const blockers = new Map<string, CreationObstacle>();
+    for (let itemIndex = 0; itemIndex < notes.length; itemIndex += 1) {
+      const note = notes[itemIndex]!;
+      const size = sizes[itemIndex]!;
+      const centerAt = {
+        x: note.x + (left - originalLeft) + size.width / 2,
+        y: note.y + (top - originalTop) + size.height / 2,
+      };
+      const nearby = index.query(expandedCreationRect(centerAt, size.width, size.height, CREATION_GAP));
+      for (const id of nearby) {
+        const obstacle = index.rectOf(id);
+        if (obstacle && rectangleDistance(centerAt, size.width, size.height, obstacle) < CREATION_GAP - 1e-9) {
+          blockers.set(id, obstacle);
+        }
+      }
+    }
+    if (blockers.size === 0) {
+      const deltaX = left - originalLeft;
+      const deltaY = top - originalTop;
+      return notes.map((note) => ({
+        ...note,
+        x: note.x + deltaX,
+        y: note.y + deltaY,
+      }));
+    }
+    let maxRight = Number.NEGATIVE_INFINITY;
+    for (const obstacle of blockers.values()) maxRight = Math.max(maxRight, obstacle.x + obstacle.width);
+    let shift = maxRight - left + CREATION_GAP;
+    if (!Number.isFinite(shift) || shift <= 0) shift = groupWidth + CREATION_GAP;
+    if (snap) shift = Math.ceil(shift / step) * step;
+    left += Math.max(shift, groupWidth + CREATION_GAP);
+  }
+  throw new Error("Could not find a free group creation position.");
+}
+
+function expandedCreationRect(center: Point, width: number, height: number, margin: number): CreationObstacle {
+  return expandRect({ x: center.x - width / 2, y: center.y - height / 2, width, height }, margin);
+}
+
+function expandRect(rect: CreationObstacle, margin: number): CreationObstacle {
+  return { x: rect.x - margin, y: rect.y - margin, width: rect.width + margin * 2, height: rect.height + margin * 2 };
 }
 
 function estimateTextLines(text: string, width: number): number {

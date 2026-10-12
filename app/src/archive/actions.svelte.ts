@@ -61,7 +61,8 @@ export function archiveNotes(noteIds: readonly string[]): number {
       originals.forEach(({ note }) => {
         if (!permanentlyDeleted.has(entryByNoteId.get(note.id)!.id)) removeNote(note.id);
       });
-      updateArchiveEntries((current) => [...current, ...entries.filter((entry) => !permanentlyDeleted.has(entry.id))]);
+      const archivedNow = entries.filter((entry) => !permanentlyDeleted.has(entry.id));
+      updateArchiveEntries((current) => [...current, ...archivedNow], { upsertIds: archivedNow.map((entry) => entry.id) });
       for (const { note } of originals) {
         if (!permanentlyDeleted.has(entryByNoteId.get(note.id)!.id)) pruneCalculatorIfUnused(note);
       }
@@ -72,7 +73,9 @@ export function archiveNotes(noteIds: readonly string[]): number {
       const restorable = new Set(entries
         .filter((entry) => !permanentlyDeleted.has(entry.id) && archive.entries.some((item) => item.id === entry.id))
         .map((entry) => entry.note.id));
-      updateArchiveEntries((current) => current.filter((entry) => !restorable.has(entry.note.id)));
+      updateArchiveEntries((current) => current.filter((entry) => !restorable.has(entry.note.id)), {
+        deleteIds: entries.filter((entry) => restorable.has(entry.note.id)).map((entry) => entry.id),
+      });
       originals.slice().sort((a, b) => a.index - b.index).forEach(({ note, index }) => {
         if (restorable.has(note.id)) addNote(copyArchivedNote(note), index);
       });
@@ -132,7 +135,7 @@ export function restoreArchived(
     target: plan.note.name,
     do: () => {
       if (permanentlyDeleted.has(entryId)) return;
-      updateArchiveEntries((current) => current.filter((item) => item.id !== entryId));
+      updateArchiveEntries((current) => current.filter((item) => item.id !== entryId), { deleteIds: [entryId] });
       addNote(copyArchivedNote(plan.note));
       restoreCalculatorIfAbsent(plan.note, entry.calculatorData);
       plan.links.forEach((link) => addLink(copyArchivedLink(link)));
@@ -148,7 +151,7 @@ export function restoreArchived(
       removeNote(plan.note.id);
       pruneCalculatorIfUnused(plan.note);
       beforeLinkedTimes.forEach((time) => setTimeEnabled(time.noteId, time.enabled));
-      updateArchiveEntries((current) => { current.splice(index, 0, entry); });
+      updateArchiveEntries((current) => { current.splice(index, 0, entry); }, { upsertIds: [entry.id] });
       restoreSelectionSnapshot(beforeSelection);
     },
   };
@@ -198,7 +201,7 @@ export function duplicateArchivedNear(entryId: string, archiveNodeId: string): N
 export function deleteArchivedPermanently(entryId: string): void {
   if (!archive.entries.some((entry) => entry.id === entryId)) return;
   permanentlyDeleted.add(entryId);
-  updateArchiveEntries((current) => current.filter((entry) => entry.id !== entryId));
+  updateArchiveEntries((current) => current.filter((entry) => entry.id !== entryId), { deleteIds: [entryId] });
 }
 
 function copyCalculatorData(data: CalculatorData): CalculatorData {

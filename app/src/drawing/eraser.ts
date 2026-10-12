@@ -1,7 +1,7 @@
 import { reportImportError } from "../attachments/service";
 import { drawingTools } from "./tools.svelte";
 import { createStroke, type DrawStroke, type FinishedStroke } from "./brush";
-import { affectedTileKeys, applyAcrossLevels, pushDrawingHistory, rasterRectToWorld } from "./history";
+import { affectedTileKeysForSource, applyAcrossLevels, applyStreamingSource, pushDrawingHistory, rasterRectToWorld } from "./history";
 import { hideStrokePreview, showStrokePreview } from "./stroke.svelte";
 import { drawingStore } from "./tileStore.svelte";
 import { registerDrawTool } from "./toolRegistry";
@@ -88,11 +88,12 @@ async function commitErase(finished: FinishedStroke, settings: BrushSettings): P
   // eraser pass that misses every visible pixel leaves them unchanged.)
   if (drawingStore.existingKeysInRect(worldRect).length === 0) return;
 
-  const tileKeys = affectedTileKeys(worldRect, finished.level, "erase");
+  const tileKeys = affectedTileKeysForSource(finished.source, "erase");
   const before: TileSnapshot = await drawingStore.snapshot(tileKeys);
   const options = eraserCompositeOptions(settings);
   try {
-    applyAcrossLevels(finished.source, finished.rasterX, finished.rasterY, finished.level, "erase", options.opacity, selection);
+    if (finished.source.visitPieces) await applyStreamingSource(finished.source, "erase", options.opacity, selection);
+    else applyAcrossLevels(finished.source, finished.rasterX, finished.rasterY, finished.level, "erase", options.opacity, selection);
   } catch (error) {
     await drawingStore.restore(before);
     throw error;

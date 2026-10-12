@@ -34,6 +34,16 @@ export function addNote(note: Note, index = board.order.length): void {
   notifyBoardMutation([note.id]);
 }
 
+/** Add a batch with one order splice and one mutation notification. */
+export function addNotes(notes: readonly Note[], index = board.order.length): void {
+  if (notes.length === 0) return;
+  const insertionIndex = Math.max(0, Math.min(index, board.order.length));
+  const ids = notes.map((note) => note.id);
+  for (const note of notes) board.notes[note.id] = note;
+  board.order.splice(insertionIndex, 0, ...ids);
+  notifyBoardMutation(ids);
+}
+
 export function removeNote(id: string): Note | undefined {
   const note = board.notes[id];
   if (!note) return undefined;
@@ -42,6 +52,24 @@ export function removeNote(id: string): Note | undefined {
   if (index !== -1) board.order.splice(index, 1);
   notifyBoardMutation([id]);
   return note;
+}
+
+/** Remove a batch with one order filter and one mutation notification. */
+export function removeNotes(ids: readonly string[]): Note[] {
+  if (ids.length === 0) return [];
+  const removed: Note[] = [];
+  const removedIds = new Set<string>();
+  for (const id of ids) {
+    const note = board.notes[id];
+    if (!note || removedIds.has(id)) continue;
+    removedIds.add(id);
+    removed.push(note);
+    delete board.notes[id];
+  }
+  if (removedIds.size === 0) return [];
+  board.order = board.order.filter((id) => !removedIds.has(id));
+  notifyBoardMutation([...removedIds]);
+  return removed;
 }
 
 export function updateNote(id: string, patch: Partial<Omit<Note, "id" | "type">>): void {

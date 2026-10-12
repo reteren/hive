@@ -4,7 +4,7 @@ import { sprayToolHandler } from "./brushes/spray";
 import { drawingTools } from "./tools.svelte";
 import { registerDrawTool } from "./toolRegistry";
 import { drawingTileStore } from "./tileStore.svelte";
-import { affectedTileKeysForPieces, affectedTileKeysForSource, applyAcrossLevels, drawingHistoryIdle, pushDrawingHistory, waitForDrawingHistoryRestore } from "./history";
+import { affectedTileKeysForPieces, affectedTileKeysForSource, applyAcrossLevels, applyStreamingSource, drawingHistoryIdle, pushDrawingHistory, waitForDrawingHistoryRestore } from "./history";
 import type { TileKey, TileSnapshot } from "./types";
 import { drawingSelection } from "./selection.svelte";
 
@@ -123,12 +123,12 @@ export async function commitFinishedStroke(
 ): Promise<void> {
   commitsInFlight += 1;
   const operation = commitQueue.then(async () => {
+    const before: TileSnapshot = new Map();
     try {
       await waitForDrawingHistoryRestore();
       // Keys are taken after earlier commits landed: a previous stroke may have created tiles here.
       const keys = affectedTileKeysForSource(finished.source, "paint");
       await drawingTileStore.ensureTiles(keys);
-      const before: TileSnapshot = new Map();
       const missing: TileKey[] = [];
       for (const key of keys) {
         const copy = early?.get(key);
@@ -136,11 +136,15 @@ export async function commitFinishedStroke(
         else missing.push(key);
       }
       for (const [key, copy] of await drawingTileStore.snapshot(missing)) before.set(key, copy);
-      const changed = applyAcrossLevels(finished.source, finished.rasterX, finished.rasterY, finished.level, "paint", settings.opacity, selection);
+      const changed = finished.source.visitPieces
+        ? await applyStreamingSource(finished.source, "paint", settings.opacity, selection)
+        : applyAcrossLevels(finished.source, finished.rasterX, finished.rasterY, finished.level, "paint", settings.opacity, selection);
       // The live preview stays until the paint is in the tiles, so the stroke never blinks out.
       hideStrokePreview(stroke);
       if (changed.length > 0) pushDrawingHistory(label, before, changed);
     } catch (error) {
+      // A streamed commit can fail after several bounded batches; put its exact touched tiles back.
+      try { await drawingTileStore.restore(before); } catch (restoreError) { console.error("Could not roll back the partial drawing stroke", restoreError); }
       console.error("Could not finish drawing stroke", error);
       throw error;
     } finally {

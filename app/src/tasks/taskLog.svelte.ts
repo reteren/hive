@@ -14,13 +14,18 @@ export interface TaskLogEntry {
 export const taskLog = $state({ entries: [] as TaskLogEntry[] });
 
 let changeRevision = 0;
-const mutationListeners = new Set<(revision: number) => void>();
+export interface TaskLogMutation {
+  upsertIds?: readonly string[];
+  deleteIds?: readonly string[];
+  all?: boolean;
+}
+const mutationListeners = new Set<(revision: number, mutation: TaskLogMutation) => void>();
 
 export function taskLogRevision(): number {
   return changeRevision;
 }
 
-export function onTaskLogMutation(listener: (revision: number) => void): () => void {
+export function onTaskLogMutation(listener: (revision: number, mutation: TaskLogMutation) => void): () => void {
   mutationListeners.add(listener);
   return () => mutationListeners.delete(listener);
 }
@@ -28,7 +33,7 @@ export function onTaskLogMutation(listener: (revision: number) => void): () => v
 export function addTaskLogEntry(entry: TaskLogEntry): boolean {
   if (taskLog.entries.some((item) => item.noteId === entry.noteId && item.doneAt === entry.doneAt)) return false;
   taskLog.entries.push(entry);
-  notifyChanged();
+  notifyChanged({ upsertIds: [taskLogRecordId(entry)] });
   return true;
 }
 
@@ -37,7 +42,7 @@ export function removeTaskLogEntry(entry: TaskLogEntry): boolean {
     const item = taskLog.entries[index];
     if (item?.noteId === entry.noteId && item.name === entry.name && item.doneAt === entry.doneAt) {
       taskLog.entries.splice(index, 1);
-      notifyChanged();
+      notifyChanged({ deleteIds: [taskLogRecordId(item)] });
       return true;
     }
   }
@@ -46,11 +51,15 @@ export function removeTaskLogEntry(entry: TaskLogEntry): boolean {
 
 export function replaceTaskLog(entries: TaskLogEntry[]): void {
   taskLog.entries = entries;
-  notifyChanged();
+  notifyChanged({ all: true });
 }
 
-function notifyChanged(): void {
+function notifyChanged(mutation: TaskLogMutation): void {
   changeRevision += 1;
   markProjectChanged();
-  for (const listener of mutationListeners) listener(changeRevision);
+  for (const listener of mutationListeners) listener(changeRevision, mutation);
+}
+
+function taskLogRecordId(entry: Pick<TaskLogEntry, "noteId" | "doneAt">): string {
+  return JSON.stringify([entry.noteId, entry.doneAt]);
 }

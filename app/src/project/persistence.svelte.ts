@@ -83,8 +83,20 @@ import { decideExternalNoteChange } from "./externalChanges";
 import { project, type ProjectConflict } from "./project.svelte";
 import { ProjectDirtyTracker, type DirtyCapture } from "./dirtyTracking";
 import { markProjectChanged, projectChange } from "./changeSignal.svelte";
+import {
+  DeltaMutationJournal,
+  materializeCollectionDelta,
+  materializeKeyedCollectionDelta,
+  taskLogRecordId,
+  type DeltaSaveRequest,
+  type JournalCapture,
+  type ProjectDelta,
+} from "./delta";
+import { calculatorNoteFileName, noteFileKey, noteFileMatchesName, noteMarkdownFileNameWithId } from "./fileNames";
 
 const SAVE_DEBOUNCE_MS = 500;
+// Rust accepts only the established full-save contract until the delta apply path lands.
+const DELTA_SAVE_BACKEND_READY = false;
 
 interface ProjectLoad {
   path: string;
@@ -127,6 +139,24 @@ interface ProjectSnapshot {
   globalRevisionStamp: string;
 }
 
+interface DeltaSnapshot {
+  request: DeltaSaveRequest;
+  dirty: DirtyCapture;
+  changedNoteIds: readonly string[];
+  deletedNoteIds: readonly string[];
+  changedRecords: readonly NodeRecord[];
+  changedNotes: ReadonlyMap<string, { file: string; text: string }>;
+  captures: {
+    links: JournalCapture<Link>;
+    zones: JournalCapture<Zone>;
+    trash: JournalCapture<ReturnType<typeof copyTrashEntry>>;
+    archive: JournalCapture<ReturnType<typeof copyArchiveEntry>>;
+    taskLog: JournalCapture<TaskLogEntry>;
+    calculators: JournalCapture<(typeof calculators.byKey)[string]>;
+  };
+  globalRevisionStamp: string;
+}
+
 interface ChangedFile {
   file: string;
   text: string;
@@ -148,6 +178,12 @@ let indexTemplate: ProjectIndex | undefined;
 let savedFilesById: ReadonlyMap<string, string> = new Map();
 const savedFilesState = $state({ revision: 0 });
 const dirtyTracker = new ProjectDirtyTracker();
+const linkJournal = new DeltaMutationJournal<Link>();
+const zoneJournal = new DeltaMutationJournal<Zone>();
+const trashJournal = new DeltaMutationJournal<ReturnType<typeof copyTrashEntry>>();
+const archiveJournal = new DeltaMutationJournal<ReturnType<typeof copyArchiveEntry>>();
+const taskLogJournal = new DeltaMutationJournal<TaskLogEntry>();
+const calculatorJournal = new DeltaMutationJournal<(typeof calculators.byKey)[string]>();
 const noteRevisions = new Map<string, number>();
 const noteEntryCache = new Map<string, CachedIndexedNote>();
 let savedIndexedNotesById = new Map<string, IndexedNote>();
@@ -236,12 +272,36 @@ function startBoardObserver(): void {
     markProjectChanged();
     scheduleSave();
   });
-  onLinksMutation(() => { if (canTrack()) markProjectDataChanged(); });
-  onZonesMutation(() => { if (canTrack()) markProjectDataChanged(); });
-  onTrashMutation(() => { if (canTrack()) markProjectDataChanged(); });
-  onArchiveMutation(() => { if (canTrack()) markProjectDataChanged(); });
-  onTaskLogMutation(() => { if (canTrack()) markProjectDataChanged(); });
-  onCalculatorsMutation(() => { if (canTrack()) markProjectDataChanged(); });
+  onLinksMutation((ids) => {
+    if (!canTrack()) return;
+    recordJournalIds(linkJournal, ids, (id) => links.byId[id]);
+    markProjectDataChanged();
+  });
+  onZonesMutation((ids) => {
+    if (!canTrack()) return;
+    recordJournalIds(zoneJournal, ids, (id) => zones.byId[id]);
+    markProjectDataChanged();
+  });
+  onTrashMutation((_revision, mutation) => {
+    if (!canTrack()) return;
+    recordJournalMutation(trashJournal, mutation, (id) => trash.entries.find((entry) => entry.id === id));
+    markProjectDataChanged();
+  });
+  onArchiveMutation((_revision, mutation) => {
+    if (!canTrack()) return;
+    recordJournalMutation(archiveJournal, mutation, (id) => archive.entries.find((entry) => entry.id === id));
+    markProjectDataChanged();
+  });
+  onTaskLogMutation((_revision, mutation) => {
+    if (!canTrack()) return;
+    recordJournalMutation(taskLogJournal, mutation, (id) => taskLog.entries.find((entry) => taskLogRecordId(entry) === id));
+    markProjectDataChanged();
+  });
+  onCalculatorsMutation((_revision, mutation) => {
+    if (!canTrack()) return;
+    recordJournalMutation(calculatorJournal, mutation, (id) => calculators.byKey[id]);
+    markProjectDataChanged();
+  });
   $effect.root(() => {
     let lastCounterRevision: number | undefined;
     let lastProjectChangeRevision: number | undefined;
@@ -456,6 +516,175 @@ function makeSnapshot(): ProjectSnapshot {
     projectIndexChanged: dirtyTracker.hasIndexChanges() || globalRevisionStamp() !== persistedGlobalRevisions || changedIndexIds.size > 0,
     globalRevisionStamp: globalRevisionStamp(),
   };
+}
+
+/** Build the compact wire request from mutation journals; this does not serialize the full board. */
+export function buildPendingProjectDelta(): DeltaSaveRequest | null {
+  if (!project.path || !indexTemplate) return null;
+  const snapshot = makeDeltaSnapshot();
+  const delta = snapshot.request.delta;
+  const hasChanges = delta.notes.upserts.length + delta.notes.deleteIds.length > 0
+    || delta.links.upserts.length + delta.links.deleteIds.length > 0
+    || delta.zones.upserts.length + delta.zones.deleteIds.length > 0
+    || delta.trash.upserts.length + delta.trash.deleteIds.length > 0
+    || delta.archive.upserts.length + delta.archive.deleteIds.length > 0
+    || delta.taskLog.upserts.length + delta.taskLog.deleteIds.length > 0
+    || delta.calculators.upserts.length + delta.calculators.deleteIds.length > 0
+    || Object.keys(delta.head).length > 0 || delta.changedFiles.length > 0;
+  return hasChanges ? snapshot.request : null;
+}
+
+function makeDeltaSnapshot(): DeltaSnapshot {
+  const baseline = indexTemplate;
+  if (!baseline) throw new Error("A project must be open before creating a delta save.");
+  const reservedDeltaFiles = new Set<string>();
+  const allNoteIds = dirtyTracker.allNotesPending()
+    ? [...new Set([...board.order, ...savedIndexedNotesById.keys(), ...lastSavedById.keys()])]
+    : [];
+  const dirty = dirtyTracker.capture(allNoteIds, missingFileIds);
+  const validZoneIds = new Set(zones.order);
+  const noteUpserts: ProjectDelta["notes"]["upserts"] = [];
+  const noteDeletes: string[] = [];
+  const changedNoteIds: string[] = [];
+  const deletedNoteIds: string[] = [];
+  const changedRecords: NodeRecord[] = [];
+  const changedNotes = new Map<string, { file: string; text: string }>();
+  const files: ChangedFile[] = [];
+  const conflictedIds = new Set(project.conflicts.map((conflict) => conflict.noteId));
+
+  for (const id of dirty.noteIds) {
+    const note = board.notes[id];
+    const savedEntry = savedIndexedNotesById.get(id);
+    if (!note) {
+      if (savedEntry || lastSavedById.has(id)) {
+        noteDeletes.push(id);
+        changedNoteIds.push(id);
+        deletedNoteIds.push(id);
+      }
+      continue;
+    }
+
+    const file = deltaNoteFile(note, savedFilesById.get(id), reservedDeltaFiles);
+    const indexed = serializeProjectNoteEntry(note, savedEntry, file, validZoneIds);
+    const indexedChanged = !savedEntry || JSON.stringify(indexed) !== JSON.stringify(savedEntry);
+    const saved = lastSavedById.get(id);
+    const bodyChanged = !saved || saved.text !== note.text || missingFileIds.has(id);
+    if (indexedChanged || bodyChanged) changedNoteIds.push(id);
+    if (indexedChanged) {
+      noteEntryCache.set(id, { revision: noteRevisions.get(id) ?? 0, file, entry: indexed });
+      noteUpserts.push({
+        id,
+        ...(savedEntry ? {} : { order: Math.max(0, board.order.indexOf(id)) }),
+        record: indexed,
+      });
+    }
+    if (!conflictedIds.has(id) && (indexedChanged || bodyChanged)) {
+      changedNotes.set(id, { file, text: note.text });
+      if (bodyChanged) files.push({ file, text: note.text });
+    }
+    if ((indexedChanged || bodyChanged) && !conflictedIds.has(id)) changedRecords.push({ ...indexed, id, text: note.text });
+  }
+
+  const linkCapture = captureJournal(linkJournal, () => Object.keys(links.byId), () => (baseline.links ?? []).map((link) => link.id));
+  const zoneCapture = captureJournal(zoneJournal, () => zones.order, () => baseline.zones.map((zone) => zone.id));
+  const trashCapture = captureJournal(trashJournal, () => trash.entries.map((entry) => entry.id), () => baseline.trash.map((entry) => entry.id));
+  const archiveCapture = captureJournal(archiveJournal, () => archive.entries.map((entry) => entry.id), () => baseline.archive.map((entry) => entry.id));
+  const taskLogCapture = captureJournal(taskLogJournal, () => taskLog.entries.map(taskLogRecordId), () => baseline.taskLog.map(taskLogRecordId));
+  const calculatorCapture = captureJournal(calculatorJournal, () => Object.keys(calculators.byKey), () => Object.keys(baseline.calculators ?? {}));
+  const linksDelta = materializeCollectionDelta(linkCapture, (id) => links.byId[id] ? cloneJson(links.byId[id]) : undefined);
+  const zonesDelta = materializeCollectionDelta(zoneCapture, (id) => {
+    const zone = zones.byId[id];
+    return zone ? copyZone(zone) : undefined;
+  }, (id) => zones.order.indexOf(id));
+  const trashDelta = materializeCollectionDelta(trashCapture, (id) => {
+    const entry = trash.entries.find((item) => item.id === id);
+    return entry ? copyTrashEntry(entry) : undefined;
+  }, (id) => trash.entries.findIndex((item) => item.id === id));
+  const archiveDelta = materializeCollectionDelta(archiveCapture, (id) => {
+    const entry = archive.entries.find((item) => item.id === id);
+    return entry ? copyArchiveEntry(entry) : undefined;
+  }, (id) => archive.entries.findIndex((item) => item.id === id));
+  const taskLogDelta = materializeCollectionDelta(taskLogCapture, (id) => {
+    const entry = taskLog.entries.find((item) => taskLogRecordId(item) === id);
+    return entry ? { ...entry } : undefined;
+  }, (id) => taskLog.entries.findIndex((item) => taskLogRecordId(item) === id));
+  const calculatorDelta = materializeKeyedCollectionDelta(calculatorCapture, (id) => {
+    const data = calculators.byKey[id];
+    return data ? cloneJson(data) : undefined;
+  });
+
+  const metadata = currentProjectStopwatchData();
+  const head: ProjectDelta["head"] = {};
+  if (metadata.createdAt !== baseline.createdAt) head.createdAt = metadata.createdAt;
+  if (JSON.stringify(metadata.projectCounters) !== JSON.stringify(baseline.projectCounters)) {
+    head.projectCounters = { ...metadata.projectCounters };
+  }
+  if (JSON.stringify(beaconState.marked) !== JSON.stringify(baseline.beaconMarks)) head.beaconMarks = [...beaconState.marked];
+  if (beaconState.meDeleted !== baseline.meDeleted) head.meDeleted = beaconState.meDeleted;
+
+  const delta: ProjectDelta = {
+    notes: { upserts: noteUpserts, deleteIds: noteDeletes },
+    links: linksDelta,
+    zones: zonesDelta,
+    trash: trashDelta,
+    archive: archiveDelta,
+    taskLog: taskLogDelta,
+    calculators: calculatorDelta,
+    head,
+    changedFiles: files,
+  };
+  return {
+    request: { baseRevision: boardRevision, delta },
+    dirty,
+    changedNoteIds,
+    deletedNoteIds,
+    changedRecords,
+    changedNotes,
+    captures: {
+      links: linkCapture,
+      zones: zoneCapture,
+      trash: trashCapture,
+      archive: archiveCapture,
+      taskLog: taskLogCapture,
+      calculators: calculatorCapture,
+    },
+    globalRevisionStamp: globalRevisionStamp(),
+  };
+}
+
+function captureJournal<T>(
+  journal: DeltaMutationJournal<T>,
+  currentIds: () => readonly string[],
+  savedIds: () => readonly string[],
+): JournalCapture<T> {
+  const capture = journal.capture();
+  return capture.all ? journal.capture(currentIds(), savedIds()) : capture;
+}
+
+function deltaNoteFile(note: Note, previousFile: string | undefined, reserved: Set<string>): string {
+  if (note.type === "calculator") return calculatorNoteFileName(note.id);
+  if (previousFile && noteFileMatchesName(note, previousFile)) {
+    reserved.add(noteFileKey(previousFile.slice(0, -3)));
+    return previousFile;
+  }
+  const compactLength = note.id.replace(/[^0-9a-z]/gi, "").length || 1;
+  for (let length = 4; length <= compactLength; length += 1) {
+    const candidate = noteMarkdownFileNameWithId(note, length);
+    const key = noteFileKey(candidate.slice(0, -3));
+    let occupied = reserved.has(key);
+    for (const [id, file] of savedFilesById) {
+      if (!occupied && id !== note.id && noteFileKey(file.slice(0, -3)) === key) { occupied = true; break; }
+    }
+    if (!occupied) {
+      reserved.add(key);
+      return candidate;
+    }
+  }
+  return noteMarkdownFileNameWithId(note, 64);
+}
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 function changedFiles(snapshot: ProjectSnapshot): ChangedFile[] {
@@ -875,6 +1104,30 @@ export function savedNoteFiles(): ReadonlyMap<string, string> {
   return savedFilesById;
 }
 
+function recordJournalIds<T>(journal: DeltaMutationJournal<T>, ids: readonly string[] | null, current: (id: string) => unknown): void {
+  if (ids === null) {
+    journal.markAll();
+    return;
+  }
+  recordJournalMutation(journal, { upsertIds: ids }, current);
+}
+
+function recordJournalMutation<T>(
+  journal: DeltaMutationJournal<T>,
+  mutation: { upsertIds?: readonly string[]; deleteIds?: readonly string[]; all?: boolean },
+  current: (id: string) => unknown,
+): void {
+  if (mutation.all) {
+    journal.markAll();
+    return;
+  }
+  for (const id of mutation.deleteIds ?? []) journal.markDelete(id);
+  for (const id of mutation.upsertIds ?? []) {
+    if (current(id) === undefined) journal.markDelete(id);
+    else journal.markUpsert(id);
+  }
+}
+
 function setIndexTemplate(next: ProjectIndex | undefined, resetNoteCache = false): void {
   indexTemplate = next;
   savedFilesById = new Map(next?.notes.map((note) => [note.id, note.file]) ?? []);
@@ -888,6 +1141,12 @@ function setIndexTemplate(next: ProjectIndex | undefined, resetNoteCache = false
       noteEntryCache.set(note.id, { revision, file: note.file, entry: note });
     }
   }
+  linkJournal.reset();
+  zoneJournal.reset();
+  trashJournal.reset();
+  archiveJournal.reset();
+  taskLogJournal.reset();
+  calculatorJournal.reset();
   savedFilesState.revision += 1;
 }
 

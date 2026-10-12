@@ -4,7 +4,7 @@ import { sanitizeArchiveEntries, copyArchiveEntry } from "../src/archive/seriali
 import { parseProjectIndex, mergeLoadedNotes, serializeProjectIndex } from "../src/project/index";
 import { sanitizeTrashEntries } from "../src/trash/serialization";
 import { history } from "../src/history/history.svelte";
-import { replaceBoard } from "../src/model/board.svelte";
+import { onBoardMutation, replaceBoard } from "../src/model/board.svelte";
 import type { Note } from "../src/model/note";
 import { parseTiers } from "../src/model/nodeData";
 import { isGifStopped, setGifStopped, shouldPlayGif, type GifPlaybackMode } from "../src/attachments/gifPlayback.svelte";
@@ -108,10 +108,15 @@ describe("GIF playback behavior", () => {
     replaceBoard([note]);
     const historyCount = history.entries.length;
     const target = { kind: "board", noteId: note.id } as const;
+    const mutations: Array<readonly string[] | null> = [];
+    const unlisten = onBoardMutation((ids) => mutations.push(ids));
     setGifStopped(target, true);
     expect(isGifStopped(target)).toBe(true);
+    expect(mutations).toEqual([[note.id]]);
     expect(history.entries).toHaveLength(historyCount);
     setGifStopped(target, false);
     expect(isGifStopped(target)).toBe(false);
+    expect(mutations).toEqual([[note.id], [note.id]]);
+    unlisten();
   });
 });

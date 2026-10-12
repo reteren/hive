@@ -600,6 +600,50 @@ export class DrawingGpu {
     }
   }
 
+  /** Read the committed state of one stroke tile for a transient-memory spill. */
+  readStrokeState(tile: StrokeStateTile): StrokeStateSnapshot {
+    const gl = this.gl;
+    const pixels = tile.size * tile.size;
+    const read = (buffers: StrokeStateBuffers) => {
+      const rgba = new Uint8Array(pixels * 4);
+      const position = new Float32Array(pixels);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, buffers.fbo);
+      gl.readBuffer(gl.COLOR_ATTACHMENT0);
+      gl.readPixels(0, 0, tile.size, tile.size, gl.RGBA, gl.UNSIGNED_BYTE, rgba);
+      gl.readBuffer(gl.COLOR_ATTACHMENT1);
+      gl.readPixels(0, 0, tile.size, tile.size, gl.RED, gl.FLOAT, position);
+      gl.readBuffer(gl.COLOR_ATTACHMENT0);
+      return { rgba, position };
+    };
+    const current = read(tile.current);
+    const next = read(tile.next);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return { ...current, nextRgba: next.rgba, nextPosition: next.position };
+  }
+
+  /** Restore a spilled stroke tile into both ping-pong buffers. */
+  writeStrokeState(tile: StrokeStateTile, snapshot: StrokeStateSnapshot): void {
+    const expected = tile.size * tile.size;
+    if (snapshot.rgba.length !== expected * 4 || snapshot.position.length !== expected ||
+      (snapshot.nextRgba && snapshot.nextRgba.length !== expected * 4) ||
+      (snapshot.nextPosition && snapshot.nextPosition.length !== expected)) {
+      throw new RangeError("Spilled stroke state dimensions do not match its tile.");
+    }
+    const gl = this.gl;
+    const buffersAndPixels = [
+      { buffers: tile.current, rgba: snapshot.rgba, position: snapshot.position },
+      { buffers: tile.next, rgba: snapshot.nextRgba ?? snapshot.rgba, position: snapshot.nextPosition ?? snapshot.position },
+    ];
+    for (const { buffers, rgba, position } of buffersAndPixels) {
+      gl.bindTexture(gl.TEXTURE_2D, buffers.state);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, tile.size, tile.size, gl.RGBA, gl.UNSIGNED_BYTE, rgba);
+      gl.bindTexture(gl.TEXTURE_2D, buffers.position);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, tile.size, tile.size, gl.RED, gl.FLOAT, position);
+    }
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    tile.mipsDirty = true;
+  }
+
   /**
    * Run up to 64 segments of a pointer event over `rect` (tile px) of a stroke tile whose top-left
    * raster pixel is `origin`. Writes into `next`, then copies the rect back into `current`.
@@ -745,6 +789,14 @@ export interface StrokeStateBuffers {
   state: WebGLTexture;
   position: WebGLTexture;
   fbo: WebGLFramebuffer;
+}
+
+export interface StrokeStateSnapshot {
+  rgba: Uint8Array;
+  position: Float32Array;
+  /** The preview ping-pong buffer can contain a provisional tail not yet present in current. */
+  nextRgba?: Uint8Array;
+  nextPosition?: Float32Array;
 }
 
 export interface StrokeStateTile {

@@ -5,7 +5,7 @@ import {
   type BrushSettings,
 } from "./types";
 import { brushTipShaderIndex } from "./brushes/tips";
-import { requireDrawingGpu, STROKE_SEGMENTS_PER_PASS, type StrokeStateTile } from "./gpu/glEngine";
+import { requireDrawingGpu, STROKE_SEGMENTS_PER_PASS, type DrawingGpu, type StrokeStateSnapshot, type StrokeStateTile } from "./gpu/glEngine";
 import type { GpuRasterSource, RasterPiece } from "./history";
 export { readRasterRect, writeRasterRect } from "./history";
 
@@ -102,6 +102,12 @@ export interface DrawStroke {
   readonly pixelsPerUnit: number;
   /** Straight 0..1 brush colour. */
   readonly color: [number, number, number];
+  /** Current and peak live GPU allocation for stroke-state ping-pong buffers. */
+  readonly residentGpuBytes: number;
+  readonly peakGpuBytes: number;
+  readonly spilledCpuBytes: number;
+  readonly tileCount: number;
+  readonly spilledTileCount: number;
   /** Raster rect changed by the last add(). */
   readonly lastDirtyRect: StrokeRasterRect | null;
   /** Raster rect of everything drawn so far. */
@@ -423,6 +429,71 @@ export function brushShape(diameter: number, hardness: number): { radius: number
   return { radius, core, edge: Math.max(radius - core, 1e-6), passWindow: Math.max(4, radius * 1.5) };
 }
 
+const STROKE_STATE_TILE_PX = 512;
+/** Two colour ping-pong mip chains plus two single-level R32F path-position buffers. */
+export const MAX_TRANSIENT_STROKE_GPU_BYTES = 128 * 1024 * 1024;
+
+export function strokeStateGpuBytes(size = STROKE_STATE_TILE_PX): number {
+  let mipPixels = 0;
+  for (let edge = size; edge >= 1; edge = Math.floor(edge / 2)) mipPixels += edge * edge;
+  return 2 * mipPixels * 4 + 2 * size * size * 4;
+}
+
+type StrokeGpu = Pick<DrawingGpu,
+  "createStrokeState" | "deleteStrokeState" | "strokePass" | "syncStrokeRect" | "ensureStrokeMips" |
+  "readStrokeCoverage" | "readStrokeState" | "writeStrokeState"
+>;
+
+type PackedStrokeBuffer =
+  | { kind: "raw"; rgba: Uint8Array; position: Float32Array }
+  | { kind: "sparse"; indices: Uint32Array; rgba: Uint8Array; position: Float32Array };
+interface PackedStrokeState { current: PackedStrokeBuffer; next: PackedStrokeBuffer }
+const UNTOUCHED_STROKE_POSITION = Math.fround(-1e30);
+
+function packStrokeBuffer(rgba: Uint8Array, position: Float32Array, pixels: number): PackedStrokeBuffer {
+  if (rgba.length !== pixels * 4 || position.length !== pixels) return { kind: "raw", rgba, position };
+  const rgbaWords = new Uint32Array(rgba.buffer, rgba.byteOffset, pixels);
+  const positionWords = new Uint32Array(position.buffer, position.byteOffset, pixels);
+  const untouchedWord = new Uint32Array(Float32Array.of(UNTOUCHED_STROKE_POSITION).buffer)[0]!;
+  let count = 0;
+  for (let pixel = 0; pixel < pixels; pixel += 1) if (rgbaWords[pixel] !== 0 || positionWords[pixel] !== untouchedWord) count += 1;
+  // A sparse entry costs 12 bytes (index + RGBA state + path position); use it only when smaller.
+  if (count * 12 >= pixels * 8) return { kind: "raw", rgba, position };
+  const indices = new Uint32Array(count);
+  const packedRgba = new Uint8Array(count * 4);
+  const packedPosition = new Float32Array(count);
+  let output = 0;
+  for (let pixel = 0; pixel < pixels; pixel += 1) {
+    const offset = pixel * 4;
+    if (rgbaWords[pixel] === 0 && positionWords[pixel] === untouchedWord) continue;
+    indices[output] = pixel;
+    packedRgba.set(rgba.subarray(offset, offset + 4), output * 4);
+    packedPosition[output] = position[pixel]!;
+    output += 1;
+  }
+  return { kind: "sparse", indices, rgba: packedRgba, position: packedPosition };
+}
+
+function unpackStrokeBuffer(buffer: PackedStrokeBuffer, pixels: number): { rgba: Uint8Array; position: Float32Array } {
+  if (buffer.kind === "raw") return buffer;
+  const rgba = new Uint8Array(pixels * 4);
+  const position = new Float32Array(pixels);
+  position.fill(UNTOUCHED_STROKE_POSITION);
+  for (let index = 0; index < buffer.indices.length; index += 1) {
+    const pixel = buffer.indices[index]!;
+    rgba.set(buffer.rgba.subarray(index * 4, index * 4 + 4), pixel * 4);
+    position[pixel] = buffer.position[index]!;
+  }
+  return { rgba, position };
+}
+
+function packedStrokeStateBytes(snapshot: PackedStrokeState): number {
+  return [snapshot.current, snapshot.next].reduce((sum, buffer) => sum +
+    (buffer.kind === "raw"
+      ? buffer.rgba.byteLength + buffer.position.byteLength
+      : buffer.indices.byteLength + buffer.rgba.byteLength + buffer.position.byteLength), 0);
+}
+
 /** CPU reference for the GPU calligraphy nib: distance to a path segment in the nib's anisotropic space. */
 export function calligraphySegmentDistance(
   point: StrokePoint,
@@ -475,8 +546,14 @@ export function strokePassBatchCount(segmentCount: number): number {
  * is smoothed on the CPU; every pixel is computed by the drawing GPU (gpu/glEngine.ts STROKE_SHADER),
  * one pass per pointer event over just that event's bounding box.
  */
-export function createStroke(settings: BrushSettings, zoom: number, requestedLevel?: number): DrawStroke {
-  const gpu = requireDrawingGpu();
+export function createStroke(
+  settings: BrushSettings,
+  zoom: number,
+  requestedLevel?: number,
+  gpuOverride?: StrokeGpu,
+  transientBudgetBytes = MAX_TRANSIENT_STROKE_GPU_BYTES,
+): DrawStroke {
+  const gpu = gpuOverride ?? requireDrawingGpu();
   const safeSettings = {
     color: /^#[\da-f]{6}$/i.test(settings.color) ? settings.color : "#e8e8e8",
     size: clamp(settings.size, 1, 400, 10),
@@ -501,7 +578,13 @@ export function createStroke(settings: BrushSettings, zoom: number, requestedLev
     Number.parseInt(safeSettings.color.slice(3, 5), 16) / 255,
     Number.parseInt(safeSettings.color.slice(5, 7), 16) / 255,
   ];
-  const tiles = new Map<string, { col: number; row: number; state: StrokeStateTile }>();
+  const tiles = new Map<string, { col: number; row: number; state: StrokeStateTile | null; spilled: PackedStrokeState | null }>();
+  const residentLru = new Set<string>();
+  const stateBytes = strokeStateGpuBytes(STROKE_TILE);
+  const maxResidentBytes = Math.max(stateBytes, Math.floor(Number.isFinite(transientBudgetBytes) ? transientBudgetBytes : MAX_TRANSIENT_STROKE_GPU_BYTES));
+  let residentGpuBytes = 0;
+  let peakGpuBytes = 0;
+  let spilledCpuBytes = 0;
   /** Path length drawn so far, in raster px. */
   let pathLength = 0;
   let closed = false;
@@ -529,21 +612,83 @@ export function createStroke(settings: BrushSettings, zoom: number, requestedLev
     }
   }
 
+  function spillTile(key: string, tile: { col: number; row: number; state: StrokeStateTile | null; spilled: PackedStrokeState | null }): void {
+    const state = tile.state;
+    if (!state) return;
+    // Preserve both ping-pong sides: a spilled tile may still contain the current provisional tail.
+    const snapshot = gpu.readStrokeState(state);
+    const pixels = STROKE_TILE * STROKE_TILE;
+    tile.spilled = {
+      current: packStrokeBuffer(snapshot.rgba, snapshot.position, pixels),
+      next: packStrokeBuffer(snapshot.nextRgba ?? snapshot.rgba, snapshot.nextPosition ?? snapshot.position, pixels),
+    };
+    spilledCpuBytes += packedStrokeStateBytes(tile.spilled);
+    gpu.deleteStrokeState(state);
+    tile.state = null;
+    residentGpuBytes -= stateBytes;
+    residentLru.delete(key);
+  }
+
+  function trimTransientBudget(exceptKey?: string): void {
+    while (residentGpuBytes > maxResidentBytes) {
+      let candidate: string | null = null;
+      for (const key of residentLru) {
+        if (key !== exceptKey) { candidate = key; break; }
+      }
+      if (candidate === null) break;
+      const tile = tiles.get(candidate);
+      if (tile) spillTile(candidate, tile);
+      else residentLru.delete(candidate);
+    }
+  }
+
+  function reserveTransientState(exceptKey?: string): void {
+    while (residentGpuBytes + stateBytes > maxResidentBytes) {
+      let candidate: string | null = null;
+      for (const key of residentLru) {
+        if (key !== exceptKey) { candidate = key; break; }
+      }
+      if (candidate === null) break;
+      const tile = tiles.get(candidate);
+      if (tile) spillTile(candidate, tile);
+      else residentLru.delete(candidate);
+    }
+  }
+
   function tileFor(col: number, row: number): StrokeStateTile {
     const key = `${col}:${row}`;
     let tile = tiles.get(key);
     if (!tile) {
-      tile = { col, row, state: gpu.createStrokeState(STROKE_TILE) };
+      tile = { col, row, state: null, spilled: null };
       tiles.set(key, tile);
     }
+    if (!tile.state) {
+      reserveTransientState(key);
+      tile.state = gpu.createStrokeState(STROKE_TILE);
+      residentGpuBytes += stateBytes;
+      peakGpuBytes = Math.max(peakGpuBytes, residentGpuBytes);
+      if (tile.spilled) {
+        const bytes = packedStrokeStateBytes(tile.spilled);
+        const current = unpackStrokeBuffer(tile.spilled.current, STROKE_TILE * STROKE_TILE);
+        const next = unpackStrokeBuffer(tile.spilled.next, STROKE_TILE * STROKE_TILE);
+        gpu.writeStrokeState(tile.state, { ...current, nextRgba: next.rgba, nextPosition: next.position });
+        spilledCpuBytes -= bytes;
+      }
+      tile.spilled = null;
+    }
+    residentLru.delete(key);
+    residentLru.add(key);
     return tile.state;
   }
 
   /** Regions of `next` that hold the live (provisional) tail instead of committed state. */
-  let provisional: { state: StrokeStateTile; rect: { x: number; y: number; width: number; height: number } }[] = [];
+  let provisional: { key: string; rect: { x: number; y: number; width: number; height: number } }[] = [];
 
   function dropProvisional(): void {
-    for (const { state, rect } of provisional) gpu.syncStrokeRect(state, rect);
+    for (const { key, rect } of provisional) {
+      const tile = tiles.get(key);
+      if (tile) gpu.syncStrokeRect(tileFor(tile.col, tile.row), rect);
+    }
     provisional = [];
   }
 
@@ -607,7 +752,8 @@ export function createStroke(settings: BrushSettings, zoom: number, requestedLev
           const state = tileFor(col, row);
           const rect = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
           gpu.strokePass(state, { x: originX, y: originY }, rect, segmentData, lengthData, n, shape, tip, tipAngle, textureSeed, commit);
-          if (!commit) provisional.push({ state, rect });
+          if (!commit) provisional.push({ key: `${col}:${row}`, rect });
+          trimTransientBudget(`${col}:${row}`);
         }
       }
     }
@@ -676,31 +822,36 @@ export function createStroke(settings: BrushSettings, zoom: number, requestedLev
     flushSegments();
   }
 
-  function pieces(preview = false, bounds?: StrokeRasterRect): RasterPiece[] {
-    let selected: Iterable<{ col: number; row: number; state: StrokeStateTile }>;
+  function pieces(preview = false, bounds?: StrokeRasterRect, materializeSpilled = true): RasterPiece[] {
+    let selected: Iterable<{ col: number; row: number }>;
     if (!bounds) selected = tiles.values();
     else {
       const firstCol = Math.floor(bounds.x / STROKE_TILE);
       const firstRow = Math.floor(bounds.y / STROKE_TILE);
       const lastCol = Math.floor((bounds.x + bounds.width - 1) / STROKE_TILE);
       const lastRow = Math.floor((bounds.y + bounds.height - 1) / STROKE_TILE);
-      const found: { col: number; row: number; state: StrokeStateTile }[] = [];
+      const found: { col: number; row: number }[] = [];
       for (let col = firstCol; col <= lastCol; col += 1) {
         for (let row = firstRow; row <= lastRow; row += 1) {
           const tile = tiles.get(`${col}:${row}`);
-          if (tile) found.push(tile);
+          if (tile) found.push({ col, row });
         }
       }
       selected = found;
     }
-    return [...selected].map(({ col, row, state }) => ({
-      texture: preview ? state.next.state : state.current.state,
-      texWidth: STROKE_TILE,
-      texHeight: STROKE_TILE,
-      texRect: { x: 0, y: 0, width: STROKE_TILE, height: STROKE_TILE },
-      x: col * STROKE_TILE,
-      y: row * STROKE_TILE,
-    }));
+    return [...selected].map(({ col, row }) => {
+      const tile = tiles.get(`${col}:${row}`);
+      if (!tile || (!tile.state && !materializeSpilled)) return null;
+      const state = tile.state ?? tileFor(col, row);
+      return {
+        texture: preview ? state.next.state : state.current.state,
+        texWidth: STROKE_TILE,
+        texHeight: STROKE_TILE,
+        texRect: { x: 0, y: 0, width: STROKE_TILE, height: STROKE_TILE },
+        x: col * STROKE_TILE,
+        y: row * STROKE_TILE,
+      };
+    }).filter((piece): piece is RasterPiece => piece !== null);
   }
 
   return {
@@ -709,6 +860,11 @@ export function createStroke(settings: BrushSettings, zoom: number, requestedLev
     level,
     pixelsPerUnit,
     color,
+    get residentGpuBytes() { return residentGpuBytes; },
+    get peakGpuBytes() { return peakGpuBytes; },
+    get spilledCpuBytes() { return spilledCpuBytes; },
+    get tileCount() { return tiles.size; },
+    get spilledTileCount() { return tiles.size - residentLru.size; },
     get lastDirtyRect() { return lastDirtyRect; },
     get bounds() { return contentBounds; },
     pieces: (bounds) => pieces(true, bounds),
@@ -723,10 +879,35 @@ export function createStroke(settings: BrushSettings, zoom: number, requestedLev
         level,
         mode: "mask",
         color,
-        pieces: pieces(false),
+        pieces: pieces(false, undefined, false),
         bounds,
+        tileRects: [...tiles.values()].map(({ col, row }) => {
+          const x = Math.max(bounds.x, col * STROKE_TILE);
+          const y = Math.max(bounds.y, row * STROKE_TILE);
+          return {
+            x,
+            y,
+            width: Math.max(0, Math.min(bounds.x + bounds.width, (col + 1) * STROKE_TILE) - x),
+            height: Math.max(0, Math.min(bounds.y + bounds.height, (row + 1) * STROKE_TILE) - y),
+          };
+        }).filter((rect) => rect.width > 0 && rect.height > 0),
+        async visitPieces(visit) {
+          for (const tile of tiles.values()) {
+            const state = tileFor(tile.col, tile.row);
+            gpu.ensureStrokeMips(state);
+            visit({
+              texture: state.current.state,
+              texWidth: STROKE_TILE,
+              texHeight: STROKE_TILE,
+              texRect: { x: 0, y: 0, width: STROKE_TILE, height: STROKE_TILE },
+              x: tile.col * STROKE_TILE,
+              y: tile.row * STROKE_TILE,
+            });
+            trimTransientBudget();
+          }
+        },
         prepare(engine) {
-          for (const tile of tiles.values()) engine.ensureStrokeMips(tile.state);
+          for (const tile of tiles.values()) if (tile.state) engine.ensureStrokeMips(tile.state);
         },
       };
       return {
@@ -746,12 +927,13 @@ export function createStroke(settings: BrushSettings, zoom: number, requestedLev
           const red = Math.round(color[0] * 255);
           const green = Math.round(color[1] * 255);
           const blue = Math.round(color[2] * 255);
-          for (const { col, row, state } of tiles.values()) {
+          for (const { col, row } of tiles.values()) {
             const x0 = Math.max(bounds.x, col * STROKE_TILE);
             const y0 = Math.max(bounds.y, row * STROKE_TILE);
             const x1 = Math.min(bounds.x + bounds.width, (col + 1) * STROKE_TILE);
             const y1 = Math.min(bounds.y + bounds.height, (row + 1) * STROKE_TILE);
             if (x1 <= x0 || y1 <= y0) continue;
+            const state = tileFor(col, row);
             const coverage = gpu.readStrokeCoverage(state, { x: x0 - col * STROKE_TILE, y: y0 - row * STROKE_TILE, width: x1 - x0, height: y1 - y0 });
             for (let y = y0; y < y1; y += 1) {
               for (let x = x0; x < x1; x += 1) {
@@ -762,6 +944,7 @@ export function createStroke(settings: BrushSettings, zoom: number, requestedLev
                 image.data[offset + 3] = coverage[(y - y0) * (x1 - x0) + (x - x0)]!;
               }
             }
+            trimTransientBudget();
           }
           context.putImageData(image, 0, 0);
           return canvas;
@@ -770,8 +953,14 @@ export function createStroke(settings: BrushSettings, zoom: number, requestedLev
     },
     dispose() {
       closed = true;
-      for (const tile of tiles.values()) gpu.deleteStrokeState(tile.state);
+      for (const tile of tiles.values()) {
+        if (!tile.state) continue;
+        gpu.deleteStrokeState(tile.state);
+        residentGpuBytes -= stateBytes;
+      }
       tiles.clear();
+      residentLru.clear();
+      spilledCpuBytes = 0;
       contentBounds = null;
       lastDirtyRect = null;
     },

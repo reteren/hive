@@ -92,14 +92,24 @@ export function affectedTileKeysForPieces(
   kind: LevelPaintKind,
   bounds?: TexRect,
 ): TileKey[] {
-  const result = new Set<TileKey>();
+  const rects: TexRect[] = [];
   for (const piece of pieces) {
     const left = Math.max(piece.x, bounds?.x ?? Number.NEGATIVE_INFINITY);
     const top = Math.max(piece.y, bounds?.y ?? Number.NEGATIVE_INFINITY);
     const right = Math.min(piece.x + piece.texRect.width, bounds ? bounds.x + bounds.width : Number.POSITIVE_INFINITY);
     const bottom = Math.min(piece.y + piece.texRect.height, bounds ? bounds.y + bounds.height : Number.POSITIVE_INFINITY);
     if (right <= left || bottom <= top) continue;
-    const rect = rasterRectToWorld(left, top, right - left, bottom - top, sourceLevel);
+    rects.push({ x: left, y: top, width: right - left, height: bottom - top });
+  }
+  return affectedTileKeysForRasterRects(rects, sourceLevel, kind);
+}
+
+/** Exact touched-tile planning for a streamed source whose GPU pieces are not all resident. */
+export function affectedTileKeysForRasterRects(rects: readonly TexRect[], sourceLevel: number, kind: LevelPaintKind): TileKey[] {
+  const result = new Set<TileKey>();
+  for (const piece of rects) {
+    if (piece.width <= 0 || piece.height <= 0) continue;
+    const rect = rasterRectToWorld(piece.x, piece.y, piece.width, piece.height, sourceLevel);
     if (kind !== "erase") {
       for (const key of drawingStore.keysInRect(rect, true, sourceLevel)) result.add(key);
     }
@@ -114,6 +124,7 @@ export function affectedTileKeysForPieces(
 }
 
 export function affectedTileKeysForSource(source: GpuRasterSource, kind: LevelPaintKind): TileKey[] {
+  if (source.tileRects) return affectedTileKeysForRasterRects(source.tileRects, source.level, kind);
   return affectedTileKeysForPieces(source.pieces, source.level, kind, source.bounds);
 }
 
@@ -139,6 +150,10 @@ export interface GpuRasterSource {
   /** Straight 0..1 colour for mask sources. */
   color: [number, number, number];
   pieces: RasterPiece[];
+  /** Geometry for exact touched-key planning when stroke textures are spilled from the GPU. */
+  tileRects?: TexRect[];
+  /** Visit each GPU piece with only a bounded number of spilled pieces resident at once. */
+  visitPieces?(visit: (piece: RasterPiece) => void): Promise<void>;
   /** Raster rect (source level) covering every piece. */
   bounds: TexRect;
   /** Make the pieces sampleable at coarser scales (mip chains). */
@@ -264,6 +279,8 @@ export function applyAcrossLevels(
   alpha = 1,
   selection?: SelectionClipMask | null,
   selectionMaskOnly = false,
+  destinationPass: "all" | "finer" | "source" = "all",
+  commit = true,
 ): TileKey[] {
   const opacity = Math.min(1, Math.max(0, Number.isFinite(alpha) ? alpha : 0));
   if (opacity === 0) return [];
@@ -296,8 +313,11 @@ export function applyAcrossLevels(
         targets = drawingStore.keysInRect(pieceWorld, true, source.level);
         if (kind === "paint") {
           for (const key of drawingStore.existingKeysInRect(pieceWorld)) {
-            if ((parseTileKey(key)?.level ?? source.level) < source.level) targets.push(key);
+            const tileLevel = parseTileKey(key)?.level ?? source.level;
+            if (tileLevel < source.level && destinationPass !== "source") targets.push(key);
           }
+          if (destinationPass === "finer") targets = targets.filter((key) => (parseTileKey(key)?.level ?? source.level) < source.level);
+          else if (destinationPass === "source") targets = targets.filter((key) => (parseTileKey(key)?.level ?? source.level) === source.level);
         }
       }
       for (const key of targets) {
@@ -330,15 +350,50 @@ export function applyAcrossLevels(
       // Finer tiles first: they must not see the coarse tiles this call is about to create.
       const destinationKeys = [...piecesByKey.keys()];
       const finer = destinationKeys.filter((key) => (parseTileKey(key)?.level ?? source.level) < source.level);
-      apply(finer, "atop", false);
-      apply(destinationKeys.filter((key) => (parseTileKey(key)?.level ?? source.level) === source.level), "over", true);
+      const sourceLevel = destinationKeys.filter((key) => (parseTileKey(key)?.level ?? source.level) === source.level);
+      if (destinationPass !== "source") apply(finer, "atop", false);
+      if (destinationPass !== "finer") apply(sourceLevel, "over", true);
     }
     const keys = [...new Set(touched)];
-    drawingStore.commit(keys);
+    if (commit) drawingStore.commit(keys);
     return keys;
   } finally {
     gpu.deleteTexture(uploaded);
   }
+}
+
+/** Apply a stroke source piece by piece, preserving the bounded GPU residency of spilled state. */
+export async function applyStreamingSource(
+  source: GpuRasterSource,
+  kind: LevelPaintKind,
+  alpha = 1,
+  selection?: SelectionClipMask | null,
+): Promise<TileKey[]> {
+  if (!source.visitPieces) {
+    return applyAcrossLevels(source, source.bounds.x, source.bounds.y, source.level, kind, alpha, selection);
+  }
+  const touched = new Set<TileKey>();
+  const passes: Array<"all" | "finer" | "source"> = kind === "paint" ? ["finer", "source"] : ["all"];
+  for (const pass of passes) {
+    await source.visitPieces((piece) => {
+      const one: GpuRasterSource = {
+        ...source,
+        pieces: [piece],
+        tileRects: undefined,
+        visitPieces: undefined,
+        bounds: {
+          x: Math.max(source.bounds.x, piece.x),
+          y: Math.max(source.bounds.y, piece.y),
+          width: Math.max(0, Math.min(source.bounds.x + source.bounds.width, piece.x + piece.texRect.width) - Math.max(source.bounds.x, piece.x)),
+          height: Math.max(0, Math.min(source.bounds.y + source.bounds.height, piece.y + piece.texRect.height) - Math.max(source.bounds.y, piece.y)),
+        },
+      };
+      for (const key of applyAcrossLevels(one, source.bounds.x, source.bounds.y, source.level, kind, alpha, selection, false, pass, false)) touched.add(key);
+    });
+  }
+  const changed = [...touched];
+  drawingStore.commit(changed);
+  return changed;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { board } from "../model/board.svelte";
+import { board, updateNote } from "../model/board.svelte";
 
 export const GIF_PLAYBACK_MODES = ["always", "hover", "selected"] as const;
 export type GifPlaybackMode = (typeof GIF_PLAYBACK_MODES)[number];
@@ -65,8 +65,7 @@ export function setGifStopped(target: GifPlaybackTarget, stopped: boolean): void
     case "board": {
       const note = board.notes[target.noteId];
       if (note) {
-        if (stopped) note.gifStopped = true;
-        else delete note.gifStopped;
+        if (note.gifStopped !== stopped) updateNote(target.noteId, stopped ? { gifStopped: true } : { gifStopped: undefined });
       }
       break;
     }

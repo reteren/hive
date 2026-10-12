@@ -33,13 +33,19 @@ export interface ArchiveEntry {
   calculatorData?: CalculatorData;
 }
 
+export interface RetentionMutation {
+  upsertIds?: readonly string[];
+  deleteIds?: readonly string[];
+  all?: boolean;
+}
+
 export const trash = $state({ entries: [] as TrashEntry[] });
 export const archive = $state({ entries: [] as ArchiveEntry[] });
 
 let trashChangeRevision = 0;
 let archiveChangeRevision = 0;
-const trashListeners = new Set<(revision: number) => void>();
-const archiveListeners = new Set<(revision: number) => void>();
+const trashListeners = new Set<(revision: number, mutation: RetentionMutation) => void>();
+const archiveListeners = new Set<(revision: number, mutation: RetentionMutation) => void>();
 
 export function trashRevision(): number {
   return trashChangeRevision;
@@ -49,36 +55,36 @@ export function archiveRevision(): number {
   return archiveChangeRevision;
 }
 
-export function onTrashMutation(listener: (revision: number) => void): () => void {
+export function onTrashMutation(listener: (revision: number, mutation: RetentionMutation) => void): () => void {
   trashListeners.add(listener);
   return () => trashListeners.delete(listener);
 }
 
-export function onArchiveMutation(listener: (revision: number) => void): () => void {
+export function onArchiveMutation(listener: (revision: number, mutation: RetentionMutation) => void): () => void {
   archiveListeners.add(listener);
   return () => archiveListeners.delete(listener);
 }
 
-export function updateTrashEntries(update: (entries: TrashEntry[]) => TrashEntry[] | void): void {
+export function updateTrashEntries(update: (entries: TrashEntry[]) => TrashEntry[] | void, mutation: RetentionMutation = { all: true }): void {
   const replacement = update(trash.entries);
   if (replacement) trash.entries = replacement;
   trashChangeRevision += 1;
   markProjectChanged();
-  for (const listener of trashListeners) listener(trashChangeRevision);
+  for (const listener of trashListeners) listener(trashChangeRevision, mutation);
 }
 
-export function updateArchiveEntries(update: (entries: ArchiveEntry[]) => ArchiveEntry[] | void): void {
+export function updateArchiveEntries(update: (entries: ArchiveEntry[]) => ArchiveEntry[] | void, mutation: RetentionMutation = { all: true }): void {
   const replacement = update(archive.entries);
   if (replacement) archive.entries = replacement;
   archiveChangeRevision += 1;
   markProjectChanged();
-  for (const listener of archiveListeners) listener(archiveChangeRevision);
+  for (const listener of archiveListeners) listener(archiveChangeRevision, mutation);
 }
 
 export function replaceTrash(entries: TrashEntry[]): void {
-  updateTrashEntries(() => entries);
+  updateTrashEntries(() => entries, { all: true });
 }
 
 export function replaceArchive(entries: ArchiveEntry[]): void {
-  updateArchiveEntries(() => entries);
+  updateArchiveEntries(() => entries, { all: true });
 }

@@ -1,14 +1,14 @@
 use crate::project::{self, ProjectState};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, OnceLock};
-use tauri::{AppHandle, Manager, State};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
 #[path = "attachment_migration.rs"]
@@ -25,9 +25,12 @@ pub(crate) const LARGE_VIDEO_EXTERNAL_BYTES: u64 = 20 * 1024 * 1024;
 const UNLIMITED_VIDEO_EXTERNAL_THRESHOLD_BYTES: u64 = 0;
 const MAX_ATTACHMENT_NAME_UNITS: usize = 120;
 const STREAM_BUFFER_BYTES: usize = 64 * 1024;
+pub(crate) const MAX_ATTACHMENT_IMPORT_BATCH: usize = 200;
+const ATTACHMENT_IMPORT_PROGRESS_EVENT: &str = "attachment-import-progress";
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 static ASSET_DIRECTORIES: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
 static ASSET_FILES: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
+static IMPORT_CANCELLATIONS: OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = OnceLock::new();
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -41,6 +44,35 @@ pub struct AttachmentImport {
     pub kind: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub external_path: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentImportBatchItem {
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attachment: Option<AttachmentImport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentImportBatch {
+    pub items: Vec<AttachmentImportBatchItem>,
+    pub processed: usize,
+    pub cancelled: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AttachmentImportProgress {
+    import_id: String,
+    completed: usize,
+    total: usize,
+    succeeded: usize,
+    failed: usize,
+    current_file: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -171,6 +203,135 @@ pub fn attachment_import_path(
         allow_external_video_file(&app, Path::new(external_path))?;
     }
     Ok(imported)
+}
+
+/// Import a bounded path batch on Tauri's blocking pool and stream per-file progress events.
+#[tauri::command]
+pub async fn attachment_import_paths(
+    app: AppHandle,
+    state: State<'_, ProjectState>,
+    import_id: String,
+    paths: Vec<String>,
+    kind_hints: Vec<Option<String>>,
+    progress_offset: usize,
+    total_count: usize,
+    video_external_threshold_bytes: Option<u64>,
+) -> Result<AttachmentImportBatch, String> {
+    if paths.len() > MAX_ATTACHMENT_IMPORT_BATCH {
+        return Err(format!("Import batches are limited to {MAX_ATTACHMENT_IMPORT_BATCH} files."));
+    }
+    if paths.len() != kind_hints.len() {
+        return Err("Import path and kind-hint counts do not match.".to_string());
+    }
+    validate_import_id(&import_id)?;
+    let root = project::active_project_root(&state)?;
+    let cancellation = import_cancellation_token(&import_id)?;
+    let app_for_work = app.clone();
+    let job = tauri::async_runtime::spawn_blocking(move || {
+        let mut items = Vec::with_capacity(paths.len());
+        let mut succeeded = 0;
+        let mut failed = 0;
+        let mut cancelled = false;
+        for (index, (path, kind_hint)) in paths.into_iter().zip(kind_hints).enumerate() {
+            if cancellation.load(Ordering::Acquire) {
+                cancelled = true;
+                break;
+            }
+            let result = import_path_at_with_cancel(
+                &root,
+                Path::new(&path),
+                kind_hint.as_deref(),
+                video_external_threshold_bytes,
+                Some(&cancellation),
+            );
+            if cancellation.load(Ordering::Acquire) && result.as_ref().err().is_some_and(|error| error == "Import cancelled.") {
+                cancelled = true;
+                break;
+            }
+            let (attachment, error) = match result {
+                Ok(attachment) => {
+                    succeeded += 1;
+                    (Some(attachment), None)
+                }
+                Err(error) => {
+                    failed += 1;
+                    (None, Some(error))
+                }
+            };
+            items.push(AttachmentImportBatchItem { path: path.clone(), attachment, error });
+            let payload = AttachmentImportProgress {
+                import_id: import_id.clone(),
+                completed: progress_offset + index + 1,
+                total: total_count,
+                succeeded,
+                failed,
+                current_file: path.rsplit(['/', '\\']).next().unwrap_or(&path).to_string(),
+            };
+            let _ = app_for_work.emit(ATTACHMENT_IMPORT_PROGRESS_EVENT, payload);
+        }
+        AttachmentImportBatch { processed: items.len(), items, cancelled }
+    });
+    let mut batch = job.await.map_err(|error| format!("Attachment import worker failed: {error}"))?;
+    let mut succeeded = 0;
+    let mut failed = 0;
+    for item in &mut batch.items {
+        if let Some(attachment) = item.attachment.as_ref() {
+            if let Some(external_path) = attachment.external_path.as_deref() {
+                if let Err(error) = allow_external_video_file(&app, Path::new(external_path)) {
+                    item.attachment = None;
+                    item.error = Some(error);
+                }
+            }
+        }
+        if item.attachment.is_some() { succeeded += 1; } else { failed += 1; }
+    }
+    if batch.processed > 0 {
+        let completed = progress_offset + batch.processed;
+        let current_file = batch.items.last().map(|item| item.path.rsplit(['/', '\\']).next().unwrap_or(&item.path).to_string()).unwrap_or_default();
+        let _ = app.emit(ATTACHMENT_IMPORT_PROGRESS_EVENT, AttachmentImportProgress {
+            import_id,
+            completed,
+            total: total_count,
+            succeeded,
+            failed,
+            current_file,
+        });
+    }
+    Ok(batch)
+}
+
+#[tauri::command]
+pub fn attachment_cancel_import(import_id: String) -> Result<(), String> {
+    validate_import_id(&import_id)?;
+    import_cancellation_token(&import_id)?.store(true, Ordering::Release);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn attachment_finish_import(import_id: String) -> Result<(), String> {
+    validate_import_id(&import_id)?;
+    if let Some(cancellations) = IMPORT_CANCELLATIONS.get() {
+        cancellations.lock().map_err(|_| "attachment import state is unavailable")?.remove(&import_id);
+    }
+    Ok(())
+}
+
+pub(crate) fn import_cancellation_token(import_id: &str) -> Result<Arc<AtomicBool>, String> {
+    validate_import_id(import_id)?;
+    let cancellations = IMPORT_CANCELLATIONS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut cancellations = cancellations.lock().map_err(|_| "attachment import state is unavailable")?;
+    Ok(cancellations.entry(import_id.to_string()).or_insert_with(|| Arc::new(AtomicBool::new(false))).clone())
+}
+
+pub(crate) fn import_is_cancelled(import_id: &str) -> Result<bool, String> {
+    Ok(import_cancellation_token(import_id)?.load(Ordering::Acquire))
+}
+
+fn validate_import_id(import_id: &str) -> Result<(), String> {
+    if import_id.is_empty() || import_id.len() > 128 || !import_id.chars().all(|character| character.is_ascii_alphanumeric() || character == '-' || character == '_') {
+        return Err("Import identifier is invalid.".to_string());
+    }
+    Ok(())
 }
 
 #[tauri::command]

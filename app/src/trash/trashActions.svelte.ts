@@ -100,7 +100,7 @@ export function moveToTrash(
       let offset = 0;
       for (const entry of activeEntries) {
         if (!trash.entries.some((candidate) => candidate.id === entry.id)) {
-          updateTrashEntries((current) => { current.splice(Math.min(insertionIndex + offset, current.length), 0, copyTrashEntry(entry)); });
+          updateTrashEntries((current) => { current.splice(Math.min(insertionIndex + offset, current.length), 0, copyTrashEntry(entry)); }, { upsertIds: [entry.id] });
         }
         offset += 1;
       }
@@ -122,7 +122,9 @@ export function moveToTrash(
       const restorableEntryIds = new Set(entries
         .filter((entry) => !permanentlyDeletedEntryIds.has(entry.id) && trash.entries.some((candidate) => candidate.id === entry.id))
         .map((entry) => entry.id));
-      updateTrashEntries((current) => current.filter((candidate) => !restorableEntryIds.has(candidate.id)));
+      updateTrashEntries((current) => current.filter((candidate) => !restorableEntryIds.has(candidate.id)), {
+        deleteIds: [...restorableEntryIds],
+      });
       const restorableNotes = indexedNotes.filter(({ note }) => restorableEntryIds.has(entryIdByNoteId.get(note.id) ?? ""));
       const restorableZones = indexedZones.filter(({ zone }) => restorableEntryIds.has(entryIdByZoneId.get(zone.id) ?? ""));
       const restorableNoteIds = new Set(restorableNotes.map(({ note }) => note.id));
@@ -169,7 +171,7 @@ export function deleteMeBeacon(): TrashEntry | null {
     do: () => {
       if (permanentlyDeletedEntry) return;
       if (!trash.entries.some((candidate) => candidate.id === entry.id)) {
-        updateTrashEntries((current) => { current.splice(Math.min(insertionIndex, current.length), 0, copyTrashEntry(entry)); });
+        updateTrashEntries((current) => { current.splice(Math.min(insertionIndex, current.length), 0, copyTrashEntry(entry)); }, { upsertIds: [entry.id] });
       }
       beaconState.meDeleted = true;
       beaconState.focused = beaconState.focused.filter((id) => id !== ME_OBJECT_ID);
@@ -180,7 +182,7 @@ export function deleteMeBeacon(): TrashEntry | null {
     },
     undo: () => {
       if (permanentlyDeletedEntry || !trash.entries.some((candidate) => candidate.id === entry.id)) return;
-      updateTrashEntries((current) => current.filter((candidate) => candidate.id !== entry.id));
+      updateTrashEntries((current) => current.filter((candidate) => candidate.id !== entry.id), { deleteIds: [entry.id] });
       beaconState.meDeleted = false;
       entry.links.forEach((link) => {
         if (!links.byId[link.id] && !linkBetween(link.from, link.to)) addLink(copyTrashLink(link));
@@ -241,7 +243,7 @@ export function restoreTrashEntry(entryId: string): TrashRestorePreview | null {
     target: trashEntrySummary(originalEntry),
     do: () => {
       const currentIndex = trash.entries.findIndex((candidate) => candidate.id === entryId);
-      if (currentIndex >= 0) updateTrashEntries((current) => { current.splice(currentIndex, 1); });
+      if (currentIndex >= 0) updateTrashEntries((current) => { current.splice(currentIndex, 1); }, { deleteIds: [entryId] });
       if (originalEntry.meBeacon) beaconState.meDeleted = false;
       plan.notes.forEach((note) => addNote(copyTrashNote(note)));
       indexedZones.forEach(({ zone }) => addZone(copyTrashZone(zone)));
@@ -275,7 +277,7 @@ export function restoreTrashEntry(entryId: string): TrashRestorePreview | null {
       plan.notes.forEach((note) => removeNote(note.id));
       if (originalEntry.meBeacon) beaconState.meDeleted = true;
       indexedZones.forEach(({ zone }) => removeZone(zone.id));
-      updateTrashEntries((current) => { current.splice(Math.min(entryIndex, current.length), 0, copyTrashEntry(originalEntry)); });
+      updateTrashEntries((current) => { current.splice(Math.min(entryIndex, current.length), 0, copyTrashEntry(originalEntry)); }, { upsertIds: [originalEntry.id] });
       restoreSelectionSnapshot(previousSelection);
       editing.noteId = previousEditing;
     },
@@ -294,7 +296,7 @@ export function deletePermanently(entryId: string): TrashEntry | null {
   const index = trash.entries.findIndex((candidate) => candidate.id === entryId);
   if (index < 0) return null;
   const removed: TrashEntry | undefined = trash.entries[index];
-  updateTrashEntries((current) => { current.splice(index, 1); });
+  updateTrashEntries((current) => { current.splice(index, 1); }, { deleteIds: [entryId] });
   historyInvalidators.get(entryId)?.();
   historyInvalidators.delete(entryId);
   pruneUnusedCalculatorData();
@@ -308,7 +310,7 @@ export function emptyTrash(): TrashEntry[] {
     historyInvalidators.get(entry.id)?.();
     historyInvalidators.delete(entry.id);
   }
-  updateTrashEntries(() => []);
+  updateTrashEntries(() => [], { all: true });
   pruneUnusedCalculatorData();
   return removed;
 }
