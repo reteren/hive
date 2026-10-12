@@ -223,3 +223,32 @@ and must NOT delete objects that arrived from a pull (the friend's node) — thi
 shared Git project. Fix the delta/full save planner so that test passes unchanged, keep all other Rust
 and frontend tests green, then report `d43_report_e3.md`. The coordinator did NOT commit e2 because
 of this; your e2 files are still uncommitted in the working tree.
+
+## b3 — FarLayer is too slow on huge boards (measured by the coordinator, dev build)
+20 000 notes / 3 000 links at the `min` tier: panning 73 ms per frame (p95 86), and at 3 000 notes /
+2 500 links dragging one note at zoom 0.1 runs 11–17 ms median with 55 ms p95. Profile: `appendPolyline`
+(farDrawList.ts), canvas `lineTo`/`remove`, `peekCachedDisplayBitmap` per image per frame,
+`buildFarDrawList` + `noteBounds` — the draw list is rebuilt and fully replayed every frame.
+Target: ≤ 8 ms per frame for both, measured the same way.
+1. Panning must not rebuild anything: render the static board into cached bitmap tiles (e.g. 512 px
+   OffscreenCanvas tiles in screen space at the current zoom bucket, or one oversized cached canvas
+   covering visible.rect) and per frame only blit/translate them; rebuild tiles only when zoom changes by
+   a bucket, the visible rect leaves the cached area, or the model changes inside a tile.
+2. Dragging: moved/selected notes are already DOM on top; do not rebuild the static layer for them.
+   Treat links incident to moving notes as a small dynamic overlay drawn per frame; the static cache
+   excludes them while a gesture is active, and is refreshed once when the gesture ends.
+3. Images: resolve bitmaps once per draw-list build, not per frame; cap image draws per tile build.
+4. Path2D or batched strokes per colour/kind instead of one stroke per link.
+Report `d43_report_b3.md` with the before/after numbers of your own harness.
+
+## c3 — Opening a 20 000-node project takes 20–33 s (was 14 s at the d43 checkpoint)
+Measured by the coordinator: during `openProjectAt` the JS side is idle ~19 of 20 s, so the time is in
+Rust (`open_project` path). Suspects from audit e: an unconditional full backup snapshot on every open,
+Markdown read twice (load + watcher seed — you fixed that once, check it is still single), change marks
+/ git log work, attachment migration scans, board_store cache building, delta-save synced cache
+(e2/e3 changed board_store/project.rs after you). Generate a 20 000-note split project under your temp
+dir (19 000 notes with short text + 1 000 image nodes, 3 000 links) and time each stage of
+open_project with Instant logging; then fix the dominant stages. Target ≤ 5 s cold for 20k notes, no
+correctness change (Git safety tests must stay green). Yours: project.rs, board_store.rs, watcher.rs,
+backup.rs, attachment_migration.rs, change_marks.rs (Rust) + their frontend call sites if needed.
+Report `d43_report_c3.md` with a per-stage before/after table.
