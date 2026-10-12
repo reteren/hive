@@ -7,12 +7,53 @@ use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::time::Instant;
 use tauri::{AppHandle, Manager, State};
 
 const INDEX_FILE_NAME: &str = "board.json";
 const NOTES_DIRECTORY: &str = "notes";
 const LAST_PROJECT_FILE_NAME: &str = "last-project.json";
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+struct OpenStageLog {
+    prefix: &'static str,
+    enabled: bool,
+    total: Instant,
+    last: Instant,
+}
+
+impl OpenStageLog {
+    fn new(prefix: &'static str) -> Self {
+        let now = Instant::now();
+        Self {
+            prefix,
+            enabled: std::env::var_os("HIVE_PROFILE_OPEN").is_some(),
+            total: now,
+            last: now,
+        }
+    }
+
+    fn mark(&mut self, stage: &str) {
+        if self.enabled {
+            eprintln!(
+                "[d43-c3] {}.{stage}: {:.1} ms",
+                self.prefix,
+                self.last.elapsed().as_secs_f64() * 1_000.0
+            );
+        }
+        self.last = Instant::now();
+    }
+
+    fn finish(&self) {
+        if self.enabled {
+            eprintln!(
+                "[d43-c3] {}.total: {:.1} ms",
+                self.prefix,
+                self.total.elapsed().as_secs_f64() * 1_000.0
+            );
+        }
+    }
+}
 
 #[derive(Default)]
 pub struct ProjectState {
@@ -30,12 +71,18 @@ pub(crate) fn active_project_root(state: &ProjectState) -> Result<PathBuf, Strin
 
 /// The board index from disk (single-file or split layout) plus warnings for skipped object files.
 fn load_index(root: &Path) -> Result<(BoardIndex, Vec<String>), String> {
+    let mut profile = OpenStageLog::new("load_index");
     let (document, mut warnings) = crate::board_store::read_document(root)?;
+    profile.mark("read_document");
     let mut index: BoardIndex = serde_json::from_value(document)
         .map_err(|error| format!("{INDEX_FILE_NAME} is invalid: {error}"))?;
     migrate_index(&mut index)?;
+    profile.mark("decode_and_migrate");
     separate_shared_note_files(&root.join(NOTES_DIRECTORY), &mut index, &mut warnings)?;
+    profile.mark("separate_shared_files");
     validate_index(&index)?;
+    profile.mark("validate");
+    profile.finish();
     Ok((index, warnings))
 }
 
@@ -240,6 +287,7 @@ fn read_note_texts(
     let mut warnings = Vec::new();
     let mut missing_files = Vec::new();
     let mut fingerprints = HashMap::new();
+    let mut profile = OpenStageLog::new("read_note_texts");
     for entry in &index.notes {
         let path = safe_note_path(notes_directory, &entry.file)?;
         let text = match read_note_bytes(&path) {
@@ -269,6 +317,8 @@ fn read_note_texts(
             height: entry.height,
         });
     }
+    profile.mark("read_and_fingerprint_all");
+    profile.finish();
     Ok((notes, warnings, missing_files, fingerprints))
 }
 
@@ -419,6 +469,7 @@ pub fn initialize_project(
     state: State<'_, ProjectState>,
     watcher: State<'_, ProjectWatcher>,
 ) -> Result<ProjectLoad, String> {
+    let mut profile = OpenStageLog::new("initialize_project");
     let mut startup_warning = None;
     let remembered = last_project_path(&app)
         .and_then(|path| fs::read_to_string(path).ok())
@@ -429,6 +480,7 @@ pub fn initialize_project(
         if path.is_dir() {
             match open_project_root(&path) {
                 Ok(project) => {
+                    profile.mark("open_remembered_project_root");
                     remember_project(&app, &project.root)?;
                     *state
                         .root
@@ -437,6 +489,8 @@ pub fn initialize_project(
                     crate::mcp_bridge::project_changed(&app, &project.root);
                     let mut project = project;
                     enable_project_watch(&app, &watcher, &mut project);
+                    profile.mark("watch_remembered_project");
+                    profile.finish();
                     return Ok(project.load);
                 }
                 Err(error) => {
@@ -467,6 +521,7 @@ pub fn initialize_project(
             .map_err(|error| format!("could not create the default project index: {error}"))?;
     }
     let mut project = open_project_root(&default_root)?;
+    profile.mark("open_default_project_root");
     if let Some(warning) = startup_warning {
         project.load.warnings.push(warning);
     }
@@ -477,6 +532,8 @@ pub fn initialize_project(
         .map_err(|_| "project state is unavailable")? = Some(project.root.clone());
     crate::mcp_bridge::project_changed(&app, &project.root);
     enable_project_watch(&app, &watcher, &mut project);
+    profile.mark("watch_default_project");
+    profile.finish();
     Ok(project.load)
 }
 
@@ -519,14 +576,20 @@ pub fn open_project(
     watcher: State<'_, ProjectWatcher>,
     path: String,
 ) -> Result<ProjectLoad, String> {
+    let mut profile = OpenStageLog::new("open_project");
     let mut project = open_project_root(Path::new(&path))?;
+    profile.mark("open_project_root");
     remember_project(&app, &project.root)?;
+    profile.mark("remember_project");
     *state
         .root
         .lock()
         .map_err(|_| "project state is unavailable")? = Some(project.root.clone());
     crate::mcp_bridge::project_changed(&app, &project.root);
+    profile.mark("notify_mcp_bridge");
     enable_project_watch(&app, &watcher, &mut project);
+    profile.mark("enable_project_watch");
+    profile.finish();
     Ok(project.load)
 }
 
@@ -622,17 +685,24 @@ pub fn acknowledge_external_file_change(
 }
 
 fn enable_project_watch(app: &AppHandle, watcher: &ProjectWatcher, project: &mut OpenedProject) {
-    if let Err(error) = crate::attachments::refresh_asset_protocol_scope(app, &project.root) {
+    let mut profile = OpenStageLog::new("enable_project_watch");
+    if let Err(error) = crate::attachments::refresh_asset_protocol_scope(
+        app,
+        &project.root,
+        &project.external_video_paths,
+    ) {
         project
             .load
             .warnings
             .push(format!("Project images may not load: {error}"));
     }
+    profile.mark("asset_protocol_scope");
     if let Err(error) = crate::board_watch::watch(app, &project.root) {
         project.load.warnings.push(format!(
             "Changes from Git pulls will appear after reopening the project: {error}"
         ));
     }
+    profile.mark("board_watch");
     let notes_directory = project.root.join(NOTES_DIRECTORY);
     if let Err(error) = watcher.watch_notes_seeded(&notes_directory, &project.note_fingerprints) {
         project
@@ -640,6 +710,8 @@ fn enable_project_watch(app: &AppHandle, watcher: &ProjectWatcher, project: &mut
             .warnings
             .push(format!("External note monitoring is unavailable: {error}"));
     }
+    profile.mark("notes_watch_seeded");
+    profile.finish();
 }
 
 fn is_conflict_timestamp(timestamp: &str) -> bool {
@@ -672,13 +744,17 @@ struct OpenedProject {
     root: PathBuf,
     load: ProjectLoad,
     note_fingerprints: HashMap<String, crate::watcher::Fingerprint>,
+    external_video_paths: Vec<PathBuf>,
 }
 
 fn open_project_root(selected: &Path) -> Result<OpenedProject, String> {
+    let mut profile = OpenStageLog::new("open_project_root");
     let root = canonical_project_root(selected)?;
+    profile.mark("canonicalize_root");
     let index_path = root.join(INDEX_FILE_NAME);
     ensure_regular_or_missing(&index_path)?;
     crate::attachments::migrate_attachments(&root)?;
+    profile.mark("attachment_migration");
     // One-time move to the Git-friendly layout (one file per object); a safety copy comes first.
     if crate::board_store::is_legacy(&root)? {
         let (legacy, _) = load_index(&root)?;
@@ -687,24 +763,37 @@ fn open_project_root(selected: &Path) -> Result<OpenedProject, String> {
         }
         crate::board_store::migrate_to_split(&root)?;
     }
+    profile.mark("legacy_layout_check_and_migration");
     crate::board_store::ensure_gitignore(&root);
     let (index, mut warnings) = load_index(&root)?;
+    profile.mark("load_index");
     let notes_directory = ensure_notes_directory(&root)?;
+    let mut external_video_paths = Vec::new();
     if let Ok(document) = serde_json::to_value(&index) {
+        external_video_paths =
+            crate::attachments::external_video_paths_from_document(&document).unwrap_or_default();
         crate::board_store::set_synced(&root, &document);
     }
+    profile.mark("synced_cache_and_external_video_paths");
 
     let (notes, note_warnings, missing_files, note_fingerprints) =
         read_note_texts(&notes_directory, &index)?;
     warnings.extend(note_warnings);
+    profile.mark("read_note_texts");
 
     let index_json = serde_json::to_string(&index)
         .map_err(|error| format!("could not encode migrated {INDEX_FILE_NAME}: {error}"))?;
+    profile.mark("serialize_index_json");
     let name = root
         .file_name()
         .and_then(|value| value.to_str())
         .unwrap_or("Project")
         .to_string();
+    // A project can change while it is not the active watched project. Force the post-open
+    // changed-only backup check to fingerprint disk contents before deciding to skip a snapshot.
+    crate::backup::mark_project_changed(&root);
+    profile.mark("invalidate_backup_fingerprint");
+    profile.finish();
     Ok(OpenedProject {
         load: ProjectLoad {
             path: root.to_string_lossy().into_owned(),
@@ -717,6 +806,7 @@ fn open_project_root(selected: &Path) -> Result<OpenedProject, String> {
         },
         root,
         note_fingerprints,
+        external_video_paths,
     })
 }
 

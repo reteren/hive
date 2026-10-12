@@ -20,6 +20,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::Instant;
 
 pub const INDEX_FILE_NAME: &str = "board.json";
 pub const STORAGE_VERSION: u64 = 2;
@@ -173,15 +174,24 @@ pub fn is_legacy(root: &Path) -> Result<bool, String> {
 
 /// The whole board document as the app expects it, plus warnings for unreadable object files.
 pub fn read_document(root: &Path) -> Result<(Value, Vec<String>), String> {
+    let started = Instant::now();
     let (document, warnings, cached_files) = read_document_with_files(root)?;
     set_synced_files(root, cached_files);
     set_note_file_owners(root, &document);
+    if std::env::var_os("HIVE_PROFILE_OPEN").is_some() {
+        eprintln!(
+            "[d43-c3] board_store.read_document_total: {:.1} ms",
+            started.elapsed().as_secs_f64() * 1_000.0
+        );
+    }
     Ok((document, warnings))
 }
 
 fn read_document_with_files(
     root: &Path,
 ) -> Result<(Value, Vec<String>, HashMap<(String, String), CachedObject>), String> {
+    let profile = std::env::var_os("HIVE_PROFILE_OPEN").is_some();
+    let started = Instant::now();
     let head_path = root.join(INDEX_FILE_NAME);
     let head_bytes = fs::read(&head_path)
         .map_err(|error| format!("could not read {}: {error}", display_relative(&head_path)))?;
@@ -203,13 +213,24 @@ fn read_document_with_files(
     let mut document = head;
     document.remove("storage");
     for (key, directory) in COLLECTIONS {
+        let stage = Instant::now();
         let mut items = read_collection(&root.join(directory), &mut warnings)?;
+        let read_elapsed = stage.elapsed();
+        let count = items.len();
+        let stage = Instant::now();
         items.sort_by(|left, right| {
             order_of(&left.1)
                 .partial_cmp(&order_of(&right.1))
                 .unwrap_or(std::cmp::Ordering::Equal)
                 .then_with(|| left.0.cmp(&right.0))
         });
+        if profile {
+            eprintln!(
+                "[d43-c3] board_store.collection.{directory}: count={count}, read_parse_ms={:.1}, sort_ms={:.1}",
+                read_elapsed.as_secs_f64() * 1_000.0,
+                stage.elapsed().as_secs_f64() * 1_000.0
+            );
+        }
         let values = items
             .into_iter()
             .map(|(id, mut item, bytes)| {
@@ -223,6 +244,7 @@ fn read_document_with_files(
         document.insert((*key).to_string(), Value::Array(values));
     }
     let mut calculators = Map::new();
+    let calculator_started = Instant::now();
     for (id, item, bytes) in read_collection(&root.join(CALCULATORS_DIRECTORY), &mut warnings)? {
         cache_object(&mut cached_files, CALCULATORS_DIRECTORY, &id, &item, bytes);
         if let (Some(key), Some(value)) =
@@ -230,6 +252,12 @@ fn read_document_with_files(
         {
             calculators.insert(key.to_string(), value.clone());
         }
+    }
+    if profile {
+        eprintln!(
+            "[d43-c3] board_store.collection.calculators: {:.1} ms",
+            calculator_started.elapsed().as_secs_f64() * 1_000.0
+        );
     }
     document.insert("calculators".to_string(), Value::Object(calculators));
     if let Ok(local) = read_json_object(&root.join(LOCAL_FILE)) {
@@ -240,6 +268,12 @@ fn read_document_with_files(
         }
     }
     let document = Value::Object(document);
+    if profile {
+        eprintln!(
+            "[d43-c3] board_store.read_document_with_files_total: {:.1} ms",
+            started.elapsed().as_secs_f64() * 1_000.0
+        );
+    }
     Ok((document, warnings, cached_files))
 }
 

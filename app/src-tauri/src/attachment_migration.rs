@@ -6,6 +6,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Instant;
 
 const INDEX_FILE: &str = "board.json";
 const JOURNAL_FILE: &str = ".hive/attachment-migration.json";
@@ -19,6 +20,8 @@ struct MigrationJournal {
 
 /// Finish an interrupted attachment rename before the board is parsed or exposed to the UI.
 pub(crate) fn migrate_attachments(root: &Path) -> Result<(), String> {
+    let total_started = Instant::now();
+    let profile = std::env::var_os("HIVE_PROFILE_OPEN").is_some();
     let root = fs::canonicalize(root).map_err(|error| {
         format!("could not resolve project folder for attachment migration: {error}")
     })?;
@@ -61,13 +64,41 @@ pub(crate) fn migrate_attachments(root: &Path) -> Result<(), String> {
             journal
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            if has_legacy_hash_attachment(&attachments_dir) == Some(false) {
+                if profile {
+                    eprintln!(
+                        "[d43-c3] attachment_migration.no_legacy_files: {:.1} ms",
+                        total_started.elapsed().as_secs_f64() * 1_000.0
+                    );
+                    eprintln!(
+                        "[d43-c3] attachment_migration.total: {:.1} ms",
+                        total_started.elapsed().as_secs_f64() * 1_000.0
+                    );
+                }
+                return Ok(());
+            }
+            let stage_started = Instant::now();
             let (index, _) = crate::board_store::read_document(&root).map_err(|error| {
                 format!("could not read the board for attachment migration: {error}")
             })?;
             let mut references = Vec::new();
             collect_legacy_references(&index, "attachment", &mut HashSet::new(), &mut references);
+            if profile {
+                eprintln!(
+                    "[d43-c3] attachment_migration.board_references: {:.1} ms",
+                    stage_started.elapsed().as_secs_f64() * 1_000.0
+                );
+            }
+            let stage_started = Instant::now();
             collect_markdown_references(&root, &mut references)?;
+            if profile {
+                eprintln!(
+                    "[d43-c3] attachment_migration.markdown_references: {:.1} ms",
+                    stage_started.elapsed().as_secs_f64() * 1_000.0
+                );
+            }
 
+            let stage_started = Instant::now();
             let mut mappings = HashMap::new();
             let mut allocated = HashSet::new();
             for (old, name) in references {
@@ -85,7 +116,19 @@ pub(crate) fn migrate_attachments(root: &Path) -> Result<(), String> {
                 mappings.insert(old, target);
             }
             if mappings.is_empty() {
+                if profile {
+                    eprintln!(
+                        "[d43-c3] attachment_migration.total: {:.1} ms",
+                        total_started.elapsed().as_secs_f64() * 1_000.0
+                    );
+                }
                 return Ok(());
+            }
+            if profile {
+                eprintln!(
+                    "[d43-c3] attachment_migration.plan_mappings: {:.1} ms",
+                    stage_started.elapsed().as_secs_f64() * 1_000.0
+                );
             }
             let journal = MigrationJournal { mappings };
             write_json_atomically(&journal_path, &journal)?;
@@ -168,7 +211,33 @@ pub(crate) fn migrate_attachments(root: &Path) -> Result<(), String> {
     }
     fs::remove_file(&journal_path)
         .map_err(|error| format!("could not clear attachment migration journal: {error}"))?;
+    if profile {
+        eprintln!(
+            "[d43-c3] attachment_migration.total: {:.1} ms",
+            total_started.elapsed().as_secs_f64() * 1_000.0
+        );
+    }
     Ok(())
+}
+
+/// Legacy migrations only have work when an old hash-named source file exists. Checking the
+/// attachment directory first avoids rereading every board object and Markdown file on normal
+/// projects; `None` means inspection failed, so the full migration path remains the fallback.
+fn has_legacy_hash_attachment(directory: &Path) -> Option<bool> {
+    let entries = fs::read_dir(directory).ok()?;
+    for entry in entries {
+        let entry = entry.ok()?;
+        let file_type = entry.file_type().ok()?;
+        if file_type.is_file()
+            && entry
+                .file_name()
+                .to_str()
+                .is_some_and(attachments::is_legacy_hash_attachment)
+        {
+            return Some(true);
+        }
+    }
+    Some(false)
 }
 
 fn validate_journal(journal: &MigrationJournal) -> Result<(), String> {
@@ -683,6 +752,26 @@ mod tests {
             fs::read_to_string(root.join(".hive/removed/deleted.md")).unwrap(),
             "![old](att:photo.png)"
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn leaves_dangling_legacy_references_when_no_hash_named_file_exists() {
+        let root = project("dangling-reference");
+        let old = format!("{}.png", "c".repeat(64));
+        let board = format!(r#"{{"notes":[],"trash":[{{"media":{{"file":"{old}"}}}}]}}"#);
+        fs::write(root.join("board.json"), &board).unwrap();
+        fs::write(root.join("notes/one.md"), format!("![missing](att:{old})")).unwrap();
+        fs::write(root.join("attachments/ordinary-image.png"), b"image").unwrap();
+
+        migrate_attachments(&root).unwrap();
+
+        assert_eq!(fs::read_to_string(root.join("board.json")).unwrap(), board);
+        assert_eq!(
+            fs::read_to_string(root.join("notes/one.md")).unwrap(),
+            format!("![missing](att:{old})")
+        );
+        assert!(!root.join(".hive/attachment-migration.json").exists());
         fs::remove_dir_all(root).unwrap();
     }
 

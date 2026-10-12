@@ -1,7 +1,7 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { project } from "../project/project.svelte";
 import { backupSettings } from "./backupSettings.svelte";
-import { backupStatus, createBackup, createBackupIfChanged } from "./api";
+import { backupStatus, createBackupIfChanged } from "./api";
 import { shouldCreateScheduledBackup } from "./scheduler";
 
 let initialized = false;
@@ -17,7 +17,7 @@ export function initializeBackupScheduler(): void {
       const path = project.path;
       if (!isTauri() || !ready || !path || path === lastOpenedPath) return;
       lastOpenedPath = path;
-      void createBackup().catch((error: unknown) => {
+      void createBackupIfChanged().catch((error: unknown) => {
         console.warn("Automatic project snapshot failed.", error);
       });
     });

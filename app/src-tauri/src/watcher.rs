@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, Weak};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use notify::{
     event::{ModifyKind, RenameMode},
@@ -95,9 +95,13 @@ impl ProjectWatcher {
         directory: &Path,
         seeded_contents: &HashMap<String, Fingerprint>,
     ) -> Result<(), String> {
+        let profile = std::env::var_os("HIVE_PROFILE_OPEN").is_some();
+        let total_started = Instant::now();
+        let canonicalize_started = Instant::now();
         let directory = fs::canonicalize(directory).map_err(|error| {
             format!("could not resolve notes directory for monitoring: {error}")
         })?;
+        let canonicalize_elapsed = canonicalize_started.elapsed();
         if !directory.is_dir() {
             return Err("notes path for monitoring is not a directory".to_string());
         }
@@ -132,10 +136,12 @@ impl ProjectWatcher {
             }
         }
 
+        let seed_started = Instant::now();
         let initial_contents = seeded_contents
             .iter()
             .map(|(name, fingerprint)| (path_key(&directory.join(name)), *fingerprint))
             .collect();
+        let seed_elapsed = seed_started.elapsed();
         *self
             .state
             .known_contents
@@ -189,6 +195,15 @@ impl ProjectWatcher {
                 .map_err(|_| "project watcher state is unavailable")?
                 .clear();
             return Err("file monitoring could not be initialized".to_string());
+        }
+        if profile {
+            eprintln!(
+                "[d43-c3] watcher.watch_notes_seeded: notes={}, canonicalize_ms={:.1}, seed_ms={:.1}, total_ms={:.1}",
+                seeded_contents.len(),
+                canonicalize_elapsed.as_secs_f64() * 1_000.0,
+                seed_elapsed.as_secs_f64() * 1_000.0,
+                total_started.elapsed().as_secs_f64() * 1_000.0
+            );
         }
         Ok(())
     }

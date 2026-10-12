@@ -591,6 +591,7 @@ pub(crate) fn ensure_attachment_directory(root: &Path) -> Result<PathBuf, String
 pub(crate) fn refresh_asset_protocol_scope(
     app: &AppHandle,
     project_root: &Path,
+    external_videos: &[PathBuf],
 ) -> Result<(), String> {
     let directory = ensure_attachment_directory(project_root)?;
     let allowed = ASSET_DIRECTORIES.get_or_init(|| Mutex::new(HashSet::new()));
@@ -605,7 +606,7 @@ pub(crate) fn refresh_asset_protocol_scope(
             .map_err(|error| format!("could not allow project attachments: {error}"))?;
         allowed.insert(directory);
     }
-    for path in external_video_paths(project_root)? {
+    for path in external_videos {
         allow_external_video_file(app, &path)?;
     }
     Ok(())
@@ -617,6 +618,10 @@ pub(crate) fn external_video_paths(project_root: &Path) -> Result<Vec<PathBuf>, 
     }
     let (index, _) = crate::board_store::read_document(project_root)
         .map_err(|error| format!("could not read the board for external media: {error}"))?;
+    external_video_paths_from_document(&index)
+}
+
+pub(crate) fn external_video_paths_from_document(index: &Value) -> Result<Vec<PathBuf>, String> {
     let mut paths = HashSet::new();
     collect_external_video_paths(&index, &mut paths)?;
     Ok(paths.into_iter().collect())
@@ -1401,11 +1406,11 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
 mod tests {
     use super::{
         check_size, detect_format, detect_media_descriptor, expand_import_paths,
-        external_video_paths, import_bytes_at, import_path_at, import_path_at_with_cancel,
-        import_source_path_at, import_supported_bytes, readable_attachment_name,
-        should_externalize_video, validate_attachment_filename, MediaDescriptor,
-        LARGE_VIDEO_EXTERNAL_BYTES, MAX_LARGE_MEDIA_BYTES, MAX_SMALL_ATTACHMENT_BYTES,
-        UNLIMITED_VIDEO_EXTERNAL_THRESHOLD_BYTES,
+        external_video_paths, external_video_paths_from_document, import_bytes_at, import_path_at,
+        import_path_at_with_cancel, import_source_path_at, import_supported_bytes,
+        readable_attachment_name, should_externalize_video, validate_attachment_filename,
+        MediaDescriptor, LARGE_VIDEO_EXTERNAL_BYTES, MAX_LARGE_MEDIA_BYTES,
+        MAX_SMALL_ATTACHMENT_BYTES, UNLIMITED_VIDEO_EXTERNAL_THRESHOLD_BYTES,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -1691,6 +1696,10 @@ mod tests {
 
         assert_eq!(
             external_video_paths(&root).unwrap(),
+            vec![fs::canonicalize(&video).unwrap()]
+        );
+        assert_eq!(
+            external_video_paths_from_document(&index).unwrap(),
             vec![fs::canonicalize(&video).unwrap()]
         );
         fs::remove_dir_all(root).expect("remove fixture");

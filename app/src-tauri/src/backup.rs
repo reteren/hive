@@ -27,7 +27,8 @@ static CHANGE_GENERATIONS: Mutex<Option<std::collections::HashMap<PathBuf, u64>>
 static FINGERPRINT_CACHE: Mutex<Option<std::collections::HashMap<PathBuf, (u64, String)>>> =
     Mutex::new(None);
 
-/// Invalidate the cached project fingerprint after an app save or a watcher-confirmed external edit.
+/// Invalidate the cached project fingerprint after a save, watched edit, or project reopen (which
+/// can discover disk changes made while another project was active).
 pub(crate) fn mark_project_changed(root: &Path) {
     let root = fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
     if let Ok(mut generations) = CHANGE_GENERATIONS.lock() {
@@ -74,6 +75,10 @@ fn cached_project_fingerprint(root: &Path) -> Result<String, String> {
 struct SnapshotMeta {
     id: String,
     fingerprint: String,
+    /// Fingerprint of the live project layout when this snapshot was created. The snapshot
+    /// fingerprint above covers the normalized archive layout and is used for restore integrity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source_fingerprint: Option<String>,
     note_count: usize,
     /// 0 (absent) = legacy fingerprint over full attachment contents; 2 = attachments by name + size.
     #[serde(default)]
@@ -124,15 +129,14 @@ pub fn create_backup(state: State<'_, ProjectState>) -> Result<BackupInfo, Strin
 }
 
 #[tauri::command]
-pub fn create_backup_if_changed(
+pub async fn create_backup_if_changed(
     state: State<'_, ProjectState>,
 ) -> Result<Option<BackupInfo>, String> {
     let root = project::active_project_root(&state)?;
-    let status = backup_status_at(&root)?;
-    if status.last_snapshot_fingerprint.as_deref() == Some(&status.fingerprint) {
-        return Ok(None);
-    }
-    create_backup_at(&root).map(Some)
+    drop(state);
+    tauri::async_runtime::spawn_blocking(move || create_backup_if_changed_at(&root))
+        .await
+        .map_err(|error| format!("automatic backup task failed: {error}"))?
 }
 
 #[tauri::command]
@@ -219,6 +223,7 @@ fn create_backup_at(root: &Path) -> Result<BackupInfo, String> {
         let meta = SnapshotMeta {
             id: id.clone(),
             fingerprint: snapshot_fingerprint,
+            source_fingerprint: Some(fingerprint.clone()),
             note_count,
             fingerprint_version: FINGERPRINT_VERSION,
         };
@@ -285,12 +290,22 @@ fn backup_status_at(root: &Path) -> Result<BackupStatus, String> {
     let listing = list_backups_at(root)?;
     let last_snapshot_fingerprint = listing.backups.first().and_then(|backup| {
         let path = backup_path(root, &backup.id).ok()?;
-        read_snapshot_meta(&path).ok().map(|meta| meta.fingerprint)
+        read_snapshot_meta(&path)
+            .ok()
+            .and_then(|meta| meta.source_fingerprint)
     });
     Ok(BackupStatus {
         fingerprint,
         last_snapshot_fingerprint,
     })
+}
+
+fn create_backup_if_changed_at(root: &Path) -> Result<Option<BackupInfo>, String> {
+    let status = backup_status_at(root)?;
+    if status.last_snapshot_fingerprint.as_deref() == Some(&status.fingerprint) {
+        return Ok(None);
+    }
+    create_backup_at(root).map(Some)
 }
 
 fn backup_info(path: &Path, id: &str, note_count: usize) -> Result<BackupInfo, String> {
@@ -1403,8 +1418,9 @@ fn remove_path(path: &Path) -> io::Result<()> {
 mod tests {
     use super::{
         cached_project_fingerprint, check_project_health_at, commit_snapshot_directory,
-        create_backup_at, delete_backup_at, legacy_project_fingerprint, list_backups_at,
-        mark_project_changed, project_fingerprint, restore_snapshot_at,
+        create_backup_at, create_backup_if_changed_at, delete_backup_at,
+        legacy_project_fingerprint, list_backups_at, mark_project_changed, project_fingerprint,
+        restore_snapshot_at,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -1447,6 +1463,29 @@ mod tests {
             cached_project_fingerprint(&root).expect("refresh dirty fingerprint"),
             initial
         );
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn changed_only_snapshot_skips_identical_projects_but_keeps_changed_state() {
+        let root = project("changed-only");
+        let first = create_backup_if_changed_at(&root)
+            .expect("create first changed snapshot")
+            .expect("first open has no snapshot yet");
+        assert_eq!(list_backups_at(&root).unwrap().backups.len(), 1);
+
+        assert!(create_backup_if_changed_at(&root)
+            .expect("check identical project")
+            .is_none());
+        assert_eq!(list_backups_at(&root).unwrap().backups.len(), 1);
+
+        fs::write(root.join("notes/First.md"), "changed note").expect("change project contents");
+        mark_project_changed(&root);
+        let second = create_backup_if_changed_at(&root)
+            .expect("create changed snapshot")
+            .expect("changed content needs a snapshot");
+        assert_ne!(first.id, second.id);
+        assert_eq!(list_backups_at(&root).unwrap().backups.len(), 2);
         fs::remove_dir_all(root).expect("remove fixture");
     }
 
