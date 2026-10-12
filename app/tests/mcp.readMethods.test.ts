@@ -156,7 +156,7 @@ describe("MCP read methods", () => {
     });
     expect(call<{ total: number; nodes: Array<{ id: string; height: number }> }>("nodes.list", { sort: "name", limit: 1, offset: 1 })).toMatchObject({
       total: 3,
-      nodes: [{ id: "n2", height: 6 }],
+      nodes: [{ id: "n2", height: 6.63 }], // never drawn: height estimated from its text
     });
   });
 

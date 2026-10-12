@@ -4,12 +4,16 @@
   import "../tasks/taskActions.svelte";
   import { onMount } from "svelte";
   import type { Action } from "svelte/action";
-  import { board } from "../model/board.svelte";
+  import { board, notifyBoardMutation } from "../model/board.svelte";
   import { camera, viewport } from "../board/camera.svelte";
   import { PX_PER_UNIT, screenToWorld } from "../board/cameraMath";
   import { measuredHeights } from "./layout.svelte";
   import { clearTextFitWidthCache, measureAndCacheTextMinimumWidth } from "../editor/textFitWidth";
   import NoteNode from "./NoteNode.svelte";
+  import NoteShell from "./NoteShell.svelte";
+  import { lod, startVisibility, visible } from "../board/visibility.svelte";
+  import { selection } from "../selection/selection.svelte";
+  import { editing } from "./editing.svelte";
   import { copyCursorCoordinates } from "./noteCommands";
   import { closeCreationMenu, creationMenu, markCreationMenuToolbarTrigger } from "./creation.svelte";
   import { closeLinkContextMenu, linkContext } from "../links-in-text/contextMenu.svelte";
@@ -34,6 +38,17 @@
   });
   let contextMenuZoomAtOpen = $state(1);
   let orderedNoteIds = $derived(imageFirstOrder(board.order, board.notes));
+  let paintIndex = $derived(new Map(orderedNoteIds.map((id, index) => [id, index])));
+  /** Selected and edited notes stay mounted (and fully drawn) wherever they are. */
+  let pinnedIds = $derived(new Set(editing.noteId ? [...selection.ids, editing.noteId] : selection.ids));
+  /** Only notes near the viewport are in the DOM, in paint order. */
+  let renderedIds = $derived.by(() => {
+    const ids = new Set(visible.ids);
+    for (const id of pinnedIds) ids.add(id);
+    const order = paintIndex;
+    return [...ids].filter((id) => order.has(id)).sort((a, b) => order.get(a)! - order.get(b)!);
+  });
+  startVisibility();
 
   onMount(() => {
     const boardElement = document.querySelector<HTMLElement>(".board");
@@ -181,6 +196,8 @@
       const height = element.offsetHeight / PX_PER_UNIT;
       if (Number.isFinite(height) && height > 0 && measuredHeights[noteId] !== height) {
         measuredHeights[noteId] = height;
+        // Same channel as model edits: the spatial index, link geometry and zone membership follow it.
+        notifyBoardMutation([noteId]);
       }
     };
 
@@ -202,8 +219,9 @@
         updateMeasuredHeight();
       },
       destroy() {
+        // The note may only be culled: keep its last measured height so links, selection and the
+        // spatial index still see its real size. Deleted notes leave a harmless stale entry.
         observer.disconnect();
-        delete measuredHeights[noteId];
         clearTextFitWidthCache(noteId);
       },
     };
@@ -223,12 +241,16 @@
   );
 </script>
 
-<div class="notes-layer">
+<div class="notes-layer" data-lod-tier={lod.tier}>
   <div class="notes-world" style:transform={worldTransform}>
-    {#each orderedNoteIds as noteId (noteId)}
+    {#each renderedIds as noteId (noteId)}
       {@const note = board.notes[noteId]}
       {#if note && note.type !== "beacon"}
-        <NoteNode {note} measureHeight={observeAutoHeight} />
+        {#if lod.tier === "full" || note.type === "image" || pinnedIds.has(noteId)}
+          <NoteNode {note} measureHeight={observeAutoHeight} />
+        {:else}
+          <NoteShell {note} tier={lod.tier} />
+        {/if}
       {/if}
     {/each}
   </div>

@@ -1,4 +1,4 @@
-import { DEFAULT_NOTE_WIDTH, R5_BASE_WIDTHS, normalizeNoteScale, type Note, type NoteKind } from "../model/note";
+import { DEFAULT_NOTE_WIDTH, NOTE_HEADER_HEIGHT_UNITS, R5_BASE_WIDTHS, normalizeNoteScale, type Note, type NoteKind } from "../model/note";
 import { PX_PER_UNIT } from "../board/cameraMath";
 import { widthWithListStatistics } from "../stats/listStatsLayout";
 
@@ -132,6 +132,38 @@ export function noteBounds(note: Note): Bounds {
     x: note.x,
     y: note.y,
     width: widthWithListStatistics(note) * scale,
-    height: (note.height ?? measuredHeights[note.id] ?? MIN_NOTE_HEIGHT) * scale,
+    height: (note.height ?? measuredHeights[note.id] ?? estimatedNoteHeight(note)) * scale,
   };
+}
+
+/** Average glyph width of the 14 px body font, for estimating wraps before a note was ever drawn. */
+const ESTIMATED_CHAR_PX = 7.2;
+const BODY_CHROME_UNITS = 1.8;
+
+/**
+ * Height of an auto-height note that has never been on screen (culled since the project opened):
+ * header + wrapped text lines. Replaced by the measured height as soon as the note is drawn.
+ */
+const estimateCache = new Map<string, { text: string; width: number; flags: number; height: number }>();
+
+export function estimatedNoteHeight(note: Pick<Note, "type" | "text" | "width" | "headerHidden" | "textHidden"> & { id?: string }): number {
+  if (note.type !== "note" && note.type !== "pro" && note.type !== "con") return MIN_NOTE_HEIGHT;
+  const flags = (note.headerHidden ? 1 : 0) | (note.textHidden ? 2 : 0);
+  const cached = note.id ? estimateCache.get(note.id) : undefined;
+  if (cached && cached.text === note.text && cached.width === note.width && cached.flags === flags) return cached.height;
+  const height = computeEstimatedHeight(note);
+  if (note.id) {
+    if (estimateCache.size > 50_000) estimateCache.clear();
+    estimateCache.set(note.id, { text: note.text, width: note.width, flags, height });
+  }
+  return height;
+}
+
+function computeEstimatedHeight(note: Pick<Note, "text" | "width" | "headerHidden" | "textHidden">): number {
+  const header = note.headerHidden ? 0 : NOTE_HEADER_HEIGHT_UNITS;
+  if (note.textHidden) return Math.max(NOTE_HEADER_HEIGHT_UNITS, header);
+  const charsPerLine = Math.max(8, Math.floor((note.width * PX_PER_UNIT - 16) / ESTIMATED_CHAR_PX));
+  let lines = 0;
+  for (const paragraph of note.text.split("\n")) lines += Math.max(1, Math.ceil(paragraph.length / charsPerLine));
+  return Math.max(MIN_NOTE_HEIGHT, header + BODY_CHROME_UNITS + lines * NOTE_LINE_HEIGHT);
 }
