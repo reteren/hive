@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import CommandButton from "../ui/CommandButton.svelte";
   import { board, onBoardMutation } from "../model/board.svelte";
   import { teleportToObject } from "../navigation/navigate";
@@ -48,7 +48,8 @@
   $effect(() => {
     const order = orderSnapshot;
     searchIndex.setOrder(order);
-    indexRevision += 1;
+    // untrack: `+= 1` reads the revision, which would make this effect re-run on its own write forever.
+    untrack(() => { indexRevision += 1; });
   });
 
   onMount(() => {
