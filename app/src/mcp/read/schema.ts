@@ -34,6 +34,7 @@ const COMMON_FIELDS: Record<string, string> = {
   accentColor: "Optional inner body colour as #rrggbb; null clears it.",
   glow: "Optional outer glow {color:#rrggbb, opacity:0.05..1, size:0.5..8 board units}.",
   headerHidden: "Optional boolean; true hides the node header.",
+  textHidden: "Optional boolean; true removes the text box of a text node (its text is kept).",
   zoneId: "Optional zone id, or null for no assigned zone.",
   smoothLines: "Optional boolean; true distributes rectangular link attachments along node edges.",
   time: "Optional {enabled:boolean,schedule}. Schedule is {kind:'at',date:string|null,time:'HH:MM',rule?} or {kind:'interval',minutes>=1,mode:'calendar'|'app'|'active',repeat:boolean}; optional taskMode:'stop'|'restart', view:'time'|'stopwatch', stopwatch, runtime.",

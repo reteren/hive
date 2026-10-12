@@ -123,7 +123,8 @@ function describeNode(before: Json, after: Json, names: NameLookup): string[] {
   if (!same(before.accentColor ?? null, after.accentColor ?? null)) lines.push("Changed the accent colour");
   if (!same(before.glow ?? null, after.glow ?? null)) lines.push(!before.glow ? "Added a glow" : !after.glow ? "Removed the glow" : "Changed the glow");
   if (Boolean(before.headerHidden) !== Boolean(after.headerHidden)) lines.push(after.headerHidden ? "Hid the header" : "Showed the header");
-  take("color", "accentColor", "glow", "headerHidden");
+  if (Boolean(before.textHidden) !== Boolean(after.textHidden)) lines.push(after.textHidden ? "Removed the text box" : "Showed the text box");
+  take("color", "accentColor", "glow", "headerHidden", "textHidden");
 
   lines.push(...describeTiers(arrayOf(before.tiers), arrayOf(after.tiers), names));
   lines.push(...describeList(arrayOf(before.listItems), arrayOf(after.listItems), names));

@@ -16,6 +16,8 @@ export function startNoteEditing(noteId: string, point: ScreenPoint): void {
   // Standalone Importance/Purpose modules have no text to edit (R3.6).
   const type = board.notes[noteId]?.type;
   if (type === "importance" || type === "purpose" || type === "mood") return;
+  // A removed text box has nothing to type into until it is shown again.
+  if (board.notes[noteId]?.textHidden === true) return;
   if (editing.noteId === noteId) {
     pendingClick = null;
     return;

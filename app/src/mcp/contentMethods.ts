@@ -22,7 +22,7 @@ const INLINE_IMAGE_LIMIT = 10;
 const TIER_IMAGE_LIMIT = 10;
 
 const DATA_FIELDS: readonly (keyof BoardNote)[] = [
-  "scale", "headerHidden", "smoothLines", "smoothLineAnchors", "createdAt", "task", "time", "message",
+  "scale", "headerHidden", "textHidden", "smoothLines", "smoothLineAnchors", "createdAt", "task", "time", "message",
   "embedSections", "taskMemory", "importance", "purposes", "moods", "color", "accentColor", "glow", "zoneId",
   "scope", "image", "opacity", "media", "pdfZoom", "recordings", "youtube", "frameHidden", "flipX", "flipY",
   "gifStopped", "tiers", "listItems", "source", "inboxGroup", "randomPick", "customMarks", "customMarkFrame", "listStats",

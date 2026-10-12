@@ -69,6 +69,7 @@ export interface ClipboardNode {
   glow?: Note["glow"];
   zoneId?: string | null;
   headerHidden?: boolean;
+  textHidden?: boolean;
   frameHidden?: true;
   image?: ImageRef;
   opacity?: number;
@@ -134,7 +135,7 @@ export function serializeNotes(
     marker: HIVE_CLIPBOARD_MARKER,
     version: HIVE_CLIPBOARD_VERSION,
     nodes: notes.map(({
-      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, time, message, embedSections, importance, purposes, moods, color, accentColor, glow, zoneId, headerHidden, frameHidden, image, opacity, media, pdfZoom, recordings, youtube, source, flipX, flipY, gifStopped,
+      id, type, name, text, x, y, width, height, createdAt, task, taskMemory, time, message, embedSections, importance, purposes, moods, color, accentColor, glow, zoneId, headerHidden, textHidden, frameHidden, image, opacity, media, pdfZoom, recordings, youtube, source, flipX, flipY, gifStopped,
       listItems, listStats, inboxGroup, randomPick, customMarks, customMarkFrame,
     }) => ({
       sourceId: id,
@@ -159,6 +160,7 @@ export function serializeNotes(
       ...(glow ? { glow: { ...glow } } : {}),
       zoneId: zoneId ?? null,
       ...(headerHidden ? { headerHidden: true } : {}),
+      ...(textHidden ? { textHidden: true } : {}),
       ...((type === "youtube" || type === "video") && frameHidden === true ? { frameHidden: true } : {}),
       ...(image ? { image: { ...image } } : {}),
       ...(type === "image" && opacity !== undefined ? { opacity: normalizeImageOpacity(opacity) } : {}),
@@ -450,6 +452,7 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     value.youtube !== undefined && !youtube || value.type === "youtube" && !youtube ||
     value.source !== undefined && (value.type !== "source" || !source) ||
     value.headerHidden !== undefined && typeof value.headerHidden !== "boolean" ||
+    value.textHidden !== undefined && typeof value.textHidden !== "boolean" ||
     value.frameHidden !== undefined && (value.type !== "youtube" && value.type !== "video" || value.frameHidden !== true) ||
     value.pdfZoom !== undefined && (value.type !== "pdf" || pdfZoom === undefined) ||
     value.opacity !== undefined && (value.type !== "image" || opacity === undefined) ||
@@ -479,6 +482,7 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     ...(glow ? { glow } : {}),
     zoneId,
     ...(value.headerHidden === true ? { headerHidden: true } : {}),
+    ...(value.textHidden === true ? { textHidden: true } : {}),
     ...((value.type === "youtube" || value.type === "video") && value.frameHidden === true ? { frameHidden: true } : {}),
     ...(image ? { image } : {}),
     ...(value.type === "image" && opacity !== undefined ? { opacity } : {}),

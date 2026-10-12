@@ -113,6 +113,7 @@ function parseArchivedNote(value: unknown): Note | null {
     value.recordings !== undefined && (value.type !== "audio" || !recordings) ||
     value.youtube !== undefined && !youtube || value.type === "youtube" && !youtube ||
     value.headerHidden !== undefined && typeof value.headerHidden !== "boolean" ||
+    value.textHidden !== undefined && typeof value.textHidden !== "boolean" ||
     value.pdfZoom !== undefined && (value.type !== "pdf" || pdfZoom === undefined) ||
     value.opacity !== undefined && (value.type !== "image" || opacity === undefined) ||
     value.frameHidden !== undefined && (value.type !== "youtube" && value.type !== "video" || value.frameHidden !== true) ||
@@ -160,6 +161,7 @@ function parseArchivedNote(value: unknown): Note | null {
     ...(value.type === "image" && value.flipY === true ? { flipY: true } : {}),
     ...(value.type === "image" && value.gifStopped === true ? { gifStopped: true } : {}),
     ...(value.headerHidden === true ? { headerHidden: true } : {}),
+    ...(value.textHidden === true ? { textHidden: true } : {}),
     ...(value.importance ? { importance: value.importance as Note["importance"] } : {}),
     ...(value.purposes ? { purposes: value.purposes as Note["purposes"] } : {}),
     ...(value.moods ? { moods: value.moods as Note["moods"] } : {}),
@@ -173,6 +175,7 @@ function parseArchivedNote(value: unknown): Note | null {
     ...(value.customMarkFrame === true ? { customMarkFrame: true } : {}),
     ...(value.listStats === true ? { listStats: true } : {}),
     ...(value.headerHidden === true ? { headerHidden: true } : {}),
+    ...(value.textHidden === true ? { textHidden: true } : {}),
     ...(value.smoothLines === true ? { smoothLines: true } : {}),
     ...(smoothLineAnchors ? { smoothLineAnchors } : {}),
     ...(typeof value.color === "string" ? { color: value.color } : {}),

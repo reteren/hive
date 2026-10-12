@@ -1,5 +1,6 @@
 import { board, updateNote } from "../model/board.svelte";
-import { NOTE_HEADER_HEIGHT_UNITS } from "../model/note";
+import { NOTE_HEADER_HEIGHT_UNITS, type Note } from "../model/note";
+import { editing } from "./editing.svelte";
 import { selection } from "../selection/selection.svelte";
 import { linksOf } from "../model/links.svelte";
 import { execute } from "../history/history.svelte";
@@ -121,8 +122,23 @@ registerNoteMenuItem({
       : "Hide header";
   },
   run: toggleNoteHeader,
-  visible: (noteId) => Boolean(board.notes[noteId] && board.notes[noteId].type !== "beacon" && board.notes[noteId].type !== "image"),
+  // A node without its text box is only its header; hiding that too would leave nothing to see.
+  visible: (noteId) => Boolean(board.notes[noteId] && board.notes[noteId].type !== "beacon" && board.notes[noteId].type !== "image" &&
+    board.notes[noteId].textHidden !== true),
   order: 90,
+});
+
+registerNoteMenuItem({
+  id: "notes.toggleTextBox",
+  label: (noteId) => {
+    const targets = noteTextBoxTargets(noteId);
+    return targets.length > 0 && targets.every((id) => board.notes[id]?.textHidden === true)
+      ? "Show text box"
+      : "Remove text box";
+  },
+  run: toggleNoteTextBox,
+  visible: (noteId) => noteTextBoxTargets(noteId).includes(noteId),
+  order: 91,
 });
 
 registerNoteMenuItem({
@@ -155,7 +171,7 @@ export function noteHeaderTargets(noteId: string): string[] {
   const ids = selection.ids.includes(noteId) ? selection.ids : [noteId];
   return ids.filter((id) => {
     const note = board.notes[id];
-    return Boolean(note && note.type !== "beacon" && note.type !== "image");
+    return Boolean(note && note.type !== "beacon" && note.type !== "image" && note.textHidden !== true);
   });
 }
 
@@ -186,6 +202,59 @@ function toggleNoteHeader(noteId: string): void {
   const firstChangedId = changes.keys().next().value as string;
   execute({
     label: hide ? "Hide header" : "Show header",
+    target: changes.size === 1 ? board.notes[firstChangedId]?.name ?? "node" : `${changes.size} nodes`,
+    do: () => {
+      for (const [id, change] of changes) {
+        updateNote(id, change.after);
+      }
+    },
+    undo: () => {
+      for (const [id, change] of changes) {
+        updateNote(id, change.before);
+      }
+    },
+  });
+}
+
+/** Plain text nodes with a visible header (Task / Message combos keep their body). */
+export function hasRemovableTextBox(note: Note | undefined): boolean {
+  return Boolean(note && (note.type === "note" || note.type === "pro" || note.type === "con") &&
+    note.message === undefined && note.time === undefined && note.headerHidden !== true);
+}
+
+/** The RMB target expands to the selection only when it is already selected. */
+export function noteTextBoxTargets(noteId: string): string[] {
+  const ids = selection.ids.includes(noteId) ? selection.ids : [noteId];
+  return ids.filter((id) => hasRemovableTextBox(board.notes[id]));
+}
+
+/**
+ * Remove (or bring back) the text box: the node shrinks to its header. The text itself stays in
+ * the node, so it is all there again when the box returns; the node then grows with its text.
+ */
+function toggleNoteTextBox(noteId: string): void {
+  const targets = noteTextBoxTargets(noteId);
+  if (targets.length === 0) return;
+
+  const hide = !targets.every((id) => board.notes[id]?.textHidden === true);
+  const changes = new Map<string, {
+    before: { textHidden: boolean | undefined; height: number | null };
+    after: { textHidden: true | undefined; height: number | null };
+  }>();
+  for (const id of targets) {
+    const note = board.notes[id];
+    if (!note || (note.textHidden === true) === hide) continue;
+    changes.set(id, {
+      before: { textHidden: note.textHidden, height: note.height },
+      after: { textHidden: hide ? true : undefined, height: null },
+    });
+  }
+  if (changes.size === 0) return;
+  if (hide && editing.noteId && changes.has(editing.noteId)) editing.noteId = null;
+
+  const firstChangedId = changes.keys().next().value as string;
+  execute({
+    label: hide ? "Remove text box" : "Show text box",
     target: changes.size === 1 ? board.notes[firstChangedId]?.name ?? "node" : `${changes.size} nodes`,
     do: () => {
       for (const [id, change] of changes) {

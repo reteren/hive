@@ -30,19 +30,77 @@ pub(crate) fn active_project_root(state: &ProjectState) -> Result<PathBuf, Strin
 
 /// The board index from disk (single-file or split layout) plus warnings for skipped object files.
 fn load_index(root: &Path) -> Result<(BoardIndex, Vec<String>), String> {
-    let (document, warnings) = crate::board_store::read_document(root)?;
+    let (document, mut warnings) = crate::board_store::read_document(root)?;
     let mut index: BoardIndex = serde_json::from_value(document)
         .map_err(|error| format!("{INDEX_FILE_NAME} is invalid: {error}"))?;
     migrate_index(&mut index)?;
+    separate_shared_note_files(&root.join(NOTES_DIRECTORY), &mut index, &mut warnings)?;
     validate_index(&index)?;
     Ok((index, warnings))
+}
+
+/// Two nodes pointing at one Markdown file (each person created "Note 4.md" before a merge) would
+/// stop the project from opening. The first keeps the file; each other one gets a copy under its
+/// own "<name> <id piece>.md", so both nodes open with the text they had.
+fn separate_shared_note_files(
+    notes_directory: &Path,
+    index: &mut BoardIndex,
+    warnings: &mut Vec<String>,
+) -> Result<(), String> {
+    let mut used: HashSet<String> = HashSet::new();
+    let mut shared = Vec::new();
+    for (position, note) in index.notes.iter().enumerate() {
+        if !used.insert(windows_case_key(&note.file)) {
+            shared.push(position);
+        }
+    }
+    for position in shared {
+        let note = &index.notes[position];
+        let compact: String = note.id.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_lowercase();
+        let compact = if compact.is_empty() { "0".to_string() } else { compact };
+        let stem = sanitize_note_name(&note.name);
+        let source = safe_note_path(notes_directory, &note.file)?;
+        let source_bytes = if path_exists(&source)? { Some(read_note_bytes(&source).map_err(|error| format!("could not read note file {}: {error}", note.file))?) } else { None };
+        let mut chosen = None;
+        for length in 4..=compact.len().max(4) + 8 {
+            let piece = if length <= compact.len() { compact[..length].to_string() } else { format!("{compact}{}", length - compact.len()) };
+            let base = truncate_utf16(&stem, 120 - piece.len() - 1).trim_end_matches(['.', ' ']).to_string();
+            let file = format!("{} {piece}.md", if base.is_empty() { "Note" } else { &base });
+            if validate_note_file(&file).is_err() || used.contains(&windows_case_key(&file)) {
+                continue;
+            }
+            let target = notes_directory.join(&file);
+            if !path_exists(&target)? {
+                chosen = Some((file, true));
+                break;
+            }
+            // Made by an earlier open (here or in the other person's copy): reuse it.
+            if source_bytes.is_some() && fs::read(&target).ok() == source_bytes {
+                chosen = Some((file, false));
+                break;
+            }
+        }
+        let Some((file, copy)) = chosen else {
+            return Err(format!("board index contains colliding note file: {}", note.file));
+        };
+        if let (true, Some(bytes)) = (copy, &source_bytes) {
+            atomic_create(&notes_directory.join(&file), bytes)
+                .map_err(|error| format!("could not separate shared note file {}: {error}", note.file))?;
+        }
+        warnings.push(format!("Two nodes used the note file {}; one now uses {file}.", note.file));
+        used.insert(windows_case_key(&file));
+        index.notes[position].file = file;
+    }
+    Ok(())
 }
 
 pub(crate) fn validate_project_index_contents(contents: &[u8]) -> Result<usize, String> {
     let mut index: BoardIndex = serde_json::from_slice(contents)
         .map_err(|error| format!("board.json is invalid: {error}"))?;
     migrate_index(&mut index)?;
-    validate_index(&index)?;
+    // Backups and exports keep the project as it is; a file shared by two nodes is separated
+    // when the project is opened (separate_shared_note_files), so it is not an error here.
+    validate_index_with(&index, true)?;
     Ok(index.notes.len())
 }
 
@@ -535,6 +593,10 @@ fn open_project_root(selected: &Path) -> Result<OpenedProject, String> {
 }
 
 fn validate_index(index: &BoardIndex) -> Result<(), String> {
+    validate_index_with(index, false)
+}
+
+fn validate_index_with(index: &BoardIndex, shared_files_allowed: bool) -> Result<(), String> {
     let mut ids = HashSet::new();
     let mut files = HashSet::new();
     for note in &index.notes {
@@ -565,7 +627,7 @@ fn validate_index(index: &BoardIndex) -> Result<(), String> {
                 note.id
             ));
         }
-        if !files.insert(windows_case_key(&note.file)) {
+        if !files.insert(windows_case_key(&note.file)) && !shared_files_allowed {
             return Err(format!(
                 "board index contains colliding note file: {}",
                 note.file
@@ -1332,6 +1394,30 @@ mod tests {
             serde_json::from_str(&opened.load.index_json).expect("decode returned index");
         fs::remove_dir_all(directory).expect("remove test project");
         round_trip
+    }
+
+    #[test]
+    fn two_nodes_sharing_one_note_file_open_with_separate_copies() {
+        let directory = test_directory("shared-file");
+        let notes = directory.join("notes");
+        fs::create_dir_all(&notes).expect("create notes directory");
+        fs::write(notes.join("Note 4.md"), "shared body").expect("write note body");
+        let index = serde_json::json!({
+            "version": 3,
+            "notes": [
+                { "id": "aaaa1111", "name": "Note 4", "file": "Note 4.md", "x": 0, "y": 0, "width": 30 },
+                { "id": "bbbb2222", "name": "Note 4", "file": "note 4.md", "x": 40, "y": 0, "width": 30 }
+            ]
+        });
+        fs::write(directory.join("board.json"), serde_json::to_vec(&index).expect("encode index"))
+            .expect("write board index");
+
+        let opened = open_project_root(&directory).expect("open project with a shared note file");
+        let files: Vec<&str> = opened.load.notes.iter().map(|note| note.file.as_str()).collect();
+        assert_eq!(files, vec!["Note 4.md", "Note 4 bbbb.md"]);
+        assert!(opened.load.notes.iter().all(|note| note.text == "shared body"));
+        assert!(opened.load.warnings.iter().any(|warning| warning.contains("Note 4 bbbb.md")));
+        fs::remove_dir_all(directory).expect("remove test project");
     }
 
     #[test]

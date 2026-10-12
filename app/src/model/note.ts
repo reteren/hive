@@ -118,6 +118,8 @@ export interface Note {
   scale?: number;
   /** When true, the note's title header is hidden. */
   headerHidden?: boolean;
+  /** When true, the text box is removed: only the header shows; the text is kept for when it returns. */
+  textHidden?: boolean;
   /** Keep rectangular line attachments distributed while preserving them through project retention. */
   smoothLines?: boolean;
   /** Per-link owner-side anchors before smoothing; null means the default automatic attachment. */

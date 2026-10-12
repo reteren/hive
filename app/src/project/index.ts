@@ -76,6 +76,7 @@ export interface IndexedNote {
   customMarkFrame?: boolean;
   listStats?: boolean;
   headerHidden?: boolean;
+  textHidden?: boolean;
   smoothLines?: boolean;
   smoothLineAnchors?: NonNullable<Note["smoothLineAnchors"]>;
   image?: ImageRef;
@@ -273,6 +274,7 @@ export function serializeProjectIndex(
       flipX: note.type === "image" && note.flipX === true ? true as const : undefined,
       flipY: note.type === "image" && note.flipY === true ? true as const : undefined,
       headerHidden: note.headerHidden === true ? true : undefined,
+      textHidden: note.textHidden === true ? true : undefined,
       smoothLines: note.smoothLines === true ? true : undefined,
       smoothLineAnchors: note.smoothLines === true ? copySmoothLineAnchorSnapshot(note.smoothLineAnchors) : undefined,
     };
@@ -360,6 +362,7 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       ...(entry.type === "image" && entry.flipX === true ? { flipX: true } : {}),
       ...(entry.type === "image" && entry.flipY === true ? { flipY: true } : {}),
       ...(entry.headerHidden ? { headerHidden: true } : {}),
+      ...(entry.textHidden ? { textHidden: true } : {}),
       ...(entry.smoothLines ? { smoothLines: true } : {}),
       ...(entry.smoothLines && entry.smoothLineAnchors
         ? { smoothLineAnchors: copySmoothLineAnchorSnapshot(entry.smoothLineAnchors) }

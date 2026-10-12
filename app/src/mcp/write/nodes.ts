@@ -195,6 +195,7 @@ function applyCreateFields(note: Note, spec: CreateSpec, index: number, reserved
   if (spec.accentColor !== undefined) note.accentColor = spec.accentColor === null ? undefined : requireString(spec.accentColor, field("accentColor"));
   if (spec.glow !== undefined) note.glow = spec.glow === null ? undefined : spec.glow as Note["glow"];
   if (spec.headerHidden !== undefined) note.headerHidden = requireBoolean(spec.headerHidden, field("headerHidden"));
+  if (spec.textHidden !== undefined) note.textHidden = requireBoolean(spec.textHidden, field("textHidden")) || undefined;
   if (spec.importance !== undefined) note.importance = spec.importance === null ? null : requireEnum(spec.importance, IMPORTANCE_LEVELS, field("importance"));
   if (spec.purposes !== undefined) note.purposes = requireArray(spec.purposes, field("purposes"), 0, 100).map((value, itemIndex) => requireEnum(value, PURPOSE_KINDS, `${field("purposes")}[${itemIndex}]`));
   if (spec.moods !== undefined) note.moods = requireArray(spec.moods, field("moods"), 0, 100).map((value, itemIndex) => requireEnum(value, MOOD_KINDS, `${field("moods")}[${itemIndex}]`));
@@ -370,6 +371,7 @@ function updateNodes(raw: unknown) {
     if (Object.prototype.hasOwnProperty.call(update, "accentColor")) { candidate.accentColor = update.accentColor === null ? undefined : requireString(update.accentColor, `updates[${index}].accentColor`); changedFields.add("accentColor"); }
     if (Object.prototype.hasOwnProperty.call(update, "glow")) { candidate.glow = update.glow === null ? undefined : update.glow as Note["glow"]; changedFields.add("glow"); }
     if (update.headerHidden !== undefined) { candidate.headerHidden = requireBoolean(update.headerHidden, `updates[${index}].headerHidden`); changedFields.add("headerHidden"); }
+    if (update.textHidden !== undefined) { candidate.textHidden = requireBoolean(update.textHidden, `updates[${index}].textHidden`) || undefined; changedFields.add("textHidden"); }
     if (update.importance !== undefined) { candidate.importance = update.importance === null ? null : requireEnum(update.importance, IMPORTANCE_LEVELS, `updates[${index}].importance`); changedFields.add("importance"); }
     if (update.purposes !== undefined) { candidate.purposes = requireArray(update.purposes, `updates[${index}].purposes`, 0, 100).map((value, i) => requireEnum(value, PURPOSE_KINDS, `updates[${index}].purposes[${i}]`)); changedFields.add("purposes"); }
     if (update.moods !== undefined) { candidate.moods = requireArray(update.moods, `updates[${index}].moods`, 0, 100).map((value, i) => requireEnum(value, MOOD_KINDS, `updates[${index}].moods[${i}]`)); changedFields.add("moods"); }

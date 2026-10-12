@@ -160,6 +160,7 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
   data-note-id={note.id}
   data-note-scale={scale === 1 ? undefined : scale}
   data-header-hidden={note.headerHidden ? "true" : undefined}
+  data-text-hidden={note.textHidden ? "true" : undefined}
   data-dimmed={isDimmed(note.id)}
   data-editing={editing.noteId === note.id ? "true" : "false"}
   data-kind={note.type}
@@ -186,8 +187,8 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
   style:width={`${widthWithListStatistics(note) * PX_PER_UNIT}px`}
   style:min-width={comboMinimumWidth === null ? undefined : `${comboMinimumWidth * PX_PER_UNIT}px`}
   style:--list-statistics-width={`${listStatisticsWidth(note) * PX_PER_UNIT}px`}
-  style:height={note.height === null ? "auto" : `${note.height * PX_PER_UNIT}px`}
-  style:min-height={note.height === null ? `${MIN_NOTE_HEIGHT * PX_PER_UNIT}px` : "0px"}
+  style:height={note.height === null || note.textHidden ? "auto" : `${note.height * PX_PER_UNIT}px`}
+  style:min-height={note.textHidden ? "0px" : note.height === null ? `${MIN_NOTE_HEIGHT * PX_PER_UNIT}px` : "0px"}
   use:measureHeight={`${note.id}\u0000${note.type}\u0000${note.text}`}
   ondblclick={beginEditingFromDoubleClick}
 >
@@ -264,6 +265,7 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
     <div class="rename-error" role="alert">{renameError}</div>
   {/if}
   <NoteModules {note} />
+  {#if !note.textHidden}
   <div class="note-frame" class:fixed-height={note.height !== null}>
     <div class="note-frame-edge note-frame-edge-top" data-note-header aria-hidden="true"></div>
     <div class="note-frame-edge note-frame-edge-left" data-note-header aria-hidden="true"></div>
@@ -309,6 +311,7 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
     <div class="note-frame-edge note-frame-edge-right" data-note-header aria-hidden="true"></div>
     <div class="note-frame-edge note-frame-edge-bottom" data-note-header aria-hidden="true"></div>
   </div>
+  {/if}
 </article>
 
 <style>
@@ -352,6 +355,11 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
     font-size: 11px;
     font-weight: 600;
     user-select: none;
+  }
+
+  /* Without a text box the header is the whole node: no divider under it. */
+  .note-card[data-text-hidden="true"] > .note-header {
+    border-bottom: 0;
   }
 
   .time-view-switch {

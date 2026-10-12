@@ -44,6 +44,7 @@ import { closeModulePicker } from "../modules/pickerState.svelte";
 import { resetTransferNotices } from "../transfer/sync.svelte";
 import { tool } from "../tools/tool.svelte";
 import { editing } from "../notes/editing.svelte";
+import { resolveDuplicateNames } from "../notes/naming";
 import {
   currentProjectStopwatchData,
   projectCounterSave,
@@ -225,6 +226,8 @@ function applyProject(loaded: ProjectLoad): void {
     { createdAt: parsedIndex.createdAt, projectCounters: parsedIndex.projectCounters },
     parsedIndex.meDeleted,
   );
+  // After normalizedIndex (the saved baseline), so the renames count as changes and get saved.
+  resolveDuplicateNames(notes);
   const sourceIndex = JSON.parse(loaded.indexJson) as { version?: unknown; createdAt?: unknown; projectCounters?: unknown };
   const sourceVersion = sourceIndex.version;
   const hasProjectStopwatchData = typeof sourceIndex.createdAt === "number" && Number.isFinite(sourceIndex.createdAt) &&
@@ -466,6 +469,8 @@ function applyExternalBoard(change: BoardChange): void {
     height: entry.height,
   }));
   const notes = mergeLoadedNotes(merged, loadedNotes);
+  // The pulled board stays the saved baseline, so the renames count as changes and get saved.
+  resolveDuplicateNames(notes);
   // Before the board shows them: nodes the pull added or changed get a "new" / "changed" mark.
   markExternalChanges(changedNodeIds(JSON.stringify(base), theirsJson));
 
