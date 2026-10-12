@@ -133,6 +133,17 @@
     return rendered;
   });
 
+  // A group drag reports every moved note separately; bump the reactive revision once per microtask.
+  let revisionQueued = false;
+  function queueRenderedRevision(): void {
+    if (revisionQueued) return;
+    revisionQueued = true;
+    queueMicrotask(() => {
+      revisionQueued = false;
+      renderedRevision += 1;
+    });
+  }
+
   onBoardMutation((ids) => {
     if (ids === null) {
       allLinksDirty = true;
@@ -143,12 +154,12 @@
         if (!board.notes[id] || !orderIndex.has(id)) rebuildOrderIndex();
       }
     }
-    renderedRevision += 1;
+    queueRenderedRevision();
   });
   onLinksMutation((ids) => {
     if (ids === null) allLinksDirty = true;
     else for (const id of ids) dirtyLinkIds.add(id);
-    renderedRevision += 1;
+    queueRenderedRevision();
   });
 
   $effect.root(() => {

@@ -162,3 +162,28 @@ for transient stroke state; when exceeded, commit/spill finished sections (tiles
 GPU memory stays bounded, while the whole stroke remains ONE Undo step and the soft-brush pass rules
 (no double darkening at joints/returns) still hold across the spill boundary. Measure with a synthetic
 stroke across 300+ tiles at zoom 0.05 and 1. Report `d43_report_d3.md`.
+
+## b2 — Far-zoom canvas layer (after d43_report_b.md)
+Measured on the integrated build, 20 000 notes at zoom 0.03 (`min` tier): 16 186 NoteShell DOM nodes,
+switching into the tier takes 1.7 s and panning runs at 37 ms/frame. At `min` tier the board must be
+drawn like a game minimap: ONE canvas, no per-object DOM.
+Yours: a NEW `src/board/FarLayer.svelte` (+ helpers in `src/board/far*.ts`), plus your own layers
+(`links/*`, `zones/*`, `beacons/*`) so they render nothing in DOM at `min` tier except selected/focused/
+being-edited objects. The coordinator wires NotesLayer (at `min` only pinned notes stay in DOM) and
+mounts FarLayer in `Board.svelte` when you report done; agent c adds a SelectionLayer fallback so a
+press on an empty DOM point at `min` tier picks the top-most note via `queryPoint`.
+1. FarLayer draws, for `visible.rect` (use `queryRect` on the shared spatial index for notes, your
+   route index for links, your zone index for zones): notes as filled rectangles in their frame/body
+   colours (kind colours as in `notes/noteKinds.css`, node colour overrides, done tasks dimmed),
+   images as their decoded small bitmap when agent f's display cache has one (read-only use of
+   `src/attachments/displayBitmap.ts`) else a grey box, links as 1 px lines (weak dashed if cheap),
+   zones as translucent fills + outline, beacons as dots in their colour. Device-pixel-ratio aware.
+2. Redraw on camera change in the same frame (no lag behind the DOM layers), on model changes coalesced
+   to one redraw per frame. Budget: 20 000 visible notes + 5 000 links ≤ 6 ms per redraw in a
+   throwaway micro-benchmark (OffscreenCanvas or canvas in vitest+jsdom is not representative — use a
+   node canvas-free benchmark of your draw-list building + note the draw-call count; the coordinator
+   measures in the app).
+3. Pan without rebuilding draw lists: keep world-space draw lists, rebuild them only when visible.rect
+   or the model changes; per frame just set the transform and replay.
+4. Selected notes are drawn by the DOM layer on top; FarLayer skips them.
+Report `d43_report_b2.md`.
