@@ -9,6 +9,7 @@ import { anchorAlongRay, pointAtAnchor, resolveLinkEndpoints } from "../src/link
 import { noteMenuItems } from "../src/notes/noteMenu";
 import { ME_OBJECT_ID, type Link } from "../src/model/link";
 import type { Note } from "../src/model/note";
+import { measuredHeights } from "../src/notes/layout.svelte";
 
 function note(id: string, x: number, y: number, width: number, height: number): Note {
   return { id, type: "note", name: id, text: "", x, y, width, height };
@@ -355,6 +356,22 @@ describe("Smooth lines", () => {
         expect(Math.hypot(points[first]!.x - points[second]!.x, points[first]!.y - points[second]!.y)).toBeGreaterThanOrEqual(0.95);
       }
     }
+  });
+
+  it("keeps saved anchors while an auto-height endpoint has never been measured (culled since open)", () => {
+    const source = { ...note("smooth-src", 0, 0, 20, 20), smoothLines: true };
+    const target = { ...note("auto-target", 60, 0, 20, 20), height: null };
+    replaceBoard([source, target]);
+    delete measuredHeights["auto-target"];
+    const saved = { x: 1, y: 0.123 };
+    addLink({ id: "kept", from: source.id, to: target.id, kind: "strong", shape: "base", fromAnchor: saved });
+    reflowSmoothLineAnchorsRaw();
+    expect(links.byId.kept?.fromAnchor).toEqual(saved);
+
+    measuredHeights["auto-target"] = 20;
+    reflowSmoothLineAnchorsRaw();
+    expect(links.byId.kept?.fromAnchor).not.toEqual(saved);
+    delete measuredHeights["auto-target"];
   });
 
   it("distributes selected links at both endpoints when both nodes have smoothing enabled", () => {

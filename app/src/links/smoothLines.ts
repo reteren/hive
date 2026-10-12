@@ -7,7 +7,7 @@ import { board, updateNote } from "../model/board.svelte";
 import { links, linksOf, registerLinkLifecycle, updateLink } from "../model/links.svelte";
 import { execute } from "../history/history.svelte";
 import { ME_POSITION } from "../board/camera.svelte";
-import { noteBounds, type Bounds } from "../notes/layout.svelte";
+import { measuredHeights, noteBounds, type Bounds } from "../notes/layout.svelte";
 import { registerSelectionInteractionListener, selection } from "../selection/selection.svelte";
 import { selectedLinkIds } from "./selection.svelte";
 import { anchorAlongRay, projectPointToAnchor, resolveLinkEndpoints, type SmoothLineAnchorSnapshot } from "./anchors";
@@ -174,7 +174,7 @@ export function reflowSmoothLineAnchorsRaw(): void {
     if (snapshotChanged) updateNote(noteId, { smoothLineAnchors: snapshot });
   }
 
-  calculateSmoothLinkChanges(affected, enabled, true).forEach(({ id, anchors }) => setAnchors(id, anchors));
+  calculateSmoothLinkChanges(affected, enabled, true).forEach(({ id, anchors }) => setAnchorsWhenMeasured(id, anchors));
 }
 
 /** Reflow only links adjacent to changed objects and their smooth endpoints. */
@@ -205,7 +205,26 @@ export function reflowSmoothLineAnchorsForObjects(objectIds: readonly string[]):
     }
     if (changed) updateNote(id, { smoothLineAnchors: snapshot });
   }
-  calculateSmoothLinkChanges(affected, targetIds, true).forEach(({ id, anchors }) => setAnchors(id, anchors));
+  calculateSmoothLinkChanges(affected, targetIds, true).forEach(({ id, anchors }) => setAnchorsWhenMeasured(id, anchors));
+}
+
+/**
+ * Auto-height notes that were never drawn (culled since the project opened) only have an estimated
+ * height. Anchors computed from it would differ from the saved ones and be written back on every
+ * open — line drift plus noise in Git. Keep the saved anchors until both ends have real geometry;
+ * the note's first measurement triggers the reflow again.
+ */
+function hasMeasuredGeometry(id: string): boolean {
+  if (id === ME_OBJECT_ID) return true;
+  const note = board.notes[id];
+  if (!note || note.type === "beacon" || note.height !== null) return true;
+  return measuredHeights[id] !== undefined;
+}
+
+function setAnchorsWhenMeasured(id: string, anchors: SmoothAnchors): void {
+  const link = links.byId[id];
+  if (link && (!hasMeasuredGeometry(link.from) || !hasMeasuredGeometry(link.to))) return;
+  setAnchors(id, anchors);
 }
 
 /** Coalesce model, lifecycle and interaction changes into one dirty reflow per frame. */
