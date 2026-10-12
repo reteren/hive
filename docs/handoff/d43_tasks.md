@@ -215,3 +215,11 @@ Yours: `src/audio/*`, `src/formats/PdfNodeBody.svelte` (+ a small module for rem
 2. PDF: remember scroll position per note id outside the component and restore it on remount
    (after the document/page sizes are known), so culling/LOD swaps do not reset it.
 Tests for the pin lifecycle and the scroll memory. Report `d43_report_f3.md`.
+
+## e3 — Delta saves broke the Git safety test
+`cargo test --lib`: `board_store::tests::a_stale_save_keeps_objects_it_never_knew` panics at
+board_store.rs:1612 (`plan_write(...).unwrap()`): a save based on an older document must still succeed
+and must NOT delete objects that arrived from a pull (the friend's node) — this protects the user's
+shared Git project. Fix the delta/full save planner so that test passes unchanged, keep all other Rust
+and frontend tests green, then report `d43_report_e3.md`. The coordinator did NOT commit e2 because
+of this; your e2 files are still uncommitted in the working tree.
