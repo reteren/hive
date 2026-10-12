@@ -47,6 +47,8 @@ static SYNCED: Mutex<Option<(PathBuf, Value)>> = Mutex::new(None);
 /// Project open seeds this once; saves only encode records that differ from that baseline.
 static SYNCED_FILES: Mutex<Option<HashMap<PathBuf, HashMap<(String, String), CachedObject>>>> =
     Mutex::new(None);
+/// Case-insensitive note filename ownership, rebuilt on project load and patched on delta saves.
+static NOTE_FILE_OWNERS: Mutex<Option<HashMap<PathBuf, NoteFileIndex>>> = Mutex::new(None);
 /// Bumped whenever the board changes on disk from outside (a pull). A save based on an older
 /// revision is refused, so it cannot treat the newly arrived objects as deleted.
 static REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
@@ -55,6 +57,70 @@ pub const STALE_SAVE_ERROR: &str = "BOARD_CHANGED_ON_DISK";
 pub fn set_synced(root: &Path, document: &Value) {
     if let Ok(mut synced) = SYNCED.lock() {
         *synced = Some((root.to_path_buf(), document.clone()));
+    }
+    set_note_file_owners(root, document);
+}
+
+pub fn cached_object(root: &Path, directory: &str, id: &str) -> Option<Value> {
+    let cache = SYNCED_FILES.lock().ok()?;
+    let files = cache.as_ref()?.get(root)?;
+    let key = if directory == CALCULATORS_DIRECTORY {
+        calculator_file_id(id)
+    } else {
+        safe_file_id(id)
+    };
+    files
+        .get(&(directory.to_string(), key))
+        .map(|entry| entry.value.clone())
+}
+
+pub fn note_file_owner(root: &Path, file: &str) -> Option<String> {
+    NOTE_FILE_OWNERS
+        .lock()
+        .ok()?
+        .as_ref()?
+        .get(root)?
+        .owner_by_file
+        .get(&windows_case_key(file))
+        .cloned()
+}
+
+#[derive(Default)]
+struct NoteFileIndex {
+    owner_by_file: HashMap<String, String>,
+    file_by_id: HashMap<String, String>,
+}
+
+fn set_note_file_owners(root: &Path, document: &Value) {
+    let mut owners = NoteFileIndex::default();
+    for (file, id) in document
+        .get("notes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|note| {
+            Some((
+                windows_case_key(note.get("file")?.as_str()?),
+                note.get("id")?.as_str()?.to_string(),
+            ))
+        })
+    {
+        owners.owner_by_file.insert(file.clone(), id.clone());
+        owners.file_by_id.insert(id, file);
+    }
+    if let Ok(mut slot) = NOTE_FILE_OWNERS.lock() {
+        let roots = slot.get_or_insert_with(Default::default);
+        roots.insert(root.to_path_buf(), owners);
+        while roots.len() > 8 {
+            let Some(oldest) = roots
+                .keys()
+                .find(|cached_root| *cached_root != root)
+                .cloned()
+            else {
+                break;
+            };
+            roots.remove(&oldest);
+        }
     }
 }
 
@@ -107,6 +173,15 @@ pub fn is_legacy(root: &Path) -> Result<bool, String> {
 
 /// The whole board document as the app expects it, plus warnings for unreadable object files.
 pub fn read_document(root: &Path) -> Result<(Value, Vec<String>), String> {
+    let (document, warnings, cached_files) = read_document_with_files(root)?;
+    set_synced_files(root, cached_files);
+    set_note_file_owners(root, &document);
+    Ok((document, warnings))
+}
+
+fn read_document_with_files(
+    root: &Path,
+) -> Result<(Value, Vec<String>, HashMap<(String, String), CachedObject>), String> {
     let head_path = root.join(INDEX_FILE_NAME);
     let head_bytes = fs::read(&head_path)
         .map_err(|error| format!("could not read {}: {error}", display_relative(&head_path)))?;
@@ -121,8 +196,8 @@ pub fn read_document(root: &Path) -> Result<(Value, Vec<String>), String> {
         },
     );
     if head.get("notes").is_some_and(Value::is_array) {
-        set_synced_files(root, cached_files);
-        return Ok((Value::Object(head), Vec::new()));
+        let document = Value::Object(head);
+        return Ok((document, Vec::new(), cached_files));
     }
     let mut warnings = Vec::new();
     let mut document = head;
@@ -164,8 +239,8 @@ pub fn read_document(root: &Path) -> Result<(Value, Vec<String>), String> {
             }
         }
     }
-    set_synced_files(root, cached_files);
-    Ok((Value::Object(document), warnings))
+    let document = Value::Object(document);
+    Ok((document, warnings, cached_files))
 }
 
 fn cache_object(
@@ -203,6 +278,435 @@ pub struct DiskPlan {
     pub deletes: Vec<PathBuf>,
 }
 
+#[derive(Clone, Debug)]
+pub struct DeltaObject {
+    pub id: String,
+    pub order: Option<usize>,
+    pub record: Value,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct CollectionDelta {
+    pub upserts: Vec<DeltaObject>,
+    pub delete_ids: Vec<String>,
+}
+
+/// Plan only the object files named by a delta and any changed project-head fields.
+pub fn plan_delta(
+    root: &Path,
+    collections: &HashMap<String, CollectionDelta>,
+    head_patch: &Map<String, Value>,
+) -> Result<DiskPlan, String> {
+    let mut plan = DiskPlan {
+        root: root.to_path_buf(),
+        writes: Vec::new(),
+        deletes: Vec::new(),
+    };
+    let mut cached_files = SYNCED_FILES
+        .lock()
+        .ok()
+        .and_then(|cache| cache.as_ref().and_then(|files| files.get(root)).cloned())
+        .unwrap_or_default();
+    let has_cached_head =
+        cached_files.contains_key(&(INDEX_FILE_NAME.to_string(), INDEX_FILE_NAME.to_string()));
+    if !has_cached_head {
+        let baseline = synced(root).ok_or_else(|| STALE_SAVE_ERROR.to_string())?;
+        let (current, _, disk_files) = read_document_with_files(root)?;
+        verify_known_document(root, &baseline, &current)?;
+        cached_files = disk_files;
+    }
+
+    for (collection, delta) in collections {
+        if collection == "calculators" {
+            plan_delta_collection(
+                &mut plan,
+                collection,
+                &root.join(CALCULATORS_DIRECTORY),
+                delta,
+                &cached_files,
+            )?;
+        } else if let Some((_, directory)) = COLLECTIONS.iter().find(|(key, _)| *key == collection)
+        {
+            plan_delta_collection(
+                &mut plan,
+                collection,
+                &root.join(directory),
+                delta,
+                &cached_files,
+            )?;
+        } else {
+            return Err(format!("unsupported delta collection: {collection}"));
+        }
+    }
+
+    let index_path = root.join(INDEX_FILE_NAME);
+    if head_patch
+        .keys()
+        .any(|key| !LOCAL_KEYS.contains(&key.as_str()))
+    {
+        ensure_regular_or_missing(&index_path)?;
+        let expected =
+            cached_files.get(&(INDEX_FILE_NAME.to_string(), INDEX_FILE_NAME.to_string()));
+        verify_cached_path(&index_path, expected)?;
+        let mut head = read_json_object(&index_path)?;
+        for (key, value) in head_patch {
+            if !LOCAL_KEYS.contains(&key.as_str()) {
+                head.insert(key.clone(), value.clone());
+            }
+        }
+        head.insert("storage".to_string(), Value::from(STORAGE_VERSION));
+        let bytes = pretty(&Value::Object(head))?;
+        if !fs::read(&index_path)
+            .ok()
+            .is_some_and(|current| same_text(&current, &bytes))
+        {
+            plan.writes.push((index_path, bytes));
+        }
+    }
+
+    if head_patch
+        .keys()
+        .any(|key| LOCAL_KEYS.contains(&key.as_str()))
+    {
+        let local_path = root.join(LOCAL_FILE);
+        ensure_regular_or_missing(&local_path)?;
+        let mut local = read_json_object(&local_path).unwrap_or_default();
+        let mut changed = false;
+        for key in LOCAL_KEYS {
+            if let Some(value) = head_patch.get(*key) {
+                if local.get(*key) != Some(value) {
+                    local.insert((*key).to_string(), value.clone());
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            plan.writes
+                .push((local_path, pretty(&Value::Object(local))?));
+        }
+    }
+    Ok(plan)
+}
+
+fn plan_delta_collection(
+    plan: &mut DiskPlan,
+    collection: &str,
+    directory: &Path,
+    delta: &CollectionDelta,
+    cached_files: &HashMap<(String, String), CachedObject>,
+) -> Result<(), String> {
+    let cache_directory = if collection == "calculators" {
+        CALCULATORS_DIRECTORY
+    } else {
+        COLLECTIONS
+            .iter()
+            .find(|(key, _)| *key == collection)
+            .map(|(_, directory)| *directory)
+            .ok_or_else(|| format!("unsupported delta collection: {collection}"))?
+    };
+    let mut touched = HashSet::new();
+    for item in &delta.upserts {
+        if !touched.insert(item.id.clone()) {
+            return Err(format!("duplicate {collection} delta id: {}", item.id));
+        }
+        let (file_id, mut record, previous_task_file) = if collection == "calculators" {
+            let file_id = calculator_file_id(&item.id);
+            let mut wrapper = Map::new();
+            wrapper.insert("id".to_string(), Value::from(file_id.clone()));
+            wrapper.insert("key".to_string(), Value::from(item.id.clone()));
+            wrapper.insert("value".to_string(), item.record.clone());
+            (file_id, Value::Object(wrapper), None)
+        } else {
+            if collection != "taskLog"
+                && item.record.get("id").and_then(Value::as_str) != Some(item.id.as_str())
+            {
+                return Err(format!(
+                    "{collection} delta record id does not match {}",
+                    item.id
+                ));
+            }
+            if collection == "taskLog"
+                && task_log_delta_id(&item.record).as_deref() != Some(item.id.as_str())
+            {
+                return Err(format!(
+                    "task log delta record id does not match {}",
+                    item.id
+                ));
+            }
+            let previous_task_file = if collection == "taskLog" {
+                cached_files.iter().find_map(|((name, cached_id), cached)| {
+                    (name == cache_directory
+                        && task_log_delta_id(&cached.value).as_deref() == Some(item.id.as_str()))
+                    .then(|| cached_id.clone())
+                })
+            } else {
+                None
+            };
+            let file_id = if collection == "taskLog" {
+                item_file_id(&item.record)?
+            } else {
+                safe_file_id(&item.id)
+            };
+            (file_id, item.record.clone(), previous_task_file)
+        };
+        let cache_key = (cache_directory.to_string(), file_id.clone());
+        let cached = cached_files.get(&cache_key);
+        let order_reference_id = previous_task_file.unwrap_or_else(|| file_id.clone());
+        let order = delta_order(collection, &order_reference_id, item.order, cached_files)?;
+        if let Some(object) = record.as_object_mut() {
+            object.insert(ORDER_KEY.to_string(), Value::from(order));
+        } else {
+            return Err(format!("{collection} delta records must be objects"));
+        }
+        let path = directory.join(format!("{file_id}.json"));
+        let bytes = pretty(&record)?;
+        let mut semantic = record.clone();
+        if let Some(object) = semantic.as_object_mut() {
+            object.remove(ORDER_KEY);
+        }
+        if cached.is_some_and(|entry| entry.value == semantic && entry.order == Some(order))
+            || cached.is_some_and(|entry| same_text(&entry.bytes, &bytes))
+        {
+            continue;
+        }
+        if collection == "taskLog" && order_reference_id != file_id {
+            let previous_path = directory.join(format!("{order_reference_id}.json"));
+            let previous =
+                cached_files.get(&(cache_directory.to_string(), order_reference_id.clone()));
+            if let Some(previous) = previous {
+                ensure_regular_or_missing(&previous_path)?;
+                verify_cached_path(&previous_path, Some(previous))?;
+                plan.deletes.push(previous_path);
+            }
+        }
+        ensure_regular_or_missing(&path)?;
+        verify_cached_path(&path, cached)?;
+        plan.writes.push((path, bytes));
+    }
+
+    for id in &delta.delete_ids {
+        if !touched.insert(id.clone()) {
+            return Err(format!("duplicate {collection} delta id: {id}"));
+        }
+        let file_id = if collection == "calculators" {
+            calculator_file_id(id)
+        } else if collection == "taskLog" {
+            cached_files
+                .iter()
+                .find_map(|((name, cached_id), cached)| {
+                    (name == cache_directory
+                        && task_log_delta_id(&cached.value).as_deref() == Some(id.as_str()))
+                    .then(|| cached_id.clone())
+                })
+                .unwrap_or_else(|| safe_file_id(id))
+        } else {
+            safe_file_id(id)
+        };
+        let path = directory.join(format!("{file_id}.json"));
+        let cached = cached_files.get(&(cache_directory.to_string(), file_id));
+        if cached.is_none() {
+            if path.exists() {
+                return Err(STALE_SAVE_ERROR.to_string());
+            }
+            continue;
+        }
+        ensure_regular_or_missing(&path)?;
+        verify_cached_path(&path, cached)?;
+        plan.deletes.push(path);
+    }
+    Ok(())
+}
+
+fn delta_order(
+    collection: &str,
+    file_id: &str,
+    requested: Option<usize>,
+    cached_files: &HashMap<(String, String), CachedObject>,
+) -> Result<f64, String> {
+    let cache_directory = if collection == "calculators" {
+        CALCULATORS_DIRECTORY
+    } else {
+        COLLECTIONS
+            .iter()
+            .find(|(key, _)| *key == collection)
+            .map(|(_, directory)| *directory)
+            .ok_or_else(|| format!("unsupported delta collection: {collection}"))?
+    };
+    let existing_order = cached_files
+        .get(&(cache_directory.to_string(), file_id.to_string()))
+        .and_then(|entry| entry.order);
+    if collection == "calculators" {
+        return Ok(existing_order.unwrap_or(1.0));
+    }
+    let Some(position) = requested else {
+        return Ok(existing_order.unwrap_or_else(|| {
+            cached_files
+                .iter()
+                .filter(|((name, _), _)| name == cache_directory)
+                .filter_map(|(_, entry)| entry.order)
+                .fold(0.0_f64, f64::max)
+                + 1.0
+        }));
+    };
+    let mut ordered = cached_files
+        .iter()
+        .filter(|((name, id), _)| name == cache_directory && id != file_id)
+        .filter_map(|((_, id), entry)| entry.order.map(|order| (order, id.clone())))
+        .collect::<Vec<_>>();
+    ordered.sort_by(|left, right| {
+        left.0
+            .total_cmp(&right.0)
+            .then_with(|| left.1.cmp(&right.1))
+    });
+    let index = position.min(ordered.len());
+    let before = index
+        .checked_sub(1)
+        .and_then(|index| ordered.get(index))
+        .map(|item| item.0);
+    let after = ordered.get(index).map(|item| item.0);
+    Ok(match (before, after) {
+        (Some(before), Some(after)) if after - before > 1e-9 => before + (after - before) / 2.0,
+        (Some(before), Some(_)) => before,
+        (Some(before), None) => before + 1.0,
+        (None, Some(after)) => after - 1.0,
+        (None, None) => 1.0,
+    })
+}
+
+fn task_log_delta_id(value: &Value) -> Option<String> {
+    let note_id = value.get("noteId")?.as_str()?;
+    let done_at = value
+        .get("doneAt")?
+        .as_i64()
+        .or_else(|| value.get("doneAt")?.as_u64().map(|value| value as i64))?;
+    Some(serde_json::to_string(&(note_id, done_at)).ok()?)
+}
+
+fn verify_cached_path(path: &Path, cached: Option<&CachedObject>) -> Result<(), String> {
+    match cached {
+        Some(expected) => {
+            let current = fs::read(path).map_err(|_| STALE_SAVE_ERROR.to_string())?;
+            if !same_text(&current, &expected.bytes) {
+                return Err(STALE_SAVE_ERROR.to_string());
+            }
+        }
+        None if path.exists() => return Err(STALE_SAVE_ERROR.to_string()),
+        None => {}
+    }
+    Ok(())
+}
+
+fn ensure_regular_or_missing(path: &Path) -> Result<(), String> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(format!(
+            "refusing to use a symbolic link as a project file: {}",
+            path.display()
+        )),
+        Ok(metadata) if !metadata.is_file() => Err(format!(
+            "project path is not a regular file: {}",
+            path.display()
+        )),
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!(
+            "could not inspect project file {}: {error}",
+            path.display()
+        )),
+    }
+}
+
+fn windows_case_key(value: &str) -> String {
+    value.to_lowercase()
+}
+
+/// Apply a successful delta to the in-memory merged board without replacing the full document.
+pub fn apply_synced_delta(
+    root: &Path,
+    collections: &HashMap<String, CollectionDelta>,
+    head_patch: &Map<String, Value>,
+) -> Result<(), String> {
+    let mut slot = SYNCED.lock().map_err(|_| "project storage is busy")?;
+    let Some((synced_root, document)) = slot.as_mut() else {
+        return Err("the synced project document is unavailable".to_string());
+    };
+    if synced_root != root {
+        return Err("the synced project root changed during save".to_string());
+    }
+    let object = document
+        .as_object_mut()
+        .ok_or_else(|| "the synced project document is invalid".to_string())?;
+    for (key, value) in head_patch {
+        object.insert(key.clone(), value.clone());
+    }
+    for (collection, delta) in collections {
+        if collection == "calculators" {
+            let values = object
+                .entry(collection.clone())
+                .or_insert_with(|| Value::Object(Map::new()))
+                .as_object_mut()
+                .ok_or_else(|| "the synced calculator collection is invalid".to_string())?;
+            for id in &delta.delete_ids {
+                values.remove(id);
+            }
+            for item in &delta.upserts {
+                values.insert(item.id.clone(), item.record.clone());
+            }
+            continue;
+        }
+        let items = object
+            .entry(collection.clone())
+            .or_insert_with(|| Value::Array(Vec::new()))
+            .as_array_mut()
+            .ok_or_else(|| format!("the synced {collection} collection is invalid"))?;
+        for id in &delta.delete_ids {
+            items.retain(|item| {
+                collection_delta_id(collection, item).as_deref() != Some(id.as_str())
+            });
+        }
+        for item in &delta.upserts {
+            let current = items.iter().position(|value| {
+                collection_delta_id(collection, value).as_deref() == Some(item.id.as_str())
+            });
+            if let Some(index) = current {
+                items.remove(index);
+            }
+            let index = item.order.unwrap_or(items.len()).min(items.len());
+            items.insert(index, item.record.clone());
+        }
+    }
+    drop(slot);
+    if let Some(delta) = collections.get("notes") {
+        if let Ok(mut slot) = NOTE_FILE_OWNERS.lock() {
+            let roots = slot.get_or_insert_with(Default::default);
+            let index = roots.entry(root.to_path_buf()).or_default();
+            for id in &delta.delete_ids {
+                if let Some(file) = index.file_by_id.remove(id) {
+                    index.owner_by_file.remove(&file);
+                }
+            }
+            for item in &delta.upserts {
+                if let Some(old_file) = index.file_by_id.remove(&item.id) {
+                    index.owner_by_file.remove(&old_file);
+                }
+                if let Some(file) = item.record.get("file").and_then(Value::as_str) {
+                    let key = windows_case_key(file);
+                    index.owner_by_file.insert(key.clone(), item.id.clone());
+                    index.file_by_id.insert(item.id.clone(), key);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn collection_delta_id(collection: &str, value: &Value) -> Option<String> {
+    if collection == "taskLog" {
+        task_log_delta_id(value)
+    } else {
+        value.get("id")?.as_str().map(str::to_string)
+    }
+}
+
 /// Plan the files for `document`. Objects are deleted only if `known` (the last synced document)
 /// had them; with `known = None` every object file not in `document` is deleted (migration/restore).
 pub fn plan_write(
@@ -218,11 +722,22 @@ pub fn plan_write(
         writes: Vec::new(),
         deletes: Vec::new(),
     };
-    let cached_files = SYNCED_FILES
+    let mut cached_files = SYNCED_FILES
         .lock()
         .ok()
         .and_then(|cache| cache.as_ref().and_then(|files| files.get(root)).cloned())
         .unwrap_or_default();
+    let has_cached_head =
+        cached_files.contains_key(&(INDEX_FILE_NAME.to_string(), INDEX_FILE_NAME.to_string()));
+    if known.is_some() && !has_cached_head {
+        // The bounded cache may evict an inactive project's baseline while a stale save is still
+        // pending. Reload the current split board, but first prove every object known to this save
+        // is unchanged; this lets us preserve pulled-in objects without adopting external edits to
+        // objects the stale save might overwrite or delete.
+        let (current, _, disk_files) = read_document_with_files(root)?;
+        verify_known_document(root, known.unwrap(), &current)?;
+        cached_files = disk_files;
+    }
 
     let mut head = Map::new();
     for (key, value) in object {
@@ -330,6 +845,62 @@ pub fn plan_write(
         &cached_files,
     )?;
     Ok(plan)
+}
+
+fn verify_known_document(root: &Path, known: &Value, current: &Value) -> Result<(), String> {
+    for (collection, _) in COLLECTIONS {
+        let known_values = object_values(known.get(*collection));
+        let current_values = object_values(current.get(*collection));
+        for (id, value) in &known_values {
+            if current_values.get(id) != Some(value) {
+                return Err(STALE_SAVE_ERROR.to_string());
+            }
+        }
+
+        let known_ids = ids_in(known.get(*collection));
+        let known_order = ordered_ids(known.get(*collection))?;
+        let current_known_order = ordered_ids(current.get(*collection))?
+            .into_iter()
+            .filter(|id| known_ids.contains(id))
+            .collect::<Vec<_>>();
+        if known_order != current_known_order {
+            return Err(STALE_SAVE_ERROR.to_string());
+        }
+    }
+
+    let known_calculators = known.get("calculators").and_then(Value::as_object);
+    let current_calculators = current.get("calculators").and_then(Value::as_object);
+    if let Some(known_calculators) = known_calculators {
+        for (key, value) in known_calculators {
+            if current_calculators.and_then(|values| values.get(key)) != Some(value) {
+                return Err(STALE_SAVE_ERROR.to_string());
+            }
+        }
+    }
+
+    if let (Some(known), Some(current)) = (known.as_object(), current.as_object()) {
+        for (key, value) in known {
+            if COLLECTIONS.iter().any(|(collection, _)| *collection == key)
+                || key == "calculators"
+                || LOCAL_KEYS.contains(&key.as_str())
+            {
+                continue;
+            }
+            if current.get(key) != Some(value) {
+                return Err(STALE_SAVE_ERROR.to_string());
+            }
+        }
+    } else {
+        return Err(format!("{}: invalid baseline document", root.display()));
+    }
+    Ok(())
+}
+
+fn ordered_ids(value: Option<&Value>) -> Result<Vec<String>, String> {
+    value
+        .and_then(Value::as_array)
+        .map(|items| items.iter().map(item_file_id).collect())
+        .unwrap_or_else(|| Ok(Vec::new()))
 }
 
 /// Write a planned change set (each file atomically); returns the paths actually touched.
@@ -958,6 +1529,100 @@ mod tests {
     }
 
     #[test]
+    fn delta_save_writes_and_syncs_only_the_changed_object() {
+        let _store = STORE_LOCK.lock().unwrap();
+        let root = project("delta-one-object");
+        fs::write(
+            root.join(INDEX_FILE_NAME),
+            serde_json::to_vec(&legacy()).unwrap(),
+        )
+        .unwrap();
+        migrate_to_split(&root).unwrap();
+        let (document, _) = read_document(&root).unwrap();
+        set_synced(&root, &document);
+
+        let mut note = document["notes"][1].clone();
+        note["x"] = json!(99.0);
+        let collections = HashMap::from([(
+            "notes".to_string(),
+            CollectionDelta {
+                upserts: vec![DeltaObject {
+                    id: "a".to_string(),
+                    order: None,
+                    record: note,
+                }],
+                delete_ids: Vec::new(),
+            },
+        )]);
+        let plan = plan_delta(&root, &collections, &Map::new()).unwrap();
+        let written = plan
+            .writes
+            .iter()
+            .map(|(path, _)| {
+                path.strip_prefix(&root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(written, ["nodes/a.json"]);
+        assert!(plan.deletes.is_empty());
+        apply_plan(&plan).unwrap();
+        apply_synced_delta(&root, &collections, &Map::new()).unwrap();
+        assert_eq!(synced(&root).unwrap()["notes"][1]["x"], 99.0);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn task_log_delta_uses_stable_note_and_completion_identity() {
+        let _store = STORE_LOCK.lock().unwrap();
+        let root = project("delta-task-log");
+        fs::write(
+            root.join(INDEX_FILE_NAME),
+            serde_json::to_vec(&legacy()).unwrap(),
+        )
+        .unwrap();
+        migrate_to_split(&root).unwrap();
+        let (document, _) = read_document(&root).unwrap();
+        set_synced(&root, &document);
+        let record = json!({ "noteId": "a", "name": "A", "doneAt": 123 });
+        let id = task_log_delta_id(&record).unwrap();
+        let add = HashMap::from([(
+            "taskLog".to_string(),
+            CollectionDelta {
+                upserts: vec![DeltaObject {
+                    id: id.clone(),
+                    order: Some(0),
+                    record,
+                }],
+                delete_ids: Vec::new(),
+            },
+        )]);
+        let plan = plan_delta(&root, &add, &Map::new()).unwrap();
+        assert_eq!(plan.writes.len(), 1);
+        apply_plan(&plan).unwrap();
+        apply_synced_delta(&root, &add, &Map::new()).unwrap();
+        assert_eq!(synced(&root).unwrap()["taskLog"][0]["doneAt"], 123);
+
+        let remove = HashMap::from([(
+            "taskLog".to_string(),
+            CollectionDelta {
+                upserts: Vec::new(),
+                delete_ids: vec![id],
+            },
+        )]);
+        let plan = plan_delta(&root, &remove, &Map::new()).unwrap();
+        assert_eq!(plan.deletes.len(), 1);
+        apply_plan(&plan).unwrap();
+        apply_synced_delta(&root, &remove, &Map::new()).unwrap();
+        assert!(synced(&root).unwrap()["taskLog"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn changed_object_save_refuses_to_overwrite_an_external_edit() {
         let root = project("concurrent-edit");
         fs::write(
@@ -1028,6 +1693,57 @@ mod tests {
         apply_plan(&plan).unwrap();
         assert!(root.join("nodes/friend.json").exists());
         assert!(!root.join("nodes/b.json").exists());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn stale_save_recovers_an_evicted_baseline_without_adopting_known_edits() {
+        let root = project("stale-cache-miss");
+        fs::write(
+            root.join(INDEX_FILE_NAME),
+            serde_json::to_vec(&legacy()).unwrap(),
+        )
+        .unwrap();
+        migrate_to_split(&root).unwrap();
+        let (mine, _) = read_document(&root).unwrap();
+        if let Ok(mut cache) = SYNCED_FILES.lock() {
+            cache.as_mut().unwrap().remove(&root);
+        }
+
+        // An object added by a pull is unknown to this save and must remain untouched.
+        fs::write(
+            root.join("nodes/friend.json"),
+            br#"{"_order":5,"id":"friend","name":"F","file":"F.md","x":0,"y":0,"width":30}"#,
+        )
+        .unwrap();
+        let mut next = mine.clone();
+        next["notes"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|note| note["id"] != "b");
+        let plan = plan_write(&root, &next, Some(&mine)).unwrap();
+        apply_plan(&plan).unwrap();
+        assert!(root.join("nodes/friend.json").exists());
+        assert!(!root.join("nodes/b.json").exists());
+
+        // A cache miss must not turn an edit to a known object into the new baseline.
+        if let Ok(mut cache) = SYNCED_FILES.lock() {
+            cache.as_mut().unwrap().remove(&root);
+        }
+        fs::write(
+            root.join("nodes/b.json"),
+            br#"{"_order":1,"id":"b","name":"B","file":"B.md","x":1,"y":2,"width":30}"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("nodes/a.json"),
+            br#"{"_order":2,"id":"a","name":"A","file":"A.md","x":88,"y":4,"width":30}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            plan_write(&root, &next, Some(&mine)).err().as_deref(),
+            Some(STALE_SAVE_ERROR)
+        );
         let _ = fs::remove_dir_all(&root);
     }
 

@@ -282,11 +282,72 @@ pub struct ChangedFile {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveRequest {
-    index_json: String,
+    #[serde(default)]
+    index_json: Option<String>,
+    #[serde(default)]
     changed_files: Vec<ChangedFile>,
     /// Board revision the window's state is based on; None skips the check (older callers).
     #[serde(default)]
     base_revision: Option<u64>,
+    #[serde(default)]
+    delta: Option<ProjectDelta>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectDelta {
+    #[serde(default)]
+    notes: OrderedDelta,
+    #[serde(default)]
+    links: OrderedDelta,
+    #[serde(default)]
+    zones: OrderedDelta,
+    #[serde(default)]
+    trash: OrderedDelta,
+    #[serde(default)]
+    archive: OrderedDelta,
+    #[serde(default)]
+    task_log: OrderedDelta,
+    #[serde(default)]
+    calculators: KeyedDelta,
+    #[serde(default)]
+    head: Map<String, Value>,
+    #[serde(default)]
+    changed_files: Vec<ChangedFile>,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OrderedDelta {
+    #[serde(default)]
+    upserts: Vec<OrderedDeltaRecord>,
+    #[serde(default)]
+    delete_ids: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OrderedDeltaRecord {
+    id: String,
+    #[serde(default)]
+    order: Option<usize>,
+    record: Value,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct KeyedDelta {
+    #[serde(default)]
+    upserts: Vec<KeyedDeltaRecord>,
+    #[serde(default)]
+    delete_ids: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct KeyedDeltaRecord {
+    id: String,
+    record: Value,
 }
 
 #[derive(Serialize)]
@@ -785,6 +846,22 @@ fn save_project_files(
         return Err(crate::board_store::STALE_SAVE_ERROR.to_string());
     }
     let known_document = crate::board_store::synced(&root);
+    if let Some(delta) = request.delta {
+        if request.base_revision.is_none() {
+            return Err("delta saves require a board revision".to_string());
+        }
+        return save_project_delta_files(
+            &root,
+            notes_directory,
+            delta,
+            watcher,
+            pending_watch_writes,
+            known_document,
+        );
+    }
+    let index_json = request
+        .index_json
+        .ok_or_else(|| "full save request is missing indexJson".to_string())?;
     let mut old_index: BoardIndex = match &known_document {
         Some(document) => serde_json::from_value(document.clone())
             .map_err(|error| format!("current board index is invalid: {error}"))?,
@@ -792,7 +869,7 @@ fn save_project_files(
     };
     migrate_index(&mut old_index)?;
     validate_index(&old_index)?;
-    let mut new_index: BoardIndex = serde_json::from_str(&request.index_json)
+    let mut new_index: BoardIndex = serde_json::from_str(&index_json)
         .map_err(|error| format!("new board index is invalid: {error}"))?;
     migrate_index(&mut new_index)?;
     validate_index(&new_index)?;
@@ -984,6 +1061,339 @@ fn save_project_files(
     }
     crate::board_store::set_synced(&root, &new_document);
     Ok(SaveResult { warnings })
+}
+
+fn save_project_delta_files(
+    root: &Path,
+    notes_directory: PathBuf,
+    delta: ProjectDelta,
+    watcher: &ProjectWatcher,
+    mut pending_watch_writes: PendingWatchWrites,
+    known_document: Option<Value>,
+) -> Result<SaveResult, String> {
+    if known_document.is_none() {
+        return Err("delta save requires a loaded project baseline; use a full save".to_string());
+    }
+
+    let allowed_head = ["createdAt", "projectCounters", "beaconMarks", "meDeleted"];
+    for key in delta.head.keys() {
+        if !allowed_head.contains(&key.as_str()) {
+            return Err(format!("unsupported project head delta field: {key}"));
+        }
+    }
+    if delta.head.get("createdAt").is_some_and(|value| {
+        !value
+            .as_f64()
+            .is_some_and(|number| number.is_finite() && number >= 0.0)
+    }) {
+        return Err("project createdAt delta is invalid".to_string());
+    }
+    if delta
+        .head
+        .get("projectCounters")
+        .is_some_and(|value| !value.is_object())
+    {
+        return Err("projectCounters delta must be an object".to_string());
+    }
+    if delta.head.get("beaconMarks").is_some_and(|value| {
+        !value
+            .as_array()
+            .is_some_and(|items| items.iter().all(Value::is_string))
+    }) {
+        return Err("beaconMarks delta must be an array of strings".to_string());
+    }
+    if delta
+        .head
+        .get("meDeleted")
+        .is_some_and(|value| !value.is_boolean())
+    {
+        return Err("meDeleted delta must be a boolean".to_string());
+    }
+
+    let mut notes_delta = convert_ordered_delta(delta.notes);
+    let mut changed_note_ids = HashSet::new();
+    for record in &notes_delta.upserts {
+        if !changed_note_ids.insert(record.id.clone()) {
+            return Err(format!("duplicate note delta id: {}", record.id));
+        }
+    }
+    for id in &notes_delta.delete_ids {
+        if !changed_note_ids.insert(id.clone()) {
+            return Err(format!("duplicate note delta id: {id}"));
+        }
+    }
+
+    let mut changed_notes = HashMap::<String, BoardNote>::new();
+    for item in &mut notes_delta.upserts {
+        let mut note: BoardNote = serde_json::from_value(item.record.clone())
+            .map_err(|error| format!("note {} delta record is invalid: {error}", item.id))?;
+        if note.id != item.id {
+            return Err(format!("note delta record id does not match {}", item.id));
+        }
+        let mut single = BoardIndex {
+            version: 3,
+            notes: vec![note.clone()],
+            extra: Map::new(),
+        };
+        migrate_index(&mut single)?;
+        validate_index_with(&single, true)?;
+        note = single.notes.remove(0);
+        item.record = serde_json::to_value(&note)
+            .map_err(|error| format!("could not encode note {} delta record: {error}", item.id))?;
+        changed_notes.insert(item.id.clone(), note);
+    }
+
+    let deleted_note_ids = notes_delta
+        .delete_ids
+        .iter()
+        .cloned()
+        .collect::<HashSet<_>>();
+    let mut resulting_file_keys = HashMap::<String, String>::new();
+    for note in changed_notes.values() {
+        let key = windows_case_key(&note.file);
+        if let Some(previous) = resulting_file_keys.insert(key.clone(), note.id.clone()) {
+            return Err(format!(
+                "note files collide between {} and {}",
+                previous, note.id
+            ));
+        }
+        if let Some(owner) = crate::board_store::note_file_owner(root, &note.file) {
+            if owner != note.id {
+                return Err(format!(
+                    "note file is already assigned to {owner}: {}",
+                    note.file
+                ));
+            }
+        }
+    }
+
+    let mut changed_by_file = HashMap::<String, String>::new();
+    let mut changed_file_keys = HashSet::new();
+    for changed in delta.changed_files {
+        validate_note_file(&changed.file)?;
+        let key = windows_case_key(&changed.file);
+        if !changed_file_keys.insert(key)
+            || changed_by_file
+                .insert(changed.file.clone(), changed.text)
+                .is_some()
+        {
+            return Err(format!("duplicate changed note file: {}", changed.file));
+        }
+    }
+
+    let mut staged = Vec::new();
+    let mut removed_files = Vec::new();
+    let mut warnings = Vec::new();
+
+    for note in changed_notes.values() {
+        let previous = crate::board_store::cached_object(root, "nodes", &note.id)
+            .map(serde_json::from_value::<BoardNote>)
+            .transpose()
+            .map_err(|error| format!("saved note {} is invalid: {error}", note.id))?;
+        let target = safe_note_path(&notes_directory, &note.file)?;
+        let is_new = previous.is_none();
+        let is_rename = previous.as_ref().is_some_and(|old| old.file != note.file);
+        if (is_new || is_rename) && path_exists(&target)? {
+            cleanup_staged(&staged);
+            return Err(format!(
+                "note file already exists and will not be overwritten: {}",
+                note.file
+            ));
+        }
+        let content = if let Some(text) = changed_by_file.remove(&note.file) {
+            Some(text.into_bytes())
+        } else if let Some(old) = previous.as_ref().filter(|old| old.file != note.file) {
+            let old_path = safe_note_path(&notes_directory, &old.file)?;
+            match read_note_bytes(&old_path) {
+                Ok(bytes) => Some(bytes),
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                    warnings.push(format!(
+                        "Missing note file: {} (renamed as empty)",
+                        old.file
+                    ));
+                    Some(Vec::new())
+                }
+                Err(error) => {
+                    cleanup_staged(&staged);
+                    return Err(format!("could not read note file {}: {error}", old.file));
+                }
+            }
+        } else if is_new {
+            Some(Vec::new())
+        } else {
+            None
+        };
+        if let Some(bytes) = content {
+            pending_watch_writes.begin(&target, &bytes);
+            stage_or_cleanup(&mut staged, &target, &bytes)?;
+        }
+        if let Some(old) = previous.filter(|old| old.file != note.file) {
+            let old_path = safe_note_path(&notes_directory, &old.file)?;
+            if path_exists(&old_path)? {
+                removed_files.push((old_path, PathBuf::new()));
+            }
+        }
+    }
+
+    for id in &deleted_note_ids {
+        let Some(value) = crate::board_store::cached_object(root, "nodes", id) else {
+            continue;
+        };
+        let previous: BoardNote = serde_json::from_value(value)
+            .map_err(|error| format!("saved note {id} is invalid: {error}"))?;
+        let source = safe_note_path(&notes_directory, &previous.file)?;
+        if path_exists(&source)? {
+            let archived = match archive_removed_note(root, &previous, &source) {
+                Ok(archived) => archived,
+                Err(error) => {
+                    cleanup_staged(&staged);
+                    return Err(error);
+                }
+            };
+            removed_files.push((source, archived));
+        } else {
+            warnings.push(format!(
+                "Missing note file: {} (nothing to archive)",
+                previous.file
+            ));
+        }
+    }
+
+    for (file, text) in changed_by_file {
+        let owner = crate::board_store::note_file_owner(root, &file);
+        let updated_owner = changed_notes
+            .values()
+            .find(|note| note.file == file)
+            .map(|note| note.id.clone());
+        let Some(owner) = updated_owner.or(owner) else {
+            cleanup_staged(&staged);
+            return Err(format!(
+                "changed note file is absent from the board: {file}"
+            ));
+        };
+        if deleted_note_ids.contains(&owner) {
+            cleanup_staged(&staged);
+            return Err(format!(
+                "changed note file belongs to a deleted note: {file}"
+            ));
+        }
+        if changed_notes
+            .get(&owner)
+            .is_some_and(|note| note.file != file)
+        {
+            cleanup_staged(&staged);
+            return Err(format!(
+                "changed note file is not the note's current target: {file}"
+            ));
+        }
+        let target = safe_note_path(&notes_directory, &file)?;
+        let bytes = text.into_bytes();
+        pending_watch_writes.begin(&target, &bytes);
+        stage_or_cleanup(&mut staged, &target, &bytes)?;
+    }
+
+    let mut store_collections = HashMap::new();
+    store_collections.insert("notes".to_string(), notes_delta);
+    store_collections.insert("links".to_string(), convert_ordered_delta(delta.links));
+    store_collections.insert("zones".to_string(), convert_ordered_delta(delta.zones));
+    store_collections.insert("trash".to_string(), convert_ordered_delta(delta.trash));
+    store_collections.insert("archive".to_string(), convert_ordered_delta(delta.archive));
+    store_collections.insert("taskLog".to_string(), convert_ordered_delta(delta.task_log));
+    let calculators = crate::board_store::CollectionDelta {
+        upserts: delta
+            .calculators
+            .upserts
+            .into_iter()
+            .map(|item| crate::board_store::DeltaObject {
+                id: item.id,
+                order: None,
+                record: item.record,
+            })
+            .collect(),
+        delete_ids: delta.calculators.delete_ids,
+    };
+    store_collections.insert("calculators".to_string(), calculators);
+
+    let board_plan = match crate::board_store::plan_delta(root, &store_collections, &delta.head) {
+        Ok(plan) => plan,
+        Err(error) => {
+            cleanup_staged(&staged);
+            return Err(error);
+        }
+    };
+    for write in &staged {
+        if write.target.parent() == Some(notes_directory.as_path()) {
+            if let Err(error) = watcher.verify_current_content(&write.target) {
+                cleanup_staged(&staged);
+                return Err(error);
+            }
+        }
+    }
+    for (source, _) in &removed_files {
+        if let Err(error) = watcher.verify_current_content(source) {
+            cleanup_staged(&staged);
+            return Err(error);
+        }
+    }
+
+    let mut committed = Vec::new();
+    for write in &staged {
+        if let Err(error) = replace_staged_file(&write.temporary, &write.target) {
+            let rollback_errors = rollback_writes(&committed);
+            cleanup_staged(&staged);
+            let detail = if rollback_errors.is_empty() {
+                String::new()
+            } else {
+                format!("; rollback also failed: {}", rollback_errors.join("; "))
+            };
+            return Err(format!(
+                "could not save project file {}: {error}{detail}",
+                write.target.display()
+            ));
+        }
+        committed.push(write);
+    }
+    for (source, _) in &removed_files {
+        if let Err(error) = fs::remove_file(source) {
+            warnings.push(format!(
+                "Saved project, but could not remove old note file {}: {error}",
+                source.display()
+            ));
+        } else {
+            watcher.acknowledge_external_change(source, None);
+        }
+    }
+
+    pending_watch_writes.finish(true);
+    crate::backup::mark_project_changed(root);
+    if let Err(error) = crate::board_store::apply_plan(&board_plan) {
+        return Err(format!(
+            "note files were saved, but the board could not be: {error}"
+        ));
+    }
+    if let Err(error) =
+        crate::board_store::apply_synced_delta(root, &store_collections, &delta.head)
+    {
+        return Err(format!(
+            "project files were saved, but the in-memory board could not be updated: {error}"
+        ));
+    }
+    Ok(SaveResult { warnings })
+}
+
+fn convert_ordered_delta(delta: OrderedDelta) -> crate::board_store::CollectionDelta {
+    crate::board_store::CollectionDelta {
+        upserts: delta
+            .upserts
+            .into_iter()
+            .map(|item| crate::board_store::DeltaObject {
+                id: item.id,
+                order: item.order,
+                record: item.record,
+            })
+            .collect(),
+        delete_ids: delta.delete_ids,
+    }
 }
 
 fn archive_removed_note(root: &Path, note: &BoardNote, source: &Path) -> Result<PathBuf, String> {

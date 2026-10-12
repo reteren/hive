@@ -90,13 +90,12 @@ import {
   taskLogRecordId,
   type DeltaSaveRequest,
   type JournalCapture,
+  type OrderedCollectionDelta,
   type ProjectDelta,
 } from "./delta";
 import { calculatorNoteFileName, noteFileKey, noteFileMatchesName, noteMarkdownFileNameWithId } from "./fileNames";
 
 const SAVE_DEBOUNCE_MS = 500;
-// Rust accepts only the established full-save contract until the delta apply path lands.
-const DELTA_SAVE_BACKEND_READY = false;
 
 interface ProjectLoad {
   path: string;
@@ -175,7 +174,7 @@ let initialized = false;
 let loading = false;
 let timer: number | null = null;
 let indexTemplate: ProjectIndex | undefined;
-let savedFilesById: ReadonlyMap<string, string> = new Map();
+let savedFilesById = new Map<string, string>();
 const savedFilesState = $state({ revision: 0 });
 const dirtyTracker = new ProjectDirtyTracker();
 const linkJournal = new DeltaMutationJournal<Link>();
@@ -197,6 +196,15 @@ let projectFileEventUnlisten: UnlistenFn | undefined;
 let projectFileEventQueue: Promise<void> = Promise.resolve();
 let boardChangeUnlisten: UnlistenFn | undefined;
 let boardRevision: number | undefined;
+let fullSaveRequired = false;
+const savedPositions = {
+  notes: new Map<string, number>(),
+  links: new Map<string, number>(),
+  zones: new Map<string, number>(),
+  trash: new Map<string, number>(),
+  archive: new Map<string, number>(),
+  taskLog: new Map<string, number>(),
+};
 
 /** Load the current project before mounting the board, then begin autosaving edits. */
 export function initializeProjectPersistence(): Promise<void> {
@@ -377,6 +385,7 @@ function applyProject(loaded: ProjectLoad): void {
   lastSavedIndex = sourceVersion === 3 && indexWarnings.length === 0 && hasProjectStopwatchData
     ? normalizedIndex
     : loaded.indexJson;
+  fullSaveRequired = lastSavedIndex !== normalizedIndex;
   replaceTaskLog(parsedIndex.taskLog.map((entry) => ({ ...entry })));
   replaceCalculators(parsedIndex.calculators ?? {});
   replaceArchive(parsedIndex.archive.map(copyArchiveEntry));
@@ -522,8 +531,12 @@ function makeSnapshot(): ProjectSnapshot {
 export function buildPendingProjectDelta(): DeltaSaveRequest | null {
   if (!project.path || !indexTemplate) return null;
   const snapshot = makeDeltaSnapshot();
+  return hasDeltaChanges(snapshot) ? snapshot.request : null;
+}
+
+function hasDeltaChanges(snapshot: DeltaSnapshot): boolean {
   const delta = snapshot.request.delta;
-  const hasChanges = delta.notes.upserts.length + delta.notes.deleteIds.length > 0
+  return delta.notes.upserts.length + delta.notes.deleteIds.length > 0
     || delta.links.upserts.length + delta.links.deleteIds.length > 0
     || delta.zones.upserts.length + delta.zones.deleteIds.length > 0
     || delta.trash.upserts.length + delta.trash.deleteIds.length > 0
@@ -531,7 +544,6 @@ export function buildPendingProjectDelta(): DeltaSaveRequest | null {
     || delta.taskLog.upserts.length + delta.taskLog.deleteIds.length > 0
     || delta.calculators.upserts.length + delta.calculators.deleteIds.length > 0
     || Object.keys(delta.head).length > 0 || delta.changedFiles.length > 0;
-  return hasChanges ? snapshot.request : null;
 }
 
 function makeDeltaSnapshot(): DeltaSnapshot {
@@ -571,18 +583,19 @@ function makeDeltaSnapshot(): DeltaSnapshot {
     const bodyChanged = !saved || saved.text !== note.text || missingFileIds.has(id);
     if (indexedChanged || bodyChanged) changedNoteIds.push(id);
     if (indexedChanged) {
-      noteEntryCache.set(id, { revision: noteRevisions.get(id) ?? 0, file, entry: indexed });
+      const capturedEntry = cloneJson(indexed);
+      noteEntryCache.set(id, { revision: noteRevisions.get(id) ?? 0, file, entry: capturedEntry });
       noteUpserts.push({
         id,
         ...(savedEntry ? {} : { order: Math.max(0, board.order.indexOf(id)) }),
-        record: indexed,
+        record: capturedEntry,
       });
     }
     if (!conflictedIds.has(id) && (indexedChanged || bodyChanged)) {
       changedNotes.set(id, { file, text: note.text });
       if (bodyChanged) files.push({ file, text: note.text });
     }
-    if ((indexedChanged || bodyChanged) && !conflictedIds.has(id)) changedRecords.push({ ...indexed, id, text: note.text });
+    if ((indexedChanged || bodyChanged) && !conflictedIds.has(id)) changedRecords.push({ ...cloneJson(indexed), id, text: note.text });
   }
 
   const linkCapture = captureJournal(linkJournal, () => Object.keys(links.byId), () => (baseline.links ?? []).map((link) => link.id));
@@ -687,6 +700,73 @@ function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function applyOrderedDelta<T>(
+  records: T[],
+  positions: Map<string, number>,
+  delta: OrderedCollectionDelta<T>,
+  idOf: (record: T) => string,
+): void {
+  let earliestChanged = records.length;
+  const deletes = delta.deleteIds.flatMap((id) => {
+    const index = positions.get(id);
+    return index === undefined ? [] : [{ id, index }];
+  }).sort((first, second) => second.index - first.index);
+  for (const { id, index } of deletes) {
+    records.splice(index, 1);
+    positions.delete(id);
+    earliestChanged = Math.min(earliestChanged, index);
+  }
+  if (earliestChanged < records.length) {
+    for (let index = earliestChanged; index < records.length; index += 1) positions.set(idOf(records[index]!), index);
+  }
+  for (const upsert of delta.upserts) {
+    const currentIndex = positions.get(upsert.id);
+    if (currentIndex !== undefined && upsert.order === undefined) {
+      records[currentIndex] = cloneJson(upsert.record);
+      continue;
+    }
+    if (currentIndex !== undefined) {
+      records.splice(currentIndex, 1);
+      positions.delete(upsert.id);
+    }
+    const target = Math.max(0, Math.min(upsert.order ?? records.length, records.length));
+    records.splice(target, 0, cloneJson(upsert.record));
+    for (let index = target; index < records.length; index += 1) positions.set(idOf(records[index]!), index);
+  }
+}
+
+function applyDeltaBaseline(snapshot: DeltaSnapshot): void {
+  const baseline = indexTemplate;
+  if (!baseline) throw new Error("The project baseline disappeared during delta save.");
+  const { delta } = snapshot.request;
+  applyOrderedDelta(baseline.notes, savedPositions.notes, delta.notes, (note) => note.id);
+  applyOrderedDelta(baseline.links ??= [], savedPositions.links, delta.links, (link) => link.id);
+  applyOrderedDelta(baseline.zones, savedPositions.zones, delta.zones, (zone) => zone.id);
+  applyOrderedDelta(baseline.trash, savedPositions.trash, delta.trash, (entry) => entry.id);
+  applyOrderedDelta(baseline.archive, savedPositions.archive, delta.archive, (entry) => entry.id);
+  applyOrderedDelta(baseline.taskLog, savedPositions.taskLog, delta.taskLog, taskLogRecordId);
+  const calculatorsBaseline = baseline.calculators ??= {};
+  for (const id of delta.calculators.deleteIds) delete calculatorsBaseline[id];
+  for (const { id, record } of delta.calculators.upserts) calculatorsBaseline[id] = cloneJson(record);
+  Object.assign(baseline, cloneJson(delta.head));
+
+  for (const id of delta.notes.deleteIds) {
+    savedIndexedNotesById.delete(id);
+    savedFilesById.delete(id);
+    noteEntryCache.delete(id);
+  }
+  for (const { id, record } of delta.notes.upserts) {
+    savedIndexedNotesById.set(id, cloneJson(record));
+    savedFilesById.set(id, record.file);
+    const capturedVersion = snapshot.dirty.noteVersions.get(id);
+    if (capturedVersion !== undefined && dirtyTracker.noteVersion(id) === capturedVersion) {
+      noteEntryCache.set(id, { revision: noteRevisions.get(id) ?? 0, file: record.file, entry: cloneJson(record) });
+    }
+  }
+  savedFilesState.revision += 1;
+  lastSavedIndex = "";
+}
+
 function changedFiles(snapshot: ProjectSnapshot): ChangedFile[] {
   return [...snapshot.changedFiles];
 }
@@ -700,6 +780,12 @@ function scheduleSave(): void {
   timer = window.setTimeout(() => {
     timer = null;
     if (!hasPendingDataChanges()) return;
+    if (!fullSaveRequired) {
+      const delta = makeDeltaSnapshot();
+      if (hasDeltaChanges(delta)) void persistDeltaSnapshot(delta).catch(() => undefined);
+      else dirtyTracker.acknowledge(delta.dirty);
+      return;
+    }
     const snapshot = makeSnapshot();
     if (isDirty(snapshot)) void persistSnapshot(snapshot).catch(() => undefined);
   }, SAVE_DEBOUNCE_MS);
@@ -750,6 +836,7 @@ function persistSnapshot(snapshot: ProjectSnapshot): Promise<void> {
       });
       setIndexTemplate(parseProjectIndex(snapshot.indexJson));
       lastSavedIndex = snapshot.indexJson;
+      fullSaveRequired = false;
       const conflictedIds = new Set(project.conflicts.map((conflict) => conflict.noteId));
       recordOwnSave([...new Set([...snapshot.changedNoteIds, ...snapshot.deletedNoteIds])], snapshot.changedRecords);
       const writtenFiles = new Set(files.map((file) => file.file));
@@ -784,6 +871,55 @@ function persistSnapshot(snapshot: ProjectSnapshot): Promise<void> {
   return queued;
 }
 
+function persistDeltaSnapshot(snapshot: DeltaSnapshot): Promise<void> {
+  const queued = writeQueue.catch(() => undefined).then(async () => {
+    if (!hasDeltaChanges(snapshot)) {
+      dirtyTracker.acknowledge(snapshot.dirty);
+      return;
+    }
+    project.saving = true;
+    try {
+      const result = await invoke<{ warnings: string[] }>("save_project", { request: snapshot.request });
+      const delta = snapshot.request.delta;
+      applyDeltaBaseline(snapshot);
+      const conflictedIds = new Set(project.conflicts.map((conflict) => conflict.noteId));
+      recordOwnSave([...new Set([...snapshot.changedNoteIds, ...snapshot.deletedNoteIds])], snapshot.changedRecords);
+      const writtenFiles = new Set(delta.changedFiles.map((file) => file.file));
+      for (const id of snapshot.deletedNoteIds) {
+        lastSavedById.delete(id);
+        missingFileIds.delete(id);
+        externalDeleteWarnings.delete(id);
+      }
+      for (const [id, saved] of snapshot.changedNotes) {
+        if (conflictedIds.has(id)) continue;
+        lastSavedById.set(id, saved);
+        if (writtenFiles.has(saved.file)) {
+          missingFileIds.delete(id);
+          externalDeleteWarnings.delete(id);
+        }
+      }
+      dirtyTracker.acknowledge(snapshot.dirty);
+      linkJournal.acknowledge(snapshot.captures.links);
+      zoneJournal.acknowledge(snapshot.captures.zones);
+      trashJournal.acknowledge(snapshot.captures.trash);
+      archiveJournal.acknowledge(snapshot.captures.archive);
+      taskLogJournal.acknowledge(snapshot.captures.taskLog);
+      calculatorJournal.acknowledge(snapshot.captures.calculators);
+      persistedGlobalRevisions = snapshot.globalRevisionStamp;
+      project.error = "";
+      project.warnings = [...new Set([...result.warnings, ...externalDeleteWarnings.values()])];
+    } catch (error) {
+      if (errorMessage(error).includes(STALE_SAVE_ERROR)) return;
+      project.error = errorMessage(error);
+      throw error;
+    } finally {
+      project.saving = false;
+    }
+  });
+  writeQueue = queued.catch(() => undefined);
+  return queued;
+}
+
 /** A board index in the exact form makeSnapshot() produces (note bodies are not part of it). */
 function normalizeIndexJson(indexJson: string): string {
   const { index } = parseProjectIndexWithWarnings(indexJson);
@@ -804,7 +940,8 @@ function applyExternalBoard(change: BoardChange): void {
   if (!project.ready || !project.path || loading) return;
   // All three in the window's own serialisation, or format differences would look like edits.
   const theirsJson = normalizeIndexJson(change.indexJson);
-  const base = JSON.parse(lastSavedIndex ? normalizeIndexJson(lastSavedIndex) : theirsJson) as Record<string, unknown>;
+  const savedBaselineJson = lastSavedIndex || (indexTemplate ? JSON.stringify(indexTemplate) : theirsJson);
+  const base = JSON.parse(normalizeIndexJson(savedBaselineJson)) as Record<string, unknown>;
   const mine = JSON.parse(makeSnapshot().indexJson) as Record<string, unknown>;
   const theirs = JSON.parse(theirsJson) as Record<string, unknown>;
   const { document, conflicts } = mergeBoardDocuments(base, mine, theirs);
@@ -839,6 +976,7 @@ function applyExternalBoard(change: BoardChange): void {
     dirtyTracker.reset();
     setIndexTemplate(parseProjectIndexWithWarnings(theirsJson).index, true);
     lastSavedIndex = theirsJson;
+    fullSaveRequired = false;
     const missingFiles = new Set(change.missingFiles);
     lastSavedById = new Map(change.notes.filter((note) => !missingFiles.has(note.file))
       .map((note) => [note.id, { file: note.file, text: note.text }]));
@@ -863,7 +1001,16 @@ function applyExternalBoard(change: BoardChange): void {
   } finally {
     loading = false;
   }
-  if (mergedIndexJson !== theirsJson) dirtyTracker.markIndex();
+  if (mergedIndexJson !== theirsJson) {
+    const saved = parseProjectIndex(theirsJson);
+    if (JSON.stringify(merged.links) !== JSON.stringify(saved.links)) linkJournal.markAll();
+    if (JSON.stringify(merged.zones) !== JSON.stringify(saved.zones)) zoneJournal.markAll();
+    if (JSON.stringify(merged.trash) !== JSON.stringify(saved.trash)) trashJournal.markAll();
+    if (JSON.stringify(merged.archive) !== JSON.stringify(saved.archive)) archiveJournal.markAll();
+    if (JSON.stringify(merged.taskLog) !== JSON.stringify(saved.taskLog)) taskLogJournal.markAll();
+    if (JSON.stringify(merged.calculators) !== JSON.stringify(saved.calculators)) calculatorJournal.markAll();
+    dirtyTracker.markIndex();
+  }
   if (locallyChangedNoteIds.size > 0) markBoardMutation([...locallyChangedNoteIds]);
   if (hasPendingDataChanges()) scheduleSave();
 }
@@ -879,9 +1026,18 @@ async function flushProject(): Promise<void> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await projectFileEventQueue;
     if (!hasPendingDataChanges()) break;
-    const snapshot = makeSnapshot();
-    if (!isDirty(snapshot)) break;
-    await persistSnapshot(snapshot);
+    if (fullSaveRequired) {
+      const snapshot = makeSnapshot();
+      if (!isDirty(snapshot)) break;
+      await persistSnapshot(snapshot);
+    } else {
+      const delta = makeDeltaSnapshot();
+      if (!hasDeltaChanges(delta)) {
+        dirtyTracker.acknowledge(delta.dirty);
+        break;
+      }
+      await persistDeltaSnapshot(delta);
+    }
     await writeQueue;
   }
   if (project.error) throw new Error(project.error);
@@ -1132,6 +1288,12 @@ function setIndexTemplate(next: ProjectIndex | undefined, resetNoteCache = false
   indexTemplate = next;
   savedFilesById = new Map(next?.notes.map((note) => [note.id, note.file]) ?? []);
   savedIndexedNotesById = new Map(next?.notes.map((note) => [note.id, note]) ?? []);
+  setPositions(savedPositions.notes, next?.notes.map((note) => note.id) ?? []);
+  setPositions(savedPositions.links, next?.links?.map((link) => link.id) ?? []);
+  setPositions(savedPositions.zones, next?.zones.map((zone) => zone.id) ?? []);
+  setPositions(savedPositions.trash, next?.trash.map((entry) => entry.id) ?? []);
+  setPositions(savedPositions.archive, next?.archive.map((entry) => entry.id) ?? []);
+  setPositions(savedPositions.taskLog, next?.taskLog.map(taskLogRecordId) ?? []);
   if (resetNoteCache) {
     noteEntryCache.clear();
     noteRevisions.clear();
@@ -1148,6 +1310,11 @@ function setIndexTemplate(next: ProjectIndex | undefined, resetNoteCache = false
   taskLogJournal.reset();
   calculatorJournal.reset();
   savedFilesState.revision += 1;
+}
+
+function setPositions(positions: Map<string, number>, ids: readonly string[]): void {
+  positions.clear();
+  ids.forEach((id, index) => positions.set(id, index));
 }
 
 function markBoardMutation(ids: readonly string[] | null): void {
