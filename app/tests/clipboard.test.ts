@@ -7,6 +7,7 @@ import {
   HIVE_CLIPBOARD_VERSION,
   notesAsPlainText,
   parseNotesPayload,
+  parseNotesPayloadAsync,
   findNonOverlappingZoneOffset,
   placementOffset,
   placeNotes,
@@ -73,6 +74,12 @@ describe("clipboard payload", () => {
     const parsed = parseNotesPayload(serializeNotes([calculator]));
     expect(parsed?.nodes).toHaveLength(1);
     expect(parsed?.nodes[0]).toMatchObject({ sourceId: calculator.id, type: "calculator", name: "Trip" });
+  });
+
+  it("validates a large paste payload in yielding slices with the same result", async () => {
+    const notes = Array.from({ length: 1_001 }, (_, index) => ({ ...noteA, id: `bulk-${index}` }));
+    const serialized = serializeNotes(notes);
+    expect(await parseNotesPayloadAsync(serialized)).toEqual(parseNotesPayload(serialized));
   });
 
   it("round trips Time schedules and runtime through the clipboard", () => {

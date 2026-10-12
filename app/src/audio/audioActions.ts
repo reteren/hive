@@ -5,15 +5,19 @@ import { screenToWorld, type Point } from "../board/cameraMath";
 import { dispatchImagePaste, registerImagePasteHandler } from "../attachments/pasteDispatch";
 import {
   importMediaFile,
-  importMediaPath,
+  importMediaPathBatch,
+  importWasCancelled,
+  addImportProgress,
+  mapConcurrent,
   mediaKindForFile,
   mediaKindForPath,
   registerFileDropHandler,
   reportImportError,
   type MediaImportResult,
+  withImportProgress,
 } from "../attachments/service";
-import { AUDIO_MIME_TYPES, IMAGE_MIME_TYPES } from "../attachments/types";
-import { createAudioNotes } from "../notes/noteCommands";
+import { AUDIO_MIME_TYPES, IMAGE_MIME_TYPES, type MediaRef } from "../attachments/types";
+import { createAudioNotesAsync } from "../notes/noteCommands";
 import { createDictaphoneNote } from "./recording.svelte";
 
 const AUDIO_EXTENSIONS = ["mp3", "wav", "ogg", "oga", "flac", "m4a", "m4b", "mka", "weba"];
@@ -107,7 +111,36 @@ export function handleBoardAudioPaste(event: ClipboardEvent): void {
 
 export async function importAudioPaths(paths: readonly string[], center: Point): Promise<boolean> {
   if (paths.length === 0) return false;
-  return importResults(paths.map((path) => () => importMediaPath(path)), center);
+  try {
+    return await withImportProgress("Import audio", paths.length, async (run) => {
+      const media: MediaRef[] = [];
+      const errors: string[] = [];
+      for (let offset = 0; offset < paths.length; offset += 200) {
+        if (importWasCancelled(run.id)) break;
+        const chunk = paths.slice(offset, offset + 200);
+        const results = await importMediaPathBatch(chunk, run.id, "audio");
+        for (const result of results) {
+          if (result.ok && result.media.kind === "audio") media.push(result.media);
+          else errors.push(result.ok ? "The selected file is not audio." : result.error);
+        }
+        if (importWasCancelled(run.id) || results.length < chunk.length) break;
+        await yieldToUi();
+      }
+      if (errors.length > 0 && !importWasCancelled(run.id)) {
+        reportImportError(errors[0]!);
+        return false;
+      }
+      if (media.length === 0) {
+        if (errors[0]) reportImportError(errors[0]);
+        return false;
+      }
+      await createAudioNotesAsync(media, center);
+      return true;
+    });
+  } catch (error) {
+    reportImportError(error instanceof Error ? error.message : String(error));
+    return false;
+  }
 }
 
 async function importAudioFiles(files: readonly File[], center: Point): Promise<boolean> {
@@ -119,18 +152,42 @@ async function importResults(
   center: Point,
 ): Promise<boolean> {
   if (importers.length === 0) return false;
-  const results = await Promise.all(importers.map(async (importer): Promise<MediaImportResult> => {
-    try {
-      return await importer();
-    } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : String(error) };
-    }
-  }));
-  const media = results.flatMap((result) => result.ok && result.media.kind === "audio" ? [result.media] : []);
-  const errors = results.flatMap((result) => result.ok
-    ? result.media.kind === "audio" ? [] : ["The selected file is not audio."]
-    : [result.error]);
-  if (media.length > 0) createAudioNotes(media, center);
-  for (const error of errors) reportImportError(error);
-  return media.length > 0;
+  try {
+    return await withImportProgress("Import audio", importers.length, async (run) => {
+      const media: MediaRef[] = [];
+      const errors: string[] = [];
+      for (let offset = 0; offset < importers.length; offset += 200) {
+        if (importWasCancelled(run.id)) break;
+        const chunk = importers.slice(offset, offset + 200);
+        const results = await mapConcurrent(chunk, 8, async (importer): Promise<MediaImportResult> => {
+          try { return await importer(); }
+          catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) }; }
+        });
+        const succeeded = results.filter((result) => result.ok && result.media.kind === "audio").length;
+        addImportProgress(run.id, results.length, succeeded, results.length - succeeded);
+        for (const result of results) {
+          if (result.ok && result.media.kind === "audio") media.push(result.media);
+          else errors.push(result.ok ? "The selected file is not audio." : result.error);
+        }
+        await yieldToUi();
+      }
+      if (errors.length > 0 && !importWasCancelled(run.id)) {
+        reportImportError(errors[0]!);
+        return false;
+      }
+      if (media.length === 0) {
+        if (errors[0]) reportImportError(errors[0]);
+        return false;
+      }
+      await createAudioNotesAsync(media, center);
+      return true;
+    });
+  } catch (error) {
+    reportImportError(error instanceof Error ? error.message : String(error));
+    return false;
+  }
+}
+
+async function yieldToUi(): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
 }

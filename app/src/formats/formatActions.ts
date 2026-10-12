@@ -3,11 +3,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { camera, viewport } from "../board/camera.svelte";
 import { screenToWorld, type Point } from "../board/cameraMath";
 import {
-  importMediaPath,
+  importMediaPathBatch,
+  importWasCancelled,
   mediaKindForPath,
   registerFileDropHandler,
   reportImportError,
   saveTextAttachment,
+  withImportProgress,
   type FileDropHandler,
   type MediaImportResult,
 } from "../attachments/service";
@@ -15,7 +17,7 @@ import type { MediaRef } from "../attachments/types";
 import { execute } from "../history/history.svelte";
 import { board, updateNote } from "../model/board.svelte";
 import { TEXT_FORMAT_LANGUAGES } from "../attachments/types";
-import { createFormatNotes } from "./formatCreation";
+import { createFormatNotesAsync } from "./formatCreation";
 import { isFormatMediaKind, normalizePdfZoom } from "./formatLogic";
 
 export type FormatPickerKind = "pdf" | "text";
@@ -47,19 +49,32 @@ export async function importFormatPaths(paths: readonly string[], center: Point,
   if (kinds.some((kind) => !isFormatMediaKind(kind)) || expected && kinds.some((kind) => kind !== expected)) return false;
 
   try {
-    const results = await Promise.all(paths.map((path) => importMediaPath(path)));
-    const failed = results.find((result) => !result.ok);
-    if (failed && !failed.ok) {
-      reportImportError(failed.error);
-      return false;
-    }
-    const media = results.flatMap((result) => result.ok ? [result.media] : []);
-    if (media.length !== paths.length || media.some((ref) => !isFormatMediaKind(ref.kind) || expected && ref.kind !== expected)) {
-      reportImportError("Choose a supported PDF or text file.");
-      return false;
-    }
-    createFormatNotes(media, center);
-    return true;
+    return await withImportProgress("Import files", paths.length, async (run) => {
+      const media: MediaRef[] = [];
+      const errors: string[] = [];
+      for (let offset = 0; offset < paths.length; offset += 200) {
+        if (importWasCancelled(run.id)) break;
+        const batchPaths = paths.slice(offset, offset + 200);
+        const results = await importMediaPathBatch(batchPaths, run.id, expected);
+        for (const result of results) {
+          if (!result.ok) errors.push(result.error);
+          else if (isFormatMediaKind(result.media.kind) && (!expected || result.media.kind === expected)) media.push(result.media);
+          else errors.push("Choose a supported PDF or text file.");
+        }
+        if (importWasCancelled(run.id) || results.length < batchPaths.length) break;
+      }
+      const cancelled = importWasCancelled(run.id);
+      if (!cancelled && errors.length > 0) {
+        reportImportError(errors[0]!);
+        return false;
+      }
+      if (media.length === 0) {
+        if (errors[0]) reportImportError(errors[0]);
+        return false;
+      }
+      await createFormatNotesAsync(media, center);
+      return media.length > 0;
+    });
   } catch (error) {
     reportImportError(error instanceof Error ? error.message : String(error));
     return false;

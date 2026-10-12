@@ -1,12 +1,25 @@
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { camera, viewport } from "../board/camera.svelte";
 import { screenToWorld, type Point } from "../board/cameraMath";
-import { boardDropKindForPath, registerFileDropHandler, type BoardDropKind, type FileDropHandler } from "../attachments/service";
+import {
+  addImportProgress,
+  boardDropKindForPath,
+  importMediaPathBatch,
+  importWasCancelled,
+  registerFileDropHandler,
+  reportImportError,
+  setImportProgressDetails,
+  withImportProgress,
+  type BoardDropKind,
+  type FileDropHandler,
+} from "../attachments/service";
 import { importImagePaths } from "../images/imageActions";
 import { importAudioPaths } from "../audio/audioActions";
-import { importVideoPaths } from "../video/import";
+import { createVideoNotesForImportAsync } from "../notes/noteCommands";
 import { createSourceNotes } from "../source/creation";
 import { importFormatPaths } from "./formatActions";
 import { importMarkdownPaths } from "./textDrop";
+import type { MediaRef } from "../attachments/types";
 
 export const BOARD_DROP_ORDER: readonly BoardDropKind[] = [
   "image", "pdf", "audio", "video", "markdown", "format", "source",
@@ -28,17 +41,56 @@ export function groupBoardDropPaths(paths: readonly string[]): { kind: BoardDrop
 }
 
 async function importBoardDrop(paths: readonly string[], center: Point): Promise<void> {
-  // Existing importers own their history commands; a mixed drop has one Undo per file kind.
-  for (const group of groupBoardDropPaths(paths)) {
-    switch (group.kind) {
-      case "image": await importImagePaths(group.paths, center); break;
-      case "pdf": await importFormatPaths(group.paths, center, "pdf"); break;
-      case "audio": await importAudioPaths(group.paths, center); break;
-      case "video": await importVideoPaths(group.paths, center); break;
-      case "markdown": await importMarkdownPaths(group.paths, center); break;
-      case "format": await importFormatPaths(group.paths, center, "text"); break;
-      case "source": void createSourceNotes(group.paths, center); break;
+  await withImportProgress("Import files", paths.length, async (run) => {
+    let files = [...paths];
+    if (isTauri()) {
+      setImportProgressDetails(run.id, "Scanning folders…", paths.length);
+      const expanded = await invoke<{ paths: string[]; skipped: number; truncated: boolean; cancelled: boolean }>(
+        "attachment_expand_paths",
+        { importId: run.id, paths, maxFiles: 100_000 },
+      );
+      files = expanded.paths;
+      setImportProgressDetails(run.id, "Import files", files.length);
+      if (expanded.skipped > 0) reportImportError(`${expanded.skipped} unsupported or inaccessible paths were skipped.`);
+      if (expanded.truncated) reportImportError("Import was limited to the first 100,000 files.");
+      if (expanded.cancelled || importWasCancelled(run.id)) return;
     }
+    for (const group of groupBoardDropPaths(files)) {
+      if (importWasCancelled(run.id)) break;
+      switch (group.kind) {
+        case "image": await importImagePaths(group.paths, center); break;
+        case "pdf": await importFormatPaths(group.paths, center, "pdf"); break;
+        case "audio": await importAudioPaths(group.paths, center); break;
+        case "video": await importVideoPathBatch(group.paths, center, run.id); break;
+        case "markdown": await importMarkdownPaths(group.paths, center); break;
+        case "format": await importFormatPaths(group.paths, center, "text"); break;
+        case "source": {
+          const ids = await createSourceNotes(group.paths, center);
+          addImportProgress(run.id, group.paths.length, ids.length, group.paths.length - ids.length);
+          break;
+        }
+      }
+    }
+  });
+}
+
+async function importVideoPathBatch(paths: readonly string[], center: Point, importId: string): Promise<void> {
+  const media: MediaRef[] = [];
+  const errors: string[] = [];
+  for (let offset = 0; offset < paths.length; offset += 200) {
+    if (importWasCancelled(importId)) break;
+    const chunk = paths.slice(offset, offset + 200);
+    const results = await importMediaPathBatch(chunk, importId, "video");
+    for (const result of results) {
+      if (result.ok && result.media.kind === "video") media.push(result.media);
+      else errors.push(result.ok ? "Only supported MP4 and WebM videos can be imported here." : result.error);
+    }
+    if (importWasCancelled(importId) || results.length < chunk.length) break;
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+  if (errors.length > 0 && !importWasCancelled(importId)) reportImportError(errors[0]!);
+  if (media.length > 0 && (errors.length === 0 || importWasCancelled(importId))) {
+    await createVideoNotesForImportAsync(media, center);
   }
 }
 
@@ -48,7 +100,9 @@ export const boardFileDropHandler: FileDropHandler = (paths, target, client) => 
   if (!boardElement) return false;
   const bounds = boardElement.getBoundingClientRect();
   const center = screenToWorld(camera, viewport, { x: client.x - bounds.left, y: client.y - bounds.top });
-  void importBoardDrop(paths, center);
+  void importBoardDrop(paths, center).catch((error: unknown) => {
+    reportImportError(error instanceof Error ? error.message : String(error));
+  });
   return true;
 };
 

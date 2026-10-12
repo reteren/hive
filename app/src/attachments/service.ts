@@ -1,5 +1,6 @@
 import { convertFileSrc, invoke, isTauri } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { beginHistoryTransaction, commitHistoryTransaction } from "../history/history.svelte";
 import { project } from "../project/project.svelte";
 import { showLinkStatus } from "../links-in-text/contextMenu.svelte";
 import { preferences } from "../settings/preferences.svelte";
@@ -38,7 +39,7 @@ const EXTENSION_BY_MIME: Record<(typeof IMAGE_MIME_TYPES)[number], string> = {
   "image/bmp": "bmp",
 };
 
-interface StoredAttachment {
+export interface StoredAttachment {
   file: string;
   mime: string;
   size: number;
@@ -51,6 +52,251 @@ const browserAttachments = new Map<string, string>();
 const browserAttachmentsByContent = new Map<string, string>();
 const dropHandlers: { priority: number; sequence: number; handler: FileDropHandler }[] = [];
 let nextHandlerSequence = 0;
+let importSequence = 0;
+let importProgressCursor = 0;
+
+export const MAX_IMPORT_BATCH_FILES = 200;
+
+export interface ImportRun {
+  id: string;
+}
+
+export interface ImportProgressState {
+  id: string | null;
+  active: boolean;
+  label: string;
+  total: number;
+  completed: number;
+  succeeded: number;
+  failed: number;
+  currentFile: string;
+  cancelRequested: boolean;
+}
+
+export interface ImportProgressEvent {
+  importId: string;
+  completed: number;
+  total: number;
+  succeeded: number;
+  failed: number;
+  currentFile: string;
+}
+
+export interface AttachmentPathBatchItem {
+  path: string;
+  attachment?: StoredAttachment;
+  error?: string;
+}
+
+export interface AttachmentPathBatch {
+  items: AttachmentPathBatchItem[];
+  processed: number;
+  cancelled: boolean;
+}
+
+export const importProgress: ImportProgressState = {
+  id: null,
+  active: false,
+  label: "",
+  total: 0,
+  completed: 0,
+  succeeded: 0,
+  failed: 0,
+  currentFile: "",
+  cancelRequested: false,
+};
+const importProgressListeners = new Set<(progress: ImportProgressState) => void>();
+
+export function subscribeImportProgress(listener: (progress: ImportProgressState) => void): () => void {
+  importProgressListeners.add(listener);
+  listener({ ...importProgress });
+  return () => importProgressListeners.delete(listener);
+}
+
+function updateImportProgress(patch: Partial<ImportProgressState>): void {
+  Object.assign(importProgress, patch);
+  const snapshot = { ...importProgress };
+  for (const listener of importProgressListeners) listener(snapshot);
+}
+
+/** Run an import as one history transaction so batch-created nodes undo together. */
+export async function withImportProgress<T>(
+  label: string,
+  total: number,
+  operation: (run: ImportRun) => Promise<T>,
+): Promise<T> {
+  if (importProgress.active && importProgress.id) return operation({ id: importProgress.id });
+
+  const id = makeImportId();
+  importProgressCursor = 0;
+  updateImportProgress({
+    id,
+    active: true,
+    label,
+    total: Math.max(0, total),
+    completed: 0,
+    succeeded: 0,
+    failed: 0,
+    currentFile: "",
+    cancelRequested: false,
+  });
+  beginHistoryTransaction(label);
+  try {
+    return await operation({ id });
+  } finally {
+    try {
+      commitHistoryTransaction();
+    } finally {
+      if (isTauri()) {
+        await invoke("attachment_finish_import", { importId: id }).catch(() => undefined);
+      }
+      if (importProgress.id === id) {
+        updateImportProgress({
+          id: null,
+          active: false,
+          label: "",
+          currentFile: "",
+          cancelRequested: false,
+        });
+      }
+    }
+  }
+}
+
+/** Called by the global progress surface for native file-level events. */
+export function receiveImportProgress(event: ImportProgressEvent): void {
+  if (!importProgress.active || event.importId !== importProgress.id) return;
+  importProgressCursor = Math.max(importProgressCursor, event.completed);
+  updateImportProgress({
+    completed: Math.min(importProgress.total, importProgressCursor),
+    currentFile: event.currentFile,
+  });
+}
+
+export function addImportProgress(importId: string, processed: number, succeeded: number, failed: number, currentFile = ""): void {
+  if (importProgress.id !== importId) return;
+  importProgressCursor = Math.min(importProgress.total, importProgressCursor + processed);
+  updateImportProgress({
+    completed: importProgressCursor,
+    succeeded: importProgress.succeeded + succeeded,
+    failed: importProgress.failed + failed,
+    currentFile,
+  });
+}
+
+/** Add outcome counts when a native event already advanced the completed-file cursor. */
+export function addImportOutcome(importId: string, succeeded: number, failed: number, currentFile = ""): void {
+  if (importProgress.id !== importId) return;
+  updateImportProgress({
+    succeeded: importProgress.succeeded + succeeded,
+    failed: importProgress.failed + failed,
+    ...(currentFile ? { currentFile } : {}),
+  });
+}
+
+export function setImportProgressCompleted(importId: string, completed: number): void {
+  if (importProgress.id !== importId) return;
+  importProgressCursor = Math.max(importProgressCursor, completed);
+  updateImportProgress({ completed: Math.min(importProgress.total, importProgressCursor) });
+}
+
+export function setImportProgressDetails(importId: string, label: string, total: number): void {
+  if (importProgress.id !== importId) return;
+  updateImportProgress({ label, total: Math.max(0, total), completed: 0, currentFile: "" });
+  importProgressCursor = 0;
+}
+
+export function requestImportCancel(): void {
+  const importId = importProgress.id;
+  if (!importId || importProgress.cancelRequested) return;
+  updateImportProgress({ cancelRequested: true });
+  if (isTauri()) void invoke("attachment_cancel_import", { importId }).catch((error: unknown) => {
+    reportImportError(errorMessage(error));
+  });
+}
+
+export function importWasCancelled(importId: string): boolean {
+  return importProgress.id === importId && importProgress.cancelRequested;
+}
+
+/** Import one bounded native path chunk, returning completed files even after cancellation. */
+export async function importAttachmentPathBatch(
+  paths: readonly string[],
+  importId: string,
+  kindHints: readonly (MediaKind | null)[] = paths.map((path) => mediaKindForPath(path)),
+): Promise<AttachmentPathBatch> {
+  if (paths.length === 0) return { items: [], processed: 0, cancelled: importWasCancelled(importId) };
+  if (paths.length > MAX_IMPORT_BATCH_FILES) throw new RangeError(`Import batches are limited to ${MAX_IMPORT_BATCH_FILES} files.`);
+  if (paths.length !== kindHints.length) throw new RangeError("Import paths and kind hints must have matching lengths.");
+  if (importWasCancelled(importId)) return { items: [], processed: 0, cancelled: true };
+  if (!isTauri()) {
+    const items = paths.map((path) => ({ path, error: "Importing a file path is available in the desktop app." }));
+    addImportProgress(importId, items.length, 0, items.length, items.at(-1)?.path.split(/[\\/]/).at(-1) ?? "");
+    return { items, processed: items.length, cancelled: false };
+  }
+
+  const progressOffset = importProgress.id === importId ? importProgressCursor : 0;
+  const response = await invoke<AttachmentPathBatch>("attachment_import_paths", {
+    importId,
+    paths: [...paths],
+    kindHints: kindHints.map((kind) => kind ?? null),
+    progressOffset,
+    totalCount: importProgress.id === importId ? importProgress.total : paths.length,
+    videoExternalThresholdBytes: videoExternalThresholdBytes(preferences.videoExternalThresholdMb),
+  });
+  const succeeded = response.items.filter((item) => Boolean(item.attachment)).length;
+  const failed = response.items.length - succeeded;
+  if (importProgress.id === importId) {
+    importProgressCursor = Math.max(importProgressCursor, progressOffset + response.processed);
+    updateImportProgress({
+      completed: Math.min(importProgress.total, importProgressCursor),
+      succeeded: importProgress.succeeded + succeeded,
+      failed: importProgress.failed + failed,
+      currentFile: response.items.at(-1)?.path.split(/[\\/]/).at(-1) ?? "",
+    });
+  }
+  return response;
+}
+
+/** Convert a native path chunk into validated image refs, keeping decode concurrency bounded. */
+export async function importImagePathBatch(paths: readonly string[], importId: string): Promise<ImportResult[]> {
+  const batch = await importAttachmentPathBatch(paths, importId, paths.map(() => null));
+  const directory = await invoke<string>("attachment_directory");
+  return mapConcurrent(batch.items, 8, async (item): Promise<ImportResult> => {
+    if (item.error || !item.attachment) return { ok: false, error: item.error ?? "The image could not be imported." };
+    const stored = item.attachment;
+    try {
+      const source = convertFileSrc(joinPath(directory, stored.file));
+      const natural = await readNaturalSizeFromUrl(source);
+      if (!stored.mime.startsWith("image/")) return { ok: false, error: unsupportedType(stored.name ?? item.path) };
+      return { ok: true, image: { file: stored.file, mime: stored.mime, size: stored.size, ...(stored.name ? { name: stored.name } : {}), ...natural } };
+    } catch (error) {
+      return { ok: false, error: errorMessage(error) };
+    }
+  });
+}
+
+/** Convert a native path chunk into media refs without letting a single bad file discard its peers. */
+export async function importMediaPathBatch(paths: readonly string[], importId: string, expected?: MediaKind): Promise<MediaImportResult[]> {
+  const batch = await importAttachmentPathBatch(paths, importId);
+  return mapConcurrent(batch.items, 8, async (item): Promise<MediaImportResult> => {
+    if (item.error || !item.attachment) return { ok: false, error: item.error ?? "The file could not be imported." };
+    const kind = item.attachment.kind as MediaKind | undefined;
+    if (!kind || expected && kind !== expected) {
+      return { ok: false, error: expected ? `The selected file is not ${expected}.` : "The selected file is not a supported media file." };
+    }
+    try {
+      return { ok: true, media: await makeMediaRef(item.attachment, kind) };
+    } catch (error) {
+      return { ok: false, error: errorMessage(error) };
+    }
+  });
+}
+
+function makeImportId(): string {
+  const random = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${++importSequence}`;
+  return `import-${random}`;
+}
 
 /** Store an image from clipboard or browser File input and read dimensions before exposing it. */
 export async function importImageFile(file: File): Promise<ImportResult> {
@@ -659,6 +905,20 @@ function mediaLimitError(kind: MediaKind): string {
 function safeSuggestedName(name: string, fallback: string): string {
   const leaf = name.split(/[\\/]/).at(-1)?.replace(/[\u0000-\u001f<>:"|?*]/g, "_").trim();
   return leaf || fallback;
+}
+
+export async function mapConcurrent<T, U>(items: readonly T[], concurrency: number, map: (item: T, index: number) => Promise<U>): Promise<U[]> {
+  const results = new Array<U>(items.length);
+  let cursor = 0;
+  const workerCount = Math.min(items.length, Math.max(1, Math.floor(concurrency)));
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (true) {
+      const index = cursor++;
+      if (index >= items.length) return;
+      results[index] = await map(items[index]!, index);
+    }
+  }));
+  return results;
 }
 
 function joinPath(directory: string, child: string): string {

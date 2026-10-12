@@ -266,6 +266,90 @@ export function parseNotesPayload(serialized: string): HiveClipboardPayload | nu
   };
 }
 
+/** Parse large paste payloads in yielding validation slices so the UI can process input between batches. */
+export async function parseNotesPayloadAsync(serialized: string, batchSize = 500): Promise<HiveClipboardPayload | null> {
+  let value: unknown;
+  try {
+    value = JSON.parse(serialized);
+  } catch {
+    return null;
+  }
+  if (!isRecord(value) || value.marker !== HIVE_CLIPBOARD_MARKER ||
+    (value.version !== 1 && value.version !== 2 && value.version !== HIVE_CLIPBOARD_VERSION)) return null;
+  if (!Array.isArray(value.nodes) || value.nodes.length > 10_000 ||
+    !Array.isArray(value.links) || value.links.length > 10_000 ||
+    value.version === 3 && (!Array.isArray(value.zones) || value.zones.length > 10_000)) return null;
+  const rawNodes = value.nodes as unknown[];
+  const rawZones = (Array.isArray(value.zones) ? value.zones : []) as unknown[];
+  const rawLinks = value.links as unknown[];
+  if (rawNodes.length === 0 && rawZones.length === 0) return null;
+
+  const size = Math.max(1, Math.floor(batchSize));
+  const ids = new Set<string>();
+  const nodes: ClipboardNode[] = [];
+  for (let offset = 0; offset < rawNodes.length; offset += size) {
+    const end = Math.min(rawNodes.length, offset + size);
+    for (let index = offset; index < end; index += 1) {
+      const node = parseClipboardNode(rawNodes[index]);
+      if (!node || ids.has(node.sourceId)) return null;
+      ids.add(node.sourceId);
+      nodes.push(node);
+    }
+    if (end < rawNodes.length) await yieldClipboardParse();
+  }
+
+  const zones: ClipboardZone[] = [];
+  const zoneIds = new Set<string>();
+  for (let offset = 0; offset < rawZones.length; offset += size) {
+    const end = Math.min(rawZones.length, offset + size);
+    for (let index = offset; index < end; index += 1) {
+      const zone = parseClipboardZone(rawZones[index]);
+      if (!zone || ids.has(zone.sourceId) || zoneIds.has(zone.sourceId)) return null;
+      zoneIds.add(zone.sourceId);
+      zones.push(zone);
+    }
+    if (end < rawZones.length) await yieldClipboardParse();
+  }
+
+  const links: ClipboardLink[] = [];
+  const pairs = new Set<string>();
+  for (let offset = 0; offset < rawLinks.length; offset += size) {
+    const end = Math.min(rawLinks.length, offset + size);
+    for (let index = offset; index < end; index += 1) {
+      const candidate = rawLinks[index];
+      if (!isClipboardLink(candidate) || !ids.has(candidate.from) || !ids.has(candidate.to)) return null;
+      const pair = candidate.from < candidate.to
+        ? `${candidate.from}|${candidate.to}`
+        : `${candidate.to}|${candidate.from}`;
+      if (candidate.from === candidate.to || pairs.has(pair)) return null;
+      pairs.add(pair);
+      links.push({
+        from: candidate.from,
+        to: candidate.to,
+        kind: candidate.kind,
+        shape: normalizeClipboardLineShape(candidate.shape),
+        ...(candidate.fromAnchor ? { fromAnchor: candidate.fromAnchor } : {}),
+        ...(candidate.toAnchor ? { toAnchor: candidate.toAnchor } : {}),
+      });
+    }
+    if (end < rawLinks.length) await yieldClipboardParse();
+  }
+  return { marker: HIVE_CLIPBOARD_MARKER, version: HIVE_CLIPBOARD_VERSION, nodes, links, zones };
+}
+
+function yieldClipboardParse(): Promise<void> {
+  if (typeof MessageChannel === "undefined") return new Promise((resolve) => setTimeout(resolve, 0));
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      channel.port1.close();
+      channel.port2.close();
+      resolve();
+    };
+    channel.port2.postMessage(undefined);
+  });
+}
+
 /** Completion and remembered state belong to the source note; pasted copies start clean. */
 export function taskFieldsForPaste(note: Pick<Note, "task" | "taskMemory">): Pick<Note, "task" | "taskMemory"> {
   const task = note.task;

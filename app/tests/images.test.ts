@@ -84,7 +84,7 @@ describe("board images", () => {
     expect(history.cursor).toBe(1);
     expect(history.entries).toHaveLength(1);
     expect(board.notes[ids[0]!]).toMatchObject({
-      type: "image", name: "Board image", x: 80, y: 70, width: 40, height: 20,
+      type: "image", name: "Board image", x: 59, y: 70, width: 40, height: 20,
       headerHidden: true, text: "", image: imageRef,
     });
     expect(typeof board.notes[ids[0]!]?.createdAt).toBe("number");

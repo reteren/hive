@@ -42,6 +42,7 @@
   import DrawToolbar from "./drawing/DrawToolbar.svelte";
   import ImageEraseLayer from "./attachments/ImageEraseLayer.svelte";
   import NoteGlowPopover from "./notes/NoteGlowPopover.svelte";
+  import ImportProgress from "./ui/ImportProgress.svelte";
 
   let topMenuOpen = $state(false);
   let undoLogCommand = $derived(getCommand("ui.toggleUndoLog"));
@@ -163,6 +164,7 @@
     </div>
     <PanelPopups />
     <UpdateBanner />
+    <ImportProgress />
     <SettingsPanel />
     <div class="overlay-bottom-right">
       <HistoryToast />

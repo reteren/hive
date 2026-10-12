@@ -3,15 +3,19 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
 import {
   clipboardImageFiles,
   importImageFile,
-  importImagePath,
+  importImagePathBatch,
+  importWasCancelled,
+  addImportProgress,
   registerFileDropHandler,
   reportImportError,
+  withImportProgress,
+  mapConcurrent,
   type FileDropHandler,
   type ImportResult,
 } from "../attachments/service";
 import { dispatchImagePaste, registerImagePasteHandler } from "../attachments/pasteDispatch";
 import { screenToWorld, type Point } from "../board/cameraMath";
-import { createImageNotes } from "../notes/noteCommands";
+import { createImageNotesAsync } from "../notes/noteCommands";
 
 const IMAGE_EXTENSION: Record<(typeof IMAGE_MIME_TYPES)[number], string> = {
   "image/bmp": "bmp",
@@ -22,7 +26,37 @@ const IMAGE_EXTENSION: Record<(typeof IMAGE_MIME_TYPES)[number], string> = {
 };
 
 export async function importImagePaths(paths: readonly string[], center: Point): Promise<boolean> {
-  return runImageImportBatch(paths, importImagePath, center);
+  if (paths.length === 0) return false;
+  try {
+    return await withImportProgress("Import images", paths.length, async (run) => {
+      const images: ImageRef[] = [];
+      const errors: string[] = [];
+      for (let offset = 0; offset < paths.length; offset += 200) {
+        if (importWasCancelled(run.id)) break;
+        const chunk = paths.slice(offset, offset + 200);
+        const results = await importImagePathBatch(chunk, run.id);
+        for (const result of results) {
+          if (result.ok) images.push(result.image);
+          else errors.push(result.error);
+        }
+        if (importWasCancelled(run.id) || results.length < chunk.length) break;
+        await yieldToUi();
+      }
+      if (errors.length > 0 && !importWasCancelled(run.id)) {
+        reportImportError(errors[0]!);
+        return false;
+      }
+      if (images.length === 0) {
+        if (errors[0]) reportImportError(errors[0]);
+        return false;
+      }
+      await createImageNotesAsync(images, center);
+      return true;
+    });
+  } catch (error) {
+    reportImportError(error instanceof Error ? error.message : String(error));
+    return false;
+  }
 }
 
 export async function importImageFiles(files: readonly File[], center: Point): Promise<boolean> {
@@ -34,26 +68,44 @@ export async function runImageImportBatch<T>(
   inputs: readonly T[],
   importer: (input: T) => Promise<ImportResult>,
   center: Point,
-  create: (images: readonly ImageRef[], center: Point) => unknown = createImageNotes,
+  create: (images: readonly ImageRef[], center: Point) => unknown = createImageNotesAsync,
   onError: (error: string) => void = reportImportError,
 ): Promise<boolean> {
   if (inputs.length === 0) return false;
-  let results: ImportResult[];
   try {
-    results = await Promise.all(inputs.map((input) => importer(input)));
+    return await withImportProgress("Import images", inputs.length, async (run) => {
+      const images: ImageRef[] = [];
+      const errors: string[] = [];
+      for (let offset = 0; offset < inputs.length; offset += 200) {
+        if (importWasCancelled(run.id)) break;
+        const chunk = inputs.slice(offset, offset + 200);
+        const results = await mapConcurrent(chunk, 8, async (input): Promise<ImportResult> => {
+          try { return await importer(input); }
+          catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) }; }
+        });
+        const successes = results.flatMap((result) => result.ok ? [result.image] : []);
+        const failures = results.flatMap((result) => result.ok ? [] : [result.error]);
+        images.push(...successes);
+        errors.push(...failures);
+        addImportProgress(run.id, results.length, successes.length, failures.length);
+        await yieldToUi();
+      }
+      if (errors.length > 0 && !importWasCancelled(run.id)) {
+        onError(errors[0]!);
+        return false;
+      }
+      if (images.length === 0) return false;
+      await create(images, center);
+      return true;
+    });
   } catch (error) {
     onError(error instanceof Error ? error.message : String(error));
     return false;
   }
-  const failed = results.find((result) => !result.ok);
-  if (failed && !failed.ok) {
-    onError(failed.error);
-    return false;
-  }
-  const images = results.flatMap((result) => result.ok ? [result.image] : []);
-  if (images.length !== inputs.length) return false;
-  create(images, center);
-  return true;
+}
+
+async function yieldToUi(): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
 }
 
 export async function importClipboardItems(items: readonly ClipboardItem[]): Promise<File[]> {

@@ -2,26 +2,30 @@ import { defaultMessageData } from "../messages/data";
 import { registerCommand } from "../commands/registry.svelte";
 import { nodeBodyFor } from "./nodeBodies";
 import { execute } from "../history/history.svelte";
-import { addNote, board, removeNote } from "../model/board.svelte";
+import { addNote, addNotes, board, removeNote, removeNotes } from "../model/board.svelte";
 import { BEACON_SIZE, DEFAULT_NOTE_WIDTH, newId, R5_BASE_WIDTHS, type Note, type NoteKind } from "../model/note";
 import { pointer } from "../board/camera.svelte";
 import { grid } from "../board/grid.svelte";
 import {
-  creationObstacleForNote,
   estimatedCreationHeight,
-  randomFreeNoteCenter,
+  randomFreeNoteCenterFromQuery,
+  queryBoardCreationObstacles,
+  queryBoardCreationRightEdge,
+  placeCreationGrid,
+  creationNameAllocator,
+  boardCreationNameAllocator,
+  mapCreationBatch,
   notePositionAt,
+  yieldCreationWork,
 } from "./creationPosition";
 import type { Point } from "../board/cameraMath";
 import { editing } from "./editing.svelte";
-import { measuredHeights } from "./layout.svelte";
 import { closeCreationMenu, creationMenu, creationMenuTrigger, openCreationMenu } from "./creation.svelte";
 import { uniqueName } from "./naming";
 import { registerNoteMenuItem } from "./noteMenu";
 import {
   captureSelectionSnapshot,
   clearSelection,
-  includeSelected,
   restoreSelectionSnapshot,
   selectOnly,
   selection,
@@ -36,6 +40,7 @@ import { defaultAtTimeSchedule } from "../time/uiSchedule";
 import type { ImageRef, MediaRef } from "../attachments/types";
 import { imageNodeName, initialImageSize } from "../images/imageLogic";
 import { openPdfExternally, registerFormatDropHandler } from "../formats/formatActions";
+import { fitVideoSize } from "../video/logic";
 
 export const DEFAULT_MINI_NOTE_WIDTH = 18;
 
@@ -69,11 +74,11 @@ export function createNoteKind(kind: NoteKind, task = false): string {
     text: "",
   });
   const id = newId();
-  const freeCenter = randomFreeNoteCenter(
+  const freeCenter = randomFreeNoteCenterFromQuery(
     creationMenu.origin,
     width,
     height,
-    Object.values(board.notes).map((note) => creationObstacleForNote(note, measuredHeights[note.id])),
+    queryBoardCreationObstacles,
     grid.snap,
     grid.step,
   );
@@ -113,86 +118,110 @@ export function createNoteKind(kind: NoteKind, task = false): string {
 /** Add imported pictures as independent image nodes with one history entry per import action. */
 export function createImageNotes(images: readonly ImageRef[], center: Point): string[] {
   if (images.length === 0) return [];
-  const occupiedNames = Object.values(board.notes).map((note) => note.name);
-  const notes = images.map((image, index): Note => {
-    const size = initialImageSize(image);
-    const name = uniqueName(imageNodeName(image.name), occupiedNames);
-    occupiedNames.push(name);
-    const cascade = index * 2.2;
-    return {
-      id: newId(),
-      type: "image",
-      name,
-      text: "",
-      x: center.x + cascade - size.width / 2,
-      y: center.y + cascade - size.height / 2,
-      width: size.width,
-      height: size.height,
-      createdAt: Date.now(),
-      headerHidden: true,
-      image: { ...image },
-    };
-  });
-  const ids = notes.map((note) => note.id);
-  const startIndex = board.order.length;
-  const previousSelection = captureSelectionSnapshot();
+  const createName = creationNameAllocator(Object.values(board.notes).map((note) => note.name));
+  return commitImportedNotes(placeImportedNotesInGrid(images.map((image) => imageNote(image, createName)), center), "Import images");
+}
 
-  execute({
-    label: "Import images",
-    target: `${notes.length} ${notes.length === 1 ? "image" : "images"}`,
-    do: () => {
-      notes.forEach((note, index) => addNote(note, startIndex + index));
-      clearSelection();
-      if (ids[0]) selectOnly(ids[0]);
-      for (const id of ids.slice(1)) includeSelected(id);
-    },
-    undo: () => {
-      for (const id of [...ids].reverse()) removeNote(id);
-      restoreSelectionSnapshot(previousSelection);
-    },
-  });
-  return ids;
+export async function createImageNotesAsync(images: readonly ImageRef[], center: Point): Promise<string[]> {
+  if (images.length === 0) return [];
+  const createName = await boardCreationNameAllocator();
+  const unplaced = await mapCreationBatch(images, (image) => imageNote(image, createName));
+  const notes = placeImportedNotesInGrid(unplaced, center);
+  await yieldCreationWork();
+  return commitImportedNotes(notes, "Import images");
 }
 
 /** Add imported audio files as independent nodes in one undoable import action. */
 export function createAudioNotes(files: readonly MediaRef[], center: Point): string[] {
   const audioFiles = files.filter((media) => media.kind === "audio");
   if (audioFiles.length === 0) return [];
-  const occupiedNames = Object.values(board.notes).map((note) => note.name);
+  const createName = creationNameAllocator(Object.values(board.notes).map((note) => note.name));
   const width = R5_BASE_WIDTHS.audio;
-  const notes = audioFiles.map((media, index): Note => {
-    const baseName = media.name?.replace(/\.[^.\\/]+$/, "") || "Audio";
-    const name = uniqueName(baseName, occupiedNames);
-    occupiedNames.push(name);
-    const cascade = index * 2.2;
-    return {
-      id: newId(),
-      type: "audio",
-      name,
-      text: "",
-      x: center.x + cascade - width / 2,
-      y: center.y + cascade - 8,
-      width,
-      height: null,
-      createdAt: Date.now(),
-      media: { ...media },
-    };
-  });
+  return commitImportedNotes(placeImportedNotesInGrid(audioFiles.map((media) => audioNote(media, createName, center, width)), center), "Import audio");
+}
+
+export async function createAudioNotesAsync(files: readonly MediaRef[], center: Point): Promise<string[]> {
+  const audioFiles = files.filter((media) => media.kind === "audio");
+  if (audioFiles.length === 0) return [];
+  const createName = await boardCreationNameAllocator();
+  const width = R5_BASE_WIDTHS.audio;
+  const unplaced = await mapCreationBatch(audioFiles, (media) => audioNote(media, createName, center, width));
+  const notes = placeImportedNotesInGrid(unplaced, center);
+  await yieldCreationWork();
+  return commitImportedNotes(notes, "Import audio");
+}
+
+/** Bulk import videos through the same indexed placement and batched history path. */
+export function createVideoNotesForImport(files: readonly MediaRef[], center: Point): string[] {
+  const videos = files.filter((media) => media.kind === "video");
+  if (videos.length === 0) return [];
+  const createName = creationNameAllocator(Object.values(board.notes).map((note) => note.name));
+  const notes = placeImportedNotesInGrid(videos.map((media) => videoNote(media, createName, center)), center);
+  return commitImportedNotes(notes, videos.length === 1 ? "Import video" : "Import videos");
+}
+
+export async function createVideoNotesForImportAsync(files: readonly MediaRef[], center: Point): Promise<string[]> {
+  const videos = files.filter((media) => media.kind === "video");
+  if (videos.length === 0) return [];
+  const createName = await boardCreationNameAllocator();
+  const unplaced = await mapCreationBatch(videos, (media) => videoNote(media, createName, center));
+  const notes = placeImportedNotesInGrid(unplaced, center);
+  await yieldCreationWork();
+  return commitImportedNotes(notes, videos.length === 1 ? "Import video" : "Import videos");
+}
+
+function placeImportedNotesInGrid(notes: readonly Note[], center: Point): Note[] {
+  const items = notes.map((note) => ({ note, width: note.width, height: estimatedCreationHeight(note) }));
+  return placeCreationGrid(items, center, queryBoardCreationRightEdge, grid.snap, grid.step)
+    .map(({ note, x, y }) => ({ ...note, x, y }));
+}
+
+function imageNote(image: ImageRef, createName: (base: string) => string): Note {
+  const size = initialImageSize(image);
+  return {
+    id: newId(), type: "image", name: createName(imageNodeName(image.name)), text: "",
+    x: 0, y: 0, width: size.width, height: size.height, createdAt: Date.now(),
+    headerHidden: true, image: { ...image },
+  };
+}
+
+function audioNote(media: MediaRef, createName: (base: string) => string, center: Point, width: number): Note {
+  const baseName = media.name?.replace(/\.[^.\\/]+$/, "") || "Audio";
+  return {
+    id: newId(), type: "audio", name: createName(baseName), text: "", x: center.x - width / 2, y: center.y - 8,
+    width, height: null, createdAt: Date.now(), media: { ...media },
+  };
+}
+
+function videoNote(media: MediaRef, createName: (base: string) => string, center: Point): Note {
+  const size = fitVideoSize(media.naturalWidth, media.naturalHeight);
+  return {
+    id: newId(), type: "video", name: createName(media.name?.trim() || "Video"), text: "",
+    x: center.x - size.width / 2, y: center.y - size.height / 2,
+    width: size.width, height: null, createdAt: Date.now(), media: { ...media },
+  };
+}
+
+function commitImportedNotes(notes: readonly Note[], label: string): string[] {
+  if (notes.length === 0) return [];
   const ids = notes.map((note) => note.id);
   const startIndex = board.order.length;
   const previousSelection = captureSelectionSnapshot();
-
   execute({
-    label: "Import audio",
-    target: `${notes.length} ${notes.length === 1 ? "audio file" : "audio files"}`,
+    label,
+    target: `${notes.length} ${label === "Import audio"
+      ? notes.length === 1 ? "audio file" : "audio files"
+      : label === "Import images"
+        ? notes.length === 1 ? "image" : "images"
+        : notes.length === 1 ? "video" : "videos"}`,
     do: () => {
-      notes.forEach((note, index) => addNote(note, startIndex + index));
+      addNotes(notes, startIndex);
       clearSelection();
-      if (ids[0]) selectOnly(ids[0]);
-      for (const id of ids.slice(1)) includeSelected(id);
+      selection.ids = [...ids];
+      selection.primaryId = ids.at(-1) ?? null;
     },
     undo: () => {
-      for (const id of [...ids].reverse()) removeNote(id);
+      removeNotes(ids);
       restoreSelectionSnapshot(previousSelection);
     },
   });

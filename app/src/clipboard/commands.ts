@@ -1,7 +1,7 @@
 import { camera, pointer } from "../board/camera.svelte";
 import { grid } from "../board/grid.svelte";
 import { DEFAULT_NOTE_WIDTH, newId, type Note } from "../model/note";
-import { board, addNote, removeNote } from "../model/board.svelte";
+import { board, addNote, addNotes, removeNote, removeNotes } from "../model/board.svelte";
 import { addLink, links, removeLink } from "../model/links.svelte";
 import type { Link } from "../model/link";
 import { addZone, removeZone, zones } from "../model/zones.svelte";
@@ -13,12 +13,8 @@ import { noteFileKey } from "../project/fileNames";
 import {
   captureSelectionSnapshot,
   clearSelection,
-  clearZoneSelection,
-  includeSelected,
   restoreSelectionSnapshot,
   selection,
-  setPrimary,
-  toggleZoneSelected,
 } from "../selection/selection.svelte";
 import { registerCommand, runCommand } from "../commands/registry.svelte";
 import { isTextEditingTarget } from "../commands/focus";
@@ -29,7 +25,6 @@ import { translateShape } from "../zones/shape";
 import { beaconPaletteColor } from "../beacons/beaconPalette";
 import { removeCreatedBankRowForLink } from "../calculator/bankActions.svelte";
 import { moveToTrash } from "../trash/trashActions.svelte";
-import { linkedTimeStatesForTask } from "../time/taskLink";
 import { restartTimeNode } from "../time/runtime.svelte";
 import { copyTimeNodeData } from "../time/data";
 import { copyTimeForHost } from "../combo/data";
@@ -40,16 +35,18 @@ import { importAudioClipboardItems } from "../audio/audioActions";
 import { copyAudioRecordings } from "../audio/recordingData";
 import { dispatchImagePaste } from "../attachments/pasteDispatch";
 import {
-  creationObstacleForNote,
+  creationNameAllocator,
   estimatedCreationHeight,
-  randomFreeNoteCenter,
-  type CreationObstacle,
+  moveCreationGroupToFreeSpot,
+  queryBoardCreationRightEdge,
+  mapCreationBatch,
 } from "../notes/creationPosition";
 import {
   HIVE_CLIPBOARD_MIME,
   HIVE_CLIPBOARD_WEB_MIME,
   notesAsPlainText,
   parseNotesPayload,
+  parseNotesPayloadAsync,
   placementOffset,
   findNonOverlappingZoneOffset,
   remapClipboardLinks,
@@ -143,6 +140,7 @@ export function deleteSelection(): void {
 }
 
 export function duplicateSelection(): void {
+  if (clipboardBusy) return;
   const originals = includeActiveTaskTimes(selectedNotes());
   const originalZones = selectedZones();
   if (originals.length === 0 && originalZones.length === 0) {
@@ -150,12 +148,22 @@ export function duplicateSelection(): void {
     return;
   }
 
-  const copies = createCopies(
-    originals.map((note) => ({ ...note, sourceId: note.id })),
-    originalZones,
-    pointer.world ? { ...pointer.world } : null,
-    linksBetween(originals),
-  );
+  const sources = originals.map((note) => ({ ...note, sourceId: note.id }));
+  const destination = pointer.world ? { ...pointer.world } : null;
+  const sourceLinks = linksBetween(originals);
+  if (sources.length > 500 || originalZones.length > 500) {
+    clipboardBusy = true;
+    void createCopiesAsync(sources, originalZones, destination, sourceLinks)
+      .then(finishDuplicateCopies)
+      .catch((error: unknown) => showClipboardFeedback(clipboardErrorMessage(error)))
+      .finally(() => { clipboardBusy = false; });
+    return;
+  }
+
+  finishDuplicateCopies(createCopiesSync(sources, originalZones, destination, sourceLinks));
+}
+
+function finishDuplicateCopies(copies: Awaited<ReturnType<typeof createCopiesAsync>>): void {
   if (!copies) {
     showClipboardFeedback("Can't place copied zones without overlap");
     return;
@@ -185,7 +193,7 @@ export async function pasteFromClipboard(): Promise<void> {
       return;
     }
     if (source.kind === "hive") {
-      const copies = createCopies(source.payload.nodes, source.payload.zones, destination, source.payload.links);
+      const copies = await createCopiesAsync(source.payload.nodes, source.payload.zones, destination, source.payload.links);
       if (!copies) {
         showClipboardFeedback("Can't place copied zones without overlap");
         return;
@@ -257,16 +265,15 @@ function selectedZoneIds(): string[] {
 }
 
 function setZoneIds(ids: readonly string[]): void {
-  clearZoneSelection();
-  for (const id of ids) toggleZoneSelected(id);
+  selection.zoneIds = [...ids];
 }
 
 function selectIds(ids: readonly string[], zoneIds: readonly string[] = []): void {
   clearSelection();
   clearSelectedLink();
   setZoneIds([]);
-  for (const id of ids) includeSelected(id);
-  if (ids.length > 0) setPrimary(ids[ids.length - 1]);
+  selection.ids = [...ids];
+  selection.primaryId = ids.at(-1) ?? null;
   setZoneIds(zoneIds.filter((id) => Boolean(zones.byId[id])));
 }
 
@@ -284,7 +291,8 @@ type CopySource = Omit<Pick<Note,
   sourceId: string;
 };
 
-function createCopies(
+/** Small duplicate gestures stay synchronous so selection commands retain their immediate behavior. */
+function createCopiesSync(
   sourceNotes: readonly CopySource[],
   sourceZoneValues: readonly (Zone | ClipboardZone)[],
   destination: { x: number; y: number } | null,
@@ -292,23 +300,18 @@ function createCopies(
 ): { notes: Note[]; zones: Zone[]; links: Link[]; placementHeights: Map<string, number> } | null {
   const sourceZones = sourceZoneValues.map((zone) => normalizeSourceZone(zone));
   const existingNotes = Object.values(board.notes);
-  const existingNames = existingNotes.map((note) => note.name);
   const occupiedNames = [
-    ...existingNames,
+    ...existingNotes.map((note) => note.name),
     ...sourceNotes.filter((note) => note.type === "calculator").map((note) => note.name),
   ];
+  const allocateName = creationNameAllocator(occupiedNames);
   const nonCalculatorKeys = new Set([
     ...existingNotes.filter((note) => note.type !== "calculator"),
     ...sourceNotes.filter((note) => note.type !== "calculator"),
-  ]
-    .map((note) => noteFileKey(note.name)));
+  ].map((note) => noteFileKey(note.name)));
   const names = sourceNotes.map((note) => {
     const key = noteFileKey(note.name);
-    const name = note.type === "calculator" && !nonCalculatorKeys.has(key)
-      ? note.name
-      : uniqueName(note.name, occupiedNames);
-    occupiedNames.push(name);
-    return name;
+    return note.type === "calculator" && !nonCalculatorKeys.has(key) ? note.name : allocateName(note.name);
   });
   const sourceZoneNames = zones.order.flatMap((id) => zones.byId[id]?.name ?? []);
   const zoneNames = uniqueCopyNames(sourceZones.map((zone) => zone.name), sourceZoneNames);
@@ -321,49 +324,107 @@ function createCopies(
     const id = newId();
     idMap.set(note.sourceId, id);
     const measuredHeight = measuredHeights[note.sourceId];
+    if (note.height === null && Number.isFinite(measuredHeight) && measuredHeight > 0) placementHeights.set(id, measuredHeight);
+    return copyNoteForPaste(note, id, names[index]!, offset, idMap, zoneIdMap);
+  });
+  const translatedZones = sourceZones.map((zone, index) => ({
+    ...translateZone(zone, offset), id: zoneIdMap.get(zone.id)!, name: zoneNames[index], createdAt: Date.now(),
+  }));
+  const existingZones = zones.order.flatMap((id) => zones.byId[id] ? [zones.byId[id]] : []);
+  const nonOverlappingOffset = findNonOverlappingZoneOffset(translatedZones, existingZones);
+  if (!nonOverlappingOffset) return null;
+  const copiedZones = translatedZones.map((zone) => translateZone(zone, nonOverlappingOffset));
+  const copiedNotes = nonOverlappingOffset.x === 0 && nonOverlappingOffset.y === 0
+    ? notes : notes.map((note) => ({ ...note, x: note.x + nonOverlappingOffset.x, y: note.y + nonOverlappingOffset.y }));
+  return { notes: copiedNotes, zones: copiedZones, links: remapClipboardLinks(sourceLinks, idMap), placementHeights };
+}
+
+function copyNoteForPaste(
+  note: CopySource,
+  id: string,
+  name: string,
+  offset: { x: number; y: number },
+  idMap: ReadonlyMap<string, string>,
+  zoneIdMap: ReadonlyMap<string, string>,
+): Note {
+  return {
+    id, type: note.type, name, text: note.text,
+    x: note.x + offset.x, y: note.y + offset.y, width: note.width,
+    height: note.type === "purpose" || note.type === "mood" ? null : note.height,
+    createdAt: note.createdAt ?? Date.now(),
+    ...taskFieldsForPaste(note),
+    ...(note.time ? { time: copyTimeForHost(note.type, note.time) } : {}),
+    ...(note.message ? { message: { ...note.message } } : {}),
+    ...(note.embedSections ? { embedSections: { ...note.embedSections } } : {}),
+    ...(note.headerHidden ? { headerHidden: true } : {}),
+    ...(note.textHidden ? { textHidden: true } : {}),
+    ...((note.type === "youtube" || note.type === "video") && note.frameHidden === true ? { frameHidden: true as const } : {}),
+    ...(note.image ? { image: { ...note.image } } : {}),
+    ...(note.type === "image" && note.opacity !== undefined ? { opacity: note.opacity } : {}),
+    ...(note.media ? { media: { ...note.media } } : {}),
+    ...(note.pdfZoom !== undefined ? { pdfZoom: note.pdfZoom } : {}),
+    ...(note.recordings ? { recordings: copyAudioRecordings(note.recordings) } : {}),
+    ...(note.youtube ? { youtube: { ...note.youtube } } : {}),
+    ...(note.glow ? { glow: { ...note.glow } } : {}),
+    ...(note.accentColor ? { accentColor: note.accentColor } : {}),
+    ...(note.type === "source" && note.source ? { source: { ...note.source } } : {}),
+    ...(note.flipX === true ? { flipX: true as const } : {}),
+    ...(note.flipY === true ? { flipY: true as const } : {}),
+    ...(note.gifStopped === true ? { gifStopped: true as const } : {}),
+    ...(note.listItems ? { listItems: note.listItems.map((item) => ({ ...item, targetId: item.targetId ? idMap.get(item.targetId) ?? item.targetId : null })) } : {}),
+    ...(note.listStats === true ? { listStats: true } : {}),
+    ...(note.inboxGroup ? { inboxGroup: note.inboxGroup } : {}),
+    ...(note.randomPick ? { randomPick: { ...note.randomPick, listId: idMap.get(note.randomPick.listId) ?? note.randomPick.listId } } : {}),
+    ...(note.customMarks ? { customMarks: note.customMarks.map((mark) => ({ ...mark })) } : {}),
+    ...(note.customMarkFrame === true ? { customMarkFrame: true } : {}),
+    importance: note.importance ?? null,
+    purposes: [...new Set(note.purposes ?? [])],
+    ...(note.type === "beacon" ? { color: note.color ?? beaconPaletteColor(0) } : note.color ? { color: note.color } : {}),
+    zoneId: note.zoneId ? zoneIdMap.get(note.zoneId) ?? null : null,
+  };
+}
+
+async function createCopiesAsync(
+  sourceNotes: readonly CopySource[],
+  sourceZoneValues: readonly (Zone | ClipboardZone)[],
+  destination: { x: number; y: number } | null,
+  sourceLinks: readonly ClipboardLink[],
+): Promise<{ notes: Note[]; zones: Zone[]; links: Link[]; placementHeights: Map<string, number> } | null> {
+  const sourceZones = sourceZoneValues.map((zone) => normalizeSourceZone(zone));
+  const existingNotes = (await mapCreationBatch(board.order, (id) => board.notes[id]).then((notes) => notes.filter((note): note is Note => Boolean(note))));
+  const existingNames = existingNotes.map((note) => note.name);
+  const occupiedNames = [
+    ...existingNames,
+    ...sourceNotes.filter((note) => note.type === "calculator").map((note) => note.name),
+  ];
+  const allocateName = creationNameAllocator(occupiedNames);
+  const nonCalculatorKeys = new Set([
+    ...existingNotes.filter((note) => note.type !== "calculator"),
+    ...sourceNotes.filter((note) => note.type !== "calculator"),
+  ]
+    .map((note) => noteFileKey(note.name)));
+  const names = await mapCreationBatch(sourceNotes, (note) => {
+    const key = noteFileKey(note.name);
+    const name = note.type === "calculator" && !nonCalculatorKeys.has(key)
+      ? note.name
+      : allocateName(note.name);
+    return name;
+  });
+  const sourceZoneNames = zones.order.flatMap((id) => zones.byId[id]?.name ?? []);
+  const zoneNames = uniqueCopyNames(sourceZones.map((zone) => zone.name), sourceZoneNames);
+  const offset = placementOffset(sourceNotes, sourceZones, destination);
+  const idMap = new Map<string, string>();
+  const zoneIdMap = new Map<string, string>();
+  const placementHeights = new Map<string, number>();
+  sourceZones.forEach((zone) => zoneIdMap.set(zone.id, newId()));
+  const notes = await mapCreationBatch(sourceNotes, (note, index) => {
+    const id = newId();
+    idMap.set(note.sourceId, id);
+    const measuredHeight = measuredHeights[note.sourceId];
     if (note.height === null && Number.isFinite(measuredHeight) && measuredHeight > 0) {
       placementHeights.set(id, measuredHeight);
     }
-    return {
-      id,
-      type: note.type,
-      name: names[index],
-      text: note.text,
-      x: note.x + offset.x,
-      y: note.y + offset.y,
-      width: note.width,
-      height: note.type === "purpose" || note.type === "mood" ? null : note.height,
-      createdAt: note.createdAt ?? Date.now(),
-      ...taskFieldsForPaste(note),
-      ...(note.time ? { time: copyTimeForHost(note.type, note.time) } : {}),
-      ...(note.message ? { message: { ...note.message } } : {}),
-      ...(note.embedSections ? { embedSections: { ...note.embedSections } } : {}),
-      ...(note.headerHidden ? { headerHidden: true } : {}),
-      ...(note.textHidden ? { textHidden: true } : {}),
-      ...((note.type === "youtube" || note.type === "video") && note.frameHidden === true ? { frameHidden: true as const } : {}),
-      ...(note.image ? { image: { ...note.image } } : {}),
-      ...(note.type === "image" && note.opacity !== undefined ? { opacity: note.opacity } : {}),
-      ...(note.media ? { media: { ...note.media } } : {}),
-      ...(note.pdfZoom !== undefined ? { pdfZoom: note.pdfZoom } : {}),
-      ...(note.recordings ? { recordings: copyAudioRecordings(note.recordings) } : {}),
-      ...(note.youtube ? { youtube: { ...note.youtube } } : {}),
-      ...(note.glow ? { glow: { ...note.glow } } : {}),
-      ...(note.accentColor ? { accentColor: note.accentColor } : {}),
-      ...(note.type === "source" && note.source ? { source: { ...note.source } } : {}),
-      ...(note.flipX === true ? { flipX: true as const } : {}),
-      ...(note.flipY === true ? { flipY: true as const } : {}),
-      ...(note.gifStopped === true ? { gifStopped: true as const } : {}),
-      ...(note.listItems ? { listItems: note.listItems.map((item) => ({ ...item, targetId: item.targetId ? idMap.get(item.targetId) ?? item.targetId : null })) } : {}),
-      ...(note.listStats === true ? { listStats: true } : {}),
-      ...(note.inboxGroup ? { inboxGroup: note.inboxGroup } : {}),
-      ...(note.randomPick ? { randomPick: { ...note.randomPick, listId: idMap.get(note.randomPick.listId) ?? note.randomPick.listId } } : {}),
-      ...(note.customMarks ? { customMarks: note.customMarks.map((mark) => ({ ...mark })) } : {}),
-      ...(note.customMarkFrame === true ? { customMarkFrame: true } : {}),
-      importance: note.importance ?? null,
-      purposes: [...new Set(note.purposes ?? [])],
-      ...(note.type === "beacon" ? { color: note.color ?? beaconPaletteColor(0) } : note.color ? { color: note.color } : {}),
-      zoneId: note.zoneId ? zoneIdMap.get(note.zoneId) ?? null : null,
-    };
+    return copyNoteForPaste(note, id, names[index]!, offset, idMap, zoneIdMap);
   });
   const translatedZones = sourceZones.map((zone, index) => ({
     ...translateZone(zone, offset),
@@ -378,6 +439,7 @@ function createCopies(
   const copiedNotes = nonOverlappingOffset.x === 0 && nonOverlappingOffset.y === 0
     ? notes
     : notes.map((note) => ({ ...note, x: note.x + nonOverlappingOffset.x, y: note.y + nonOverlappingOffset.y }));
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
   return { notes: copiedNotes, zones: copiedZones, links: remapClipboardLinks(sourceLinks, idMap), placementHeights };
 }
 
@@ -396,7 +458,7 @@ function addCopies(
     label,
     target,
     do: () => {
-      placedNotes.forEach((note, index) => addNote(note, startIndex + index));
+      addNotes(placedNotes, startIndex);
       copiedZones.forEach(addZone);
       copiedLinks.forEach(addLink);
       const reminderTimeIds = activeTaskTimeIds(placedNotes, copiedLinks);
@@ -409,7 +471,7 @@ function addCopies(
         // A pasted strong link into a calculator created a bank row; undoing the paste removes it.
         removeCreatedBankRowForLink(link);
       });
-      for (const id of ids) removeNote(id);
+      removeNotes(ids);
       for (const id of zoneIds) removeZone(id);
       restoreSelectionSnapshot(previousSelection);
     },
@@ -421,29 +483,28 @@ function addCopies(
 function includeActiveTaskTimes(notes: readonly Note[]): Note[] {
   const result = [...notes];
   const includedIds = new Set(notes.map((note) => note.id));
-  for (const task of notes) {
-    if (!task.task) continue;
-    for (const linkedTime of linkedTimeStatesForTask(task.id, Object.values(links.byId), board.notes)) {
-      const time = board.notes[linkedTime.noteId];
-      if (!linkedTime.enabled || !time || includedIds.has(time.id)) continue;
-      result.push({ ...time, time: time.time ? copyTimeNodeData(time.time) : undefined });
-      includedIds.add(time.id);
-    }
+  const taskIds = new Set(notes.flatMap((note) => note.task ? [note.id] : []));
+  const includeTime = (id: string): void => {
+    const time = board.notes[id];
+    if (!time?.time?.enabled || includedIds.has(time.id)) return;
+    result.push({ ...time, time: copyTimeNodeData(time.time) });
+    includedIds.add(time.id);
+  };
+  for (const id of taskIds) includeTime(id);
+  for (const edge of Object.values(links.byId)) {
+    if (edge.kind === "strong" && taskIds.has(edge.from)) includeTime(edge.to);
   }
   return result;
 }
 
 function activeTaskTimeIds(notes: readonly Note[], edges: readonly Pick<Link, "from" | "to" | "kind">[]): string[] {
   const byId = new Map(notes.map((note) => [note.id, note]));
+  const taskIds = new Set(notes.flatMap((note) => note.task ? [note.id] : []));
   const result = new Set<string>();
-  for (const task of notes) {
-    if (!task.task) continue;
-    for (const edge of edges) {
-      const time = byId.get(edge.to);
-      if (edge.kind === "strong" && edge.from === task.id && time?.type === "time" && time.time?.enabled) {
-        result.add(time.id);
-      }
-    }
+  for (const edge of edges) {
+    if (edge.kind !== "strong" || !taskIds.has(edge.from)) continue;
+    const time = byId.get(edge.to);
+    if (time?.type === "time" && time.time?.enabled) result.add(time.id);
   }
   return [...result];
 }
@@ -453,17 +514,13 @@ function hasActiveTaskTime(notes: readonly Note[], edges: readonly Pick<Link, "f
 }
 
 function placeNewNotesWithoutOverlap(notes: readonly Note[], placementHeights?: ReadonlyMap<string, number>): Note[] {
-  const obstacles: CreationObstacle[] = Object.values(board.notes).map((note) =>
-    creationObstacleForNote(note, measuredHeights[note.id]),
+  return moveCreationGroupToFreeSpot(
+    notes,
+    queryBoardCreationRightEdge,
+    grid.snap,
+    grid.step,
+    (note) => placementHeights?.get(note.id) ?? measuredHeights[note.id],
   );
-  return notes.map((note) => {
-    const height = estimatedCreationHeight(note, placementHeights?.get(note.id));
-    const center = { x: note.x + note.width / 2, y: note.y + height / 2 };
-    const placedCenter = randomFreeNoteCenter(center, note.width, height, obstacles, grid.snap, grid.step);
-    const placed = { ...note, x: placedCenter.x - note.width / 2, y: placedCenter.y - height / 2 };
-    obstacles.push(creationObstacleForNote(placed));
-    return placed;
-  });
 }
 
 function deleteSelectionItems(notes: readonly Note[], zoneIds: readonly string[], label: "Cut" | "Delete"): void {
@@ -583,7 +640,7 @@ async function readClipboard(): Promise<ClipboardSource> {
         if (customType) {
           try {
             const serialized = await (await item.getType(customType)).text();
-            const payload = parseNotesPayload(serialized);
+            const payload = await parseNotesPayloadAsync(serialized);
             if (payload) return { kind: "hive", payload };
           } catch {
             // A damaged custom representation can still have a usable text/plain fallback.

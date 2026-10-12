@@ -3,7 +3,11 @@ import { worldToScreen, type Camera, type Point, type Size } from "../board/came
 import { BEACON_SIZE, normalizeNoteScale } from "../model/note";
 import type { NoteKind } from "../model/note";
 import { inboxHeightForEntryCount } from "../inbox/inboxLayout";
-import { GridIndex } from "../board/spatialIndex";
+import { queryRect } from "../board/visibility.svelte";
+import { board, onBoardMutation } from "../model/board.svelte";
+import { noteBounds } from "./layout.svelte";
+import { widthWithListStatistics } from "../stats/listStatsLayout";
+import { noteFileKey, sanitizeNoteName } from "../project/fileNames";
 
 /** Keep newly created board objects visually distinct from their neighbours. */
 export const CREATION_GAP = 2;
@@ -48,6 +52,156 @@ export interface PositionedCreationNote extends CreationNoteSize {
   x: number;
   y: number;
   scale?: number;
+}
+
+// The visibility layer may not have mounted yet (for example during synchronous commands/tests).
+// Track cheap mutation ids locally so indexed creation queries still see newly added or moved notes.
+const pendingCreationIndexIds = new Set<string>();
+let creationIndexNeedsRebuild = false;
+let pendingCreationIndexClearQueued = false;
+onBoardMutation((ids) => {
+  if (ids === null) {
+    creationIndexNeedsRebuild = true;
+    pendingCreationIndexIds.clear();
+  } else if (!creationIndexNeedsRebuild) {
+    for (const id of ids) pendingCreationIndexIds.add(id);
+  }
+});
+
+/** Allocate many unique imported names with one indexed pass over existing names. */
+export function creationNameAllocator(existingNames: readonly string[]): (base: string) => string {
+  return allocatorFromOccupied(new Set(existingNames.map(noteFileKey)));
+}
+
+/** Build a board-wide name index without holding the main thread across every existing node. */
+export async function boardCreationNameAllocator(batchSize = 1_000): Promise<(base: string) => string> {
+  const occupied = new Set<string>();
+  const size = Math.max(1, Math.floor(batchSize));
+  for (let index = 0; index < board.order.length; index += 1) {
+    const note = board.notes[board.order[index]!];
+    if (note) occupied.add(noteFileKey(note.name));
+    if ((index + 1) % size === 0 && index + 1 < board.order.length) await yieldCreationWork();
+  }
+  return allocatorFromOccupied(occupied);
+}
+
+/** Map an import chunk in small synchronous slices, yielding so progress and cancellation can paint. */
+export async function mapCreationBatch<T, U>(
+  items: readonly T[],
+  map: (item: T, index: number) => U,
+  batchSize = 500,
+): Promise<U[]> {
+  const result: U[] = [];
+  const size = Math.max(1, Math.floor(batchSize));
+  for (let offset = 0; offset < items.length; offset += size) {
+    const end = Math.min(items.length, offset + size);
+    for (let index = offset; index < end; index += 1) result.push(map(items[index]!, index));
+    if (end < items.length) await yieldCreationWork();
+  }
+  return result;
+}
+
+export function yieldCreationWork(): Promise<void> {
+  if (typeof MessageChannel === "undefined") return new Promise((resolve) => setTimeout(resolve, 0));
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      channel.port1.close();
+      channel.port2.close();
+      resolve();
+    };
+    channel.port2.postMessage(undefined);
+  });
+}
+
+function allocatorFromOccupied(occupied: Set<string>): (base: string) => string {
+  const nextSuffix = new Map<string, number>();
+  return (base: string): string => {
+    const safeBase = sanitizeNoteName(base.trim());
+    const baseKey = noteFileKey(safeBase);
+    if (!occupied.has(baseKey)) {
+      occupied.add(baseKey);
+      nextSuffix.set(baseKey, 2);
+      return safeBase;
+    }
+
+    let suffix = nextSuffix.get(baseKey) ?? 2;
+    let candidate = suffixedCreationName(safeBase, suffix);
+    let candidateKey = noteFileKey(candidate);
+    while (occupied.has(candidateKey)) {
+      suffix += 1;
+      candidate = suffixedCreationName(safeBase, suffix);
+      candidateKey = noteFileKey(candidate);
+    }
+    occupied.add(candidateKey);
+    nextSuffix.set(baseKey, suffix + 1);
+    return candidate;
+  };
+}
+
+function suffixedCreationName(base: string, suffix: number): string {
+  const suffixText = ` ${suffix}`;
+  const maxBaseUnits = Math.max(1, 120 - suffixText.length);
+  let truncated = "";
+  for (const character of base) {
+    if (truncated.length + character.length > maxBaseUnits) break;
+    truncated += character;
+  }
+  return sanitizeNoteName(`${truncated.replace(/[. ]+$/g, "") || "Note"}${suffixText}`);
+}
+
+/** Return only indexed notes touching a candidate placement rectangle. */
+export function queryBoardCreationObstacles(bounds: CreationObstacle): CreationObstacle[] {
+  return queryCreationIds(bounds).flatMap((id) => {
+    const note = board.notes[id];
+    return note ? [noteBounds(note)] : [];
+  });
+}
+
+/** Lightweight right edges for bulk placement, where a whole group moves past every nearby object. */
+export function queryBoardCreationRightEdge(bounds: CreationObstacle): number | null {
+  let rightmost = Number.NEGATIVE_INFINITY;
+  for (const id of queryCreationIds(bounds)) {
+    const note = board.notes[id];
+    if (!note) continue;
+    const right = note.x + widthWithListStatistics(note) * normalizeNoteScale(note.scale);
+    if (Number.isFinite(right)) rightmost = Math.max(rightmost, right);
+  }
+  return Number.isFinite(rightmost) ? rightmost : null;
+}
+
+function queryCreationIds(bounds: CreationObstacle): string[] {
+  const ids = new Set(queryRect(bounds));
+  if (creationIndexNeedsRebuild) {
+    // Opening/replacing a board is explicitly allowed to rebuild; this also covers commands that run
+    // before the NotesLayer has started the shared index listener.
+    ids.clear();
+    for (const id of board.order) {
+      const note = board.notes[id];
+      if (note && intersectsCreationRect(noteBounds(note), bounds)) ids.add(id);
+    }
+    creationIndexNeedsRebuild = false;
+    pendingCreationIndexIds.clear();
+  } else {
+    for (const id of pendingCreationIndexIds) {
+      const note = board.notes[id];
+      if (note && intersectsCreationRect(noteBounds(note), bounds)) ids.add(id);
+      else ids.delete(id);
+    }
+    if (!pendingCreationIndexClearQueued && pendingCreationIndexIds.size > 0) {
+      pendingCreationIndexClearQueued = true;
+      queueMicrotask(() => {
+        pendingCreationIndexIds.clear();
+        pendingCreationIndexClearQueued = false;
+      });
+    }
+  }
+  return [...ids];
+}
+
+function intersectsCreationRect(first: CreationObstacle, second: CreationObstacle): boolean {
+  return first.x < second.x + second.width && first.x + first.width > second.x &&
+    first.y < second.y + second.height && first.y + first.height > second.y;
 }
 
 /** Keyboard creation follows the board cursor; toolbar creation uses the view centre. */
@@ -171,7 +325,7 @@ export interface CreationGridSize {
 export function placeCreationGrid<T extends CreationGridSize>(
   items: readonly T[],
   center: Point,
-  queryObstacles: (bounds: CreationObstacle) => readonly CreationObstacle[],
+  queryObstacles: (bounds: CreationObstacle) => readonly CreationObstacle[] | number | null,
   snap: boolean,
   step: number,
 ): Array<T & Point> {
@@ -219,29 +373,20 @@ export function placeCreationGrid<T extends CreationGridSize>(
 
   for (let attempt = 0; attempt < 100_000; attempt += 1) {
     const envelope = expandRect({ x: left, y: top, width: gridWidth, height: gridHeight }, CREATION_GAP);
-    const obstacles = [...queryObstacles(envelope), fixed].filter(isValidObstacle);
-    const index = new GridIndex(64, 256);
-    obstacles.forEach((obstacle, obstacleIndex) => index.set(`creation:${obstacleIndex}`, obstacle));
-    const placed = items.map((item, index) => ({
-      item,
-      x: left + columnOffsets[index % columns]! + columnWidths[index % columns]! / 2 - item.width / 2,
-      y: top + rowOffsets[Math.floor(index / columns)]! + rowHeights[Math.floor(index / columns)]! / 2 - item.height / 2,
-    }));
-    const blockers = new Map<string, CreationObstacle>();
-    for (const position of placed) {
-      const centerAt = { x: position.x + position.item.width / 2, y: position.y + position.item.height / 2 };
-      const nearby = index.query(expandedCreationRect(centerAt, position.item.width, position.item.height, CREATION_GAP));
-      for (const id of nearby) {
-        const obstacle = index.rectOf(id);
-        if (obstacle && rectangleDistance(centerAt, position.item.width, position.item.height, obstacle) < CREATION_GAP - 1e-9) {
-          blockers.set(id, obstacle);
-        }
-      }
+    const obstacleRight = rightmostInFirstOccupiedBand(envelope, queryObstacles);
+    const fixedIntersects = rectsIntersect(envelope, fixed);
+    if (obstacleRight === null && !fixedIntersects) {
+      return items.map((item, index) => ({
+        ...item,
+        x: left + columnOffsets[index % columns]! + columnWidths[index % columns]! / 2 - item.width / 2,
+        y: top + rowOffsets[Math.floor(index / columns)]! + rowHeights[Math.floor(index / columns)]! / 2 - item.height / 2,
+      }));
     }
-    if (blockers.size === 0) return placed.map(({ item, x, y }) => ({ ...item, x, y }));
 
-    let maxRight = Number.NEGATIVE_INFINITY;
-    for (const obstacle of blockers.values()) maxRight = Math.max(maxRight, obstacle.x + obstacle.width);
+    const maxRight = Math.max(
+      obstacleRight ?? Number.NEGATIVE_INFINITY,
+      fixedIntersects ? fixed.x + fixed.width : Number.NEGATIVE_INFINITY,
+    );
     let shift = maxRight - left + CREATION_GAP;
     if (!Number.isFinite(shift) || shift <= 0) shift = gridWidth + CREATION_GAP;
     if (snap) shift = Math.ceil(shift / step) * step;
@@ -253,7 +398,7 @@ export function placeCreationGrid<T extends CreationGridSize>(
 /** Shift a pasted group as one unit, retaining all of its internal spacing. */
 export function moveCreationGroupToFreeSpot<T extends PositionedCreationNote>(
   notes: readonly T[],
-  queryObstacles: (bounds: CreationObstacle) => readonly CreationObstacle[],
+  queryObstacles: (bounds: CreationObstacle) => readonly CreationObstacle[] | number | null,
   snap: boolean,
   step: number,
   measuredHeightFor?: (note: T) => number | undefined,
@@ -266,10 +411,18 @@ export function moveCreationGroupToFreeSpot<T extends PositionedCreationNote>(
     width: note.width * normalizeNoteScale(note.scale),
     height: estimatedCreationHeight(note, measuredHeightFor?.(note)) * normalizeNoteScale(note.scale),
   }));
-  let left = Math.min(...notes.map((note) => note.x));
-  const top = Math.min(...notes.map((note) => note.y));
-  const right = Math.max(...notes.map((note, index) => note.x + sizes[index]!.width));
-  const bottom = Math.max(...notes.map((note, index) => note.y + sizes[index]!.height));
+  let left = Number.POSITIVE_INFINITY;
+  let top = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+  for (let index = 0; index < notes.length; index += 1) {
+    const note = notes[index]!;
+    const size = sizes[index]!;
+    left = Math.min(left, note.x);
+    top = Math.min(top, note.y);
+    right = Math.max(right, note.x + size.width);
+    bottom = Math.max(bottom, note.y + size.height);
+  }
   const originalLeft = left;
   const originalTop = top;
   const groupWidth = right - left;
@@ -282,26 +435,9 @@ export function moveCreationGroupToFreeSpot<T extends PositionedCreationNote>(
 
   for (let attempt = 0; attempt < 100_000; attempt += 1) {
     const envelope = expandRect({ x: left, y: top, width: groupWidth, height: bottom - top }, CREATION_GAP);
-    const obstacles = [...queryObstacles(envelope), fixed].filter(isValidObstacle);
-    const index = new GridIndex(64, 256);
-    obstacles.forEach((obstacle, obstacleIndex) => index.set(`group:${obstacleIndex}`, obstacle));
-    const blockers = new Map<string, CreationObstacle>();
-    for (let itemIndex = 0; itemIndex < notes.length; itemIndex += 1) {
-      const note = notes[itemIndex]!;
-      const size = sizes[itemIndex]!;
-      const centerAt = {
-        x: note.x + (left - originalLeft) + size.width / 2,
-        y: note.y + (top - originalTop) + size.height / 2,
-      };
-      const nearby = index.query(expandedCreationRect(centerAt, size.width, size.height, CREATION_GAP));
-      for (const id of nearby) {
-        const obstacle = index.rectOf(id);
-        if (obstacle && rectangleDistance(centerAt, size.width, size.height, obstacle) < CREATION_GAP - 1e-9) {
-          blockers.set(id, obstacle);
-        }
-      }
-    }
-    if (blockers.size === 0) {
+    const obstacleRight = rightmostInFirstOccupiedBand(envelope, queryObstacles);
+    const fixedIntersects = rectsIntersect(envelope, fixed);
+    if (obstacleRight === null && !fixedIntersects) {
       const deltaX = left - originalLeft;
       const deltaY = top - originalTop;
       return notes.map((note) => ({
@@ -310,8 +446,10 @@ export function moveCreationGroupToFreeSpot<T extends PositionedCreationNote>(
         y: note.y + deltaY,
       }));
     }
-    let maxRight = Number.NEGATIVE_INFINITY;
-    for (const obstacle of blockers.values()) maxRight = Math.max(maxRight, obstacle.x + obstacle.width);
+    const maxRight = Math.max(
+      obstacleRight ?? Number.NEGATIVE_INFINITY,
+      fixedIntersects ? fixed.x + fixed.width : Number.NEGATIVE_INFINITY,
+    );
     let shift = maxRight - left + CREATION_GAP;
     if (!Number.isFinite(shift) || shift <= 0) shift = groupWidth + CREATION_GAP;
     if (snap) shift = Math.ceil(shift / step) * step;
@@ -326,6 +464,35 @@ function expandedCreationRect(center: Point, width: number, height: number, marg
 
 function expandRect(rect: CreationObstacle, margin: number): CreationObstacle {
   return { x: rect.x - margin, y: rect.y - margin, width: rect.width + margin * 2, height: rect.height + margin * 2 };
+}
+
+function rightmostObstacle(obstacles: readonly CreationObstacle[] | number | null): number | null {
+  if (typeof obstacles === "number") return Number.isFinite(obstacles) ? obstacles : null;
+  if (!obstacles) return null;
+  let rightmost = Number.NEGATIVE_INFINITY;
+  for (const obstacle of obstacles) {
+    if (isValidObstacle(obstacle)) rightmost = Math.max(rightmost, obstacle.x + obstacle.width);
+  }
+  return Number.isFinite(rightmost) ? rightmost : null;
+}
+
+function rightmostInFirstOccupiedBand(
+  bounds: CreationObstacle,
+  queryObstacles: (bounds: CreationObstacle) => readonly CreationObstacle[] | number | null,
+): number | null {
+  const bandHeight = 64;
+  const bottom = bounds.y + bounds.height;
+  for (let y = bounds.y; y < bottom; y += bandHeight) {
+    const band = { x: bounds.x, y, width: bounds.width, height: Math.min(bandHeight, bottom - y) };
+    const right = rightmostObstacle(queryObstacles(band));
+    if (right !== null) return right;
+  }
+  return null;
+}
+
+function rectsIntersect(first: CreationObstacle, second: CreationObstacle): boolean {
+  return first.x < second.x + second.width && first.x + first.width > second.x &&
+    first.y < second.y + second.height && first.y + first.height > second.y;
 }
 
 function estimateTextLines(text: string, width: number): number {
