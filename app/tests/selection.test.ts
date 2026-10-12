@@ -22,6 +22,7 @@ import {
   updateResizeGesture,
 } from "../src/selection/gestures";
 import { hasResizeHandle, resizeNote } from "../src/selection/resize";
+import { resolveCanvasNotePressTarget } from "../src/selection/noteMoveIntent";
 import {
   captureSelectionSnapshot,
   clearSelection,
@@ -58,6 +59,19 @@ const noteB: Note = {
 };
 
 describe("selection hit testing", () => {
+  it("resolves only min-tier canvas hits and keeps the topmost exact hit", () => {
+    expect(resolveCanvasNotePressTarget("min", null, false, ["b", "a"]))
+      .toEqual({ id: "b", fromCanvas: true });
+    expect(resolveCanvasNotePressTarget("simple", null, false, ["b"]))
+      .toBeNull();
+    expect(resolveCanvasNotePressTarget("min", null, false, []))
+      .toBeNull();
+    expect(resolveCanvasNotePressTarget("min", null, true, ["b"]))
+      .toBeNull();
+    expect(resolveCanvasNotePressTarget("min", "dom-note", true, ["b"]))
+      .toEqual({ id: "dom-note", fromCanvas: false });
+  });
+
   it("treats the full interior and edge of group bounds as a move surface", () => {
     const bounds = { x: 10, y: 20, width: 30, height: 40 };
     expect(pointInBounds({ x: 25, y: 35 }, bounds)).toBe(true);

@@ -36,6 +36,9 @@ export const visible: { ids: ReadonlySet<string>; rect: Rect } = $state({
   rect: { x: 0, y: 0, width: 0, height: 0 },
 });
 
+/** Pinned notes (playing media, recording, a shell being opened): always mounted with their full body. */
+export const pinned: { ids: ReadonlySet<string> } = $state({ ids: new Set<string>() });
+
 const index = new GridIndex(CELL);
 const dirty = new Set<string>();
 let everythingDirty = true;
@@ -65,14 +68,21 @@ export function pinNote(id: string, reason: string): () => void {
   }
   reasons.set(token, reason);
   membershipDirty = true;
+  publishPins();
   scheduleVisibility();
   return () => {
     const current = pins.get(id);
     if (!current?.delete(token)) return;
     if (current.size === 0) pins.delete(id);
     membershipDirty = true;
+    publishPins();
     scheduleVisibility();
   };
+}
+
+function publishPins(): void {
+  const ids = new Set(pins.keys());
+  if (ids.size !== pinned.ids.size || [...ids].some((id) => !pinned.ids.has(id))) pinned.ids = ids;
 }
 
 /** Geometry of these notes changed outside board helpers (e.g. a measured height). */

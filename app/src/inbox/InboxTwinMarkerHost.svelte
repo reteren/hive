@@ -1,9 +1,13 @@
 <script lang="ts">
   import { board } from "../model/board.svelte";
+  import { lod, visible } from "../board/visibility.svelte";
 
   const twinTooltip = "Twin of an Inbox entry — interact to keep this one";
 
   $effect(() => {
+    // Cards mount and unmount as the camera moves (culling, far-zoom shells): re-mark them each time.
+    void visible.ids;
+    void lod.tier;
     const twinIds = new Set(board.order.flatMap((id) => {
       const note = board.notes[id];
       return note?.inboxGroup ? [id] : [];

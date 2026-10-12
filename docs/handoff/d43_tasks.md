@@ -196,3 +196,22 @@ lands on no `[data-note-id]` element at `min` tier, find the top-most note under
 as if the press hit that note's header: select, move-candidate drag, Ctrl/Alt rules, right-click opens the
 note menu for it. Presses on empty space keep their current behaviour (marquee etc.). Add tests for the
 decision logic. Report `d43_report_c2.md`.
+
+## f2 — Regression review of the whole wave (read-only)
+Review `git diff 848349d..HEAD -- app/` (the d43 wave) for **behaviour regressions**, not style:
+things that worked before and may now break — stale caches (a summary/membership/link geometry not
+updated after undo/redo, pull from Git, paste, MCP write, replaceBoard, trash restore, archive restore),
+culled notes (unmounted bodies losing state: timers, playing media, editing, scroll position, combo
+sections, inbox twins), far-zoom shells (double-click, context menu, drag, tooltips), autosave dirty
+tracking that misses a write path (direct field writes on boarded notes), Rust save/watch changes that
+could skip writing or miss a pull, search index drift. For every finding: file:line, the concrete
+scenario, why it breaks, suggested fix. Do not edit code. Write `d43_review_f2.md` (ranked, most
+severe first), then worker_done.
+
+## f3 — Fix review findings 1 and 4 (d43_review_f2.md)
+Yours: `src/audio/*`, `src/formats/PdfNodeBody.svelte` (+ a small module for remembered PDF scroll).
+1. Dictaphone: pin the note (`pinNote`) from requesting/recording/saving until capture ends, so its Stop
+   button can never be culled. The coordinator makes every pinned note keep its FULL body at any LOD.
+2. PDF: remember scroll position per note id outside the component and restore it on remount
+   (after the document/page sizes are known), so culling/LOD swaps do not reset it.
+Tests for the pin lifecycle and the scroll memory. Report `d43_report_f3.md`.

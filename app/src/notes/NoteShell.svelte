@@ -3,7 +3,8 @@
   import { PX_PER_UNIT } from "../board/cameraMath";
   import { noteBounds } from "./layout.svelte";
   import { noteColorStyle } from "./noteColorLogic";
-  import type { LodTier } from "../board/visibility.svelte";
+  import { pinNote, type LodTier } from "../board/visibility.svelte";
+  import { tick } from "svelte";
 
   /**
    * Far-zoom stand-in for NoteNode: the node's box in its colours, with its title at the "simple" tier
@@ -16,6 +17,35 @@
   // Bounds already hold scale; the card is drawn unscaled and transformed like NoteNode.
   let height = $derived(noteBounds(note).height / scale);
   let width = $derived(noteBounds(note).width / scale);
+
+  /**
+   * Double-click on a shell: pin the note so its full NoteNode replaces the shell under the cursor, then
+   * hand it the same double-click — editing text, renaming the header and every per-kind exclusion keep
+   * working exactly as at full zoom. The pin lasts until the next press outside that card.
+   */
+  async function openFromShell(event: MouseEvent): Promise<void> {
+    event.preventDefault();
+    event.stopPropagation();
+    const { clientX, clientY } = event;
+    const noteId = note.id;
+    const release = pinNote(noteId, "shell-double-click");
+    await tick();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const target = document.elementFromPoint(clientX, clientY);
+    const card = target?.closest<HTMLElement>(".note-card[data-note-id]");
+    if (!target || card?.dataset.noteId !== noteId || card.classList.contains("note-shell")) {
+      release();
+      return;
+    }
+    target.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true, clientX, clientY, view: window }));
+    const releaseOnOutsidePress = (press: PointerEvent) => {
+      const inside = press.target instanceof Element && press.target.closest(`[data-note-id="${CSS.escape(noteId)}"]`);
+      if (inside) return;
+      window.removeEventListener("pointerdown", releaseOnOutsidePress, true);
+      release();
+    };
+    window.addEventListener("pointerdown", releaseOnOutsidePress, true);
+  }
 </script>
 
 <div
@@ -33,6 +63,9 @@
   style:width={`${width * PX_PER_UNIT}px`}
   style:height={`${height * PX_PER_UNIT}px`}
   style:--shell-header={`${(note.headerHidden ? 0 : NOTE_HEADER_HEIGHT_UNITS) * PX_PER_UNIT}px`}
+  role="group"
+  aria-label={note.name}
+  ondblclick={openFromShell}
 >
   {#if tier === "simple" && !note.headerHidden}
     <span class="shell-name">{note.name}</span>

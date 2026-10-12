@@ -11,7 +11,7 @@
   import { clearTextFitWidthCache, measureAndCacheTextMinimumWidth } from "../editor/textFitWidth";
   import NoteNode from "./NoteNode.svelte";
   import NoteShell from "./NoteShell.svelte";
-  import { lod, startVisibility, visible } from "../board/visibility.svelte";
+  import { lod, pinned, startVisibility, visible } from "../board/visibility.svelte";
   import { selection } from "../selection/selection.svelte";
   import { editing } from "./editing.svelte";
   import { copyCursorCoordinates } from "./noteCommands";
@@ -63,6 +63,8 @@
     function onContextMenu(event: MouseEvent): void {
       const target = event.target instanceof Element ? event.target : null;
       if (!target || !target.closest(".board")) return;
+      const canvasNoteId = selection.canvasContextNoteId;
+      selection.canvasContextNoteId = null;
 
       // The board owns context menus for notes and blank space. Suppress the browser menu
       // before checking feature surfaces so no node body can leak Chrome's native menu.
@@ -78,7 +80,7 @@
       }
 
       const noteRoot = target.closest<HTMLElement>("[data-note-id]");
-      const noteId = noteRoot?.dataset.noteId;
+      const noteId = noteRoot?.dataset.noteId ?? canvasNoteId;
       const rect = boardElement!.getBoundingClientRect();
       const local = { x: event.clientX - rect.left, y: event.clientY - rect.top };
       const point = screenToWorld(camera, viewport, local);
@@ -99,7 +101,7 @@
         linkContext.menu = { kind: "note", noteId: gifTarget.noteId, x: anchor.x, y: anchor.y };
         return;
       }
-      if (noteRoot && noteId) {
+      if (noteId) {
         event.preventDefault();
         event.stopPropagation();
         const menuItems = noteMenuItemsForContext(noteId);
@@ -246,7 +248,7 @@
     {#each renderedIds as noteId (noteId)}
       {@const note = board.notes[noteId]}
       {#if note && note.type !== "beacon"}
-        {#if lod.tier === "full" || note.type === "image" || pinnedIds.has(noteId)}
+        {#if lod.tier === "full" || note.type === "image" || pinnedIds.has(noteId) || pinned.ids.has(noteId)}
           <NoteNode {note} measureHeight={observeAutoHeight} />
         {:else}
           <NoteShell {note} tier={lod.tier} />

@@ -38,6 +38,8 @@ export const selection = $state({
   primaryId: null as string | null,
   marquee: null as Bounds | null,
   contextPick: null as ContextPickState | null,
+  /** One-shot ID from a min-LOD canvas right-click, consumed by NotesLayer's menu handler. */
+  canvasContextNoteId: null as string | null,
   grabActive: false,
 });
 
@@ -309,6 +311,7 @@ export function clearSelection(): void {
   selection.primaryId = null;
   selection.marquee = null;
   selection.contextPick = null;
+  selection.canvasContextNoteId = null;
 }
 
 export function setMarquee(marquee: Bounds | null): void {

@@ -1,6 +1,24 @@
 export type NotePressRegion = "header" | "frame" | "body" | "resize-handle" | "outside";
 export type NotePressIntent = "move-candidate" | "text-interaction" | "resize" | "ignore";
 
+export interface ResolvedNotePressTarget {
+  id: string;
+  fromCanvas: boolean;
+}
+
+/** Prefer a real note element; at min LOD only, fall back to the top exact spatial hit. */
+export function resolveCanvasNotePressTarget(
+  tier: "full" | "simple" | "min",
+  domNoteId: string | null,
+  featureSurface: boolean,
+  hitNoteIds: readonly string[],
+): ResolvedNotePressTarget | null {
+  if (domNoteId) return { id: domNoteId, fromCanvas: false };
+  if (tier !== "min" || featureSurface) return null;
+  const topmostId = hitNoteIds[0];
+  return topmostId ? { id: topmostId, fromCanvas: true } : null;
+}
+
 /** Decide whether a press may become a note move without cancelling its initial click. */
 export function notePressIntent(
   region: NotePressRegion,

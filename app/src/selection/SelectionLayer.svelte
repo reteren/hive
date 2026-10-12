@@ -98,6 +98,7 @@ import { measureDictionaryHeightLimits } from "../spell/dictionarySizing";
   import {
     noteMoveStarts,
     notePressIntent,
+    resolveCanvasNotePressTarget,
     shouldSelectNoteOnAltPress,
     shouldSuppressAltNodeActivationClick,
     shouldToggleSelectedHeaderAfterGesture,
@@ -117,7 +118,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
   import { resolveModuleDropDecision } from "./moduleDropDecision";
   import { clearDropTargetPreview, dropOnTarget, previewDropTarget } from "./dropTargets";
   import { MovingVisuals } from "./movingVisuals";
-  import { queryPoint, queryRect, visible } from "../board/visibility.svelte";
+  import { lod, queryPoint, queryRect, visible } from "../board/visibility.svelte";
 
   interface Outline {
     id: string;
@@ -429,7 +430,11 @@ type PendingBoardMove =
       const target = event.target instanceof Element ? event.target : null;
       if (!target || target.closest(".selection-context-pick, [data-create-menu]")) return;
 
-      const noteId = target.closest<HTMLElement>("[data-note-id]")?.dataset.noteId;
+      const local = localPoint(event);
+      if (!local) return;
+      const world = screenToWorld(camera, viewport, local);
+      const pressedNote = resolvePressedNote(target, world, tool.active === "select");
+      const noteId = pressedNote?.id ?? null;
       if (!shouldSelectNoteOnAltPress(
         noteId,
         event.altKey,
@@ -437,9 +442,6 @@ type PendingBoardMove =
         event.shiftKey,
         noteId ? isDimmed(noteId) : false,
       ) || !noteId || !boardState.notes[noteId]) return;
-
-      const local = localPoint(event);
-      if (!local) return;
 
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -462,6 +464,20 @@ type PendingBoardMove =
       if (tool.active === "draw") return;
       if (suppressZoneResizeExitPointerId === event.pointerId) return;
       const target = event.target instanceof Element ? event.target : null;
+
+      if (event.button !== 2) selection.canvasContextNoteId = null;
+
+      if (event.button === 2) {
+        selection.canvasContextNoteId = null;
+        if (tool.active === "select" && !activeGesture && !grabGesture && !zoneGrabGesture && target) {
+          const local = localPoint(event);
+          if (local) {
+            const world = screenToWorld(camera, viewport, local);
+            const pressedNote = resolvePressedNote(target, world, true);
+            if (pressedNote?.fromCanvas) selection.canvasContextNoteId = pressedNote.id;
+          }
+        }
+      }
 
       if (event.button === 2 && activeGesture?.kind === "zone-move") {
         suppressContextMenuUntil = performance.now() + 750;
@@ -532,9 +548,10 @@ type PendingBoardMove =
       const groupHandle = target.closest<HTMLElement>("[data-group-scale-handle]");
       const resizeHandle = target.closest<HTMLElement>("[data-resize-handle]");
       const zoneResizeHandle = target.closest<HTMLElement>("[data-zone-resize-handle]");
-      const header = target.closest("[data-note-header]");
       const noteRoot = target.closest<HTMLElement>("[data-note-id]");
-      const noteId = noteRoot?.dataset.noteId ?? null;
+      const pressedNote = resolvePressedNote(target, world, tool.active === "select");
+      const noteId = pressedNote?.id ?? null;
+      const header = target.closest("[data-note-header]") ?? (pressedNote?.fromCanvas ? target : null);
       const noteBody = target.closest("[data-note-body]");
       const region = resizeHandle
         ? "resize-handle"
@@ -632,7 +649,7 @@ type PendingBoardMove =
       if (target.closest("[data-selection-ignore]") && !canMoveFromListBody) return;
 
       if (header && !isTextEditingTarget(event.target) && !(noteId && isDimmed(noteId))) {
-        const id = noteRoot?.dataset.noteId;
+        const id = noteId;
         if (!id || !boardState.notes[id] || isDimmed(id)) return;
 
         let toggleOnClickId: string | null = null;
@@ -919,8 +936,15 @@ type PendingBoardMove =
         return;
       }
 
-      const noteRoot = body?.closest<HTMLElement>("[data-note-id]");
-      const editingId = noteRoot?.dataset.noteId;
+      const noteRoot = body?.closest<HTMLElement>("[data-note-id]") ?? target.closest<HTMLElement>("[data-note-id]");
+      let editingId = noteRoot?.dataset.noteId;
+      if (!editingId && tool.active === "select" && lod.tier === "min") {
+        const local = localPoint(event);
+        if (local) {
+          const world = screenToWorld(camera, viewport, local);
+          editingId = resolvePressedNote(target, world, true)?.id;
+        }
+      }
       if (editingId && boardState.notes[editingId]) ensureEditingSelection(editingId);
     }
 
@@ -1153,6 +1177,26 @@ type PendingBoardMove =
     if (!boardElement) return null;
     const rect = cachedClientRect(boardElement);
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  }
+
+  function resolvePressedNote(target: Element | null, world: Point, allowCanvasHit: boolean) {
+    const domNoteId = target?.closest<HTMLElement>("[data-note-id]")?.dataset.noteId ?? null;
+    const featureSurface = Boolean(target?.closest(
+      ".selection-context-pick, [data-create-menu], [data-selection-ignore], [data-own-context-menu], " +
+      "[data-zone-id], [data-link-id], [data-beacon-id], [data-group-scale-handle], [data-resize-handle], [data-zone-resize-handle]",
+    ));
+    const hitIds = allowCanvasHit && !domNoteId && !featureSurface
+      ? hitTestNotes(
+          world,
+          boardState.notes,
+          boardState.order,
+          noteBounds,
+          (id) => !isDimmed(id),
+          queryPoint(world),
+          notePaintPosition,
+        )
+      : [];
+    return resolveCanvasNotePressTarget(allowCanvasHit ? lod.tier : "full", domNoteId, featureSurface, hitIds);
   }
 
   function capturePointer(pointerId: number): void {
