@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy } from "svelte";
+  import { onDestroy, tick } from "svelte";
   import type { PDFDocumentLoadingTask, PDFPageProxy } from "pdfjs-dist";
   import { attachmentUrl } from "../attachments/service";
   import { camera } from "../board/camera.svelte";
@@ -8,6 +8,7 @@
   import { wheelScrollsText } from "../notes/textScroll";
   import { setPdfZoom } from "./formatActions";
   import { normalizePdfZoom, pdfZoomLabel, stepPdfZoom } from "./formatLogic";
+  import { clampPdfScroll, rememberPdfScroll, rememberedPdfScroll } from "./pdfScrollMemory";
   import {
     createPdfRenderScheduler,
     PDF_PREFETCH_MARGIN,
@@ -27,6 +28,7 @@
   let loading = $state(false);
   let loadError = $state("");
   let loadGeneration = 0;
+  let restoreScrollPending = $state(false);
   const pages = new Map<number, PDFPageProxy>();
   const canvases = new Map<number, HTMLCanvasElement>();
 
@@ -207,12 +209,14 @@
 
   $effect(() => {
     const currentSource = source;
+    const currentNoteId = note.id;
     const isVisible = noteVisible;
     const request = ++loadGeneration;
     renderer.reset();
     pages.clear();
     canvases.clear();
     pageSizes = [];
+    restoreScrollPending = false;
     loadError = "";
 
     if (!currentSource) {
@@ -227,12 +231,36 @@
 
     loading = true;
     let task: PDFDocumentLoadingTask | null = null;
-    void loadDocument(currentSource, request, (createdTask) => { task = createdTask; });
+    restoreScrollPending = false;
+    void loadDocument(currentSource, request, (createdTask) => { task = createdTask; }).then(async () => {
+      if (request !== loadGeneration || note.id !== currentNoteId || !pageSizes.length) return;
+      restoreScrollPending = true;
+      await tick();
+    });
     return () => {
       if (loadGeneration === request) loadGeneration += 1;
       renderer.reset();
       if (task) void task.destroy().catch(() => {});
     };
+  });
+
+  $effect(() => {
+    const element = documentViewport;
+    const currentNoteId = note.id;
+    if (!restoreScrollPending || !element || pageSizes.length === 0 || contentWidth <= 0 || viewportHeight <= 0) return;
+    const request = loadGeneration;
+    void tick().then(() => {
+      if (request !== loadGeneration || !restoreScrollPending || !documentViewport) return;
+      const scroller = documentViewport;
+      scroller.scrollTop = clampPdfScroll(
+        rememberedPdfScroll(currentNoteId),
+        scroller.scrollHeight,
+        scroller.clientHeight,
+      );
+      scrollTop = scroller.scrollTop;
+      rememberPdfScroll(currentNoteId, scrollTop);
+      restoreScrollPending = false;
+    });
   });
 
   $effect(() => {
@@ -257,11 +285,15 @@
     renderer.schedule();
   });
 
-  onDestroy(() => renderer.destroy());
+  onDestroy(() => {
+    if (documentViewport) rememberPdfScroll(note.id, documentViewport.scrollTop);
+    renderer.destroy();
+  });
 
   function updateScroll(event: Event): void {
     const element = event.currentTarget as HTMLElement;
     scrollTop = element.scrollTop;
+    rememberPdfScroll(note.id, scrollTop);
   }
 
   function lowerBoundPage(metrics: readonly PageMetric[], offset: number): number {

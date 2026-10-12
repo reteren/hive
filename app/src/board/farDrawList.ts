@@ -1,8 +1,7 @@
-import type { Point } from "./cameraMath";
+import { PX_PER_UNIT, type Point } from "./cameraMath";
 import type { Rect } from "./spatialIndex";
 import type { Link } from "../model/link";
 import type { Note } from "../model/note";
-import { BEACON_SIZE } from "../model/note";
 import type { Zone } from "../model/zone";
 
 export interface FarNoteItem {
@@ -16,6 +15,7 @@ export interface FarNoteItem {
   body: string;
   headerHeight: number;
   opacity: number;
+  paintOrder: number;
   bitmap?: CanvasImageSource;
 }
 
@@ -23,6 +23,7 @@ export interface FarLinkItem {
   id: string;
   kind: Link["kind"];
   points: readonly Point[];
+  opacity: number;
 }
 
 export interface FarZoneItem {
@@ -41,11 +42,15 @@ export interface FarDrawList {
 }
 
 export interface FarDrawListInput {
-  rect: Rect;
+  /** Candidate ids returned by the note spatial index, route AABB index and zone-bounds index. */
   noteIds: readonly string[];
   notes: Readonly<Record<string, Note | undefined>>;
+  noteBounds: (note: Note) => Rect;
   noteOrder: ReadonlyMap<string, number>;
   selectedNoteIds?: ReadonlySet<string>;
+  focusedObjectIds?: ReadonlySet<string> | null;
+  selectedZoneIds?: ReadonlySet<string>;
+  selectedLinkIds?: ReadonlySet<string>;
   imageBitmaps?: ReadonlyMap<string, CanvasImageSource>;
   zoneIds: readonly string[];
   zones: Readonly<Record<string, Zone | undefined>>;
@@ -57,11 +62,13 @@ export interface FarDrawListInput {
 const DEFAULT_FRAME = "#353535";
 const DEFAULT_BODY = "#282828";
 const IMAGE_PLACEHOLDER = "#777777";
-const BEACON_DEFAULT = "#d0a840";
+const BEACON_DEFAULT = "#e8b030";
 const PRO_FRAME = "#293d2e";
 const PRO_BODY = "#202d23";
 const CON_FRAME = "#422d2c";
 const CON_BODY = "#302222";
+const GOAL_FRAME = "#3b3422";
+const GOAL_BODY = "#27241d";
 const MODULE_KINDS = new Set(["importance", "purpose", "mood"]);
 
 /** Build world-space draw items from spatial-query results; camera changes do not call this again. */
@@ -73,50 +80,50 @@ export function buildFarDrawList(input: FarDrawListInput): FarDrawList {
   const beaconItems: FarNoteItem[] = [];
 
   for (const id of input.zoneIds) {
+    if (input.selectedZoneIds?.has(id)) continue;
     const zone = input.zones[id];
-    if (!zone || !boundsIntersect(zoneBoundsFast(zone.parts, zone.holes), input.rect)) continue;
+    if (!zone) continue;
     zoneItems.push({ id, color: zone.color, parts: zone.parts, holes: zone.holes });
   }
 
   for (const id of input.linkIds) {
+    if (input.selectedLinkIds?.has(id)) continue;
     const link = input.links[id];
     const points = input.routePoints(id);
-    if (!link || !points || points.length < 2 || !boundsIntersect(pointsBounds(points), input.rect)) continue;
-    linkItems.push({ id, kind: link.kind, points });
+    if (!link || !points || points.length < 2) continue;
+    const dimmed = input.focusedObjectIds &&
+      (!input.focusedObjectIds.has(link.from) || !input.focusedObjectIds.has(link.to));
+    linkItems.push({ id, kind: link.kind, points, opacity: dimmed ? 0.3 : 1 });
   }
 
-  const visibleNotes = input.noteIds
-    .filter((id) => !selected.has(id) && input.notes[id])
-    .sort((first, second) => {
-      const a = input.notes[first]!;
-      const b = input.notes[second]!;
-      const imageOrder = Number(a.type !== "image") - Number(b.type !== "image");
-      return imageOrder || (input.noteOrder.get(first) ?? Number.MAX_SAFE_INTEGER) -
-        (input.noteOrder.get(second) ?? Number.MAX_SAFE_INTEGER);
-    });
-
-  for (const id of visibleNotes) {
-    const note = input.notes[id]!;
-    const width = Math.max(0, note.width * noteScale(note));
-    const height = Math.max(0, note.height ?? 6) * noteScale(note);
+  for (const id of input.noteIds) {
+    if (selected.has(id)) continue;
+    const note = input.notes[id];
+    if (!note) continue;
+    const bounds = input.noteBounds(note);
     const kind = note.type === "beacon" ? "beacon" : note.type === "image" ? "image" : "rect";
     const item: FarNoteItem = {
       id,
       kind,
       x: note.x,
       y: note.y,
-      width: kind === "beacon" ? BEACON_SIZE : width,
-      height: kind === "beacon" ? BEACON_SIZE : height,
+      width: bounds.width,
+      height: bounds.height,
       frame: note.type === "beacon" ? note.color ?? BEACON_DEFAULT : frameColor(note),
       body: note.type === "beacon" ? note.color ?? BEACON_DEFAULT : bodyColor(note),
       headerHeight: headerHeight(note.type, note.headerHidden),
-      opacity: (note.task?.done ? 0.6 : 1) * (kind === "image" ? note.opacity ?? 1 : 1),
+      paintOrder: input.noteOrder.get(id) ?? Number.MAX_SAFE_INTEGER,
+      opacity: (note.task?.done ? 0.6 : 1) *
+        (input.focusedObjectIds && !input.focusedObjectIds.has(id) ? 0.3 : 1) *
+        (kind === "image" ? note.opacity ?? 1 : 1),
       ...(kind === "image" && input.imageBitmaps?.has(id) ? { bitmap: input.imageBitmaps.get(id) } : {}),
     };
-    if (!boundsIntersect(item, input.rect)) continue;
     if (kind === "beacon") beaconItems.push(item);
     else noteItems.push(item);
   }
+  const byPaintOrder = (first: FarNoteItem, second: FarNoteItem): number => first.paintOrder - second.paintOrder;
+  noteItems.sort((first, second) => Number(first.kind !== "image") - Number(second.kind !== "image") || byPaintOrder(first, second));
+  beaconItems.sort(byPaintOrder);
 
   return {
     zones: zoneItems,
@@ -135,8 +142,9 @@ export function paintFarDrawList(
   camera: { x: number; y: number; zoom: number },
   viewport: { width: number; height: number },
   pixelRatio = 1,
+  imageBitmaps: ReadonlyMap<string, CanvasImageSource> = EMPTY_BITMAPS,
 ): number {
-  const scale = Math.max(0.0001, camera.zoom * 10);
+  const scale = Math.max(0.0001, camera.zoom * PX_PER_UNIT);
   const ratio = Number.isFinite(pixelRatio) && pixelRatio > 0 ? pixelRatio : 1;
   context.setTransform(ratio, 0, 0, ratio, 0, 0);
   context.clearRect(0, 0, viewport.width, viewport.height);
@@ -167,6 +175,7 @@ export function paintFarDrawList(
   context.strokeStyle = "#a9a294";
   context.lineWidth = 1 / scale;
   for (const link of drawList.links) {
+    context.globalAlpha = link.opacity;
     if (link.kind === "weak") context.setLineDash([4 / scale, 4 / scale]);
     else context.setLineDash([]);
     context.beginPath();
@@ -174,12 +183,24 @@ export function paintFarDrawList(
     context.stroke();
     calls += 1;
   }
+  context.globalAlpha = 1;
   context.setLineDash([]);
+
+  for (const beacon of drawList.beacons) {
+    context.globalAlpha = beacon.opacity;
+    context.beginPath();
+    context.arc(beacon.x + beacon.width / 2, beacon.y + beacon.height / 2, beacon.width / 2, 0, Math.PI * 2);
+    context.fillStyle = beacon.frame;
+    context.fill();
+    calls += 1;
+  }
+  context.globalAlpha = 1;
 
   for (const note of drawList.notes) {
     context.globalAlpha = note.opacity;
     if (note.kind === "image") {
-      if (note.bitmap) context.drawImage(note.bitmap, note.x, note.y, note.width, note.height);
+      const bitmap = imageBitmaps.get(note.id) ?? note.bitmap;
+      if (bitmap) context.drawImage(bitmap, note.x, note.y, note.width, note.height);
       else {
         context.fillStyle = IMAGE_PLACEHOLDER;
         context.fillRect(note.x, note.y, note.width, note.height);
@@ -201,13 +222,6 @@ export function paintFarDrawList(
   }
   context.globalAlpha = 1;
 
-  for (const beacon of drawList.beacons) {
-    context.beginPath();
-    context.arc(beacon.x + beacon.width / 2, beacon.y + beacon.height / 2, beacon.width / 2, 0, Math.PI * 2);
-    context.fillStyle = beacon.frame;
-    context.fill();
-    calls += 1;
-  }
   return calls;
 }
 
@@ -215,6 +229,7 @@ function frameColor(note: Note): string {
   if (note.color) return note.color;
   if (note.type === "pro") return PRO_FRAME;
   if (note.type === "con") return CON_FRAME;
+  if (note.type === "goal") return GOAL_FRAME;
   return DEFAULT_FRAME;
 }
 
@@ -222,41 +237,13 @@ function bodyColor(note: Note): string {
   if (note.accentColor) return note.accentColor;
   if (note.type === "pro") return PRO_BODY;
   if (note.type === "con") return CON_BODY;
+  if (note.type === "goal") return GOAL_BODY;
   return DEFAULT_BODY;
 }
 
 function headerHeight(type: Note["type"], headerHidden: boolean | undefined): number {
-  if (headerHidden || MODULE_KINDS.has(type)) return 0;
+  if (headerHidden || type === "image" || MODULE_KINDS.has(type)) return 0;
   return type === "pro" || type === "con" ? 2.4 : 2.8;
-}
-
-function noteScale(note: Note): number {
-  return Number.isFinite(note.scale) && (note.scale ?? 1) > 0 ? note.scale ?? 1 : 1;
-}
-
-function zoneBoundsFast(parts: readonly (readonly Point[])[], holes: readonly (readonly Point[])[]): Rect {
-  return pointsBounds([...parts, ...holes].flat());
-}
-
-function pointsBounds(points: readonly Point[]): Rect {
-  if (points.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
-  let left = points[0]!.x;
-  let right = left;
-  let top = points[0]!.y;
-  let bottom = top;
-  for (let index = 1; index < points.length; index += 1) {
-    const point = points[index]!;
-    left = Math.min(left, point.x);
-    right = Math.max(right, point.x);
-    top = Math.min(top, point.y);
-    bottom = Math.max(bottom, point.y);
-  }
-  return { x: left, y: top, width: right - left, height: bottom - top };
-}
-
-function boundsIntersect(a: Rect, b: Rect): boolean {
-  return a.x <= b.x + b.width && b.x <= a.x + a.width &&
-    a.y <= b.y + b.height && b.y <= a.y + a.height;
 }
 
 function appendPolygons(context: CanvasRenderingContext2D, polygons: readonly (readonly Point[])[]): void {
@@ -275,3 +262,4 @@ function appendPolyline(context: CanvasRenderingContext2D, points: readonly Poin
 }
 
 const EMPTY_IDS: ReadonlySet<string> = new Set();
+const EMPTY_BITMAPS: ReadonlyMap<string, CanvasImageSource> = new Map();

@@ -213,6 +213,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             attachments::attachment_import_bytes,
             attachments::attachment_import_path,
+            attachments::attachment_expand_paths,
+            attachments::attachment_import_paths,
+            attachments::attachment_cancel_import,
+            attachments::attachment_finish_import,
             attachments::attachment_import_source_path,
             attachments::attachment_open_source_file,
             attachments::attachment_reveal_source_file,
@@ -260,6 +264,7 @@ pub fn run() {
             source::source_path_exists,
             source::source_open_path,
             text_import::read_dropped_text,
+            text_import::read_dropped_text_batch,
             change_marks::load_seen_state,
             change_marks::save_seen_state,
             change_marks::change_authors,

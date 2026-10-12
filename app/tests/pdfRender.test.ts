@@ -7,12 +7,25 @@ import {
   pdfBackingResolution,
   pdfPageLayout,
 } from "../src/formats/pdfRenderLogic";
+import { clampPdfScroll, rememberedPdfScroll, rememberPdfScroll } from "../src/formats/pdfScrollMemory";
 
 afterEach(() => {
   vi.useRealTimers();
 });
 
 describe("PDF page rendering", () => {
+  it("remembers scroll offsets independently by note and clamps them after layout changes", () => {
+    rememberPdfScroll("pdf-scroll-a", 860);
+    rememberPdfScroll("pdf-scroll-b", 240);
+
+    expect(rememberedPdfScroll("pdf-scroll-a")).toBe(860);
+    expect(rememberedPdfScroll("pdf-scroll-b")).toBe(240);
+    expect(rememberedPdfScroll("pdf-scroll-new")).toBe(0);
+    expect(clampPdfScroll(860, 700, 300)).toBe(400);
+    expect(clampPdfScroll(240, 1400, 300)).toBe(240);
+    expect(clampPdfScroll(-5, 1400, 300)).toBe(0);
+  });
+
   it("keeps page layout in node-local CSS pixels and fits the content width", () => {
     const fit = pdfPageLayout(600, 800, 400, undefined);
     expect(fit.width).toBe(400);

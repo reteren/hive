@@ -14,6 +14,7 @@
   import SelectionOverlay from "../drawing/SelectionOverlay.svelte";
   import MeMarker from "./MeMarker.svelte";
   import NotesLayer from "../notes/NotesLayer.svelte";
+  import FarLayer from "./FarLayer.svelte";
   import OverviewZoneLabels from "../overview/OverviewZoneLabels.svelte";
   import OverviewNodes from "../overview/OverviewNodes.svelte";
   import SelectionLayer from "../selection/SelectionLayer.svelte";
@@ -142,6 +143,8 @@
   <LinksLayer />
   <MeMarker />
   <BeaconsLayer />
+  <!-- At the farthest zoom tier the whole board is one canvas; only pinned/selected notes stay DOM on top. -->
+  <FarLayer />
   <NotesLayer />
   <OverviewNodes />
   <OverviewZoneLabels />

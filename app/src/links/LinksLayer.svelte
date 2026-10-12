@@ -30,7 +30,7 @@
     selectLinksUndoable,
   } from "./selection.svelte";
   import { isDimmed, visibleInFocus } from "../beacons/focus.svelte";
-  import { LinkRouteIndex } from "./routeIndex";
+  import { linkRouteIndex } from "./routeIndex";
 
   const CUT_DRAG_THRESHOLD_PX = 5;
   const CUT_TOLERANCE_PX = 4;
@@ -95,7 +95,7 @@
 
   let layer: HTMLDivElement;
   const renderedLinkCache = new Map<string, LinkRenderCache>();
-  const routeIndex = new LinkRouteIndex();
+  const routeIndex = linkRouteIndex;
   const dirtyLinkIds = new Set<string>();
   const orderIndex = new Map(board.order.map((id, index) => [id, index]));
   let allLinksDirty = true;
@@ -118,6 +118,7 @@
   let renderedLinks = $derived.by((): RenderedLink[] => {
     void renderedRevision;
     const selectedIds = new Set(selectedLinkIds());
+    const focusedIds = visibleInFocus();
     syncDirtyLinkGeometry();
     const candidateIds = new Set(routeIndex.query(visible.rect));
     for (const id of selectedIds) candidateIds.add(id);
@@ -128,6 +129,8 @@
       const cache = renderedLinkCache.get(id);
       if (!cache) continue;
       const selected = selectedIds.has(id) || id === hoveredLinkId || id === activeCutLinkId;
+      const focused = Boolean(focusedIds?.has(cache.from) && focusedIds.has(cache.to));
+      if (lod.tier === "min" && !selected && !focused) continue;
       rendered.push(cache.rendered.selected === selected ? cache.rendered : { ...cache.rendered, selected });
     }
     return rendered;

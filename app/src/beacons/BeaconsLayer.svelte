@@ -27,7 +27,7 @@
   });
 
   let beaconIds = $derived.by(() => {
-    const ids = new Set(visible.ids);
+    const ids = new Set(lod.tier === "min" ? [] : visible.ids);
     for (const id of selection.ids) ids.add(id);
     for (const id of validFocused()) ids.add(id);
     if (beaconEditor.noteId) ids.add(beaconEditor.noteId);

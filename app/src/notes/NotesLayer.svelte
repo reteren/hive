@@ -43,7 +43,8 @@
   let pinnedIds = $derived(new Set(editing.noteId ? [...selection.ids, editing.noteId] : selection.ids));
   /** Only notes near the viewport are in the DOM, in paint order. */
   let renderedIds = $derived.by(() => {
-    const ids = new Set(visible.ids);
+    // At the "min" tier FarLayer paints every note on one canvas; the DOM keeps only pinned notes.
+    const ids = new Set(lod.tier === "min" ? pinned.ids : visible.ids);
     for (const id of pinnedIds) ids.add(id);
     const order = paintIndex;
     return [...ids].filter((id) => order.has(id)).sort((a, b) => order.get(a)! - order.get(b)!);

@@ -103,6 +103,35 @@ export function acquireDisplayBitmap(
   });
 }
 
+/** Look up an already-decoded image without retaining it, moving its LRU position or starting work. */
+export function peekCachedDisplayBitmap(
+  url: string,
+  width?: number,
+  height?: number,
+): ImageBitmap | undefined {
+  const prefix = `${url}\u0000`;
+  let best: BitmapEntry | undefined;
+  let bestScore = Number.POSITIVE_INFINITY;
+  const targetWidth = Number.isFinite(width) && (width ?? 0) > 0 ? width! : undefined;
+  const targetHeight = Number.isFinite(height) && (height ?? 0) > 0 ? height! : undefined;
+  for (const [key, entry] of entries) {
+    const bitmap = entry.bitmap;
+    if (!bitmap || !key.startsWith(prefix)) continue;
+    const pixels = bitmap.width * bitmap.height;
+    let score = pixels;
+    if (targetWidth && targetHeight) {
+      const sufficient = bitmap.width >= targetWidth && bitmap.height >= targetHeight;
+      const sizeDelta = Math.abs(Math.log(bitmap.width / targetWidth)) + Math.abs(Math.log(bitmap.height / targetHeight));
+      score = sufficient ? sizeDelta : 1000 + Math.abs(Math.log(pixels / (targetWidth * targetHeight)));
+    }
+    if (score < bestScore) {
+      best = entry;
+      bestScore = score;
+    }
+  }
+  return best?.bitmap;
+}
+
 function trimCache(): void {
   while (cachedPixels > MAX_CACHED_PIXELS || entries.size > MAX_CACHED_ENTRIES) {
     let evicted = false;

@@ -1,5 +1,5 @@
 use crate::project::{self, ProjectState};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
@@ -26,6 +26,7 @@ const UNLIMITED_VIDEO_EXTERNAL_THRESHOLD_BYTES: u64 = 0;
 const MAX_ATTACHMENT_NAME_UNITS: usize = 120;
 const STREAM_BUFFER_BYTES: usize = 64 * 1024;
 pub(crate) const MAX_ATTACHMENT_IMPORT_BATCH: usize = 200;
+const MAX_EXPANDED_IMPORT_FILES: usize = 100_000;
 const ATTACHMENT_IMPORT_PROGRESS_EVENT: &str = "attachment-import-progress";
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 static ASSET_DIRECTORIES: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
@@ -64,15 +65,24 @@ pub struct AttachmentImportBatch {
     pub cancelled: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentPathExpansion {
+    pub paths: Vec<String>,
+    pub skipped: usize,
+    pub truncated: bool,
+    pub cancelled: bool,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct AttachmentImportProgress {
-    import_id: String,
-    completed: usize,
-    total: usize,
-    succeeded: usize,
-    failed: usize,
-    current_file: String,
+pub(crate) struct AttachmentImportProgressEvent {
+    pub import_id: String,
+    pub completed: usize,
+    pub total: usize,
+    pub succeeded: usize,
+    pub failed: usize,
+    pub current_file: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -218,7 +228,9 @@ pub async fn attachment_import_paths(
     video_external_threshold_bytes: Option<u64>,
 ) -> Result<AttachmentImportBatch, String> {
     if paths.len() > MAX_ATTACHMENT_IMPORT_BATCH {
-        return Err(format!("Import batches are limited to {MAX_ATTACHMENT_IMPORT_BATCH} files."));
+        return Err(format!(
+            "Import batches are limited to {MAX_ATTACHMENT_IMPORT_BATCH} files."
+        ));
     }
     if paths.len() != kind_hints.len() {
         return Err("Import path and kind-hint counts do not match.".to_string());
@@ -227,6 +239,7 @@ pub async fn attachment_import_paths(
     let root = project::active_project_root(&state)?;
     let cancellation = import_cancellation_token(&import_id)?;
     let app_for_work = app.clone();
+    let import_id_for_work = import_id.clone();
     let job = tauri::async_runtime::spawn_blocking(move || {
         let mut items = Vec::with_capacity(paths.len());
         let mut succeeded = 0;
@@ -244,7 +257,12 @@ pub async fn attachment_import_paths(
                 video_external_threshold_bytes,
                 Some(&cancellation),
             );
-            if cancellation.load(Ordering::Acquire) && result.as_ref().err().is_some_and(|error| error == "Import cancelled.") {
+            if cancellation.load(Ordering::Acquire)
+                && result
+                    .as_ref()
+                    .err()
+                    .is_some_and(|error| error == "Import cancelled.")
+            {
                 cancelled = true;
                 break;
             }
@@ -258,9 +276,13 @@ pub async fn attachment_import_paths(
                     (None, Some(error))
                 }
             };
-            items.push(AttachmentImportBatchItem { path: path.clone(), attachment, error });
-            let payload = AttachmentImportProgress {
-                import_id: import_id.clone(),
+            items.push(AttachmentImportBatchItem {
+                path: path.clone(),
+                attachment,
+                error,
+            });
+            let payload = AttachmentImportProgressEvent {
+                import_id: import_id_for_work.clone(),
                 completed: progress_offset + index + 1,
                 total: total_count,
                 succeeded,
@@ -269,9 +291,15 @@ pub async fn attachment_import_paths(
             };
             let _ = app_for_work.emit(ATTACHMENT_IMPORT_PROGRESS_EVENT, payload);
         }
-        AttachmentImportBatch { processed: items.len(), items, cancelled }
+        AttachmentImportBatch {
+            processed: items.len(),
+            items,
+            cancelled,
+        }
     });
-    let mut batch = job.await.map_err(|error| format!("Attachment import worker failed: {error}"))?;
+    let mut batch = job
+        .await
+        .map_err(|error| format!("Attachment import worker failed: {error}"))?;
     let mut succeeded = 0;
     let mut failed = 0;
     for item in &mut batch.items {
@@ -283,21 +311,130 @@ pub async fn attachment_import_paths(
                 }
             }
         }
-        if item.attachment.is_some() { succeeded += 1; } else { failed += 1; }
+        if item.attachment.is_some() {
+            succeeded += 1;
+        } else {
+            failed += 1;
+        }
     }
     if batch.processed > 0 {
         let completed = progress_offset + batch.processed;
-        let current_file = batch.items.last().map(|item| item.path.rsplit(['/', '\\']).next().unwrap_or(&item.path).to_string()).unwrap_or_default();
-        let _ = app.emit(ATTACHMENT_IMPORT_PROGRESS_EVENT, AttachmentImportProgress {
-            import_id,
-            completed,
-            total: total_count,
-            succeeded,
-            failed,
-            current_file,
-        });
+        let current_file = batch
+            .items
+            .last()
+            .map(|item| {
+                item.path
+                    .rsplit(['/', '\\'])
+                    .next()
+                    .unwrap_or(&item.path)
+                    .to_string()
+            })
+            .unwrap_or_default();
+        let _ = app.emit(
+            ATTACHMENT_IMPORT_PROGRESS_EVENT,
+            AttachmentImportProgressEvent {
+                import_id,
+                completed,
+                total: total_count,
+                succeeded,
+                failed,
+                current_file,
+            },
+        );
     }
     Ok(batch)
+}
+
+/// Expand dropped folders on the blocking pool before the frontend starts bounded import batches.
+#[tauri::command]
+pub async fn attachment_expand_paths(
+    import_id: String,
+    paths: Vec<String>,
+    max_files: usize,
+) -> Result<AttachmentPathExpansion, String> {
+    if max_files == 0 || max_files > MAX_EXPANDED_IMPORT_FILES {
+        return Err(format!(
+            "Expanded imports must be capped between 1 and {MAX_EXPANDED_IMPORT_FILES} files."
+        ));
+    }
+    let cancellation = import_cancellation_token(&import_id)?;
+    let job = tauri::async_runtime::spawn_blocking(move || {
+        expand_import_paths(paths, max_files, cancellation)
+    });
+    job.await
+        .map_err(|error| format!("Folder scan worker failed: {error}"))?
+}
+
+fn expand_import_paths(
+    paths: Vec<String>,
+    max_files: usize,
+    cancellation: Arc<AtomicBool>,
+) -> Result<AttachmentPathExpansion, String> {
+    let mut pending =
+        std::collections::VecDeque::from(paths.into_iter().map(PathBuf::from).collect::<Vec<_>>());
+    let mut expanded = Vec::new();
+    let mut skipped = 0usize;
+    let mut truncated = false;
+    let mut cancelled = false;
+
+    while let Some(path) = pending.pop_front() {
+        if cancellation.load(Ordering::Acquire) {
+            cancelled = true;
+            break;
+        }
+        let metadata = match fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(_) => {
+                skipped += 1;
+                continue;
+            }
+        };
+        if metadata.file_type().is_symlink() {
+            skipped += 1;
+            continue;
+        }
+        if metadata.is_file() {
+            if expanded.len() >= max_files {
+                truncated = true;
+                break;
+            }
+            match fs::canonicalize(&path) {
+                Ok(canonical) => expanded.push(canonical.to_string_lossy().into_owned()),
+                Err(_) => skipped += 1,
+            }
+            continue;
+        }
+        if !metadata.is_dir() {
+            skipped += 1;
+            continue;
+        }
+
+        let entries = match fs::read_dir(&path) {
+            Ok(entries) => entries,
+            Err(_) => {
+                skipped += 1;
+                continue;
+            }
+        };
+        let mut children = entries
+            .filter_map(|entry| match entry {
+                Ok(entry) => Some(entry.path()),
+                Err(_) => {
+                    skipped += 1;
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        children.sort();
+        pending.extend(children);
+    }
+
+    Ok(AttachmentPathExpansion {
+        paths: expanded,
+        skipped,
+        truncated,
+        cancelled,
+    })
 }
 
 #[tauri::command]
@@ -311,7 +448,10 @@ pub fn attachment_cancel_import(import_id: String) -> Result<(), String> {
 pub fn attachment_finish_import(import_id: String) -> Result<(), String> {
     validate_import_id(&import_id)?;
     if let Some(cancellations) = IMPORT_CANCELLATIONS.get() {
-        cancellations.lock().map_err(|_| "attachment import state is unavailable")?.remove(&import_id);
+        cancellations
+            .lock()
+            .map_err(|_| "attachment import state is unavailable")?
+            .remove(&import_id);
     }
     Ok(())
 }
@@ -319,16 +459,22 @@ pub fn attachment_finish_import(import_id: String) -> Result<(), String> {
 pub(crate) fn import_cancellation_token(import_id: &str) -> Result<Arc<AtomicBool>, String> {
     validate_import_id(import_id)?;
     let cancellations = IMPORT_CANCELLATIONS.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut cancellations = cancellations.lock().map_err(|_| "attachment import state is unavailable")?;
-    Ok(cancellations.entry(import_id.to_string()).or_insert_with(|| Arc::new(AtomicBool::new(false))).clone())
-}
-
-pub(crate) fn import_is_cancelled(import_id: &str) -> Result<bool, String> {
-    Ok(import_cancellation_token(import_id)?.load(Ordering::Acquire))
+    let mut cancellations = cancellations
+        .lock()
+        .map_err(|_| "attachment import state is unavailable")?;
+    Ok(cancellations
+        .entry(import_id.to_string())
+        .or_insert_with(|| Arc::new(AtomicBool::new(false)))
+        .clone())
 }
 
 fn validate_import_id(import_id: &str) -> Result<(), String> {
-    if import_id.is_empty() || import_id.len() > 128 || !import_id.chars().all(|character| character.is_ascii_alphanumeric() || character == '-' || character == '_') {
+    if import_id.is_empty()
+        || import_id.len() > 128
+        || !import_id.chars().all(|character| {
+            character.is_ascii_alphanumeric() || character == '-' || character == '_'
+        })
+    {
         return Err("Import identifier is invalid.".to_string());
     }
     Ok(())
@@ -533,6 +679,22 @@ fn import_path_at(
     kind_hint: Option<&str>,
     video_external_threshold_bytes: Option<u64>,
 ) -> Result<AttachmentImport, String> {
+    import_path_at_with_cancel(
+        root,
+        source,
+        kind_hint,
+        video_external_threshold_bytes,
+        None,
+    )
+}
+
+fn import_path_at_with_cancel(
+    root: &Path,
+    source: &Path,
+    kind_hint: Option<&str>,
+    video_external_threshold_bytes: Option<u64>,
+    cancellation: Option<&AtomicBool>,
+) -> Result<AttachmentImport, String> {
     let metadata = fs::symlink_metadata(source)
         .map_err(|error| format!("could not read selected file: {error}"))?;
     if metadata.file_type().is_symlink() || !metadata.is_file() {
@@ -579,6 +741,9 @@ fn import_path_at(
         let mut text_validator = (descriptor.kind == "text").then(Utf8StreamValidator::default);
         let mut buffer = [0_u8; STREAM_BUFFER_BYTES];
         loop {
+            if cancellation.is_some_and(|token| token.load(Ordering::Acquire)) {
+                return Err("Import cancelled.".to_string());
+            }
             let count = input
                 .read(&mut buffer)
                 .map_err(|error| format!("could not read selected file: {error}"))?;
@@ -599,6 +764,9 @@ fn import_path_at(
         }
         if text_validator.is_some_and(|validator| !validator.finish()) {
             return Err("Text file is not valid UTF-8.".to_string());
+        }
+        if cancellation.is_some_and(|token| token.load(Ordering::Acquire)) {
+            return Err("Import cancelled.".to_string());
         }
         output
             .sync_all()
@@ -1232,15 +1400,17 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        check_size, detect_format, detect_media_descriptor, external_video_paths, import_bytes_at,
-        import_path_at, import_source_path_at, import_supported_bytes, readable_attachment_name,
+        check_size, detect_format, detect_media_descriptor, expand_import_paths,
+        external_video_paths, import_bytes_at, import_path_at, import_path_at_with_cancel,
+        import_source_path_at, import_supported_bytes, readable_attachment_name,
         should_externalize_video, validate_attachment_filename, MediaDescriptor,
         LARGE_VIDEO_EXTERNAL_BYTES, MAX_LARGE_MEDIA_BYTES, MAX_SMALL_ATTACHMENT_BYTES,
         UNLIMITED_VIDEO_EXTERNAL_THRESHOLD_BYTES,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::Arc;
 
     static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -1250,6 +1420,34 @@ mod tests {
             std::process::id(),
             TEST_COUNTER.fetch_add(1, Ordering::Relaxed)
         ))
+    }
+
+    #[test]
+    fn expands_nested_folders_with_a_file_limit() {
+        let root = test_root();
+        fs::create_dir_all(root.join("nested")).expect("create nested input folder");
+        fs::write(root.join("first.pdf"), b"pdf").expect("write first input");
+        fs::write(root.join("nested/second.png"), b"image").expect("write nested input");
+        let cancellation = Arc::new(AtomicBool::new(false));
+
+        let expanded = expand_import_paths(
+            vec![root.to_string_lossy().into_owned()],
+            10,
+            cancellation.clone(),
+        )
+        .expect("expand folder");
+        assert_eq!(expanded.paths.len(), 2);
+        assert!(!expanded.truncated);
+        assert!(!expanded.cancelled);
+        assert!(expanded.paths[0].ends_with("first.pdf"));
+        assert!(expanded.paths[1].ends_with("second.png"));
+
+        let limited =
+            expand_import_paths(vec![root.to_string_lossy().into_owned()], 1, cancellation)
+                .expect("expand with cap");
+        assert_eq!(limited.paths.len(), 1);
+        assert!(limited.truncated);
+        fs::remove_dir_all(root).expect("remove fixture");
     }
 
     #[test]
@@ -1395,6 +1593,26 @@ mod tests {
         assert_eq!(
             fs::read(root.join("attachments").join(imported.file)).expect("read text"),
             bytes
+        );
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn cancelled_stream_import_removes_its_temporary_file() {
+        let root = test_root();
+        fs::create_dir_all(&root).expect("create project root");
+        let source = root.join("notes.txt");
+        fs::write(&source, b"valid text").expect("write source text");
+        let cancelled = AtomicBool::new(true);
+
+        let error = import_path_at_with_cancel(&root, &source, None, None, Some(&cancelled))
+            .expect_err("cancelled copy must stop");
+
+        assert_eq!(error, "Import cancelled.");
+        let attachments = root.join("attachments");
+        assert_eq!(
+            fs::read_dir(attachments).expect("list attachments").count(),
+            0
         );
         fs::remove_dir_all(root).expect("remove fixture");
     }

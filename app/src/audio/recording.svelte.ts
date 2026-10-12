@@ -10,6 +10,8 @@ import { preferences } from "../settings/preferences.svelte";
 import { importRecording, reportImportError } from "../attachments/service";
 import { uniqueName } from "../notes/naming";
 import { copyAudioRecordings } from "./recordingData";
+import { pinNote } from "../board/visibility.svelte";
+import { createRecordingPinController } from "./recordingPin";
 import {
   appendRecording,
   canDropAudioNodeOnDictaphone,
@@ -37,6 +39,7 @@ export const audioRecording = $state({
 interface Capture {
   noteId: string;
   noteName: string;
+  pins: ReturnType<typeof createRecordingPinController>;
   stream?: MediaStream;
   recorder?: MediaRecorder;
   chunks: BlobPart[];
@@ -48,6 +51,11 @@ interface Capture {
 }
 
 let capture: Capture | null = null;
+
+function setRecordingPhase(phase: RecordingPhase, session: Capture | null = capture): void {
+  audioRecording.phase = phase;
+  session?.pins.update(session.noteId, phase);
+}
 
 export function createDictaphoneNote(center: Point): string {
   const width = R5_BASE_WIDTHS.audio;
@@ -91,10 +99,15 @@ export function beginAudioRecording(noteId: string): boolean {
   const note = board.notes[noteId];
   if (!note || note.type !== "audio" || !Array.isArray(note.recordings)) return false;
 
-  const session: Capture = { noteId, noteName: note.name, chunks: [] };
+  const session: Capture = {
+    noteId,
+    noteName: note.name,
+    chunks: [],
+    pins: createRecordingPinController(pinNote),
+  };
   capture = session;
   audioRecording.noteId = noteId;
-  audioRecording.phase = transitionRecording(audioRecording.phase, { type: "request" });
+  setRecordingPhase(transitionRecording(audioRecording.phase, { type: "request" }), session);
   audioRecording.elapsedSeconds = 0;
   audioRecording.level = 0;
   audioRecording.error = "";
@@ -124,7 +137,7 @@ async function requestMicrophone(session: Capture): Promise<void> {
     recorder.addEventListener("error", () => failRecording(session, "The audio recording failed."));
     recorder.start(250);
     session.startedAt = performance.now();
-    audioRecording.phase = transitionRecording(audioRecording.phase, { type: "started" });
+    setRecordingPhase(transitionRecording(audioRecording.phase, { type: "started" }), session);
     window.addEventListener("blur", handleWindowBlur);
     startMeters(session);
   } catch (error) {
@@ -141,7 +154,7 @@ async function requestMicrophone(session: Capture): Promise<void> {
 export function stopAudioRecording(noteId?: string): void {
   const session = capture;
   if (!session || noteId && session.noteId !== noteId || audioRecording.phase !== "recording") return;
-  audioRecording.phase = transitionRecording(audioRecording.phase, { type: "stop" });
+  setRecordingPhase(transitionRecording(audioRecording.phase, { type: "stop" }), session);
   requestStop(session);
 }
 
@@ -274,11 +287,12 @@ export function createDictaphoneAudioDropCommand(
 function handleWindowBlur(): void {
   const session = capture;
   if (!session || audioRecording.phase !== "recording") return;
-  audioRecording.phase = transitionRecording(audioRecording.phase, {
+  const phase = transitionRecording(audioRecording.phase, {
     type: "blur",
     recordInBackground: preferences.recordInBackground,
   });
-  if (audioRecording.phase === "saving") requestStop(session);
+  setRecordingPhase(phase, session);
+  if (phase === "saving") requestStop(session);
 }
 
 function requestStop(session: Capture): void {
@@ -315,7 +329,7 @@ async function finishRecording(session: Capture, mime: string): Promise<void> {
     execute(recordingListCommand(before, after, (recordings) => {
       updateNote(session.noteId, { recordings: copyAudioRecordings(recordings) ?? [] });
     }, "Record audio", recording.name));
-    audioRecording.phase = transitionRecording(audioRecording.phase, { type: "saved" });
+    setRecordingPhase(transitionRecording(audioRecording.phase, { type: "saved" }), session);
     audioRecording.noteId = null;
     audioRecording.level = 0;
     audioRecording.elapsedSeconds = 0;
@@ -326,18 +340,20 @@ async function finishRecording(session: Capture, mime: string): Promise<void> {
       cleanup(session);
       capture = null;
     }
+    session.pins.release();
   }
 }
 
 function failRecording(session: Capture, message: string): void {
   if (capture !== session) return;
-  audioRecording.phase = transitionRecording(audioRecording.phase, { type: "failed" });
+  setRecordingPhase(transitionRecording(audioRecording.phase, { type: "failed" }), session);
   audioRecording.noteId = session.noteId;
   audioRecording.error = message;
   audioRecording.level = 0;
   audioRecording.elapsedSeconds = 0;
   cleanup(session);
   capture = null;
+  session.pins.release();
   reportImportError(message);
 }
 

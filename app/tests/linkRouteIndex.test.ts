@@ -8,17 +8,20 @@ describe("link route bounds index", () => {
     index.set("remote", [{ x: 500, y: 500 }, { x: 600, y: 600 }]);
 
     expect(index.query({ x: 0, y: 0, width: 20, height: 20 })).toEqual(["crossing"]);
+    expect(index.pointsOf("crossing")).toEqual([{ x: -300, y: 8 }, { x: 300, y: 8 }]);
   });
 
   it("updates and removes a route without leaving stale cell entries", () => {
     const index = new LinkRouteIndex();
     index.set("link", [{ x: 0, y: 0 }, { x: 20, y: 20 }]);
     index.set("link", [{ x: 200, y: 200 }, { x: 220, y: 220 }]);
+    expect(index.pointsOf("link")).toEqual([{ x: 200, y: 200 }, { x: 220, y: 220 }]);
 
     expect(index.query({ x: 0, y: 0, width: 20, height: 20 })).toEqual([]);
     expect(index.query({ x: 200, y: 200, width: 20, height: 20 })).toEqual(["link"]);
     index.delete("link");
     expect(index.size).toBe(0);
+    expect(index.pointsOf("link")).toBeUndefined();
     expect(index.query({ x: 200, y: 200, width: 20, height: 20 })).toEqual([]);
   });
 

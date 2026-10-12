@@ -41,7 +41,7 @@
   );
 
   let visibleZoneIds = $derived.by(() => {
-    const ids = new Set(zoneIdsInRect(visible.rect));
+    const ids = new Set(lod.tier === "min" ? [] : zoneIdsInRect(visible.rect));
     for (const id of selection.zoneIds) ids.add(id);
     if (zoneMovePreview.zoneId) ids.add(zoneMovePreview.zoneId);
     if (menu?.id) ids.add(menu.id);
