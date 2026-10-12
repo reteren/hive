@@ -55,6 +55,11 @@
     user-select: none;
   }
 
+  /* A Map body is a dark minimap, not the grey --note-body its kind CSS sets for the frame. */
+  .note-shell[data-kind="map"] {
+    background: var(--note-frame);
+  }
+
   .note-shell[data-lod-shell="min"] {
     border-radius: 0;
   }
