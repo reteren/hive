@@ -4,6 +4,7 @@ import type { Link } from "../model/link";
 import { statisticsForListRow, type ListRowStatistics } from "./listStatistics";
 import type { NoteFrame } from "../selection/gestures";
 import { listStatisticsMeasurements } from "./listStatsMeasurements.svelte";
+import { linksOf } from "../model/links.svelte";
 
 export const LIST_STATS_MIN_WIDTH = 12;
 type StatisticsHost = Pick<Note, "type" | "listStats"> & { id?: string };
@@ -15,8 +16,8 @@ export function fittedListStatisticsWidth(contentWidthPx: number, pxPerUnit = 10
 
 /** Persisted width remains the main List width, including for projects saved before this panel. */
 export function listStatisticsWidth(note: StatisticsHost): number {
-  return note.type === "list" && note.listStats === true
-    ? (note.id ? listStatisticsMeasurements[note.id] : undefined) ?? LIST_STATS_MIN_WIDTH : 0;
+  if (note.type !== "list" || note.listStats !== true) return 0;
+  return (note.id ? listStatisticsMeasurements[note.id] : undefined) ?? LIST_STATS_MIN_WIDTH;
 }
 export function widthWithListStatistics(note: StatisticsHost & Pick<Note, "width">): number {
   return note.width + listStatisticsWidth(note);
@@ -35,8 +36,10 @@ export function listStatisticsFrameLimits(note: StatisticsHost, minimum: number,
 }
 
 /** Cells share the exact visual row sequence, including the empty live drag slot. */
-export function alignedListStatistics(listId: string, rows: readonly { item: ListItem | null }[], notes: Readonly<Record<string, Note>>, links: Readonly<Record<string, Link>>): Array<ListRowStatistics | null> {
-  return rows.map(({ item }) => item ? statisticsForListRow(listId, item, notes, links) : null);
+export function alignedListStatistics(listId: string, rows: readonly { item: ListItem | null }[], notes: Readonly<Record<string, Note>>, _links: Readonly<Record<string, Link>>): Array<ListRowStatistics | null> {
+  return rows.map(({ item }) => item
+    ? statisticsForListRow(listId, item, notes, item.targetId ? linksOf(item.targetId) : [])
+    : null);
 }
 
 export interface ExtensionGeometry {

@@ -7,6 +7,7 @@
 use notify::RecursiveMode;
 use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, RecommendedCache};
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -42,7 +43,10 @@ pub fn watch(app: &AppHandle, root: &Path) -> Result<(), String> {
     debouncer
         .watch(root, RecursiveMode::Recursive)
         .map_err(|error| format!("could not monitor the project folder: {error}"))?;
-    *slot = Some(Watch { root: root.to_path_buf(), _debouncer: debouncer });
+    *slot = Some(Watch {
+        root: root.to_path_buf(),
+        _debouncer: debouncer,
+    });
     reset_drawing(root);
     Ok(())
 }
@@ -58,7 +62,10 @@ pub fn reset_drawing(root: &Path) {
 /// Record a tile this app is about to write (`Some`) or delete (`None`).
 pub fn record_drawing_write(root: &Path, file_name: &str, bytes: Option<&[u8]>) {
     if let Ok(mut known) = DRAWING_KNOWN.lock() {
-        if known.as_ref().map_or(true, |(known_root, _)| known_root != root) {
+        if known
+            .as_ref()
+            .map_or(true, |(known_root, _)| known_root != root)
+        {
             *known = Some((root.to_path_buf(), HashMap::new()));
         }
         if let Some((_, map)) = known.as_mut() {
@@ -72,32 +79,48 @@ pub fn record_drawing_write(root: &Path, file_name: &str, bytes: Option<&[u8]>) 
             }
         }
     }
+    crate::backup::mark_project_changed(root);
 }
 
 fn handle(app: &AppHandle, root: &Path, result: DebounceEventResult) {
     let Ok(events) = result else { return };
     let tiles = tiles_directory(root);
-    let mut board = false;
-    let mut drawing = false;
+    let mut board_paths = HashSet::new();
+    let mut drawing_paths = HashSet::new();
     for event in &events {
         for path in &event.paths {
             if path.starts_with(root.join(".hive")) || path.starts_with(root.join(".git")) {
                 continue;
             }
-            board |= crate::board_store::is_board_path(root, path);
-            drawing |= path.starts_with(&tiles);
+            if crate::board_store::is_board_path(root, path) {
+                board_paths.insert(path.clone());
+            }
+            if path.starts_with(&tiles)
+                && path.extension().and_then(|extension| extension.to_str()) == Some("png")
+            {
+                drawing_paths.insert(path.clone());
+            }
         }
     }
-    if board {
-        check_board(app, root);
+    if !board_paths.is_empty() {
+        check_board(app, root, &board_paths);
     }
-    if drawing {
-        check_drawing(app, root);
+    if !drawing_paths.is_empty() {
+        check_drawing(app, root, &drawing_paths);
     }
 }
 
-fn check_board(app: &AppHandle, root: &Path) {
-    let Ok(_store) = crate::board_store::STORE_LOCK.lock() else { return };
+fn check_board(app: &AppHandle, root: &Path, paths: &HashSet<PathBuf>) {
+    if paths
+        .iter()
+        .all(|path| crate::board_store::is_synced_path_current(root, path))
+    {
+        return;
+    }
+    let Ok(_store) = crate::board_store::STORE_LOCK.lock() else {
+        return;
+    };
+    crate::backup::mark_project_changed(root);
     match crate::project::external_board_change(root) {
         Ok(Some(payload)) => {
             if let Err(error) = app.emit("project-board-changed", payload) {
@@ -112,17 +135,42 @@ fn check_board(app: &AppHandle, root: &Path) {
     }
 }
 
-fn check_drawing(app: &AppHandle, root: &Path) {
-    let current = scan_tiles(&tiles_directory(root));
+fn check_drawing(app: &AppHandle, root: &Path, paths: &HashSet<PathBuf>) {
     let changed = {
-        let Ok(mut known) = DRAWING_KNOWN.lock() else { return };
-        let same = known.as_ref().is_some_and(|(known_root, map)| known_root == root && *map == current);
-        if !same {
-            *known = Some((root.to_path_buf(), current));
+        let Ok(mut known) = DRAWING_KNOWN.lock() else {
+            return;
+        };
+        if known
+            .as_ref()
+            .map_or(true, |(known_root, _)| known_root != root)
+        {
+            *known = Some((root.to_path_buf(), HashMap::new()));
         }
-        !same
+        let Some((_, map)) = known.as_mut() else {
+            return;
+        };
+        let mut changed = false;
+        for path in paths {
+            let Some(name) = path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+            else {
+                continue;
+            };
+            let current = fs::read(path).ok().map(|bytes| hash(&bytes));
+            match current {
+                Some(fingerprint) if map.get(&name) != Some(&fingerprint) => {
+                    map.insert(name, fingerprint);
+                    changed = true;
+                }
+                None if map.remove(&name).is_some() => changed = true,
+                _ => {}
+            }
+        }
+        changed
     };
     if changed {
+        crate::backup::mark_project_changed(root);
         if let Err(error) = app.emit("project-drawing-changed", ()) {
             eprintln!("Could not report a drawing change: {error}");
         }
@@ -135,7 +183,9 @@ fn tiles_directory(root: &Path) -> PathBuf {
 
 fn scan_tiles(tiles: &Path) -> HashMap<String, u64> {
     let mut map = HashMap::new();
-    let Ok(entries) = fs::read_dir(tiles) else { return map };
+    let Ok(entries) = fs::read_dir(tiles) else {
+        return map;
+    };
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         if !name.ends_with(".png") {

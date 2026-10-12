@@ -20,7 +20,13 @@ export function firstLinkedTaskForTime(
     if (edge.from === timeId && notes[edge.to]?.task) linkedIds.add(edge.to);
     if (edge.to === timeId && notes[edge.from]?.task) linkedIds.add(edge.from);
   }
-  const firstId = order.find((id) => linkedIds.has(id)) ?? [...linkedIds][0];
+  let firstId: string | undefined;
+  let firstIndex = Number.POSITIVE_INFINITY;
+  for (const id of linkedIds) {
+    const index = order.indexOf(id);
+    if (index >= 0 && index < firstIndex) { firstId = id; firstIndex = index; }
+  }
+  firstId ??= linkedIds.values().next().value;
   return firstId ? notes[firstId] ?? null : null;
 }
 

@@ -1,3 +1,5 @@
+import { pinNote } from "../board/visibility.svelte";
+
 export const tierlistAudioPlayback = $state({
   key: null as string | null,
   audio: null as HTMLAudioElement | null,
@@ -5,9 +7,10 @@ export const tierlistAudioPlayback = $state({
   errorKey: null as string | null,
   error: "",
 });
+let releasePinnedNote: (() => void) | null = null;
 
 /** One inline player is shared by every Tierlist, so starting a card pauses the previous one. */
-export async function toggleTierlistAudio(key: string, url: string): Promise<void> {
+export async function toggleTierlistAudio(key: string, url: string, noteId?: string): Promise<void> {
   if (!url || typeof Audio === "undefined") return;
   const current = tierlistAudioPlayback.audio;
   if (tierlistAudioPlayback.key === key && current) {
@@ -26,21 +29,37 @@ export async function toggleTierlistAudio(key: string, url: string): Promise<voi
   }
 
   current?.pause();
-  const audio = new Audio(url);
+  releasePinnedNote?.();
+  releasePinnedNote = null;
+  const audio = new Audio();
+  // The player is created only in response to a play action, so metadata loading is now intentional.
+  audio.preload = "auto";
+  audio.src = url;
   tierlistAudioPlayback.key = key;
   tierlistAudioPlayback.audio = audio;
   tierlistAudioPlayback.playing = false;
   tierlistAudioPlayback.errorKey = null;
   tierlistAudioPlayback.error = "";
-  audio.preload = "auto";
   audio.onplay = () => {
-    if (tierlistAudioPlayback.audio === audio) tierlistAudioPlayback.playing = true;
+    if (tierlistAudioPlayback.audio === audio) {
+      tierlistAudioPlayback.playing = true;
+      releasePinnedNote?.();
+      if (noteId) releasePinnedNote = pinNote(noteId, "tierlist audio playback");
+    }
   };
   audio.onpause = () => {
-    if (tierlistAudioPlayback.audio === audio) tierlistAudioPlayback.playing = false;
+    if (tierlistAudioPlayback.audio === audio) {
+      tierlistAudioPlayback.playing = false;
+      releasePinnedNote?.();
+      releasePinnedNote = null;
+    }
   };
   audio.onended = () => {
-    if (tierlistAudioPlayback.audio === audio) tierlistAudioPlayback.playing = false;
+    if (tierlistAudioPlayback.audio === audio) {
+      tierlistAudioPlayback.playing = false;
+      releasePinnedNote?.();
+      releasePinnedNote = null;
+    }
   };
   audio.onerror = () => reportPlaybackError(key, audio, audio.error?.message || "The audio file could not be loaded.");
   try {
@@ -58,6 +77,8 @@ function reportPlaybackError(key: string, audio: HTMLAudioElement, error: unknow
     error: reason,
   });
   tierlistAudioPlayback.playing = false;
+  releasePinnedNote?.();
+  releasePinnedNote = null;
   tierlistAudioPlayback.errorKey = key;
   tierlistAudioPlayback.error = reason;
 }
@@ -65,6 +86,8 @@ function reportPlaybackError(key: string, audio: HTMLAudioElement, error: unknow
 export function stopTierlistAudioFor(noteId: string): void {
   if (!tierlistAudioPlayback.key?.startsWith(`${noteId}:`)) return;
   tierlistAudioPlayback.audio?.pause();
+  releasePinnedNote?.();
+  releasePinnedNote = null;
   tierlistAudioPlayback.key = null;
   tierlistAudioPlayback.audio = null;
   tierlistAudioPlayback.playing = false;

@@ -50,10 +50,12 @@ export function hitTestNotes(
   paintOrder: readonly string[],
   getBounds: (note: Note) => Bounds = noteBounds,
   include: (id: string) => boolean = () => true,
+  candidateIds?: readonly string[],
+  paintPosition?: ReadonlyMap<string, number>,
 ): string[] {
   const hits: string[] = [];
-  for (let index = paintOrder.length - 1; index >= 0; index -= 1) {
-    const id = paintOrder[index];
+  const candidates = orderedCandidates(candidateIds, paintOrder, paintPosition, true);
+  for (const id of candidates) {
     const note = notes[id];
     if (note && include(id) && pointInBounds(point, getBounds(note))) hits.push(id);
   }
@@ -67,11 +69,30 @@ export function notesTouchingMarquee(
   paintOrder: readonly string[],
   getBounds: (note: Note) => Bounds = noteBounds,
   include: (id: string) => boolean = () => true,
+  candidateIds?: readonly string[],
+  paintPosition?: ReadonlyMap<string, number>,
 ): string[] {
-  return paintOrder.filter((id) => {
+  return orderedCandidates(candidateIds, paintOrder, paintPosition, false).filter((id) => {
     const note = notes[id];
     return note !== undefined && include(id) && boundsTouch(marquee, getBounds(note));
   });
+}
+
+function orderedCandidates(
+  candidates: readonly string[] | undefined,
+  paintOrder: readonly string[],
+  paintPosition: ReadonlyMap<string, number> | undefined,
+  descending: boolean,
+): readonly string[] {
+  if (!candidates) return descending ? paintOrder.slice().reverse() : paintOrder;
+  const ordered = [...candidates];
+  if (paintPosition) {
+    ordered.sort((left, right) => {
+      const difference = (paintPosition.get(left) ?? -1) - (paintPosition.get(right) ?? -1);
+      return descending ? -difference : difference;
+    });
+  }
+  return ordered;
 }
 
 /** Zones use the same touch rule as notes, respecting contours and holes. */

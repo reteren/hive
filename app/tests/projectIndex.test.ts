@@ -4,6 +4,7 @@ import {
   mergeLoadedNotes,
   parseProjectIndex,
   parseProjectIndexWithWarnings,
+  projectNoteFiles,
   serializeProjectIndex,
 } from "../src/project/index";
 
@@ -38,6 +39,35 @@ describe("project index", () => {
       height: null,
       futureNoteField: "kept",
     });
+  });
+
+  it("reuses serialized note entries until their revision changes", () => {
+    const notes: Note[] = [
+      { id: "cached-a", type: "note", name: "A", text: "one", x: 0, y: 0, width: 25, height: null },
+      { id: "cached-b", type: "note", name: "B", text: "two", x: 30, y: 0, width: 25, height: null },
+    ];
+    const noteEntries = new Map<string, { revision: number; file: string; entry: import("../src/project/index").IndexedNote }>();
+    const noteRevisions = new Map<string, number>();
+    const filesById = projectNoteFiles(notes);
+    const options = { noteEntries, noteRevisions, filesById };
+    const serialize = () => serializeProjectIndex(
+      notes, undefined, [], [], [], [], {}, [], [], undefined, undefined, options,
+    );
+
+    const first = serialize();
+    const firstA = noteEntries.get("cached-a")!.entry;
+    const firstB = noteEntries.get("cached-b")!.entry;
+    serialize();
+    expect(noteEntries.get("cached-a")!.entry).toBe(firstA);
+    expect(noteEntries.get("cached-b")!.entry).toBe(firstB);
+
+    notes[0]!.x = 12;
+    noteRevisions.set("cached-a", 1);
+    const next = serialize();
+    expect(noteEntries.get("cached-a")!.entry).not.toBe(firstA);
+    expect(noteEntries.get("cached-b")!.entry).toBe(firstB);
+    expect(parseProjectIndex(next).notes[0]?.x).toBe(12);
+    expect(parseProjectIndex(first).notes[0]?.x).toBe(0);
   });
 
   it("persists a hidden title header and normalizes fixed node height around it", () => {

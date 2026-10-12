@@ -2,6 +2,7 @@ import type { Link } from "./link";
 import type { Note } from "./note";
 import type { Zone } from "./zone";
 import type { CalculatorData } from "./nodeData";
+import { markProjectChanged } from "../project/changeSignal.svelte";
 
 /**
  * R6 contracts: soft-deleted (trash) and archived board content. Both live in board.json
@@ -35,10 +36,49 @@ export interface ArchiveEntry {
 export const trash = $state({ entries: [] as TrashEntry[] });
 export const archive = $state({ entries: [] as ArchiveEntry[] });
 
+let trashChangeRevision = 0;
+let archiveChangeRevision = 0;
+const trashListeners = new Set<(revision: number) => void>();
+const archiveListeners = new Set<(revision: number) => void>();
+
+export function trashRevision(): number {
+  return trashChangeRevision;
+}
+
+export function archiveRevision(): number {
+  return archiveChangeRevision;
+}
+
+export function onTrashMutation(listener: (revision: number) => void): () => void {
+  trashListeners.add(listener);
+  return () => trashListeners.delete(listener);
+}
+
+export function onArchiveMutation(listener: (revision: number) => void): () => void {
+  archiveListeners.add(listener);
+  return () => archiveListeners.delete(listener);
+}
+
+export function updateTrashEntries(update: (entries: TrashEntry[]) => TrashEntry[] | void): void {
+  const replacement = update(trash.entries);
+  if (replacement) trash.entries = replacement;
+  trashChangeRevision += 1;
+  markProjectChanged();
+  for (const listener of trashListeners) listener(trashChangeRevision);
+}
+
+export function updateArchiveEntries(update: (entries: ArchiveEntry[]) => ArchiveEntry[] | void): void {
+  const replacement = update(archive.entries);
+  if (replacement) archive.entries = replacement;
+  archiveChangeRevision += 1;
+  markProjectChanged();
+  for (const listener of archiveListeners) listener(archiveChangeRevision);
+}
+
 export function replaceTrash(entries: TrashEntry[]): void {
-  trash.entries = entries;
+  updateTrashEntries(() => entries);
 }
 
 export function replaceArchive(entries: ArchiveEntry[]): void {
-  archive.entries = entries;
+  updateArchiveEntries(() => entries);
 }

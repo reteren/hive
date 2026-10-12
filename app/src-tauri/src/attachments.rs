@@ -1072,8 +1072,7 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
 mod tests {
     use super::{
         check_size, detect_format, detect_media_descriptor, external_video_paths, import_bytes_at,
-        import_path_at,
-        import_source_path_at, import_supported_bytes, readable_attachment_name,
+        import_path_at, import_source_path_at, import_supported_bytes, readable_attachment_name,
         should_externalize_video, validate_attachment_filename, MediaDescriptor,
         LARGE_VIDEO_EXTERNAL_BYTES, MAX_LARGE_MEDIA_BYTES, MAX_SMALL_ATTACHMENT_BYTES,
         UNLIMITED_VIDEO_EXTERNAL_THRESHOLD_BYTES,
@@ -1228,7 +1227,8 @@ mod tests {
         bytes.extend_from_slice("é".as_bytes());
         fs::write(&source, &bytes).expect("write text source");
 
-        let imported = import_path_at(&root, &source, None, None).expect("import split UTF-8 character");
+        let imported =
+            import_path_at(&root, &source, None, None).expect("import split UTF-8 character");
 
         assert_eq!(imported.kind.as_deref(), Some("text"));
         assert_eq!(
@@ -1251,8 +1251,8 @@ mod tests {
             .set_len(super::LARGE_VIDEO_EXTERNAL_BYTES + 1)
             .expect("extend video file");
 
-        let imported =
-            import_path_at(&root, &video, Some("video"), None).expect("import large video reference");
+        let imported = import_path_at(&root, &video, Some("video"), None)
+            .expect("import large video reference");
         assert_eq!(
             imported.external_path.as_deref(),
             Some(fs::canonicalize(&video).unwrap().to_str().unwrap())
@@ -1280,9 +1280,15 @@ mod tests {
         assert!(!should_externalize_video(99, Some(100)));
         assert!(!should_externalize_video(100, Some(100)));
         assert!(should_externalize_video(101, Some(100)));
-        assert!(!should_externalize_video(u64::MAX, Some(UNLIMITED_VIDEO_EXTERNAL_THRESHOLD_BYTES)));
+        assert!(!should_externalize_video(
+            u64::MAX,
+            Some(UNLIMITED_VIDEO_EXTERNAL_THRESHOLD_BYTES)
+        ));
         assert!(!should_externalize_video(LARGE_VIDEO_EXTERNAL_BYTES, None));
-        assert!(should_externalize_video(LARGE_VIDEO_EXTERNAL_BYTES + 1, None));
+        assert!(should_externalize_video(
+            LARGE_VIDEO_EXTERNAL_BYTES + 1,
+            None
+        ));
     }
 
     #[test]

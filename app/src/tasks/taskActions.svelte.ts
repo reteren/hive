@@ -6,7 +6,7 @@ import { registerCommand } from "../commands/registry.svelte";
 import { selection } from "../selection/selection.svelte";
 import { registerNoteMenuItem } from "../notes/noteMenu";
 import { cloneTaskState, createReopenTaskCommand, createTaskCompletionCommand, createTaskFlagCommand } from "./taskTransitions";
-import { taskLog, type TaskLogEntry } from "./taskLog.svelte";
+import { addTaskLogEntry, removeTaskLogEntry, taskLog, type TaskLogEntry } from "./taskLog.svelte";
 import { panelPopupState, togglePanelPopup } from "../ui/popups/panelPopupState.svelte";
 import { linkedTaskCompletionForTime, linkedTimeStatesForTask } from "../time/taskLink";
 
@@ -30,18 +30,10 @@ function transitionStore() {
       if (board.notes[noteId]) updateNote(noteId, { taskMemory: cloneTaskState(task) });
     },
     addLogEntry(entry: TaskLogEntry): void {
-      if (!taskLog.entries.some((item) => item.noteId === entry.noteId && item.doneAt === entry.doneAt)) {
-        taskLog.entries.push(entry);
-      }
+      addTaskLogEntry(entry);
     },
     removeLogEntry(entry: TaskLogEntry): void {
-      for (let index = taskLog.entries.length - 1; index >= 0; index -= 1) {
-        const item = taskLog.entries[index];
-        if (item?.noteId === entry.noteId && item.name === entry.name && item.doneAt === entry.doneAt) {
-          taskLog.entries.splice(index, 1);
-          return;
-        }
-      }
+      removeTaskLogEntry(entry);
     },
     getLinkedTimeStates(noteId: string) {
       const edges = Object.values(links.byId);

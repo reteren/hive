@@ -161,7 +161,7 @@
       <p class="empty-recordings">Your recordings will appear here.</p>
     {/if}
   {:else if note.media?.kind === "audio"}
-    <AudioPlayerRow media={note.media} name={note.name} />
+    <AudioPlayerRow media={note.media} name={note.name} sourceNoteId={note.id} />
   {:else}
     <div class="audio-error" role="status">Audio file is missing or unavailable.</div>
   {/if}

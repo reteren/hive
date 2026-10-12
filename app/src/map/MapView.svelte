@@ -4,12 +4,15 @@
   import type { NoteKind } from "../model/note";
   import { board } from "../model/board.svelte";
   import { zones } from "../model/zones.svelte";
-  import { noteBounds } from "../notes/layout.svelte";
   import { ME_POSITION, camera, cameraSettings, refreshPointerWorld, viewport } from "../board/camera.svelte";
   import { zoomAt, type Point } from "../board/cameraMath";
   import { ME_OBJECT_ID } from "../model/link";
   import { hasMeBeacon } from "../beacons/beaconState.svelte";
   import { links as boardLinks } from "../model/links.svelte";
+  import { measuredHeights } from "../notes/layout.svelte";
+  import { listStatisticsMeasurements } from "../stats/listStatsMeasurements.svelte";
+  import { ensureMapFrame, invalidateMapFrame, invalidateMapGeometry, mapGeometryNeedsRebuild, mapNoteGeometry, markMapGeometryBuilt, registerMapFrameBuilder, rememberMapNoteGeometry, sharedMapFrame } from "./mapFrame.svelte";
+  import type { MapFrame } from "./mapFrame.svelte";
   import {
     cameraViewportRect,
     clientToMapPoint,
@@ -63,22 +66,9 @@
     radius: number;
   }
 
-  interface MapFrame {
-    transform: MapTransform;
-    zones: { id: string; color: string; path: string }[];
-    notes: MapRectMark[];
-    beacons: MapDotMark[];
-    links: { id: string; kind: "strong" | "weak"; from: Point; to: Point }[];
-    linksSkipped: boolean;
-    me: Point | null;
-    viewport: WorldRect;
-    camera: CameraSnapshot;
-    internalZoom: number;
-  }
-
   let svg: SVGSVGElement;
   let { variant = "overlay" }: { variant?: "overlay" | "node" } = $props();
-  let frame = $state<MapFrame>({
+  const initialFrame: MapFrame = {
     transform: mapTransformForBounds({ x: 0, y: 0, width: 0, height: 0 }, { width: MAP_WIDTH, height: MAP_HEIGHT }, MAP_PADDING, mapViewState.zoom),
     zones: [],
     notes: [],
@@ -89,9 +79,8 @@
     viewport: { x: 0, y: 0, width: 0, height: 0 },
     camera: { x: camera.x, y: camera.y, zoom: camera.zoom },
     internalZoom: mapViewState.zoom,
-  });
-  let cachedBoundsKey = "";
-  let cachedBounds: WorldRect = { x: 0, y: 0, width: 0, height: 0 };
+  };
+  let frame = $derived(sharedMapFrame.value ?? initialFrame);
   let dragBefore: CameraSnapshot | null = null;
   let dragStartClient: Point | null = null;
   let dragScreenToMap: ClientToMapMatrix | null = null;
@@ -109,18 +98,14 @@
     }).join("");
   }
 
-  function geometryKey(notes: readonly NoteSnapshot[], boardZones: readonly ZoneSnapshot[]): string {
-    return JSON.stringify([
-      notes.map(({ id, x, y, width, height }) => [id, x, y, width, height]),
-      boardZones.map(({ id, parts }) => [id, parts]),
-    ]);
-  }
-
   function captureNotes(): NoteSnapshot[] {
     return board.order.flatMap((id) => {
       const note = board.notes[id];
       if (!note) return [];
-      const bounds = noteBounds(note);
+      const geometry = mapNoteGeometry(note);
+      if (!geometry) return [];
+      const bounds = geometry.bounds;
+      rememberMapNoteGeometry(note.id, geometry.signature);
       return [{
         id: note.id,
         type: note.type,
@@ -193,24 +178,55 @@
   }
 
   function currentFrame(): MapFrame {
+    const cached = sharedMapFrame.value;
+    if (cached && !mapGeometryNeedsRebuild()) {
+      return {
+        ...cached,
+        viewport: cameraViewportRect(camera, viewport, cached.transform),
+        camera: cameraSnapshot(),
+        internalZoom: mapViewState.zoom,
+      };
+    }
     const notes = captureNotes();
     const boardZones = captureZones();
     const sourceLinks = Object.values(boardLinks.byId);
     const linksSkipped = sourceLinks.length > MAX_PROJECTED_MAP_LINKS;
     const linkSnapshots: MapLinkInput[] = linksSkipped ? [] : sourceLinks.map(({ id, from, to, kind }) => ({ id, from, to, kind }));
     const mePresent = hasMeBeacon();
-    const key = `${mePresent}:${geometryKey(notes, boardZones)}`;
-    if (key !== cachedBoundsKey) {
-      cachedBounds = wholeBoardBounds(notes, boardZones, mePresent ? ME_POSITION : null);
-      cachedBoundsKey = key;
-    }
-    return makeFrame(notes, boardZones, linkSnapshots, linksSkipped, cachedBounds);
+    const bounds = wholeBoardBounds(notes, boardZones, mePresent ? ME_POSITION : null);
+    const next = makeFrame(notes, boardZones, linkSnapshots, linksSkipped, bounds);
+    markMapGeometryBuilt();
+    return next;
   }
 
   $effect(() => {
-    // Keep geometry and its click transform in the same render. A queued animation-frame
-    // assignment let the first pointer event use the initial empty-board transform.
-    frame = currentFrame();
+    return registerMapFrameBuilder(currentFrame);
+  });
+
+  $effect(() => {
+    void camera.x; void camera.y; void camera.zoom;
+    void viewport.width; void viewport.height;
+    invalidateMapFrame();
+  });
+
+  $effect(() => {
+    void mapViewState.zoom;
+    invalidateMapGeometry();
+  });
+
+  $effect(() => {
+    // Subscribe to sparse structural inputs. Note geometry changes arrive through onBoardMutation,
+    // so a drag never walks the board from every minimap instance.
+    for (const id of board.order) { void measuredHeights[id]; void listStatisticsMeasurements[id]; }
+    for (const id of zones.order) {
+      const zone = zones.byId[id];
+      if (zone) { void zone.color; void zone.parts; void zone.holes; }
+    }
+    for (const link of Object.values(boardLinks.byId)) {
+      void link.from; void link.to; void link.kind;
+    }
+    void hasMeBeacon();
+    invalidateMapGeometry();
   });
 
   function screenToMapMatrix(): ClientToMapMatrix | null {
@@ -244,8 +260,7 @@
     svg.setPointerCapture(event.pointerId);
     const point = pointFromEvent(event, dragScreenToMap);
     if (point) {
-      const latestFrame = currentFrame();
-      frame = latestFrame;
+      const latestFrame = ensureMapFrame() ?? frame;
       moveCameraToMapPoint(point, latestFrame.transform);
     }
   }

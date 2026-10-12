@@ -8,7 +8,7 @@ import { ME_OBJECT_ID } from "../model/link";
 import { hasMeBeacon } from "../beacons/beaconState.svelte";
 import { calculatorKey, parseCalculatorData, type CalculatorData } from "../model/nodeData";
 import { newId, type Note } from "../model/note";
-import { archive, type ArchiveEntry } from "../model/retention.svelte";
+import { archive, updateArchiveEntries, type ArchiveEntry } from "../model/retention.svelte";
 import { creationObstacleForNote, estimatedCreationHeight, nearestFreeNoteCenter } from "../notes/creationPosition";
 import { measuredHeights } from "../notes/layout.svelte";
 import { uniqueName } from "../notes/naming";
@@ -61,7 +61,7 @@ export function archiveNotes(noteIds: readonly string[]): number {
       originals.forEach(({ note }) => {
         if (!permanentlyDeleted.has(entryByNoteId.get(note.id)!.id)) removeNote(note.id);
       });
-      archive.entries = [...archive.entries, ...entries.filter((entry) => !permanentlyDeleted.has(entry.id))];
+      updateArchiveEntries((current) => [...current, ...entries.filter((entry) => !permanentlyDeleted.has(entry.id))]);
       for (const { note } of originals) {
         if (!permanentlyDeleted.has(entryByNoteId.get(note.id)!.id)) pruneCalculatorIfUnused(note);
       }
@@ -72,7 +72,7 @@ export function archiveNotes(noteIds: readonly string[]): number {
       const restorable = new Set(entries
         .filter((entry) => !permanentlyDeleted.has(entry.id) && archive.entries.some((item) => item.id === entry.id))
         .map((entry) => entry.note.id));
-      archive.entries = archive.entries.filter((entry) => !restorable.has(entry.note.id));
+      updateArchiveEntries((current) => current.filter((entry) => !restorable.has(entry.note.id)));
       originals.slice().sort((a, b) => a.index - b.index).forEach(({ note, index }) => {
         if (restorable.has(note.id)) addNote(copyArchivedNote(note), index);
       });
@@ -132,7 +132,7 @@ export function restoreArchived(
     target: plan.note.name,
     do: () => {
       if (permanentlyDeleted.has(entryId)) return;
-      archive.entries = archive.entries.filter((item) => item.id !== entryId);
+      updateArchiveEntries((current) => current.filter((item) => item.id !== entryId));
       addNote(copyArchivedNote(plan.note));
       restoreCalculatorIfAbsent(plan.note, entry.calculatorData);
       plan.links.forEach((link) => addLink(copyArchivedLink(link)));
@@ -148,7 +148,7 @@ export function restoreArchived(
       removeNote(plan.note.id);
       pruneCalculatorIfUnused(plan.note);
       beforeLinkedTimes.forEach((time) => setTimeEnabled(time.noteId, time.enabled));
-      archive.entries.splice(index, 0, entry);
+      updateArchiveEntries((current) => { current.splice(index, 0, entry); });
       restoreSelectionSnapshot(beforeSelection);
     },
   };
@@ -198,7 +198,7 @@ export function duplicateArchivedNear(entryId: string, archiveNodeId: string): N
 export function deleteArchivedPermanently(entryId: string): void {
   if (!archive.entries.some((entry) => entry.id === entryId)) return;
   permanentlyDeleted.add(entryId);
-  archive.entries = archive.entries.filter((entry) => entry.id !== entryId);
+  updateArchiveEntries((current) => current.filter((entry) => entry.id !== entryId));
 }
 
 function copyCalculatorData(data: CalculatorData): CalculatorData {

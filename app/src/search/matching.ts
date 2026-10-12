@@ -32,19 +32,103 @@ export function searchNotes(
   notes: readonly SearchNote[],
   boardOrder: readonly string[] = notes.map((note) => note.id),
 ): SearchResult[] {
+  return new SearchIndex(notes, boardOrder).search(query);
+}
+
+interface FoldedText {
+  text: string;
+  starts: number[];
+  ends: number[];
+}
+
+interface IndexedNote {
+  note: SearchNote;
+  name: FoldedText;
+  searchableText: string;
+  text: FoldedText;
+  grams: Set<string>;
+  fallbackPosition: number;
+}
+
+/** Incremental normalized full-text index; only changed note content is folded and reindexed. */
+export class SearchIndex {
+  private entries = new Map<string, IndexedNote>();
+  private postings = new Map<string, Set<string>>();
+  private positionById = new Map<string, number>();
+  private nextFallbackPosition = 0;
+
+  constructor(notes: readonly SearchNote[] = [], boardOrder: readonly string[] = []) {
+    this.replace(notes, boardOrder.length > 0 ? boardOrder : notes.map((note) => note.id));
+  }
+
+  replace(notes: readonly SearchNote[], boardOrder: readonly string[] = notes.map((note) => note.id)): void {
+    this.entries.clear();
+    this.postings.clear();
+    this.nextFallbackPosition = 0;
+    for (const note of notes) this.upsert(note);
+    this.setOrder(boardOrder);
+  }
+
+  upsert(note: SearchNote): boolean {
+    const previous = this.entries.get(note.id);
+    if (previous && sameSearchFields(previous.note, note)) {
+      previous.note = note;
+      return false;
+    }
+    if (previous) this.removePostings(note.id, previous.grams);
+    const searchableText = inlineImageTextForFit(note.text);
+    const name = foldWithOffsets(note.name);
+    const text = foldWithOffsets(searchableText);
+    const grams = new Set([
+      ...gramsOf(name.text),
+      ...gramsOf(text.text),
+      ...kindSearchText(note).flatMap((term) => [...gramsOf(term)]),
+    ]);
+    const indexed: IndexedNote = {
+      note,
+      name,
+      searchableText,
+      text,
+      grams,
+      fallbackPosition: previous?.fallbackPosition ?? this.nextFallbackPosition++,
+    };
+    this.entries.set(note.id, indexed);
+    for (const gram of grams) {
+      let ids = this.postings.get(gram);
+      if (!ids) this.postings.set(gram, ids = new Set());
+      ids.add(note.id);
+    }
+    return true;
+  }
+
+  remove(id: string): boolean {
+    const previous = this.entries.get(id);
+    if (!previous) return false;
+    this.removePostings(id, previous.grams);
+    this.entries.delete(id);
+    this.positionById.delete(id);
+    return true;
+  }
+
+  setOrder(order: readonly string[]): void {
+    this.positionById = new Map(order.map((id, index) => [id, index]));
+  }
+
+  search(query: string): SearchResult[] {
   const foldedQuery = foldText(query.trim());
   if (!foldedQuery) return [];
-
-  const positionById = new Map(boardOrder.map((id, index) => [id, index]));
-  const fallbackPosition = new Map(notes.map((note, index) => [note.id, index]));
+  const candidateIds = this.candidatesFor(foldedQuery);
   const matches: Array<{
     result: SearchResult;
     createdAt: number | undefined;
     position: number;
   }> = [];
 
-  for (const note of notes) {
-    const nameMatch = findMatchRange(note.name, foldedQuery);
+  for (const id of candidateIds) {
+    const indexed = this.entries.get(id);
+    if (!indexed) continue;
+    const note = indexed.note;
+    const nameMatch = findMatchRangeInFold(indexed.name, foldedQuery);
     const resultInfo = { objectKind: note.type, isTask: Boolean(note.task) };
     if (nameMatch) {
       matches.push({
@@ -58,7 +142,7 @@ export function searchNotes(
           ...resultInfo,
         },
         createdAt: validCreationTime(note.createdAt),
-        position: positionById.get(note.id) ?? fallbackPosition.get(note.id) ?? Number.MAX_SAFE_INTEGER,
+        position: this.positionById.get(note.id) ?? indexed.fallbackPosition ?? Number.MAX_SAFE_INTEGER,
       });
     }
 
@@ -76,14 +160,13 @@ export function searchNotes(
           ...resultInfo,
         },
         createdAt: validCreationTime(note.createdAt),
-        position: positionById.get(note.id) ?? fallbackPosition.get(note.id) ?? Number.MAX_SAFE_INTEGER,
+        position: this.positionById.get(note.id) ?? indexed.fallbackPosition ?? Number.MAX_SAFE_INTEGER,
       });
     }
 
-    const searchableText = inlineImageTextForFit(note.text);
-    const textMatch = findMatchRange(searchableText, foldedQuery);
+    const textMatch = findMatchRangeInFold(indexed.text, foldedQuery);
     if (textMatch) {
-      const snippet = extractSnippet(searchableText, textMatch.start, textMatch.end);
+      const snippet = extractSnippet(indexed.searchableText, textMatch.start, textMatch.end);
       matches.push({
         result: {
           noteId: note.id,
@@ -93,7 +176,7 @@ export function searchNotes(
           ...snippet,
         },
         createdAt: validCreationTime(note.createdAt),
-        position: positionById.get(note.id) ?? fallbackPosition.get(note.id) ?? Number.MAX_SAFE_INTEGER,
+        position: this.positionById.get(note.id) ?? indexed.fallbackPosition ?? Number.MAX_SAFE_INTEGER,
       });
     }
   }
@@ -117,6 +200,59 @@ export function searchNotes(
   });
 
   return matches.map(({ result }) => result);
+  }
+
+  matchingNameIds(query: string): string[] {
+    const normalized = query.trim().toLocaleLowerCase();
+    if (!normalized) return [...this.entries.keys()];
+    return this.candidatesFor(foldText(normalized)).filter((id) =>
+      this.entries.get(id)?.note.name.toLocaleLowerCase().includes(normalized));
+  }
+
+  private candidatesFor(query: string): string[] {
+    const grams = [...gramsOfWidth(query, Math.min(3, query.length))];
+    if (grams.length === 0) return [];
+    const lists = grams.map((gram) => this.postings.get(gram));
+    if (lists.some((ids) => !ids)) return [];
+    const ordered = lists as Set<string>[];
+    ordered.sort((left, right) => left.size - right.size);
+    const [smallest, ...rest] = ordered;
+    return [...smallest].filter((id) => rest.every((ids) => ids.has(id)));
+  }
+
+  private removePostings(id: string, grams: Set<string>): void {
+    for (const gram of grams) {
+      const ids = this.postings.get(gram);
+      ids?.delete(id);
+      if (ids?.size === 0) this.postings.delete(gram);
+    }
+  }
+}
+
+function gramsOf(value: string): Set<string> {
+  const grams = new Set<string>();
+  for (let width = 1; width <= Math.min(3, value.length); width += 1) {
+    for (let index = 0; index <= value.length - width; index += 1) grams.add(value.slice(index, index + width));
+  }
+  return grams;
+}
+
+function gramsOfWidth(value: string, width: number): Set<string> {
+  const grams = new Set<string>();
+  if (width <= 0 || width > value.length) return grams;
+  for (let index = 0; index <= value.length - width; index += 1) grams.add(value.slice(index, index + width));
+  return grams;
+}
+
+function sameSearchFields(left: SearchNote, right: SearchNote): boolean {
+  return left.name === right.name && left.text === right.text && left.createdAt === right.createdAt &&
+    left.type === right.type && Boolean(left.task) === Boolean(right.task);
+}
+
+function kindSearchText(note: SearchNote): string[] {
+  const terms = note.type ? (OBJECT_KIND_TERMS[note.type] ?? []).map((entry) => entry.term) : [];
+  if (note.task) terms.push("task");
+  return terms.map(foldText);
 }
 
 const OBJECT_KIND_TERMS: Partial<Record<NoteKind, Array<{ term: string; label: string }>>> = {
@@ -207,6 +343,10 @@ export function splitSearchMatch(result: SearchResult): { before: string; match:
 
 function findMatchRange(source: string, foldedQuery: string): { start: number; end: number } | null {
   const folded = foldWithOffsets(source);
+  return findMatchRangeInFold(folded, foldedQuery);
+}
+
+function findMatchRangeInFold(folded: FoldedText, foldedQuery: string): { start: number; end: number } | null {
   const index = folded.text.indexOf(foldedQuery);
   if (index === -1) return null;
 

@@ -111,6 +111,19 @@ describe("selection hit testing", () => {
     expect(hitTestNotes({ x: 15, y: 7 }, { a: noteA, b: noteB }, ["a", "b"])).toEqual(["b", "a"]);
   });
 
+  it("sorts spatial candidates by cached paint order before exact point and marquee tests", () => {
+    const notes = { a: noteA, b: noteB };
+    const paintPosition = new Map([["a", 0], ["b", 1]]);
+    const bounds = (note: Note) => ({ x: note.x, y: note.y, width: note.width, height: note.height ?? 0 });
+
+    expect(hitTestNotes({ x: 15, y: 7 }, notes, ["a", "b"], bounds, undefined, ["a", "b"], paintPosition))
+      .toEqual(["b", "a"]);
+    expect(notesTouchingMarquee({ x: 0, y: 0, width: 30, height: 15 }, notes, ["a", "b"], bounds, undefined, ["b", "a"], paintPosition))
+      .toEqual(["a", "b"]);
+    expect(hitTestNotes({ x: 15, y: 7 }, notes, ["a", "b"], bounds, undefined, ["a"], paintPosition))
+      .toEqual(["a"]);
+  });
+
   it("selects notes touched by a marquee edge or corner", () => {
     const marquee = rectFromPoints({ x: 20, y: 0 }, { x: 30, y: 4 });
     expect(boundsTouch(marquee, { x: 0, y: 0, width: 20, height: 10 })).toBe(true);

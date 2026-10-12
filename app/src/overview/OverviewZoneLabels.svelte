@@ -3,13 +3,16 @@
   import { PX_PER_UNIT, worldToScreen } from "../board/cameraMath";
   import { zones } from "../model/zones.svelte";
   import { zoneBounds } from "../model/zone";
+  import { selection } from "../selection/selection.svelte";
+  import { lod, visible } from "../board/visibility.svelte";
+  import { zoneIdsInRect } from "../zones/membership.svelte";
   import { overview } from "./overview.svelte";
   import { overviewZoneFontSize, overviewZoneLabel } from "./overviewLogic";
 
   // Zone labels of the Alt overview live in their own layer ABOVE the nodes (the zones themselves
   // stay below), so a node lying inside a zone never hides the zone's name.
   let labels = $derived(overview.active
-    ? zones.order.flatMap((id) => {
+    ? zoneIdsInRect(visible.rect).filter((id) => lod.tier === "full" || selection.zoneIds.includes(id)).flatMap((id) => {
       const zone = zones.byId[id];
       if (!zone) return [];
       const bounds = zoneBounds(zone);

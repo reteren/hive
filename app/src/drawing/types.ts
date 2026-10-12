@@ -116,6 +116,7 @@ export type TileSnapshot = Map<TileKey, TileCopy | null>;
  * paints (brush, eraser, fill, selection, later spray/effects) goes through this.
  */
 export interface DrawingTileStore {
+  /** Whether a tile exists in the drawing index (it may need to be loaded before CPU/GPU access). */
   has(key: TileKey): boolean;
   /** Tile texture on the drawing GPU, creating an empty one when `create`. Texel row 0 = raster top row. */
   texture(key: TileKey, create: boolean): GpuTexture | null;
@@ -133,6 +134,8 @@ export interface DrawingTileStore {
   commit(keys: readonly TileKey[]): void;
   /** Bumps on any visible change (Svelte-reactive) so layers re-render. */
   readonly revision: number;
+  /** Bumps only when indexed drawing content changes, not when a tile is merely loaded/evicted. */
+  readonly contentRevision: number;
 }
 
 export function tileKey(col: number, row: number, level = 0): TileKey {

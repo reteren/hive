@@ -10,8 +10,9 @@
   import { clearFormatDraft, formatDraft, setFormatDraft } from "./formatDrafts";
   import { saveFormatText } from "./formatActions";
   import { hasUnsavedFormatChanges, mediaExtension } from "./formatLogic";
+  import { selection } from "../selection/selection.svelte";
   import { encodeFormatText, shouldHighlightFormatText, type FormatTextEncoding } from "./textEncoding";
-  import { loadFormatText } from "./formatLoad";
+  import { loadFormatPreview, loadFormatText } from "./formatLoad";
   import type { EditorView } from "@codemirror/view";
 
   let { note }: { note: Note } = $props();
@@ -19,6 +20,9 @@
   let view: EditorView | null = null;
   let loadedFile = "";
   let savedText = "";
+  let previewFile = "";
+  let previewContent = "";
+  let previewTruncated = false;
   let textEncoding: FormatTextEncoding = { bom: false, lineEnding: "\n" };
   let errorMessage = $state("");
   let dirty = $state(false);
@@ -27,6 +31,7 @@
 
   let media = $derived(note.media?.kind === "text" ? note.media : null);
   let displayName = $derived(media?.name || note.name || "File");
+  let editorActive = $derived(selection.ids.includes(note.id) || dirty);
 
   function handleWheel(event: WheelEvent): void {
     if (view && formatWheelUsesEditor(view.scrollDOM, event.deltaX, event.deltaY)) {
@@ -37,14 +42,47 @@
   $effect(() => {
     const currentMedia = media;
     const host = editorHost;
-    if (!currentMedia || !host || currentMedia.file === loadedFile) return;
+    const shouldEdit = editorActive;
+    if (!currentMedia || !host) return;
+
+    if (!shouldEdit) {
+      const file = currentMedia.file;
+      if (view) { view.destroy(); view = null; }
+      if (loadedFile) loadedFile = "";
+      host.classList.add("format-read-only-preview");
+      errorMessage = "";
+      if (previewFile === file) {
+        host.textContent = `${previewContent}${previewTruncated ? "\n…" : ""}`;
+        return;
+      }
+      const request = ++generation;
+      host.textContent = "Loading preview…";
+      void loadFormatPreview(file, attachmentUrl(file)).then((preview) => {
+        if (request !== generation) return;
+        previewFile = file;
+        previewContent = preview.text;
+        previewTruncated = preview.truncated;
+        host.textContent = `${preview.text}${preview.truncated ? "\n…" : ""}`;
+      }).catch((error) => {
+        if (request !== generation) return;
+        const message = error instanceof Error ? error.message : String(error);
+        errorMessage = message;
+        host.textContent = "Preview unavailable. Select this node to open the file.";
+      });
+      return () => { if (generation === request) generation += 1; };
+    }
+
+    if (currentMedia.file === loadedFile) return;
     loadedFile = currentMedia.file;
+    host.classList.remove("format-read-only-preview");
+    host.textContent = "";
     errorMessage = "";
     view?.destroy();
     view = null;
     const currentGeneration = ++generation;
     const currentProjectPath = project.path;
     void loadEditor(currentMedia, host, currentGeneration, currentProjectPath);
+    return () => { if (generation === currentGeneration) generation += 1; };
   });
 
   onDestroy(() => {
@@ -140,7 +178,7 @@
   {#if errorMessage}
     <div class="format-error" role="alert">{errorMessage}</div>
   {/if}
-  <div class="format-editor" class:has-error={Boolean(errorMessage)} bind:this={editorHost} onwheel={handleWheel}></div>
+  <div class="format-editor" class:has-error={Boolean(errorMessage)} class:format-read-only-preview={!editorActive} bind:this={editorHost} onwheel={handleWheel}></div>
   <footer class="format-actions" data-selection-ignore>
     <button type="button" disabled={!dirty || saving} onclick={() => { void saveCurrentDraft(); }}>Save</button>
     <button type="button" disabled={!media} onclick={() => { void saveAs(); }}>Save as…</button>
@@ -209,6 +247,16 @@
     flex: 1 1 auto;
     overflow: hidden;
     background: #202020;
+  }
+
+  .format-editor.format-read-only-preview {
+    overflow: auto;
+    padding: 8px;
+    box-sizing: border-box;
+    color: #c3c3c3;
+    font: 11px/1.45 var(--mono-font, monospace);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   .manual-height .format-editor,

@@ -104,3 +104,61 @@ Yours: `src/images/*`, `src/attachments/*` (display/decoding side, not import fo
    off-screen previews; cache parsed results by text.
 5. Long List/Tierlist virtualisation where cheap; tierlist video-frame cache LRU-bounded.
 6. Decorations: animated mark gradients and glow blur paused/simplified when `lod.tier !== "full"`.
+
+## d2 — Drawing, part 2 (after d43_report_d.md)
+Same files as d. Priority:
+1. **No missing pixels, ever.** Today a viewport needing more than 96 tiles loads only 96, so parts of a
+   big drawing vanish at far zoom. Visible content must always be drawn: the residency budget may evict
+   off-screen tiles only; at far zoom the renderer must use coarse data so the number of tiles it needs
+   stays bounded (≈ viewport / tile size per level) instead of loading hundreds of fine tiles.
+2. **Coarse composite cache**: keep/maintain coarse-level tiles that contain the composite of finer
+   levels (rebuilt incrementally when a finer tile changes, off the input path), so zoom 0.05 over a huge
+   drawing draws a handful of coarse tiles, not every level. Preserve the coarsest→finest composition
+   rules when zoomed in.
+3. Bounded transient GPU memory for long strokes (byte budget; spill/commit finished sections while
+   keeping one Undo step).
+4. Quad batching only if draw calls still matter after 1–2 (measure first).
+Verify with an in-test or vite-node probe: a 50 000 × 50 000 u drawing at zoom 0.05 / 0.3 / 1 — tiles
+loaded, tiles drawn per frame, GPU bytes resident. Report in `d43_report_d2.md`.
+
+## a2 — Bulk import and bulk creation ("drop half of drive C into hive")
+Yours (agent f keeps the display side of these folders): `src/formats/boardFileDrop.ts`,
+`src/formats/formatActions.ts`, `src/formats/formatCreation.ts`, `src/formats/textDrop.ts`,
+`src/images/imageActions.ts`, `src/audio/audioActions.ts`, `src/notes/creationPosition.ts`,
+`src/clipboard/commands.ts`, `src/clipboard/payload.ts`, Rust `attachments.rs` (import side),
+`text_import.rs`.
+Scenario: the user drops a folder (or selects) 5 000–50 000 files (images, PDFs, text, audio, video)
+or pastes 5 000 copied nodes onto a board that already has 20 000 nodes.
+1. Placement: free-spot search must use the spatial index (`queryRect` from
+   `src/board/visibility.svelte.ts`) instead of building obstacles from every note
+   (`creationObstacleForNote` over `Object.values(board.notes)` is O(N) per created node → O(N·M)).
+   Bulk placement lays the batch out as a grid/flow in one pass.
+2. Import pipeline: streamed and batched (e.g. 200 files per batch), never one giant synchronous
+   loop; Rust copies/hashes attachments off the UI thread with progress events; the UI shows progress
+   and stays responsive; cancel keeps what is already imported. Whole import = ONE Undo step.
+3. Node creation in bulk: one `replaceBoard`/batched add instead of thousands of reactive inserts
+   where possible; no per-node history entries; autosave sees one change burst.
+4. Paste of thousands of nodes: same rules (placement + one Undo step + batched).
+Measure with throwaway harnesses (time to place/import 5 000 items into a 20 000-node board, main-thread
+blocking per batch). Report `d43_report_a2.md`.
+
+## e2 — Delta saves (after d43_report_e.md)
+Today a save still builds and sends the whole 2.4 MB index JSON at 10k notes (52 ms deferred) and Rust
+re-parses/validates it all. Storage is already one file per object, so a save can be O(changed):
+1. Frontend sends a **delta**: changed/added object records per collection (notes, links, zones, trash,
+   archive, taskLog, calculators, head fields) + deleted ids + changed Markdown bodies, with the board
+   revision. Full saves stay for project creation/migration/export/recovery.
+2. Rust applies the delta: writes/deletes only those object files (atomic per file, same safety rules:
+   no deleting objects that arrived from a pull, stale-revision refusal, rename/collision checks for
+   note files), updates the in-memory synced document incrementally.
+3. Rust files `project.rs` (save path) and `board_store.rs` become yours **after agent c reports done**
+   (the coordinator tells you); start with the frontend side and the request format.
+4. Also route `attachments/gifPlayback.svelte.ts` `gifStopped` write through `updateNote` (approved).
+Measure: one-note drag then save on a 10k board — frontend ms, IPC bytes, Rust ms. Report `d43_report_e2.md`.
+
+## d3 — Drawing: bounded long-stroke memory (after d43_report_d2.md)
+Long strokes still keep two ping-pong buffers per touched tile until the stroke ends. Add a byte budget
+for transient stroke state; when exceeded, commit/spill finished sections (tiles the brush has left) so
+GPU memory stays bounded, while the whole stroke remains ONE Undo step and the soft-brush pass rules
+(no double darkening at joints/returns) still hold across the spill boundary. Measure with a synthetic
+stroke across 300+ tiles at zoom 0.05 and 1. Report `d43_report_d3.md`.

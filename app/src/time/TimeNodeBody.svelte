@@ -1,10 +1,10 @@
 <script lang="ts">
   import { execute } from "../history/history.svelte";
   import { board, updateNote } from "../model/board.svelte";
-  import { links } from "../model/links.svelte";
+  import { linksOf } from "../model/links.svelte";
   import type { Note } from "../model/note";
   import { nextDueAt, validateSchedule } from "./scheduler";
-  import { projectStopwatch, restartTimeNode, sessionStopwatch, timeCounters } from "./runtime.svelte";
+  import { projectStopwatch, restartTimeNode, sessionStopwatch, timeClock, timeCounters } from "./runtime.svelte";
   import Select from "../ui/Select.svelte";
   import type { CalendarRule, CountMode, StopwatchMode, TimeNodeData, TimeSchedule } from "./types";
   import { copyTimeSchedule, defaultAtTimeSchedule, formatCountdown, intervalHoursHint, timeCheckboxId } from "./uiSchedule";
@@ -15,6 +15,7 @@
   import { setTimeEnabled } from "./actions.svelte";
   import { timeEnablePreference } from "./enablePreference.svelte";
   import EnableTimeConfirmation from "./EnableTimeConfirmation.svelte";
+  import { reactiveLinkRevisionFor } from "../scope/scopeRevision.svelte";
 
   type AtRepeatMode = "once" | "daily" | "weekly" | "workdays" | "monthly" | "yearly";
 
@@ -42,14 +43,17 @@
   let confirmingEnable = $state(false);
   let validationError = $state("");
   let scheduleSourceKey = "";
-  let now = $state(Date.now());
+  let now = $derived(timeClock.now);
   const stopwatch = $derived(note.time?.stopwatch ?? {
     mode: "project" as const,
     includeProjectTime: true,
     running: false,
     elapsedMs: 0,
   });
-  const linkedTask = $derived(firstLinkedTaskForTime(note.id, Object.values(links.byId), board.notes, board.order));
+  const linkedTask = $derived.by(() => {
+    reactiveLinkRevisionFor(note.id);
+    return firstLinkedTaskForTime(note.id, linksOf(note.id), board.notes, board.order);
+  });
   const stopwatchElapsed = $derived(stopwatchElapsedMs({
     mode: stopwatch.mode,
     noteCreatedAt: note.createdAt,
@@ -75,7 +79,10 @@
             ? "Starting session"
             : "",
   );
-  const activationSources = $derived(activationSourcesForTime(note.id, board.notes, Object.values(links.byId)));
+  const activationSources = $derived.by(() => {
+    reactiveLinkRevisionFor(note.id);
+    return activationSourcesForTime(note.id, board.notes, linksOf(note.id));
+  });
 
   $effect(() => {
     const persisted = note.time;
@@ -124,11 +131,6 @@
       nodeCreatedActiveMs: existing?.nodeCreatedActiveMs ?? projectStopwatch.activeMs,
     };
     updateNote(note.id, { time: initialized });
-  });
-
-  $effect(() => {
-    const timer = window.setInterval(() => { now = Date.now(); }, 1_000);
-    return () => window.clearInterval(timer);
   });
 
   const status = $derived.by(() => {

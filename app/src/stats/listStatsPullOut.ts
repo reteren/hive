@@ -2,7 +2,7 @@ import type { Action } from "svelte/action";
 import { camera } from "../board/camera.svelte";
 import { PX_PER_UNIT, type Point } from "../board/cameraMath";
 import { board } from "../model/board.svelte";
-import { links } from "../model/links.svelte";
+import { linksOf } from "../model/links.svelte";
 import { R5_BASE_WIDTHS } from "../model/note";
 import { noteBounds } from "../notes/layout.svelte";
 import { worldPointFromClient } from "../modules/moduleActions.svelte";
@@ -57,7 +57,7 @@ export const pullOutListStatistics: Action<HTMLElement, string> = (element, list
       ghost.append(header);
       for (const item of board.notes[listId]?.listItems ?? []) {
         const row = document.createElement("div");
-        row.textContent = formatLinkedListRow(statisticsForListRow(listId, item, board.notes, links.byId));
+        row.textContent = formatLinkedListRow(statisticsForListRow(listId, item, board.notes, item.targetId ? linksOf(item.targetId) : []));
         Object.assign(row.style, { minHeight: "26px", borderTop: "1px solid #41444a", padding: "4px 0" });
         ghost.append(row);
       }

@@ -384,6 +384,15 @@
   animation: custom-mark-frame-flow 8s linear infinite;
 }
 
+/* At distant board zooms, keep the mark colour while stopping large animated paint surfaces. */
+.notes-layer[data-lod-tier="simple"] .note-card[data-importance="absolute"],
+.notes-layer[data-lod-tier="min"] .note-card[data-importance="absolute"],
+.notes-layer[data-lod-tier="simple"] .note-card[data-custom-mark-animate="true"],
+.notes-layer[data-lod-tier="min"] .note-card[data-custom-mark-animate="true"] {
+  animation: none;
+  background-position: 0 0, 0 0;
+}
+
 @keyframes custom-mark-frame-flow {
   from { background-position: 0 0, 0 0; }
   to { background-position: 0 0, -100% 0; }

@@ -61,22 +61,26 @@ const ADJACENT_EDGES: Record<FrameEdge, readonly FrameEdge[]> = {
   left: ["bottom", "top"],
 };
 
+const queuedObjectIds = new Set<string>();
 let reflowQueued = false;
+let fullReflowQueued = false;
 
 registerLinkLifecycle({
-  onRestored: () => reflowSmoothLineAnchorsRaw(),
-  onRemoved: () => queueSmoothReflow(),
+  onRestored: (link) => queueSmoothLineReflow([link.from, link.to]),
+  onRemoved: (link) => queueSmoothLineReflow([link.from, link.to]),
 });
 
-registerSelectionInteractionListener((_noteIds, source) => {
-  if (source === "move") reflowSmoothLineAnchorsRaw();
+registerSelectionInteractionListener((noteIds, source) => {
+  if (source === "move") queueSmoothLineReflow(noteIds);
 });
 
 /** Smooth the links touching the requested objects, moving anchors only on those objects. */
 export function smoothLinesForObjects(objectIds: readonly string[]): boolean {
   const ids = new Set(objectIds);
   if (ids.size === 0) return false;
-  const affected = Object.values(links.byId).filter((link) => ids.has(link.from) || ids.has(link.to));
+  const affectedById = new Map<string, Link>();
+  for (const id of ids) for (const link of linksOf(id)) affectedById.set(link.id, link);
+  const affected = [...affectedById.values()];
   for (const link of affected) {
     if (isSmoothEnabledEndpoint(link.from)) ids.add(link.from);
     if (isSmoothEnabledEndpoint(link.to)) ids.add(link.to);
@@ -149,7 +153,9 @@ export function reflowSmoothLineAnchorsRaw(): void {
   for (const note of Object.values(board.notes)) {
     if (note.type === "beacon" || note.smoothLines === true) enabled.add(note.id);
   }
-  const affected = Object.values(links.byId).filter((link) => enabled.has(link.from) || enabled.has(link.to));
+  const affectedById = new Map<string, Link>();
+  for (const id of enabled) for (const link of linksOf(id)) affectedById.set(link.id, link);
+  const affected = [...affectedById.values()];
   if (affected.length === 0) return;
 
   for (const noteId of board.order) {
@@ -171,19 +177,74 @@ export function reflowSmoothLineAnchorsRaw(): void {
   calculateSmoothLinkChanges(affected, enabled, true).forEach(({ id, anchors }) => setAnchors(id, anchors));
 }
 
-function queueSmoothReflow(): void {
+/** Reflow only links adjacent to changed objects and their smooth endpoints. */
+export function reflowSmoothLineAnchorsForObjects(objectIds: readonly string[]): void {
+  const targetIds = new Set<string>();
+  const adjacent = new Map<string, Link>();
+  for (const id of objectIds) {
+    if (isSmoothEnabledEndpoint(id)) targetIds.add(id);
+    for (const link of linksOf(id)) {
+      adjacent.set(link.id, link);
+      if (isSmoothEnabledEndpoint(link.from)) targetIds.add(link.from);
+      if (isSmoothEnabledEndpoint(link.to)) targetIds.add(link.to);
+    }
+  }
+  for (const id of targetIds) for (const link of linksOf(id)) adjacent.set(link.id, link);
+  const affected = [...adjacent.values()];
+  if (affected.length === 0) return;
+
+  for (const id of targetIds) {
+    const note = board.notes[id];
+    if (!note || note.smoothLines !== true) continue;
+    const snapshot = copySmoothSnapshot(note.smoothLineAnchors) ?? Object.create(null) as SmoothLineAnchorSnapshot;
+    let changed = false;
+    for (const link of linksOf(id)) {
+      if (Object.prototype.hasOwnProperty.call(snapshot, link.id)) continue;
+      snapshot[link.id] = null;
+      changed = true;
+    }
+    if (changed) updateNote(id, { smoothLineAnchors: snapshot });
+  }
+  calculateSmoothLinkChanges(affected, targetIds, true).forEach(({ id, anchors }) => setAnchors(id, anchors));
+}
+
+/** Coalesce model, lifecycle and interaction changes into one dirty reflow per frame. */
+export function queueSmoothLineReflow(objectIds: readonly string[]): void {
+  for (const id of objectIds) queuedObjectIds.add(id);
+  scheduleSmoothReflow();
+}
+
+/** A replacement/open can change arbitrary anchors, so schedule one full idle reflow. */
+export function queueFullSmoothLineReflow(): void {
+  fullReflowQueued = true;
+  scheduleSmoothReflow();
+}
+
+function scheduleSmoothReflow(): void {
   if (reflowQueued) return;
   reflowQueued = true;
-  queueMicrotask(() => {
+  const run = () => {
     reflowQueued = false;
-    reflowSmoothLineAnchorsRaw();
-  });
+    if (fullReflowQueued) {
+      fullReflowQueued = false;
+      queuedObjectIds.clear();
+      reflowSmoothLineAnchorsRaw();
+      return;
+    }
+    const ids = [...queuedObjectIds];
+    queuedObjectIds.clear();
+    reflowSmoothLineAnchorsForObjects(ids);
+  };
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
+  else queueMicrotask(run);
 }
 
 /** Smooth the selected links at both of their endpoints in one history action. */
 export function smoothLinesForLinks(linkIds: readonly string[]): boolean {
-  const ids = new Set(linkIds);
-  const affected = Object.values(links.byId).filter((link) => ids.has(link.id));
+  const affected = [...new Set(linkIds)].flatMap((id) => {
+    const link = links.byId[id];
+    return link ? [link] : [];
+  });
   const endpointIds = new Set(affected.flatMap((link) => [link.from, link.to]));
   return smoothLinks(affected, endpointIds, affected.length === 1 ? `${objectName(affected[0].from)} → ${objectName(affected[0].to)}` : `${affected.length} lines`);
 }

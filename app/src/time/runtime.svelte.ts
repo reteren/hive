@@ -1,19 +1,22 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { board, updateNote } from "../model/board.svelte";
-import { links } from "../model/links.svelte";
+import { board, onBoardMutation, updateNote } from "../model/board.svelte";
+import { linksOf } from "../model/links.svelte";
 import type { Note } from "../model/note";
 import { pushMessage } from "../messages/messageQueue.svelte";
 import { resolveMessageContent } from "../messages/resolution";
 import { evaluateTime, startRuntime, type TimeContext } from "./scheduler";
 import type { ProjectTimeCounters, TimeNodeData, TimeRuntime } from "./types";
 import { advanceTimeCounters, linkedMessagesForTime, taskMessageHostsForTime } from "./runtimeLogic";
+import { EnabledTimeIndex } from "./scheduleIndex";
 
 const TICK_MS = 1_000;
 const RUNTIME_PERSIST_MS = 30_000;
 
 /** App-wide counters are persisted in the view-settings file, never in project history. */
 export const timeCounters = $state({ appMs: 0, activeMs: 0 });
+/** Shared display clock for every mounted Time body. */
+export const timeClock = $state({ now: Date.now() });
 /** Stopwatch counters are scoped to the currently open project and exclude closed-app time. */
 export const projectStopwatch = $state({ createdAt: Date.now(), appMs: 0, activeMs: 0 });
 /** First runtime start in this process; never saved with a project. */
@@ -40,6 +43,19 @@ let tauriFocused: boolean | null = null;
 let runtimeByNoteId = new Map<string, CachedRuntime>();
 let projectCreatedAtSnapshot = projectStopwatch.createdAt;
 let projectCounterSnapshot: ProjectTimeCounters = { appMs: 0, activeMs: 0 };
+const scheduledTimeIds = new EnabledTimeIndex();
+let scheduleIndexInitialized = false;
+
+onBoardMutation((ids) => {
+  if (ids === null) {
+    scheduledTimeIds.replace(board.order, board.notes);
+    scheduleIndexInitialized = true;
+    return;
+  }
+  for (const id of ids) {
+    scheduledTimeIds.update(id, board.notes[id]);
+  }
+});
 
 export function setTimeCounters(value: { appMs: number; activeMs: number }): void {
   timeCounters.appMs = nonNegative(value.appMs);
@@ -71,6 +87,11 @@ export function startTimeRuntime(): () => void {
   if (cleanupRuntime) return cleanupRuntime;
 
   lastTickAt = Date.now();
+  timeClock.now = lastTickAt;
+  if (!scheduleIndexInitialized) {
+    scheduledTimeIds.replace(board.order, board.notes);
+    scheduleIndexInitialized = true;
+  }
   sessionStopwatch.startedAt ??= lastTickAt;
   lastRuntimePersistAt = lastTickAt;
   wasFocused = windowHasFocus();
@@ -130,15 +151,14 @@ export function restartTimeNode(noteId: string): void {
 
 function tick(): void {
   const now = Date.now();
+  timeClock.now = now;
   accrueUntil(now);
   wasFocused = windowHasFocus();
 
   const context = timeContext(now);
-  const liveTimeIds = new Set<string>();
-  for (const noteId of board.order) {
+  for (const noteId of scheduledTimeIds.values()) {
     const note = board.notes[noteId];
-    if (!note?.time || !note.time.enabled) continue;
-    liveTimeIds.add(noteId);
+    if (!note?.time || !note.time.enabled) { scheduledTimeIds.update(noteId, note); continue; }
 
     const cached = runtimeByNoteId.get(noteId);
     const priorRuntime = cached?.time === note.time ? cached.runtime : note.time.runtime ?? {};
@@ -152,11 +172,11 @@ function tick(): void {
   }
 
   for (const noteId of runtimeByNoteId.keys()) {
-    if (!liveTimeIds.has(noteId)) runtimeByNoteId.delete(noteId);
+    if (!scheduledTimeIds.has(noteId)) runtimeByNoteId.delete(noteId);
   }
 
   if (now - lastRuntimePersistAt >= RUNTIME_PERSIST_MS) {
-    persistCheckedRuntimes(liveTimeIds);
+    persistCheckedRuntimes(scheduledTimeIds.values());
     projectCounterSave.revision += 1;
     lastRuntimePersistAt = now;
   }
@@ -198,7 +218,7 @@ function rememberRuntime(noteId: string, runtime: TimeRuntime): void {
   if (time) runtimeByNoteId.set(noteId, { time, runtime });
 }
 
-function persistCheckedRuntimes(ids: ReadonlySet<string>): void {
+function persistCheckedRuntimes(ids: Iterable<string>): void {
   for (const noteId of ids) {
     const note = board.notes[noteId];
     const cached = runtimeByNoteId.get(noteId);
@@ -209,7 +229,7 @@ function persistCheckedRuntimes(ids: ReadonlySet<string>): void {
 }
 
 function showTimeFire(note: Note, fire: { dueAt: number; overlate: boolean }): void {
-  const edges = Object.values(links.byId);
+  const edges = linksOf(note.id);
   const recipients = linkedMessagesForTime(note.id, board.notes, edges);
   if (recipients.length === 0) {
     const taskMessageHosts = taskMessageHostsForTime(note.id, board.notes, edges);
@@ -220,7 +240,7 @@ function showTimeFire(note: Note, fire: { dueAt: number; overlate: boolean }): v
         messageId: embeddedHost.id,
         dueAt: fire.dueAt,
         overlate: fire.overlate,
-        ...resolveMessageContent(embeddedHost, board.notes, edges, []),
+        ...resolveMessageContent(embeddedHost, board.notes, linksOf(embeddedHost.id), board.order, linksOf),
       });
       return;
     }
@@ -230,7 +250,7 @@ function showTimeFire(note: Note, fire: { dueAt: number; overlate: boolean }): v
         messageId: null,
         dueAt: fire.dueAt,
         overlate: fire.overlate,
-        ...resolveMessageContent(note, board.notes, edges, []),
+        ...resolveMessageContent(note, board.notes, linksOf(note.id), board.order, linksOf),
       });
       return;
     }
@@ -251,7 +271,7 @@ function showTimeFire(note: Note, fire: { dueAt: number; overlate: boolean }): v
       messageId: recipient.id,
       dueAt: fire.dueAt,
       overlate: fire.overlate,
-      ...resolveMessageContent(recipient, board.notes, Object.values(links.byId), board.order),
+      ...resolveMessageContent(recipient, board.notes, linksOf(recipient.id), board.order, linksOf),
     });
   }
 }

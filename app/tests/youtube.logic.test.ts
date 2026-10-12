@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   parseYouTubeRef,
   parseYouTubePlayerMessage,
@@ -6,9 +6,12 @@ import {
   youtubeEmbedErrorReason,
   youtubeEmbedUrl,
   youtubeOEmbedUrl,
+  youtubeMetadata,
   youtubePlayerCommand,
   youtubeThumbnailUrl,
 } from "../src/youtube/logic";
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("YouTube URL parsing", () => {
   it.each([
@@ -78,5 +81,24 @@ describe("YouTube embeds and persisted data", () => {
       .toEqual({ kind: "response", currentTime: 12.5, duration: 100, volume: 100, muted: false, playerState: 1 });
     expect(youtubePlayerCommand("seekTo", [42, true])).toBe('{"event":"command","func":"seekTo","args":[42,true]}');
     expect(youtubePlayerCommand("playVideo")).toBe('{"event":"command","func":"playVideo","args":[]}');
+  });
+
+  it("shares one nearby metadata request for duplicate video ids", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ title: "Shared title", author_name: "Shared author" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const metadata = await Promise.all([
+      youtubeMetadata("metadata1234", "https://youtu.be/metadata1234"),
+      youtubeMetadata("metadata1234", "https://youtube.com/watch?v=metadata1234"),
+    ]);
+
+    expect(metadata).toEqual([
+      { title: "Shared title", author: "Shared author" },
+      { title: "Shared title", author: "Shared author" },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

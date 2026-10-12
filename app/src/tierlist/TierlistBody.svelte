@@ -15,13 +15,15 @@
   import { execute } from "../history/history.svelte";
   import { camera, viewport } from "../board/camera.svelte";
   import { screenToWorld, worldToScreen, type Point } from "../board/cameraMath";
+  import { noteBounds } from "../notes/layout.svelte";
   import { activeDropTarget, registerDropTarget, type DropTargetMatch } from "../selection/dropTargets";
   import AttachmentImage from "../attachments/AttachmentImage.svelte";
   import GifView from "../attachments/GifView.svelte";
   import { attachmentUrl } from "../attachments/service";
   import { selection } from "../selection/selection.svelte";
   import { tierlistAudioPlayback, toggleTierlistAudio, stopTierlistAudioFor } from "./audioPlayback.svelte";
-  import TierlistVideoFrame from "./TierlistVideoFrame.svelte";
+import TierlistVideoFrame from "./TierlistVideoFrame.svelte";
+import DeferredYouTubeThumbnail from "../youtube/DeferredYouTubeThumbnail.svelte";
 import { dispatchImagePaste, registerImagePasteHandler } from "../attachments/pasteDispatch";
   import { addTierlistImagesFromPicker } from "./imagePicker";
   import {
@@ -248,6 +250,8 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
 
   function findDropTarget(noteIds: readonly string[], worldPoint: Point): DropTargetMatch | null {
     if (noteIds.length !== 1 || !root || !board.notes[noteIds[0]] || noteIds[0] === note.id) return null;
+    const bounds = noteBounds(note);
+    if (worldPoint.x < bounds.x || worldPoint.x > bounds.x + bounds.width || worldPoint.y < bounds.y || worldPoint.y > bounds.y + bounds.height) return null;
     const boardElement = root.closest<HTMLElement>(".board");
     const boardRect = boardElement?.getBoundingClientRect();
     if (!boardRect) return null;
@@ -392,7 +396,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
     selectedCard = { rowId, cardId: card.id };
     if (preview.kind === "audio") {
       const url = attachmentUrl(preview.file);
-      if (url) void toggleTierlistAudio(`${note.id}:${card.id}`, url);
+      if (url) void toggleTierlistAudio(`${note.id}:${card.id}`, url, note.id);
     }
   }
 
@@ -942,7 +946,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
                     onclick={(event) => {
                       event.stopPropagation();
                       selectedCard = { rowId: row.id, cardId: card.id };
-                      void toggleTierlistAudio(audioKey, mediaUrl);
+                      void toggleTierlistAudio(audioKey, mediaUrl, note.id);
                     }}
                     onkeydown={(event) => handleCardKeydown(row.id, card.id, event)}
                   >
@@ -992,7 +996,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
                   <TierlistVideoFrame file={preview.file} url={mediaUrl} name={preview.name} lines={preview.lines} />
                 {:else if preview.kind === "youtube" && failedYouTubeCardId !== card.id}
                   <div class="tier-youtube-preview">
-                    <img class="tier-youtube-thumbnail" src={preview.thumbnail} alt="" onerror={() => { failedYouTubeCardId = card.id; }} />
+                    <DeferredYouTubeThumbnail src={preview.thumbnail} class="tier-youtube-thumbnail" onerror={() => { failedYouTubeCardId = card.id; }} />
                     <strong>{preview.name}</strong>
                   </div>
                 {:else}
@@ -1191,7 +1195,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
     flex: 0 0 auto;
   }
 
-  .tier-card-content { position: relative; width: 100%; }
+  .tier-card-content { position: relative; width: 100%; content-visibility: auto; contain-intrinsic-size: auto 56px; }
   .tier-card-slot { display: block; box-sizing: border-box; width: 100%; height: 100%; min-height: inherit; border: 1px dashed var(--accent); border-radius: 4px; background: rgba(var(--accent-rgb), 0.07); }
   .tier-card-wrap:has(.tier-card-editor) { border: 1px solid var(--accent); border-radius: 4px; background: #292c31; }
 
@@ -1221,7 +1225,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
   :global(.tier-card-image) { max-width: none; border-radius: 3px; background: transparent; }
   .tier-card.youtube-card { box-sizing: border-box; height: 72px; min-height: 72px; max-height: 72px; gap: 2px; padding: 3px 15px 3px 3px; }
   .tier-youtube-preview { display: flex; min-height: 0; width: 100%; flex-direction: column; gap: 2px; overflow: hidden; }
-  .tier-youtube-thumbnail { display: block; width: 100%; height: 48px; flex: 0 0 48px; object-fit: cover; border-radius: 3px; }
+  :global(.tier-youtube-thumbnail) { display: block; width: 100%; height: 48px; flex: 0 0 48px; object-fit: cover; border-radius: 3px; }
   .tier-card.tier-audio-card { box-sizing: border-box; height: 56px; min-height: 56px; max-height: 56px; flex-direction: row; align-items: center; gap: 8px; padding: 5px 16px 5px 7px; }
   .tier-audio-play-button { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; padding: 0; border: 1px solid #686d76; border-radius: 50%; color: #f5f5f6; background: #373b42; cursor: pointer; }
   .tier-audio-copy { display: flex; min-width: 0; flex-direction: column; gap: 2px; overflow: hidden; }

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import "../src/mcp/readMethods";
 import packageMetadata from "../package.json";
 import { McpError, getMcpMethod, mcpMethodNames } from "../src/mcp/registry";
-import { board, replaceBoard } from "../src/model/board.svelte";
+import { board, replaceBoard, updateNote } from "../src/model/board.svelte";
 import { replaceLinks } from "../src/model/links.svelte";
 import { archive, replaceArchive, replaceTrash, trash } from "../src/model/retention.svelte";
 import { zones as zoneState, replaceZones } from "../src/model/zones.svelte";
@@ -177,6 +177,12 @@ describe("MCP read methods", () => {
       zone: { id: "z1", name: "Research" },
     });
     expect(result.nodes[0]?.text).toBe("# Hello **world**\n![Cat](att:cat.png){w=50}");
+  });
+
+  it("resolves the current file name for direct id lookups after a rename", () => {
+    updateNote("n1", { name: "Renamed" });
+    const result = call<{ nodes: Array<Record<string, unknown>> }>("nodes.get", { ids: ["n1"] });
+    expect(result.nodes[0]?.file).toBe("Renamed n1.md");
   });
 
   it("returns panel-ranked search results with matchedIn and snippets", () => {

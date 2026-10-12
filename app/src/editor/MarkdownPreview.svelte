@@ -9,10 +9,12 @@
   import { showLinkStatus } from "../links-in-text/contextMenu.svelte";
   import { createMarkdownFragment, linkedNoteIds } from "./markdown";
   import { prepareMarkdownPreview } from "./markdownSyntax";
+  import { visible } from "../board/visibility.svelte";
 
   let { text, noteId }: { text: string; noteId: string } = $props();
+  let boardVisible = $derived(visible.ids.has(noteId));
   let container: HTMLDivElement;
-  let visible = $state(false);
+  let nearViewport = $state(false);
   let renderedText: string | null = null;
   let renderedAsMarkdown = false;
   let renderedNotesKey = "";
@@ -85,13 +87,14 @@
 
   onMount(() => {
     if (!("IntersectionObserver" in window)) {
-      visible = true;
+      nearViewport = true;
       return () => clearInlineImages();
     }
 
     const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) visible = true;
-    });
+      const entry = entries.find((candidate) => candidate.target === container);
+      if (entry) nearViewport = entry.isIntersecting;
+    }, { rootMargin: "140px" });
     observer.observe(container);
     return () => {
       observer.disconnect();
@@ -101,21 +104,24 @@
 
   $effect(() => {
     const source = text;
-    const shouldRenderMarkdown = visible;
+    const shouldRenderMarkdown = nearViewport && boardVisible;
+    if (!container) return;
+    if (!shouldRenderMarkdown) {
+      if (source === renderedText && !renderedAsMarkdown && renderedNotesKey === "") return;
+      clearInlineImages();
+      container.textContent = source;
+      renderedText = source;
+      renderedAsMarkdown = false;
+      renderedNotesKey = "";
+      return;
+    }
     const linkedIds = linkedNoteIds(source);
     const notesKey = JSON.stringify(linkedIds.map((id) => [id, board.notes[id]?.name ?? null]));
     if (
-      !container ||
       (source === renderedText && shouldRenderMarkdown === renderedAsMarkdown && notesKey === renderedNotesKey)
     ) return;
 
-    if (shouldRenderMarkdown) {
-      renderMarkdown(source);
-    }
-    else {
-      clearInlineImages();
-      container.textContent = source;
-    }
+    renderMarkdown(source);
     renderedText = source;
     renderedAsMarkdown = shouldRenderMarkdown;
     renderedNotesKey = notesKey;

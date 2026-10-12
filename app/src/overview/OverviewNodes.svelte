@@ -1,12 +1,23 @@
 <script lang="ts">
   import { camera, viewport } from "../board/camera.svelte";
   import { PX_PER_UNIT } from "../board/cameraMath";
-  import { board } from "../model/board.svelte";
+  import { board, onBoardMutation } from "../model/board.svelte";
   import { BEACON_SIZE } from "../model/note";
   import { BEACON_PALETTE } from "../beacons/beaconPalette";
   import { noteBounds } from "../notes/layout.svelte";
   import { needsDarkText } from "../notes/noteColorLogic";
   import { overview } from "./overview.svelte";
+  import { lod, visible } from "../board/visibility.svelte";
+  import { selection } from "../selection/selection.svelte";
+  import { validFocused } from "../beacons/focus.svelte";
+
+  const noteOrder = new Map(board.order.map((id, index) => [id, index]));
+  onBoardMutation((ids) => {
+    if (ids === null || ids.some((id) => !board.notes[id] || !noteOrder.has(id))) {
+      noteOrder.clear();
+      for (let index = 0; index < board.order.length; index += 1) noteOrder.set(board.order[index]!, index);
+    }
+  });
   import { overviewFontSize, overviewLabelFor, overviewNameFor, overviewTextFits } from "./overviewLogic";
 
   // The whole Alt overview is ONE lightweight layer of plain boxes computed from the model. The real
@@ -19,7 +30,9 @@
   );
 
   let items = $derived(overview.active
-    ? board.order.flatMap((id) => {
+    ? [...new Set([...visible.ids, ...selection.ids, ...validFocused()])]
+      .sort((first, second) => (noteOrder.get(first) ?? -1) - (noteOrder.get(second) ?? -1))
+      .flatMap((id) => {
       const note = board.notes[id];
       if (!note) return [];
       if (note.type === "beacon") {
@@ -61,7 +74,7 @@
           style:background={item.color || undefined}
           style:color={!item.beacon && needsDarkText(item.color) ? "#1f1f1f" : undefined}
         >
-          {#if item.showText}
+          {#if item.showText && (lod.tier === "full" || !item.beacon || selection.ids.includes(item.id) || validFocused().includes(item.id))}
             <span class="overview-text" style:font-size={`${item.font}px`}>
               <span class="overview-kind" data-overview-node-label={item.beacon ? undefined : item.id} data-overview-beacon-label={item.beacon ? item.id : undefined}>{item.kind}</span>
               {#if item.title}<span class="overview-title">{item.title}</span>{/if}

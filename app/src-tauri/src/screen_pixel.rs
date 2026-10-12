@@ -60,13 +60,9 @@ pub fn sample_screen_pixel(
         return Ok(None);
     }
 
-    let Some((screen_x, screen_y)) = client_to_screen_point(
-        client_x,
-        client_y,
-        scale_factor,
-        position.x,
-        position.y,
-    ) else {
+    let Some((screen_x, screen_y)) =
+        client_to_screen_point(client_x, client_y, scale_factor, position.x, position.y)
+    else {
         return Ok(None);
     };
 
@@ -119,24 +115,15 @@ fn capture_screen_pixel(x: i32, y: i32) -> Result<String, String> {
             return Err("Could not select the pixel capture bitmap.".to_string());
         }
 
-        let copied = BitBlt(
-            memory_dc,
-            0,
-            0,
-            1,
-            1,
-            screen_dc,
-            x,
-            y,
-            SRCCOPY | CAPTUREBLT,
-        ) != 0;
+        let copied = BitBlt(memory_dc, 0, 0, 1, 1, screen_dc, x, y, SRCCOPY | CAPTUREBLT) != 0;
         SelectObject(memory_dc, previous_bitmap);
 
         let result = if !copied {
             Err("Could not copy the screen pixel.".to_string())
         } else {
             let mut bitmap_info = BITMAPINFO::default();
-            bitmap_info.bmiHeader.biSize = size_of::<windows_sys::Win32::Graphics::Gdi::BITMAPINFOHEADER>() as u32;
+            bitmap_info.bmiHeader.biSize =
+                size_of::<windows_sys::Win32::Graphics::Gdi::BITMAPINFOHEADER>() as u32;
             bitmap_info.bmiHeader.biWidth = 1;
             // Negative height requests a top-down DIB, so the first row is the captured pixel.
             bitmap_info.bmiHeader.biHeight = -1;
@@ -157,7 +144,8 @@ fn capture_screen_pixel(x: i32, y: i32) -> Result<String, String> {
             if rows != 1 {
                 Err("Could not read the copied screen pixel.".to_string())
             } else {
-                let colorref = pixel[2] as u32 | ((pixel[1] as u32) << 8) | ((pixel[0] as u32) << 16);
+                let colorref =
+                    pixel[2] as u32 | ((pixel[1] as u32) << 8) | ((pixel[0] as u32) << 16);
                 Ok(colorref_to_hex(colorref))
             }
         };

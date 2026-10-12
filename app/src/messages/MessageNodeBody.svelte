@@ -2,7 +2,7 @@
   import { tick } from "svelte";
   import type { Note } from "../model/note";
   import { board } from "../model/board.svelte";
-  import { links } from "../model/links.svelte";
+  import { linksOf } from "../model/links.svelte";
   import { getCommand } from "../commands/registry.svelte";
   import { matchesKey } from "../commands/keys";
   import { isTauri } from "@tauri-apps/api/core";
@@ -10,10 +10,14 @@
   import { setMessageSettings, setMessageText } from "./actions.svelte";
   import { prepareMessageSound } from "./sound";
   import { messageTextFieldState } from "./resolution";
+  import { reactiveLinkRevisionFor } from "../scope/scopeRevision.svelte";
 
   let { note }: { note: Note } = $props();
   let settings = $derived(note.message ?? defaultMessageData());
-  let textField = $derived(messageTextFieldState(note, board.notes, Object.values(links.byId), board.order));
+  let textField = $derived.by(() => {
+    reactiveLinkRevisionFor(note.id);
+    return messageTextFieldState(note, board.notes, linksOf(note.id), board.order);
+  });
   const desktop = isTauri();
   let textArea: HTMLTextAreaElement | undefined = $state();
   let editGroup = Symbol();

@@ -6,7 +6,7 @@ import type { Note, NoteKind } from "../model/note";
 import { zoneBounds } from "../model/zone";
 import { noteBounds } from "../notes/layout.svelte";
 import { project } from "../project/project.svelte";
-import { zoneMembers } from "../zones/membership.svelte";
+import { zoneOf } from "../zones/membership.svelte";
 import { hasMeBeacon } from "../beacons/beaconState.svelte";
 import { ME_OBJECT_ID } from "../model/link";
 import { displayPath, nodeSummary } from "./read/serialize";
@@ -21,6 +21,15 @@ function requireProject(): void {
 
 function orderedNotes(): Note[] {
   return board.order.flatMap((id) => board.notes[id] ? [board.notes[id]] : []);
+}
+
+function membersByZone(noteIds: readonly string[]): Map<string, string[]> {
+  const members = new Map(zones.order.map((id) => [id, [] as string[]]));
+  for (const id of [...noteIds, ...(hasMeBeacon() ? [ME_OBJECT_ID] : [])]) {
+    const zoneId = zoneOf(id);
+    if (zoneId) members.get(zoneId)?.push(id);
+  }
+  return members;
 }
 
 function unionBounds(bounds: readonly { x: number; y: number; width: number; height: number }[]): { x: number; y: number; width: number; height: number } | null {
@@ -49,10 +58,11 @@ registerMcpMethod({
 
     const notes = orderedNotes();
     const noteBoxes = notes.map((note) => noteBounds(note));
+    const zoneMembersById = membersByZone(notes.map((note) => note.id));
     const zoneList = zones.order.flatMap((id) => {
       const zone = zones.byId[id];
       if (!zone) return [];
-      return [{ id: zone.id, name: zone.name, bbox: zoneBounds(zone), nodeIds: zoneMembers(id) }];
+      return [{ id: zone.id, name: zone.name, bbox: zoneBounds(zone), nodeIds: zoneMembersById.get(id) ?? [] }];
     });
     const mePresent = hasMeBeacon();
     const meBounds = { x: -3.6, y: -3.6, width: 7.2, height: 7.2 };

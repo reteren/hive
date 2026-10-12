@@ -1,4 +1,12 @@
-const frameByFile = new Map<string, Promise<HTMLCanvasElement | null>>();
+export const TIERLIST_FRAME_CACHE_ENTRIES = 32;
+export const TIERLIST_FRAME_CACHE_PIXELS = 6_000_000;
+interface FrameEntry {
+  promise: Promise<HTMLCanvasElement | null>;
+  canvas?: HTMLCanvasElement;
+  settled: boolean;
+  refs: number;
+}
+const frameByFile = new Map<string, FrameEntry>();
 export const TIERLIST_VIDEO_FRAME_TIMEOUT_MS = 15_000;
 export const TIERLIST_VIDEO_FRAME_FALLBACK_TIME = 0.1;
 
@@ -12,13 +20,62 @@ export function videoFrameTimeoutFallbackTime(): number {
 }
 
 /** Capture and retain one small canvas per immutable attachment file for this app session. */
-export function tierlistVideoFrame(file: string, url: string): Promise<HTMLCanvasElement | null> {
-  if (!url) return Promise.resolve(null);
-  const cached = frameByFile.get(file);
-  if (cached) return cached;
-  const frame = captureFrame(url);
-  frameByFile.set(file, frame);
-  return frame;
+export interface TierlistVideoFrameLease {
+  promise: Promise<HTMLCanvasElement | null>;
+  release(): void;
+}
+
+export function tierlistVideoFrame(file: string, url: string): TierlistVideoFrameLease {
+  if (!url) return { promise: Promise.resolve(null), release() {} };
+  let entry = frameByFile.get(file);
+  if (entry) {
+    frameByFile.delete(file);
+    frameByFile.set(file, entry);
+  } else {
+    entry = { promise: Promise.resolve(null), settled: false, refs: 0 };
+    const created = entry;
+    created.promise = captureFrame(url).then((canvas) => {
+      created.canvas = canvas ?? undefined;
+      created.settled = true;
+      trimTierlistFrameCache(frameByFile);
+      return canvas;
+    });
+    frameByFile.set(file, created);
+  }
+  entry.refs += 1;
+  let released = false;
+  return {
+    promise: entry.promise,
+    release() {
+      if (released) return;
+      released = true;
+      entry!.refs = Math.max(0, entry!.refs - 1);
+      trimTierlistFrameCache(frameByFile);
+    },
+  };
+}
+
+/** Evict least-recently-used resolved frames and release their canvas backing stores. */
+export function trimTierlistFrameCache(
+  entries: Map<string, FrameEntry>,
+  maxEntries = TIERLIST_FRAME_CACHE_ENTRIES,
+  maxPixels = TIERLIST_FRAME_CACHE_PIXELS,
+): void {
+  const pixels = (): number => [...entries.values()].reduce((total, entry) => total + (entry.canvas?.width ?? 0) * (entry.canvas?.height ?? 0), 0);
+  while (entries.size > maxEntries || pixels() > maxPixels) {
+    let removed = false;
+    for (const [key, entry] of entries) {
+      if (!entry.settled || entry.refs > 0) continue;
+      entries.delete(key);
+      if (entry.canvas) {
+        entry.canvas.width = 0;
+        entry.canvas.height = 0;
+      }
+      removed = true;
+      break;
+    }
+    if (!removed) break;
+  }
 }
 
 function captureFrame(url: string): Promise<HTMLCanvasElement | null> {

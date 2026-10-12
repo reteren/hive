@@ -1,15 +1,14 @@
 <script lang="ts">
-  import { board } from "../model/board.svelte";
   import type { Note } from "../model/note";
   import { effectiveImportance } from "../modules/moduleActions.svelte";
   import ScopePicker from "../scope/ScopePicker.svelte";
-  import { resolveScope, scopeForNote } from "../scope/scope.svelte";
-  import { summarizeProgress } from "./progress";
+  import { scopeForNote } from "../scope/scope.svelte";
+  import { progressSummaryForScope } from "./progressCache.svelte";
 
   let { note }: { note: Note } = $props();
   let summary = $derived.by(() => {
     const selectedScope = scopeForNote(note);
-    return summarizeProgress(resolveScope(selectedScope), board.notes, effectiveImportance);
+    return progressSummaryForScope(selectedScope, effectiveImportance);
   });
 </script>
 

@@ -8,8 +8,8 @@ use tauri::State;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
-use crate::project::{active_project_root, validate_project_index_contents, ProjectState};
 use crate::attachments;
+use crate::project::{active_project_root, validate_project_index_contents, ProjectState};
 
 const INDEX_FILE_NAME: &str = "board.json";
 const BACKUPS_RELATIVE_PATH: &str = ".hive/backups";
@@ -109,9 +109,10 @@ fn snapshot_storage(backups: &Path) -> Result<(u64, u64), String> {
             )
         })?);
     }
-    bytes = bytes.saturating_add(directory_size(&backups.join(ATTACHMENTS_POOL_DIRECTORY)).map_err(|error| {
-        format!("could not measure pooled attachments: {error}")
-    })?);
+    bytes = bytes.saturating_add(
+        directory_size(&backups.join(ATTACHMENTS_POOL_DIRECTORY))
+            .map_err(|error| format!("could not measure pooled attachments: {error}"))?,
+    );
     Ok((count, bytes))
 }
 
@@ -150,8 +151,18 @@ fn write_project_archive(root: &Path, destination: &Path) -> Result<(), String> 
             .map_err(|error| format!("could not create export archive: {error}"))?;
         let mut zip = ZipWriter::new(file);
         let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-        let external_videos = attachments::external_video_paths(root)?.into_iter().collect::<HashSet<_>>();
-        append_directory(&mut zip, root, root, destination, &temp_path, options, &external_videos)?;
+        let external_videos = attachments::external_video_paths(root)?
+            .into_iter()
+            .collect::<HashSet<_>>();
+        append_directory(
+            &mut zip,
+            root,
+            root,
+            destination,
+            &temp_path,
+            options,
+            &external_videos,
+        )?;
         zip.finish()
             .map_err(|error| format!("could not finish export archive: {error}"))?;
         replace_file(&temp_path, destination).map_err(|error| {
@@ -195,7 +206,9 @@ fn append_directory(
         if same_path(&source, archive_destination) || same_path(&source, temporary_archive) {
             continue;
         }
-        if external_videos.iter().any(|path| same_path(&source, path)) { continue; }
+        if external_videos.iter().any(|path| same_path(&source, path)) {
+            continue;
+        }
         let file_type = entry
             .file_type()
             .map_err(|error| format!("could not inspect {}: {error}", source.display()))?;
@@ -485,12 +498,22 @@ fn directory_size(path: &Path) -> io::Result<u64> {
 }
 
 fn directory_size_excluding(path: &Path, excluded: &Path) -> io::Result<u64> {
-    if path == excluded { return Ok(0); }
-    if !path.exists() { return Ok(0); }
+    if path == excluded {
+        return Ok(0);
+    }
+    if !path.exists() {
+        return Ok(0);
+    }
     let metadata = fs::symlink_metadata(path)?;
-    if metadata.file_type().is_symlink() { return Ok(0); }
-    if metadata.is_file() { return Ok(metadata.len()); }
-    if !metadata.is_dir() { return Ok(0); }
+    if metadata.file_type().is_symlink() {
+        return Ok(0);
+    }
+    if metadata.is_file() {
+        return Ok(metadata.len());
+    }
+    if !metadata.is_dir() {
+        return Ok(0);
+    }
     let mut total = 0_u64;
     for entry in fs::read_dir(path)? {
         total = total.saturating_add(directory_size_excluding(&entry?.path(), excluded)?);
@@ -608,9 +631,18 @@ mod tests {
         fs::write(source.join("notes/one.md"), "note body").expect("write note body");
         fs::write(source.join("data/attachment.bin"), [0_u8, 1, 2, 255]).expect("write other data");
         let attachment_name = format!("{}.png", "a".repeat(64));
-        fs::write(source.join("attachments").join(&attachment_name), [8_u8, 9, 10]).expect("write image attachment");
-        fs::write(source.join("drawing/drawing.json"), br#"{"version":1,"pxPerUnit":20,"tileSizePx":512,"tiles":["-1:2"]}"#).expect("write drawing index");
-        fs::write(source.join("drawing/tiles/-1_2.png"), [137_u8, 80, 78, 71]).expect("write drawing tile");
+        fs::write(
+            source.join("attachments").join(&attachment_name),
+            [8_u8, 9, 10],
+        )
+        .expect("write image attachment");
+        fs::write(
+            source.join("drawing/drawing.json"),
+            br#"{"version":1,"pxPerUnit":20,"tileSizePx":512,"tiles":["-1:2"]}"#,
+        )
+        .expect("write drawing index");
+        fs::write(source.join("drawing/tiles/-1_2.png"), [137_u8, 80, 78, 71])
+            .expect("write drawing tile");
         fs::write(
             source.join(".hive/removed/deleted.md"),
             "retained note file",
@@ -639,11 +671,19 @@ mod tests {
             [0_u8, 1, 2, 255]
         );
         assert_eq!(
-            fs::read(destination.join("attachments").join(&attachment_name)).expect("read imported attachment"),
+            fs::read(destination.join("attachments").join(&attachment_name))
+                .expect("read imported attachment"),
             [8_u8, 9, 10]
         );
-        assert_eq!(fs::read(destination.join("drawing/tiles/-1_2.png")).expect("read imported tile"), [137_u8, 80, 78, 71]);
-        assert_eq!(fs::read(destination.join("drawing/drawing.json")).expect("read imported drawing index"), fs::read(source.join("drawing/drawing.json")).unwrap());
+        assert_eq!(
+            fs::read(destination.join("drawing/tiles/-1_2.png")).expect("read imported tile"),
+            [137_u8, 80, 78, 71]
+        );
+        assert_eq!(
+            fs::read(destination.join("drawing/drawing.json"))
+                .expect("read imported drawing index"),
+            fs::read(source.join("drawing/drawing.json")).unwrap()
+        );
         assert_eq!(
             fs::read_to_string(destination.join(".hive/removed/deleted.md"))
                 .expect("read retained project data"),
@@ -696,7 +736,8 @@ mod tests {
         fs::create_dir_all(source.join("media")).expect("create media folder");
         let video = source.join("media/large.mp4");
         let file = fs::File::create(&video).expect("create external media file");
-        file.set_len(20 * 1024 * 1024 + 1).expect("set large file size");
+        file.set_len(20 * 1024 * 1024 + 1)
+            .expect("set large file size");
         drop(file);
         let index = json!({
             "version": 1,
@@ -706,7 +747,11 @@ mod tests {
                 "externalPath": video.to_string_lossy()
             }}]
         });
-        fs::write(source.join("board.json"), serde_json::to_vec(&index).unwrap()).expect("write board index");
+        fs::write(
+            source.join("board.json"),
+            serde_json::to_vec(&index).unwrap(),
+        )
+        .expect("write board index");
         let archive_path = root.join("external.zip");
         write_project_archive(&source, &archive_path).expect("export project");
 

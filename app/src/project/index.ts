@@ -116,6 +116,18 @@ export interface ProjectIndex {
   [key: string]: unknown;
 }
 
+export interface CachedIndexedNote {
+  revision: number;
+  file: string;
+  entry: IndexedNote;
+}
+
+export interface ProjectIndexSerializationOptions {
+  filesById?: ReadonlyMap<string, string>;
+  noteRevisions?: ReadonlyMap<string, number>;
+  noteEntries?: Map<string, CachedIndexedNote>;
+}
+
 /** Parse v1/v2 indexes and migrate their project data to v3. */
 export function parseProjectIndex(contents: string): ProjectIndex {
   return parseProjectIndexWithWarnings(contents).index;
@@ -222,62 +234,21 @@ export function serializeProjectIndex(
   nextTrash?: readonly TrashEntry[],
   nextProjectMetadata?: { createdAt: number; projectCounters: ProjectTimeCounters },
   nextMeDeleted?: boolean,
+  options?: ProjectIndexSerializationOptions,
 ): string {
   const extrasById = new Map(previous?.notes.map((note) => [note.id, note]) ?? []);
   const serializedZones = (nextZones ?? previous?.zones ?? []).map(copyZone);
   const validZoneIds = new Set(serializedZones.map((zone) => zone.id));
-  const filesById = projectNoteFiles(notes, new Map(previous?.notes.map((note) => [note.id, note.file]) ?? []));
+  const filesById = options?.filesById ?? projectNoteFiles(notes, new Map(previous?.notes.map((note) => [note.id, note.file]) ?? []));
   const indexedNotes = notes.map((note) => {
     const previousNote = extrasById.get(note.id);
-    return {
-      ...previousNote,
-      id: note.id,
-      name: note.name,
-      file: filesById.get(note.id) ?? noteMarkdownFileName(note),
-      x: note.x,
-      y: note.y,
-      width: note.width,
-      widthLocked: note.widthLocked === true ? true : undefined,
-      height: note.height,
-      scale: normalizeNoteScale(note.scale) !== 1 ? normalizeNoteScale(note.scale) : undefined,
-      ...(note.createdAt === undefined ? {} : { createdAt: note.createdAt }),
-      type: note.type,
-      task: copyTaskState(note.task),
-      taskMemory: copyTaskState(note.taskMemory),
-      time: copyTimeForHost(note.type, note.time),
-      message: note.message ? { ...note.message } : note.type === "message" ? defaultMessageData() : undefined,
-      embedSections: copyEmbedSections(note.embedSections),
-      importance: note.importance ?? null,
-      purposes: [...new Set(note.purposes ?? [])],
-      moods: [...new Set(note.moods ?? [])],
-      color: note.type === "beacon" ? normalizeBeaconColor(note.color ?? "") ?? beaconPaletteColor(0) : note.color ?? null,
-      ...(note.type !== "beacon" && note.accentColor ? { accentColor: note.accentColor } : {}),
-      glow: copyNoteGlow(note.glow),
-      zoneId: note.zoneId && validZoneIds.has(note.zoneId) ? note.zoneId : null,
-      ...(note.scope ? { scope: note.scope } : {}),
-      ...(note.tiers ? { tiers: note.tiers } : {}),
-      ...(note.listItems ? { listItems: note.listItems } : {}),
-      ...(note.source ? { source: note.source } : {}),
-      ...(note.inboxGroup ? { inboxGroup: note.inboxGroup } : {}),
-      ...(note.randomPick ? { randomPick: note.randomPick } : {}),
-      ...(note.customMarks?.length ? { customMarks: note.customMarks } : {}),
-      ...(note.customMarkFrame ? { customMarkFrame: true } : {}),
-      ...(note.listStats ? { listStats: true } : {}),
-      image: note.image ? { ...note.image } : undefined,
-      opacity: note.type === "image" ? normalizeImageOpacity(note.opacity) : undefined,
-      media: note.media ? { ...note.media } : undefined,
-      pdfZoom: note.type === "pdf" ? normalizePdfZoom(note.pdfZoom) : undefined,
-      recordings: note.type === "audio" ? copyAudioRecordings(note.recordings) : undefined,
-      youtube: note.youtube ? { ...note.youtube } : undefined,
-      frameHidden: (note.type === "youtube" || note.type === "video") && note.frameHidden === true ? true as const : undefined,
-      gifStopped: note.gifStopped === true ? true as const : undefined,
-      flipX: note.type === "image" && note.flipX === true ? true as const : undefined,
-      flipY: note.type === "image" && note.flipY === true ? true as const : undefined,
-      headerHidden: note.headerHidden === true ? true : undefined,
-      textHidden: note.textHidden === true ? true : undefined,
-      smoothLines: note.smoothLines === true ? true : undefined,
-      smoothLineAnchors: note.smoothLines === true ? copySmoothLineAnchorSnapshot(note.smoothLineAnchors) : undefined,
-    };
+    const file = filesById.get(note.id) ?? noteMarkdownFileName(note);
+    const revision = options?.noteRevisions?.get(note.id) ?? 0;
+    const cached = options?.noteEntries?.get(note.id);
+    if (cached?.revision === revision && cached.file === file) return cached.entry;
+    const entry = serializeProjectNoteEntry(note, previousNote, file, validZoneIds);
+    options?.noteEntries?.set(note.id, { revision, file, entry });
+    return entry;
   });
   validateUniqueNotes(indexedNotes);
   const serializedTrash = (nextTrash ?? previous?.trash ?? []).map(copyTrashEntry);
@@ -305,6 +276,64 @@ export function serializeProjectIndex(
     archive: (nextArchive ?? previous?.archive ?? []).map(copyArchiveEntry),
     trash: serializedTrash,
   });
+}
+
+/** Serialize one note index record so persistence can reuse unchanged records by revision. */
+export function serializeProjectNoteEntry(
+  note: Note,
+  previousNote: IndexedNote | undefined,
+  file: string,
+  validZoneIds: ReadonlySet<string>,
+): IndexedNote {
+  return {
+    ...previousNote,
+    id: note.id,
+    name: note.name,
+    file,
+    x: note.x,
+    y: note.y,
+    width: note.width,
+    widthLocked: note.widthLocked === true ? true : undefined,
+    height: note.height,
+    scale: normalizeNoteScale(note.scale) !== 1 ? normalizeNoteScale(note.scale) : undefined,
+    ...(note.createdAt === undefined ? {} : { createdAt: note.createdAt }),
+    type: note.type,
+    task: copyTaskState(note.task),
+    taskMemory: copyTaskState(note.taskMemory),
+    time: copyTimeForHost(note.type, note.time),
+    message: note.message ? { ...note.message } : note.type === "message" ? defaultMessageData() : undefined,
+    embedSections: copyEmbedSections(note.embedSections),
+    importance: note.importance ?? null,
+    purposes: [...new Set(note.purposes ?? [])],
+    moods: [...new Set(note.moods ?? [])],
+    color: note.type === "beacon" ? normalizeBeaconColor(note.color ?? "") ?? beaconPaletteColor(0) : note.color ?? null,
+    ...(note.type !== "beacon" && note.accentColor ? { accentColor: note.accentColor } : {}),
+    glow: copyNoteGlow(note.glow),
+    zoneId: note.zoneId && validZoneIds.has(note.zoneId) ? note.zoneId : null,
+    ...(note.scope ? { scope: note.scope } : {}),
+    ...(note.tiers ? { tiers: note.tiers } : {}),
+    ...(note.listItems ? { listItems: note.listItems } : {}),
+    ...(note.source ? { source: note.source } : {}),
+    ...(note.inboxGroup ? { inboxGroup: note.inboxGroup } : {}),
+    ...(note.randomPick ? { randomPick: note.randomPick } : {}),
+    ...(note.customMarks?.length ? { customMarks: note.customMarks } : {}),
+    ...(note.customMarkFrame ? { customMarkFrame: true } : {}),
+    ...(note.listStats ? { listStats: true } : {}),
+    image: note.image ? { ...note.image } : undefined,
+    opacity: note.type === "image" ? normalizeImageOpacity(note.opacity) : undefined,
+    media: note.media ? { ...note.media } : undefined,
+    pdfZoom: note.type === "pdf" ? normalizePdfZoom(note.pdfZoom) : undefined,
+    recordings: note.type === "audio" ? copyAudioRecordings(note.recordings) : undefined,
+    youtube: note.youtube ? { ...note.youtube } : undefined,
+    frameHidden: (note.type === "youtube" || note.type === "video") && note.frameHidden === true ? true as const : undefined,
+    gifStopped: note.gifStopped === true ? true as const : undefined,
+    flipX: note.type === "image" && note.flipX === true ? true as const : undefined,
+    flipY: note.type === "image" && note.flipY === true ? true as const : undefined,
+    headerHidden: note.headerHidden === true ? true : undefined,
+    textHidden: note.textHidden === true ? true : undefined,
+    smoothLines: note.smoothLines === true ? true : undefined,
+    smoothLineAnchors: note.smoothLines === true ? copySmoothLineAnchorSnapshot(note.smoothLineAnchors) : undefined,
+  };
 }
 
 /** Validate a project index against loaded note bodies and return board-ready notes. */

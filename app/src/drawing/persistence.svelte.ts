@@ -42,11 +42,13 @@ export function startDrawingPersistence(): () => void {
     const requestGeneration = generation;
     saveQueue = saveQueue.then(async () => {
       if (stopped || loading || requestGeneration !== generation || project.path !== projectPath) return;
+      const versions = drawingTileStore.dirtyVersions(keys);
       const pngs = await drawingTileStore.exportPngs(keys);
       if (stopped || requestGeneration !== generation || project.path !== projectPath) return;
       const changes: DrawingTileChange[] = keys.map((key) => ({ key, png: pngs.get(key) ?? null }));
       const index = makeIndex(drawingTileStore.allKeys());
       await drawingSave(changes, index);
+      drawingTileStore.markSaved(keys, versions);
     }).catch((error: unknown) => {
       console.error("Could not save drawing tiles", error);
     });
@@ -80,14 +82,17 @@ export function startDrawingPersistence(): () => void {
         }
         uniqueKeys.add(key);
       }
-      const entries = await Promise.all([...uniqueKeys].map(async (key) => {
-        const bytes = await drawingReadTile(key);
-        return [key, new Blob([bytes], { type: "image/png" })] as const;
-      }));
       if (stopped || requestGeneration !== generation || project.path !== path) return;
-      await drawingTileStore.replaceFromPngs(new Map(entries));
-      const loadedKeys = new Set(drawingTileStore.allKeys());
-      for (const key of uniqueKeys) if (!loadedKeys.has(key)) pendingKeys.add(key);
+      drawingTileStore.setTileLoader(async (keys) => {
+        if (stopped || requestGeneration !== generation || project.path !== path) return new Map();
+        const entries = await Promise.all(keys.map(async (key) => {
+          const bytes = await drawingReadTile(key);
+          return [key, new Blob([bytes], { type: "image/png" })] as const;
+        }));
+        if (stopped || requestGeneration !== generation || project.path !== path) return new Map();
+        return new Map(entries);
+      });
+      drawingTileStore.setKnownKeys([...uniqueKeys]);
     } catch (error) {
       if (!stopped && requestGeneration === generation) console.error("Could not load drawing tiles", error);
     } finally {
@@ -107,6 +112,7 @@ export function startDrawingPersistence(): () => void {
         generation += 1;
         loading = false;
         pendingKeys.clear();
+        drawingTileStore.setTileLoader(null);
         void drawingTileStore.replaceFromPngs(new Map());
       }
     });
@@ -139,6 +145,7 @@ export function startDrawingPersistence(): () => void {
     stopped = true;
     generation += 1;
     drawingTileStore.setCommitListener(null);
+    drawingTileStore.setTileLoader(null);
     if (saveTimer !== undefined) clearTimeout(saveTimer);
     stopEffect();
   };

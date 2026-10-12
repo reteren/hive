@@ -85,6 +85,38 @@ export function affectedTileKeys(rect: WorldRect, level: number, kind: LevelPain
   return [...new Set([...drawingStore.keysInRect(rect, true, level), ...finer])];
 }
 
+/** Tiles an operation can actually touch, queried from its raster pieces instead of one broad bounds rectangle. */
+export function affectedTileKeysForPieces(
+  pieces: readonly RasterPiece[],
+  sourceLevel: number,
+  kind: LevelPaintKind,
+  bounds?: TexRect,
+): TileKey[] {
+  const result = new Set<TileKey>();
+  for (const piece of pieces) {
+    const left = Math.max(piece.x, bounds?.x ?? Number.NEGATIVE_INFINITY);
+    const top = Math.max(piece.y, bounds?.y ?? Number.NEGATIVE_INFINITY);
+    const right = Math.min(piece.x + piece.texRect.width, bounds ? bounds.x + bounds.width : Number.POSITIVE_INFINITY);
+    const bottom = Math.min(piece.y + piece.texRect.height, bounds ? bounds.y + bounds.height : Number.POSITIVE_INFINITY);
+    if (right <= left || bottom <= top) continue;
+    const rect = rasterRectToWorld(left, top, right - left, bottom - top, sourceLevel);
+    if (kind !== "erase") {
+      for (const key of drawingStore.keysInRect(rect, true, sourceLevel)) result.add(key);
+    }
+    if (kind === "erase" || kind === "paint") {
+      for (const key of drawingStore.existingKeysInRect(rect)) {
+        const tileLevel = parseTileKey(key)?.level ?? sourceLevel;
+        if (kind === "erase" || tileLevel < sourceLevel) result.add(key);
+      }
+    }
+  }
+  return [...result];
+}
+
+export function affectedTileKeysForSource(source: GpuRasterSource, kind: LevelPaintKind): TileKey[] {
+  return affectedTileKeysForPieces(source.pieces, source.level, kind, source.bounds);
+}
+
 /** One GPU-resident piece of an operation source, positioned in raster px of the source level. */
 export interface RasterPiece {
   texture: WebGLTexture;
@@ -249,27 +281,57 @@ export function applyAcrossLevels(
   const clip = selectionMaskOnly ? null : selection ?? null;
   try {
     source.prepare(gpu);
-    const rect = rasterRectToWorld(source.bounds.x, source.bounds.y, source.bounds.width, source.bounds.height, source.level);
+    const piecesByKey = new Map<TileKey, RasterPiece[]>();
+    for (const piece of source.pieces) {
+      const left = Math.max(piece.x, source.bounds.x);
+      const top = Math.max(piece.y, source.bounds.y);
+      const right = Math.min(piece.x + piece.texRect.width, source.bounds.x + source.bounds.width);
+      const bottom = Math.min(piece.y + piece.texRect.height, source.bounds.y + source.bounds.height);
+      if (right <= left || bottom <= top) continue;
+      const pieceWorld = rasterRectToWorld(left, top, right - left, bottom - top, source.level);
+      let targets: TileKey[];
+      if (kind === "erase") {
+        targets = drawingStore.existingKeysInRect(pieceWorld);
+      } else {
+        targets = drawingStore.keysInRect(pieceWorld, true, source.level);
+        if (kind === "paint") {
+          for (const key of drawingStore.existingKeysInRect(pieceWorld)) {
+            if ((parseTileKey(key)?.level ?? source.level) < source.level) targets.push(key);
+          }
+        }
+      }
+      for (const key of targets) {
+        const pieces = piecesByKey.get(key);
+        if (pieces) pieces.push(piece);
+        else piecesByKey.set(key, [piece]);
+      }
+    }
     const touched: TileKey[] = [];
     const apply = (keys: readonly TileKey[], blend: BlendKind, create: boolean): void => {
       for (const key of keys) {
-        const quads = quadsForTile(gpu, source, key, opacity, clip);
+        const pieces = piecesByKey.get(key);
+        if (!pieces) continue;
+        const quads = quadsForTile(gpu, { ...source, pieces }, key, opacity, clip);
         if (!quads.length) continue;
         const tile = drawingStore.texture(key, create);
-        if (!tile) continue;
+        if (!tile) {
+          if (drawingStore.has(key)) throw new Error(`Drawing tile ${key} is not resident; load it before editing.`);
+          continue;
+        }
         gpu.drawInto(tile, quads, blend);
         touched.push(key);
       }
     };
     if (kind === "erase") {
-      apply(drawingStore.existingKeysInRect(rect), "out", false);
+      apply([...piecesByKey.keys()], "out", false);
     } else if (kind === "under") {
-      apply(drawingStore.keysInRect(rect, true, source.level), "under", true);
+      apply([...piecesByKey.keys()], "under", true);
     } else {
       // Finer tiles first: they must not see the coarse tiles this call is about to create.
-      const finer = drawingStore.existingKeysInRect(rect).filter((key) => (parseTileKey(key)?.level ?? source.level) < source.level);
+      const destinationKeys = [...piecesByKey.keys()];
+      const finer = destinationKeys.filter((key) => (parseTileKey(key)?.level ?? source.level) < source.level);
       apply(finer, "atop", false);
-      apply(drawingStore.keysInRect(rect, true, source.level), "over", true);
+      apply(destinationKeys.filter((key) => (parseTileKey(key)?.level ?? source.level) === source.level), "over", true);
     }
     const keys = [...new Set(touched)];
     drawingStore.commit(keys);
@@ -295,7 +357,8 @@ function readRect(rasterX: number, rasterY: number, width: number, height: numbe
   for (const key of keys) {
     const parsed = parseTileKey(key);
     const tile = drawingStore.texture(key, false);
-    if (!parsed || !tile) continue;
+    if (!parsed) continue;
+    if (!tile) throw new Error(`Drawing tile ${key} is not resident; load it before reading.`);
     gpu.ensureMips(tile);
     const scale = 2 ** (parsed.level - level);
     quads.push({

@@ -1,6 +1,8 @@
 <!-- Objects panel with navigation (R2.6). Owns its own open/closed state and toggle button. -->
 <script lang="ts">
-  import { board } from "../model/board.svelte";
+  import { onMount } from "svelte";
+  import { board, onBoardMutation } from "../model/board.svelte";
+  import type { Note } from "../model/note";
   import { selection } from "../selection/selection.svelte";
   import { formatKey } from "../commands/keys";
   import { getCommand, runCommand } from "../commands/registry.svelte";
@@ -17,6 +19,7 @@
     toggleObjectsPanel,
   } from "./panelState.svelte";
   import { closePanelPopup, panelPopupState } from "../ui/popups/panelPopupState.svelte";
+  import { NameIndex } from "../search/nameIndex";
 
   let { variant = "dock" } = $props<{ variant?: "dock" | "popup" }>();
 
@@ -36,6 +39,11 @@
     return canNavigateForward();
   });
   let filterInput = $state<HTMLInputElement | null>(null);
+  let nameIndexRevision = $state(0);
+  const nameIndex = new NameIndex<Note>();
+  const pendingNoteIds = new Set<string>();
+  let pendingFullRefresh = false;
+  let indexFrame: number | null = null;
 
   $effect(() => {
     if (!isOpen) return;
@@ -44,13 +52,43 @@
     });
   });
 
-  let visibleNotes = $derived.by(() => {
-    const query = objectsPanel.query.trim().toLocaleLowerCase();
-    const pinnedSearchIds = objectsPanel.pinnedSearchIds;
-    const notes = Object.values(board.notes).filter((note) => {
-      if (pinnedSearchIds) return pinnedSearchIds.includes(note.id);
-      return note.name.toLocaleLowerCase().includes(query);
+  onMount(() => {
+    nameIndex.replace(Object.values(board.notes));
+    const unsubscribe = onBoardMutation((ids) => {
+      if (ids === null) pendingFullRefresh = true;
+      else for (const id of ids) pendingNoteIds.add(id);
+      if (indexFrame !== null) return;
+      indexFrame = requestAnimationFrame(() => {
+        indexFrame = null;
+        if (pendingFullRefresh) {
+          pendingFullRefresh = false;
+          pendingNoteIds.clear();
+          nameIndex.replace(Object.values(board.notes));
+          nameIndexRevision += 1;
+        } else {
+          let changed = false;
+          for (const id of pendingNoteIds) {
+            const note = board.notes[id];
+            if (note) changed = nameIndex.upsert(note) || changed;
+            else changed = nameIndex.remove(id) || changed;
+          }
+          pendingNoteIds.clear();
+          if (changed) nameIndexRevision += 1;
+        }
+      });
     });
+    return () => {
+      unsubscribe();
+      if (indexFrame !== null) cancelAnimationFrame(indexFrame);
+    };
+  });
+
+  let visibleNotes = $derived.by(() => {
+    nameIndexRevision;
+    const query = objectsPanel.query;
+    const pinnedSearchIds = objectsPanel.pinnedSearchIds;
+    const ids = pinnedSearchIds ?? nameIndex.matchingIds(query);
+    const notes = ids.flatMap((id) => board.notes[id] ? [board.notes[id]] : []);
     if (objectsPanel.sort === "recent") {
       return notes.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0) || a.name.localeCompare(b.name));
     }

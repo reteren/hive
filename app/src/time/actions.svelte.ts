@@ -1,6 +1,6 @@
 import { execute } from "../history/history.svelte";
 import { board, updateNote } from "../model/board.svelte";
-import { links } from "../model/links.svelte";
+import { linksOf } from "../model/links.svelte";
 import { copyTimeNodeData } from "./data";
 import { timeEnablePreference } from "./enablePreference.svelte";
 import { restartTimeNode } from "./runtime.svelte";
@@ -15,7 +15,7 @@ export function setTimeEnabled(noteId: string, enabled: boolean, confirmed = fal
     : { schedule: defaultAtTimeSchedule(note.createdAt ?? Date.now()), enabled: false };
   if (previous.enabled === enabled) return "unchanged";
   if (enabled && !confirmed && !timeEnablePreference.skipCompletedTimerConfirmation
-    && linkedTaskCompletionForTime(noteId, Object.values(links.byId), board.notes).allDone) {
+    && linkedTaskCompletionForTime(noteId, linksOf(noteId), board.notes).allDone) {
     return "confirmation-required";
   }
   const next = { ...previous, enabled };

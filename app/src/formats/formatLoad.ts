@@ -8,6 +8,11 @@ export interface LoadedFormatText {
   byteLength: number;
 }
 
+export interface LoadedFormatPreview {
+  text: string;
+  truncated: boolean;
+}
+
 export interface FormatTextLoadDependencies {
   fetchBytes(url: string): Promise<Uint8Array>;
   attachmentDirectory(): Promise<string>;
@@ -58,4 +63,48 @@ export async function loadFormatText(
   } catch (error) {
     throw new Error(`Could not load file: ${reason(error)} (asset URL: ${assetFailure}).`);
   }
+}
+
+/** Read only a small prefix for an unselected Format node; CodeMirror owns the full edit path. */
+export async function loadFormatPreview(file: string, assetUrl: string, maxBytes = 8_192): Promise<LoadedFormatPreview> {
+  if (!isSafeAttachmentName(file)) throw new Error("Could not load file: invalid attachment name.");
+  if (!assetUrl) throw new Error("Could not load preview: attachment URL unavailable.");
+  const response = await fetch(assetUrl);
+  if (!response.ok) throw new Error(`Could not load preview: HTTP ${response.status}.`);
+  const reader = response.body?.getReader();
+  if (!reader) {
+    await response.body?.cancel();
+    throw new Error("Could not load preview: streaming is unavailable.");
+  }
+
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  let truncated = false;
+  try {
+    while (length < maxBytes) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      const remaining = maxBytes - length;
+      const chunk = value.subarray(0, remaining);
+      chunks.push(chunk);
+      length += chunk.byteLength;
+      if (value.byteLength > remaining) { truncated = true; break; }
+    }
+    if (length === maxBytes) truncated = true;
+  } finally {
+    if (truncated) await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return decodePreview(bytes, truncated);
+}
+
+function decodePreview(bytes: Uint8Array, truncated: boolean): LoadedFormatPreview {
+  const bom = bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
+  let text = new TextDecoder("utf-8", { fatal: false }).decode(bom ? bytes.subarray(3) : bytes);
+  if (truncated) text = text.replace(/\ufffd$/, "");
+  return { text: text.replace(/\r\n?/g, "\n"), truncated };
 }

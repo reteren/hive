@@ -24,7 +24,11 @@ pub fn load_seen_state(app: AppHandle, project_path: String) -> Result<Option<St
 }
 
 #[tauri::command]
-pub fn save_seen_state(app: AppHandle, project_path: String, contents: String) -> Result<(), String> {
+pub fn save_seen_state(
+    app: AppHandle,
+    project_path: String,
+    contents: String,
+) -> Result<(), String> {
     if contents.len() > MAX_SEEN_BYTES {
         return Err("seen-changes data is too large".to_string());
     }
@@ -32,10 +36,12 @@ pub fn save_seen_state(app: AppHandle, project_path: String, contents: String) -
         .map_err(|error| format!("seen-changes data must be JSON: {error}"))?;
     let path = seen_path(&app, Path::new(&project_path))?;
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| format!("could not create {}: {error}", parent.display()))?;
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("could not create {}: {error}", parent.display()))?;
     }
     let temporary = path.with_extension("json.tmp");
-    fs::write(&temporary, contents.as_bytes()).map_err(|error| format!("could not save seen changes: {error}"))?;
+    fs::write(&temporary, contents.as_bytes())
+        .map_err(|error| format!("could not save seen changes: {error}"))?;
     fs::rename(&temporary, &path).map_err(|error| format!("could not save seen changes: {error}"))
 }
 
@@ -64,7 +70,10 @@ fn authors(root: &Path, nodes: &[(String, String)]) -> HashMap<String, String> {
         }
         let node_file = format!("nodes/{id}.json");
         let note_file = format!("notes/{file}");
-        let Some(author) = git(root, &["log", "-1", "--format=%an", "--", &node_file, &note_file]) else {
+        let Some(author) = git(
+            root,
+            &["log", "-1", "--format=%an", "--", &node_file, &note_file],
+        ) else {
             continue;
         };
         if !author.is_empty() && author != me {
@@ -77,7 +86,11 @@ fn authors(root: &Path, nodes: &[(String, String)]) -> HashMap<String, String> {
 pub(crate) fn git(root: &Path, args: &[&str]) -> Option<String> {
     let mut command = std::process::Command::new("git");
     // Readable (not octal-escaped) non-ASCII file names in diffs and logs.
-    command.arg("-C").arg(root).args(["-c", "core.quotepath=false"]).args(args);
+    command
+        .arg("-C")
+        .arg(root)
+        .args(["-c", "core.quotepath=false"])
+        .args(args);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -97,7 +110,9 @@ fn seen_path(app: &AppHandle, root: &Path) -> Result<PathBuf, String> {
         .app_config_dir()
         .map_err(|error| format!("could not resolve the app config directory: {error}"))?;
     let key = root.to_string_lossy().to_lowercase();
-    Ok(directory.join("seen").join(format!("{:016x}.json", fnv64(key.as_bytes()))))
+    Ok(directory
+        .join("seen")
+        .join(format!("{:016x}.json", fnv64(key.as_bytes()))))
 }
 
 fn fnv64(bytes: &[u8]) -> u64 {

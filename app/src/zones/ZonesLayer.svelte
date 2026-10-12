@@ -3,8 +3,10 @@
   import { cachedClientRect } from "../board/boardRect";
   import { onMount, tick } from "svelte";
   import { camera, viewport } from "../board/camera.svelte";
+  import { lod, visible } from "../board/visibility.svelte";
   import { PX_PER_UNIT, screenToWorld, type Point } from "../board/cameraMath";
   import { zones } from "../model/zones.svelte";
+  import { selection } from "../selection/selection.svelte";
   import type { Zone } from "../model/zone";
   import { zoneBounds, zoneNameEdge } from "../model/zone";
   import { zoneMovePreview } from "./zoneMovePreview.svelte";
@@ -14,6 +16,7 @@
   import HexColorPicker from "../color/HexColorPicker.svelte";
   import { liveColorSession, type LiveColorSession } from "../color/liveColor";
   import { startZoneMembershipSync } from "./membership.svelte";
+  import { zoneIdsInRect } from "./membership.svelte";
   import { boardPopupStyle, dismissBoardPopup, fitBoardPopupAnchor } from "../ui/boardAnchor";
   import { getCommand } from "../commands/registry.svelte";
   import { formatKey } from "../commands/keys";
@@ -36,6 +39,14 @@
   const transform = $derived(
     `translate(${viewport.width / 2} ${viewport.height / 2}) scale(${camera.zoom * PX_PER_UNIT}) translate(${-camera.x} ${-camera.y})`,
   );
+
+  let visibleZoneIds = $derived.by(() => {
+    const ids = new Set(zoneIdsInRect(visible.rect));
+    for (const id of selection.zoneIds) ids.add(id);
+    if (zoneMovePreview.zoneId) ids.add(zoneMovePreview.zoneId);
+    if (menu?.id) ids.add(menu.id);
+    return [...ids].filter((id) => zones.byId[id]);
+  });
 
   function pathFor(zone: Zone): string {
     const cached = pathCache.get(zone);
@@ -142,7 +153,7 @@
 
   function labelAt(clientX: number, clientY: number): string | null {
     const labels = [...layer.querySelectorAll<SVGTextElement>(".zone-name")];
-    for (const id of [...zones.order].reverse()) {
+    for (const id of [...visibleZoneIds].reverse()) {
       const label = labels.find((element) => element.closest("[data-zone-id]")?.getAttribute("data-zone-id") === id);
       if (!label) continue;
       const rect = (label.parentElement ?? label).getBoundingClientRect();
@@ -208,7 +219,7 @@
   <OverviewLayer />
   <svg class="zone-svg" width="100%" height="100%" aria-label="Zones">
     <g transform={transform}>
-      {#each zones.order as id (id)}
+      {#each visibleZoneIds as id (id)}
         {@const zone = zones.byId[id]}
         {#if zone}
           {@const nameEdge = cachedNameEdge(zone)}
@@ -227,6 +238,7 @@
               vector-effect="non-scaling-stroke"
               style:pointer-events={tool.active === "select" ? "visiblePainted" : "none"}
             />
+            {#if lod.tier === "full" || selection.zoneIds.includes(id)}
             <svg x={nameEdge.x} y={nameEdge.y} width={nameEdge.width} height="2.4" overflow="hidden">
               <text
                 x="0.8"
@@ -244,6 +256,7 @@
                 } }}
               >{zone.name}</text>
             </svg>
+            {/if}
             <!-- The Alt overview label of a zone is drawn by OverviewZoneLabels, above the nodes. -->
           </g>
         {/if}

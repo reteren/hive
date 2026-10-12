@@ -8,19 +8,27 @@ export function importanceSoundCount(importance: ImportanceLevel | null | undefi
   return Math.max(1, IMPORTANCE_LEVELS.indexOf(importance as ImportanceLevel) + 1);
 }
 
-/**
- * The card and editor must select exactly the same linked text node, in board order. Per the user,
- * Task and Note make no difference here, and any line counts (strong or weak, either direction).
- */
+/** Select the earliest linked text node by board paint order; any line counts, either direction. */
 export function firstLinkedTaskForMessage(
   message: Note,
   notes: Readonly<Record<string, Note>>,
   edges: readonly Pick<Link, "from" | "to" | "kind">[],
   order: readonly string[] = Object.keys(notes),
 ): Note | null {
-  const neighbours = new Set(edges.flatMap((edge) =>
-    edge.from === message.id ? [edge.to] : edge.to === message.id ? [edge.from] : []));
-  return order.map((id) => notes[id]).find((note) => note?.type === "note" && neighbours.has(note.id)) ?? null;
+  const candidates = new Set<string>();
+  for (const edge of edges) {
+    const id = edge.from === message.id ? edge.to : edge.to === message.id ? edge.from : null;
+    if (id && notes[id]?.type === "note") candidates.add(id);
+  }
+  let first: Note | null = null;
+  let firstIndex = Number.POSITIVE_INFINITY;
+  for (const id of candidates) {
+    const candidate = notes[id];
+    if (!candidate || candidate.type !== "note") continue;
+    const index = order.indexOf(id);
+    if (index < firstIndex) { first = candidate; firstIndex = index; }
+  }
+  return first;
 }
 
 /** A link changes only the displayed text; the Message's own body remains editable afterward. */
@@ -40,10 +48,14 @@ export function resolveMessageContent(
   notes: Readonly<Record<string, Note>>,
   edges: readonly Link[],
   order: readonly string[] = Object.keys(notes),
+  linksForNote: (noteId: string) => readonly Link[] = () => edges,
 ): Pick<ShownMessage, "text" | "targetId" | "importance" | "headerHidden" | "overhive" | "sound"> {
   const task = firstLinkedTaskForMessage(message, notes, edges, order);
   const source = task ?? message;
-  const levels = [effectiveImportanceFor(message.id, notes, edges), task ? effectiveImportanceFor(task.id, notes, edges) : null];
+  const levels = [
+    effectiveImportanceFor(message.id, notes, linksForNote(message.id)),
+    task ? effectiveImportanceFor(task.id, notes, linksForNote(task.id)) : null,
+  ];
   const importance = levels.reduce<ImportanceLevel | null>((highest, level) =>
     level && IMPORTANCE_LEVELS.indexOf(level) > IMPORTANCE_LEVELS.indexOf(highest as ImportanceLevel) ? level : highest, null);
   const settings = message.message ?? defaultMessageData();

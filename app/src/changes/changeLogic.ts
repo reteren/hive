@@ -38,6 +38,25 @@ export function seenAfterOwnSave(notes: readonly NodeRecord[], seen: SeenMap, ma
   return next;
 }
 
+/** Apply a save only to affected ids, leaving untouched seen fingerprints in place. */
+export function applyOwnSaveChanges(
+  changedIds: readonly string[],
+  savedRecords: readonly NodeRecord[],
+  seen: SeenMap,
+  marks: Record<string, ChangeKind>,
+): void {
+  const recordsById = new Map(savedRecords.map((record) => [record.id, record]));
+  for (const id of changedIds) {
+    const record = recordsById.get(id);
+    if (!record) {
+      delete seen[id];
+      delete marks[id];
+    } else if (!marks[id]) {
+      seen[id] = nodeFingerprint(record);
+    }
+  }
+}
+
 /** Mark for a node that just changed from outside: "new" while this person has never seen it. */
 export function externalMark(id: string, seen: SeenMap, current: ChangeKind | undefined): ChangeKind {
   if (current === "new" || seen[id] === undefined) return "new";

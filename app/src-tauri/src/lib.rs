@@ -135,7 +135,9 @@ pub fn run() {
             }
             // Project state first: the main window already exists and may call initialize_project.
             app.manage(watcher::ProjectWatcher::new(app.handle().clone()));
-            app.manage(quick_input_shortcut::QuickInputShortcutService::new(app.handle().clone()));
+            app.manage(quick_input_shortcut::QuickInputShortcutService::new(
+                app.handle().clone(),
+            ));
             build_tray(app)?;
             let config_dir = app.path().app_config_dir()?;
             app.manage(mcp_bridge::McpBridgeState::new(

@@ -2,6 +2,7 @@ import type { Note, NoteGlow } from "../model/note";
 import { normalizeHex } from "../color/hex";
 import { BEACON_PALETTE } from "../beacons/beaconPalette";
 import { PX_PER_UNIT } from "../board/cameraMath";
+import { lod } from "../board/visibility.svelte";
 
 export const DEFAULT_GLOW_OPACITY = 0.55;
 export const MIN_GLOW_OPACITY = 0.05;
@@ -57,6 +58,7 @@ export function noteGlowShadow(glow: NoteGlow): string {
   const green = Number.parseInt(glow.color.slice(3, 5), 16);
   const blue = Number.parseInt(glow.color.slice(5, 7), 16);
   const color = `rgb(${red} ${green} ${blue} / ${glow.opacity})`;
+  if (lod.tier !== "full") return `0 0 1px 0 ${color}`;
   const blur = `${(glow.size * PX_PER_UNIT).toFixed(1)}px`;
   const innerBlur = `${(glow.size * PX_PER_UNIT * 0.45).toFixed(1)}px`;
   return `0 0 ${blur} 0 ${color}, 0 0 ${innerBlur} 0 ${color}`;

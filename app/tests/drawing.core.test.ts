@@ -13,6 +13,7 @@ import {
 } from "../src/drawing/brush";
 import { isRgbaTransparent, tileKeysInRect } from "../src/drawing/tileStore.svelte";
 import { drawLevelForZoom, levelPxPerUnit, levelTileUnits, parseTileKey, tileKey, type TileKey } from "../src/drawing/types";
+import { TileSpatialIndex } from "../src/drawing/tileSpatialIndex";
 
 describe("drawing core", () => {
   it("keeps the brush width in screen px while board width changes with zoom", () => {
@@ -48,11 +49,26 @@ describe("drawing core", () => {
     expect(tileKeysInRect({ x: -51, y: 77, width: 25, height: 25 }, 0, all)).toEqual(["-2:3"] satisfies TileKey[]);
     expect(tileKeysInRect({ x: 1, y: 1, width: 2, height: 2 }, 3, all)).toEqual(["3:0:0"]);
     expect(tileKeysInRect({ x: 0, y: 0, width: 30, height: 1 }, 0, all)).toEqual(["0:0", "1:0"]);
+    expect(() => tileKeysInRect({ x: 0, y: 0, width: 25_600, height: 25_600 }, 0, all)).toThrow(RangeError);
     expect(tileKeysInRect({ x: 0, y: 0, width: 30, height: 1 }, 0, (key) => key !== "0:0")).toEqual(["1:0"]);
     expect(isRgbaTransparent(new Uint8ClampedArray(16))).toBe(true);
     const pixels = new Uint8ClampedArray(16);
     pixels[7] = 1;
     expect(isRgbaTransparent(pixels)).toBe(false);
+  });
+
+  it("queries only indexed tiles in sparse ranges and keeps cached ordering current", () => {
+    const index = new TileSpatialIndex();
+    for (let col = -1000; col <= 1000; col += 1) index.add(tileKey(col, col % 7, col % 3));
+    index.add(tileKey(-2, 3));
+    index.add(tileKey(-2, 3, 4));
+    expect(index.query({ x: -51, y: 77, width: 25, height: 25 }, 0)).toEqual(["-2:3"]);
+    expect(index.levels()).toEqual([4, 2, 1, 0, -1, -2]);
+    const sorted = index.allKeys();
+    expect(sorted[0]).toBe("4:-2:3");
+    expect(index.delete("4:-2:3")).toBe(true);
+    expect(index.allKeys()).not.toContain("4:-2:3");
+    expect(index.levels()).not.toContain(4);
   });
 
   it("picks a level with 1.33–2.67 raster px per device px at any zoom", () => {

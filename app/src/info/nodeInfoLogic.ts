@@ -61,14 +61,33 @@ export interface TaskStats {
   timesCompleted: number;
 }
 
-export function taskStats(note: Note, log: readonly TaskLogEntry[]): TaskStats | null {
+/** Group task history once so Info can resolve one node's completion count by id. */
+export function indexTaskLogByNote(log: readonly TaskLogEntry[]): ReadonlyMap<string, readonly TaskLogEntry[]> {
+  const byNote = new Map<string, TaskLogEntry[]>();
+  for (const entry of log) {
+    const entries = byNote.get(entry.noteId);
+    if (entries) entries.push(entry);
+    else byNote.set(entry.noteId, [entry]);
+  }
+  return byNote;
+}
+
+export function taskStats(
+  note: Note,
+  log: readonly TaskLogEntry[] | ReadonlyMap<string, readonly TaskLogEntry[]>,
+): TaskStats | null {
   if (!note.task) return null;
   const doneAt = note.task.done ? note.task.doneAt : null;
+  const entries = isTaskLogIndex(log) ? log.get(note.id) ?? [] : log.filter((entry) => entry.noteId === note.id);
   return {
     doneAt,
     openForMs: doneAt !== null && note.createdAt !== undefined ? Math.max(0, doneAt - note.createdAt) : null,
-    timesCompleted: log.filter((entry) => entry.noteId === note.id).length,
+    timesCompleted: entries.length,
   };
+}
+
+function isTaskLogIndex(value: readonly TaskLogEntry[] | ReadonlyMap<string, readonly TaskLogEntry[]>): value is ReadonlyMap<string, readonly TaskLogEntry[]> {
+  return typeof (value as ReadonlyMap<string, readonly TaskLogEntry[]>).get === "function";
 }
 
 export interface MediaFacts {

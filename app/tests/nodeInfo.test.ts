@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { collectionStats, formatAgo, formatBytes, formatClock, formatOf, formatSpan, mediaFacts, taskStats, textStats } from "../src/info/nodeInfoLogic";
+import { collectionStats, formatAgo, formatBytes, formatClock, formatOf, formatSpan, indexTaskLogByNote, mediaFacts, taskStats, textStats } from "../src/info/nodeInfoLogic";
 import type { Note } from "../src/model/note";
 
 const note = (extra: Partial<Note> = {}): Note => ({ id: "n", type: "note", name: "N", text: "", x: 0, y: 0, width: 25, height: null, ...extra } as Note);
@@ -28,7 +28,19 @@ describe("node info", () => {
     const task = note({ createdAt: 1_000, task: { done: true, doneAt: 61_000 } as Note["task"] });
     const log = [{ noteId: "n", name: "N", doneAt: 5_000 }, { noteId: "n", name: "N", doneAt: 61_000 }, { noteId: "other", name: "O", doneAt: 1 }];
     expect(taskStats(task, log)).toEqual({ doneAt: 61_000, openForMs: 60_000, timesCompleted: 2 });
+    expect(taskStats(task, indexTaskLogByNote(log))).toEqual({ doneAt: 61_000, openForMs: 60_000, timesCompleted: 2 });
     expect(taskStats(note(), log)).toBeNull();
+  });
+
+  it("indexes task history by node id", () => {
+    const log = [
+      { noteId: "n", name: "N", doneAt: 5_000 },
+      { noteId: "other", name: "O", doneAt: 1 },
+      { noteId: "n", name: "N", doneAt: 61_000 },
+    ];
+    const indexed = indexTaskLogByNote(log);
+    expect(indexed.get("n")).toEqual([log[0], log[2]]);
+    expect(indexed.get("missing")).toBeUndefined();
   });
 
   it("describes media files", () => {

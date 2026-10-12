@@ -1,59 +1,56 @@
-import { board } from "../model/board.svelte";
-import { links } from "../model/links.svelte";
-import { noteBounds } from "../notes/layout.svelte";
+import { onBoardMutation } from "../model/board.svelte";
+import { links, onLinksMutation } from "../model/links.svelte";
 import { hasMeBeacon } from "../beacons/beaconState.svelte";
-import { reflowSmoothLineAnchorsRaw } from "./smoothLines";
+import { queueFullSmoothLineReflow, queueSmoothLineReflow } from "./smoothLines";
 
 let started = false;
+const knownEndpoints = new Map<string, readonly [string, string]>();
 
-/** Reflow persistent smooth anchors after settled geometry or link topology changes. */
+/** Reflow only smooth anchors incident to changed objects or link endpoints. */
 export function startSmoothLineSync(): void {
   if (started) return;
   started = true;
+  refreshKnownEndpoints();
+
+  onBoardMutation((ids) => {
+    if (ids === null) queueFullSmoothLineReflow();
+    else queueSmoothLineReflow(ids);
+  });
+
+  onLinksMutation((ids, topologyChanged) => {
+    if (!topologyChanged) return;
+    if (ids === null) {
+      refreshKnownEndpoints();
+      queueFullSmoothLineReflow();
+      return;
+    }
+    const changedObjects = new Set<string>();
+    for (const id of ids) {
+      const previous = knownEndpoints.get(id);
+      if (previous) for (const endpoint of previous) changedObjects.add(endpoint);
+      const link = links.byId[id];
+      if (link) {
+        knownEndpoints.set(id, [link.from, link.to]);
+        changedObjects.add(link.from);
+        changedObjects.add(link.to);
+      } else {
+        knownEndpoints.delete(id);
+      }
+    }
+    queueSmoothLineReflow([...changedObjects]);
+  });
 
   $effect.root(() => {
-    let previous = "";
-    let pending = false;
     $effect(() => {
-      const signature = geometrySignature();
-      if (signature === previous) return;
-      previous = signature;
-      if (pending) return;
-      pending = true;
-      // At most once per frame: dragging fires many geometry changes per frame.
-      const run = () => {
-        pending = false;
-        reflowSmoothLineAnchorsRaw();
-      };
-      if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
-      else queueMicrotask(run);
+      hasMeBeacon();
+      queueSmoothLineReflow(["me"]);
     });
   });
+
+  queueFullSmoothLineReflow();
 }
 
-/**
- * Only notes with smooth lines and the notes they are linked to affect smooth anchors; hashing every
- * note on every pointer move made dragging on a big board stutter.
- */
-function geometrySignature(): string {
-  const smooth = new Set<string>(hasMeBeacon() ? ["me"] : []);
-  for (const note of Object.values(board.notes)) {
-    if (note.type === "beacon" || note.smoothLines === true) smooth.add(note.id);
-  }
-  const relevant = new Set(smooth);
-  const linkTopology: unknown[] = [];
-  for (const link of Object.values(links.byId)) {
-    if (!smooth.has(link.from) && !smooth.has(link.to)) continue;
-    relevant.add(link.from);
-    relevant.add(link.to);
-    linkTopology.push([link.id, link.from, link.to]);
-  }
-  const noteGeometry: unknown[] = [];
-  for (const id of relevant) {
-    const note = board.notes[id];
-    if (!note) continue;
-    const bounds = noteBounds(note);
-    noteGeometry.push([id, smooth.has(id), bounds.x, bounds.y, bounds.width, bounds.height]);
-  }
-  return JSON.stringify([noteGeometry, linkTopology]);
+function refreshKnownEndpoints(): void {
+  knownEndpoints.clear();
+  for (const link of Object.values(links.byId)) knownEndpoints.set(link.id, [link.from, link.to]);
 }

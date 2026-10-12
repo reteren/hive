@@ -44,6 +44,7 @@ import {
 } from "./moduleLogic";
 import { closeModulePicker, openModulePicker, toggleModulePicker } from "./pickerState.svelte";
 import { insertStatisticsIntoList } from "../stats/listStatsActions.svelte";
+import { reactiveLinkRevisionFor } from "../scope/scopeRevision.svelte";
 
 export { closeModulePicker, openModulePicker, toggleModulePicker };
 
@@ -61,50 +62,75 @@ export const moduleFeedback = $state({
 
 let feedbackTimer: ReturnType<typeof setTimeout> | undefined;
 
+interface ModuleStyleCacheEntry { signature: string; value: unknown }
+const moduleStyleCache = new Map<string, ModuleStyleCacheEntry>();
+
+function memoizedStyleValue<T>(kind: string, noteId: string, calculate: (edges: Link[]) => T): T {
+  const note = board.notes[noteId];
+  const edges = linksOf(noteId);
+  const signature = JSON.stringify([
+    reactiveLinkRevisionFor(noteId),
+    note?.type, note?.importance, note?.purposes, note?.moods, note?.customMarks, note?.customMarkFrame,
+    edges.map((edge) => {
+      const other = board.notes[edge.from === noteId ? edge.to : edge.from];
+      return [edge.id, edge.from, edge.to, edge.kind, other?.type, other?.importance, other?.purposes,
+        other?.moods, other?.customMarks, other?.customMarkFrame];
+    }),
+  ]);
+  const key = `${kind}:${noteId}`;
+  const cached = moduleStyleCache.get(key);
+  if (cached?.signature === signature) return cached.value as T;
+  const value = calculate(edges);
+  moduleStyleCache.set(key, { signature, value });
+  return value;
+}
+
 export function effectiveImportance(noteId: string): ImportanceLevel | null {
-  return effectiveImportanceFor(noteId, board.notes, Object.values(links.byId));
+  return memoizedStyleValue("effective-importance", noteId, (edges) => effectiveImportanceFor(noteId, board.notes, edges));
 }
 
 export function effectivePurposes(noteId: string): PurposeKind[] {
-  return effectivePurposesFor(noteId, board.notes, Object.values(links.byId));
+  return memoizedStyleValue("effective-purposes", noteId, (edges) => effectivePurposesFor(noteId, board.notes, edges));
 }
 
 export function effectiveMoods(noteId: string): MoodKind[] {
-  return effectiveMoodsFor(noteId, board.notes, Object.values(links.byId));
+  return memoizedStyleValue("effective-moods", noteId, (edges) => effectiveMoodsFor(noteId, board.notes, edges));
 }
 
 export function effectiveCustomMarks(noteId: string): CustomMark[] {
-  return effectiveCustomMarksFor(noteId, board.notes, Object.values(links.byId));
+  return memoizedStyleValue("effective-custom-marks", noteId, (edges) => effectiveCustomMarksFor(noteId, board.notes, edges));
 }
 
 export function linkedCustomMarks(noteId: string): CustomMark[] {
-  return linkedCustomMarksFor(noteId, board.notes, Object.values(links.byId));
+  return memoizedStyleValue("linked-custom-marks", noteId, (edges) => linkedCustomMarksFor(noteId, board.notes, edges));
 }
 
 export function effectiveCustomMarkFrame(noteId: string): boolean {
-  return effectiveCustomMarkFrameFor(noteId, board.notes, Object.values(links.byId));
+  return memoizedStyleValue("effective-custom-mark-frame", noteId, (edges) => effectiveCustomMarkFrameFor(noteId, board.notes, edges));
 }
 
 export function effectiveCustomMarkFrameColors(noteId: string): string[] {
-  return customMarkFrameColorsFor(noteId, board.notes, Object.values(links.byId));
+  return memoizedStyleValue("custom-mark-frame-colors", noteId, (edges) => customMarkFrameColorsFor(noteId, board.notes, edges));
 }
 
 export function isLinkedImportance(noteId: string): boolean {
-  return linkedImportanceSourceFor(noteId, board.notes, Object.values(links.byId)) !== null;
+  return memoizedStyleValue("has-linked-importance", noteId, (edges) => linkedImportanceSourceFor(noteId, board.notes, edges) !== null);
 }
 
 export function linkedImportanceSource(noteId: string): Note | null {
-  const sourceId = linkedImportanceSourceFor(noteId, board.notes, Object.values(links.byId));
-  const source = sourceId ? board.notes[sourceId] : undefined;
-  return source?.type === "importance" ? source : null;
+  return memoizedStyleValue("linked-importance-source", noteId, (edges) => {
+    const sourceId = linkedImportanceSourceFor(noteId, board.notes, edges);
+    const source = sourceId ? board.notes[sourceId] : undefined;
+    return source?.type === "importance" ? source : null;
+  });
 }
 
 export function linkedPurposes(noteId: string): PurposeKind[] {
-  return linkedPurposesFor(noteId, board.notes, Object.values(links.byId));
+  return memoizedStyleValue("linked-purposes", noteId, (edges) => linkedPurposesFor(noteId, board.notes, edges));
 }
 
 export function linkedMoods(noteId: string): MoodKind[] {
-  return linkedMoodsFor(noteId, board.notes, Object.values(links.byId));
+  return memoizedStyleValue("linked-moods", noteId, (edges) => linkedMoodsFor(noteId, board.notes, edges));
 }
 
 export function setImportance(noteId: string, level: ImportanceLevel | null): void {

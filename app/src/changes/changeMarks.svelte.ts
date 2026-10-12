@@ -7,7 +7,7 @@ import {
   marksOnOpen,
   parseEditTime,
   parseSeenState,
-  seenAfterOwnSave,
+  applyOwnSaveChanges,
   serializeSeenState,
   type ChangeKind,
   type EditTimeMap,
@@ -88,16 +88,9 @@ export function stopChangeTracking(): void {
 }
 
 /** This window saved `saved`: its own edits are seen, marked nodes keep waiting for a look. */
-export function recordOwnSave(saved: readonly NodeRecord[]): void {
+export function recordOwnSave(changedIds: readonly string[], saved: readonly NodeRecord[]): void {
   if (!active) return;
-  seen = seenAfterOwnSave(saved, seen, changeMarks.byId);
-  const present = new Set(saved.map((record) => record.id));
-  const stale = Object.keys(changeMarks.byId).filter((id) => !present.has(id));
-  if (stale.length > 0) {
-    const next = { ...changeMarks.byId };
-    for (const id of stale) delete next[id];
-    changeMarks.byId = next;
-  }
+  applyOwnSaveChanges(changedIds, saved, seen, changeMarks.byId);
   scheduleSave();
 }
 

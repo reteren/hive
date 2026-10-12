@@ -56,16 +56,41 @@ fn separate_shared_note_files(
     }
     for position in shared {
         let note = &index.notes[position];
-        let compact: String = note.id.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_lowercase();
-        let compact = if compact.is_empty() { "0".to_string() } else { compact };
+        let compact: String = note
+            .id
+            .chars()
+            .filter(char::is_ascii_alphanumeric)
+            .collect::<String>()
+            .to_lowercase();
+        let compact = if compact.is_empty() {
+            "0".to_string()
+        } else {
+            compact
+        };
         let stem = sanitize_note_name(&note.name);
         let source = safe_note_path(notes_directory, &note.file)?;
-        let source_bytes = if path_exists(&source)? { Some(read_note_bytes(&source).map_err(|error| format!("could not read note file {}: {error}", note.file))?) } else { None };
+        let source_bytes = if path_exists(&source)? {
+            Some(
+                read_note_bytes(&source)
+                    .map_err(|error| format!("could not read note file {}: {error}", note.file))?,
+            )
+        } else {
+            None
+        };
         let mut chosen = None;
         for length in 4..=compact.len().max(4) + 8 {
-            let piece = if length <= compact.len() { compact[..length].to_string() } else { format!("{compact}{}", length - compact.len()) };
-            let base = truncate_utf16(&stem, 120 - piece.len() - 1).trim_end_matches(['.', ' ']).to_string();
-            let file = format!("{} {piece}.md", if base.is_empty() { "Note" } else { &base });
+            let piece = if length <= compact.len() {
+                compact[..length].to_string()
+            } else {
+                format!("{compact}{}", length - compact.len())
+            };
+            let base = truncate_utf16(&stem, 120 - piece.len() - 1)
+                .trim_end_matches(['.', ' '])
+                .to_string();
+            let file = format!(
+                "{} {piece}.md",
+                if base.is_empty() { "Note" } else { &base }
+            );
             if validate_note_file(&file).is_err() || used.contains(&windows_case_key(&file)) {
                 continue;
             }
@@ -81,13 +106,20 @@ fn separate_shared_note_files(
             }
         }
         let Some((file, copy)) = chosen else {
-            return Err(format!("board index contains colliding note file: {}", note.file));
+            return Err(format!(
+                "board index contains colliding note file: {}",
+                note.file
+            ));
         };
         if let (true, Some(bytes)) = (copy, &source_bytes) {
-            atomic_create(&notes_directory.join(&file), bytes)
-                .map_err(|error| format!("could not separate shared note file {}: {error}", note.file))?;
+            atomic_create(&notes_directory.join(&file), bytes).map_err(|error| {
+                format!("could not separate shared note file {}: {error}", note.file)
+            })?;
         }
-        warnings.push(format!("Two nodes used the note file {}; one now uses {file}.", note.file));
+        warnings.push(format!(
+            "Two nodes used the note file {}; one now uses {file}.",
+            note.file
+        ));
         used.insert(windows_case_key(&file));
         index.notes[position].file = file;
     }
@@ -170,30 +202,57 @@ pub(crate) struct BoardChange {
 /// `Some` when the board files differ from what this app last loaded or saved.
 pub(crate) fn external_board_change(root: &Path) -> Result<Option<BoardChange>, String> {
     let (index, mut warnings) = load_index(root)?;
-    let document = serde_json::to_value(&index).map_err(|error| format!("could not encode the board: {error}"))?;
+    let document = serde_json::to_value(&index)
+        .map_err(|error| format!("could not encode the board: {error}"))?;
     if crate::board_store::synced(root).as_ref() == Some(&document) {
         return Ok(None);
     }
     crate::board_store::set_synced(root, &document);
     let revision = crate::board_store::bump_revision();
     let notes_directory = ensure_notes_directory(root)?;
-    let (notes, note_warnings, missing_files) = read_note_texts(&notes_directory, &index)?;
+    let (notes, note_warnings, missing_files, _) = read_note_texts(&notes_directory, &index)?;
     warnings.extend(note_warnings);
-    let index_json = serde_json::to_string(&index).map_err(|error| format!("could not encode the board: {error}"))?;
-    Ok(Some(BoardChange { index_json, notes, warnings, missing_files, revision }))
+    let index_json = serde_json::to_string(&index)
+        .map_err(|error| format!("could not encode the board: {error}"))?;
+    Ok(Some(BoardChange {
+        index_json,
+        notes,
+        warnings,
+        missing_files,
+        revision,
+    }))
 }
 
 /// Read every note's Markdown; a missing file opens as empty and is reported.
-fn read_note_texts(notes_directory: &Path, index: &BoardIndex) -> Result<(Vec<ProjectNote>, Vec<String>, Vec<String>), String> {
+fn read_note_texts(
+    notes_directory: &Path,
+    index: &BoardIndex,
+) -> Result<
+    (
+        Vec<ProjectNote>,
+        Vec<String>,
+        Vec<String>,
+        HashMap<String, crate::watcher::Fingerprint>,
+    ),
+    String,
+> {
     let mut notes = Vec::with_capacity(index.notes.len());
     let mut warnings = Vec::new();
     let mut missing_files = Vec::new();
+    let mut fingerprints = HashMap::new();
     for entry in &index.notes {
         let path = safe_note_path(notes_directory, &entry.file)?;
-        let text = match read_note_file(&path) {
-            Ok(text) => text,
+        let text = match read_note_bytes(&path) {
+            Ok(bytes) => {
+                fingerprints.insert(entry.file.clone(), crate::watcher::fingerprint(&bytes));
+                String::from_utf8(bytes)
+                    .map_err(|error| format!("could not read note file {}: {error}", entry.file))?
+            }
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                warnings.push(format!("Missing note file: {} (opened as empty)", entry.file));
+                warnings.push(format!(
+                    "Missing note file: {} (opened as empty)",
+                    entry.file
+                ));
                 missing_files.push(entry.file.clone());
                 String::new()
             }
@@ -210,7 +269,7 @@ fn read_note_texts(notes_directory: &Path, index: &BoardIndex) -> Result<(Vec<Pr
             height: entry.height,
         });
     }
-    Ok((notes, warnings, missing_files))
+    Ok((notes, warnings, missing_files, fingerprints))
 }
 
 #[derive(Deserialize)]
@@ -503,13 +562,18 @@ pub fn acknowledge_external_file_change(
 
 fn enable_project_watch(app: &AppHandle, watcher: &ProjectWatcher, project: &mut OpenedProject) {
     if let Err(error) = crate::attachments::refresh_asset_protocol_scope(app, &project.root) {
-        project.load.warnings.push(format!("Project images may not load: {error}"));
+        project
+            .load
+            .warnings
+            .push(format!("Project images may not load: {error}"));
     }
     if let Err(error) = crate::board_watch::watch(app, &project.root) {
-        project.load.warnings.push(format!("Changes from Git pulls will appear after reopening the project: {error}"));
+        project.load.warnings.push(format!(
+            "Changes from Git pulls will appear after reopening the project: {error}"
+        ));
     }
     let notes_directory = project.root.join(NOTES_DIRECTORY);
-    if let Err(error) = watcher.watch_notes(&notes_directory) {
+    if let Err(error) = watcher.watch_notes_seeded(&notes_directory, &project.note_fingerprints) {
         project
             .load
             .warnings
@@ -546,6 +610,7 @@ fn conflict_copy_file_name(base: &str, kind: &str, timestamp: &str, collision: u
 struct OpenedProject {
     root: PathBuf,
     load: ProjectLoad,
+    note_fingerprints: HashMap<String, crate::watcher::Fingerprint>,
 }
 
 fn open_project_root(selected: &Path) -> Result<OpenedProject, String> {
@@ -568,7 +633,8 @@ fn open_project_root(selected: &Path) -> Result<OpenedProject, String> {
         crate::board_store::set_synced(&root, &document);
     }
 
-    let (notes, note_warnings, missing_files) = read_note_texts(&notes_directory, &index)?;
+    let (notes, note_warnings, missing_files, note_fingerprints) =
+        read_note_texts(&notes_directory, &index)?;
     warnings.extend(note_warnings);
 
     let index_json = serde_json::to_string(&index)
@@ -589,6 +655,7 @@ fn open_project_root(selected: &Path) -> Result<OpenedProject, String> {
             revision: crate::board_store::revision(),
         },
         root,
+        note_fingerprints,
     })
 }
 
@@ -702,14 +769,19 @@ fn save_project_files(
     watcher: &ProjectWatcher,
 ) -> Result<SaveResult, String> {
     let root = canonical_project_root(root)?;
-    let _store = crate::board_store::STORE_LOCK.lock().map_err(|_| "project storage is busy")?;
+    let _store = crate::board_store::STORE_LOCK
+        .lock()
+        .map_err(|_| "project storage is busy")?;
     let notes_directory = ensure_notes_directory(&root)?;
     let mut pending_watch_writes = PendingWatchWrites::new(watcher.clone());
     let index_path = root.join(INDEX_FILE_NAME);
     ensure_regular_or_missing(&index_path)?;
     // Compare with what this app last loaded or saved, not with the disk: objects that arrived
     // from a pull are not ours to delete or to treat as renamed.
-    if request.base_revision.is_some_and(|revision| revision != crate::board_store::revision()) {
+    if request
+        .base_revision
+        .is_some_and(|revision| revision != crate::board_store::revision())
+    {
         return Err(crate::board_store::STALE_SAVE_ERROR.to_string());
     }
     let known_document = crate::board_store::synced(&root);
@@ -850,13 +922,14 @@ fn save_project_files(
             return Err(format!("could not encode board index: {error}"));
         }
     };
-    let board_plan = match crate::board_store::plan_write(&root, &new_document, known_document.as_ref()) {
-        Ok(plan) => plan,
-        Err(error) => {
-            cleanup_staged(&staged);
-            return Err(error);
-        }
-    };
+    let board_plan =
+        match crate::board_store::plan_write(&root, &new_document, known_document.as_ref()) {
+            Ok(plan) => plan,
+            Err(error) => {
+                cleanup_staged(&staged);
+                return Err(error);
+            }
+        };
 
     for write in &staged {
         if write.target.parent() == Some(notes_directory.as_path()) {
@@ -903,8 +976,11 @@ fn save_project_files(
     }
 
     pending_watch_writes.finish(true);
+    crate::backup::mark_project_changed(&root);
     if let Err(error) = crate::board_store::apply_plan(&board_plan) {
-        return Err(format!("note files were saved, but the board could not be: {error}"));
+        return Err(format!(
+            "note files were saved, but the board could not be: {error}"
+        ));
     }
     crate::board_store::set_synced(&root, &new_document);
     Ok(SaveResult { warnings })
@@ -1071,11 +1147,6 @@ fn is_reserved_windows_name(name: &str) -> bool {
 
 fn windows_case_key(value: &str) -> String {
     value.to_lowercase()
-}
-
-fn read_note_file(path: &Path) -> io::Result<String> {
-    String::from_utf8(read_note_bytes(path)?)
-        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
 }
 
 fn read_note_bytes(path: &Path) -> io::Result<Vec<u8>> {
@@ -1409,14 +1480,30 @@ mod tests {
                 { "id": "bbbb2222", "name": "Note 4", "file": "note 4.md", "x": 40, "y": 0, "width": 30 }
             ]
         });
-        fs::write(directory.join("board.json"), serde_json::to_vec(&index).expect("encode index"))
-            .expect("write board index");
+        fs::write(
+            directory.join("board.json"),
+            serde_json::to_vec(&index).expect("encode index"),
+        )
+        .expect("write board index");
 
         let opened = open_project_root(&directory).expect("open project with a shared note file");
-        let files: Vec<&str> = opened.load.notes.iter().map(|note| note.file.as_str()).collect();
+        let files: Vec<&str> = opened
+            .load
+            .notes
+            .iter()
+            .map(|note| note.file.as_str())
+            .collect();
         assert_eq!(files, vec!["Note 4.md", "Note 4 bbbb.md"]);
-        assert!(opened.load.notes.iter().all(|note| note.text == "shared body"));
-        assert!(opened.load.warnings.iter().any(|warning| warning.contains("Note 4 bbbb.md")));
+        assert!(opened
+            .load
+            .notes
+            .iter()
+            .all(|note| note.text == "shared body"));
+        assert!(opened
+            .load
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("Note 4 bbbb.md")));
         fs::remove_dir_all(directory).expect("remove test project");
     }
 

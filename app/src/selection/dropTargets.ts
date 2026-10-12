@@ -38,6 +38,10 @@ export function registerDropTarget(target: BoardDropTarget): () => void {
 }
 
 export function previewDropTarget(noteIds: readonly string[], worldPoint: Point): void {
+  if (noteIds.length !== 1) {
+    if (currentPreview) clearDropTargetPreview();
+    return;
+  }
   currentPreview = resolveDropTarget(noteIds, worldPoint)?.match ?? null;
   activeDropTarget.set(currentPreview);
 }

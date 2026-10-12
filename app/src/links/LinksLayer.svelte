@@ -1,10 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { camera, ME_POSITION, viewport } from "../board/camera.svelte";
+  import { cachedClientRect } from "../board/boardRect";
+  import { lod, queryPoint, visible } from "../board/visibility.svelte";
   import { PX_PER_UNIT, screenToWorld, type Point } from "../board/cameraMath";
   import { isTextEditingTarget } from "../commands/focus";
-  import { board } from "../model/board.svelte";
-  import { links, canLink, linkRefusalReason } from "../model/links.svelte";
+  import { board, onBoardMutation } from "../model/board.svelte";
+  import { links, linksOf, onLinksMutation, canLink, linkRefusalReason } from "../model/links.svelte";
   import { ME_OBJECT_ID, type Link, type LinkAnchor } from "../model/link";
   import { hasMeBeacon } from "../beacons/beaconState.svelte";
   import { BEACON_SIZE, newId } from "../model/note";
@@ -27,7 +29,8 @@
     selectLinkUndoable,
     selectLinksUndoable,
   } from "./selection.svelte";
-  import { isDimmed } from "../beacons/focus.svelte";
+  import { isDimmed, visibleInFocus } from "../beacons/focus.svelte";
+  import { LinkRouteIndex } from "./routeIndex";
 
   const CUT_DRAG_THRESHOLD_PX = 5;
   const CUT_TOLERANCE_PX = 4;
@@ -92,6 +95,13 @@
 
   let layer: HTMLDivElement;
   const renderedLinkCache = new Map<string, LinkRenderCache>();
+  const routeIndex = new LinkRouteIndex();
+  const dirtyLinkIds = new Set<string>();
+  const orderIndex = new Map(board.order.map((id, index) => [id, index]));
+  let allLinksDirty = true;
+  let renderedRevision = $state(0);
+  let hoveredLinkId = $state<string | null>(null);
+  let activeCutLinkId = $state<string | null>(null);
   let gesture: PointerGesture | null = null;
   let linkMarquee = $state<{ start: Point; end: Point } | null>(null);
   let lastBodyClick: { id: string; at: number } | null = null;
@@ -106,75 +116,140 @@
   );
 
   let renderedLinks = $derived.by((): RenderedLink[] => {
+    void renderedRevision;
     const selectedIds = new Set(selectedLinkIds());
-    const activeIds = new Set<string>();
+    syncDirtyLinkGeometry();
+    const candidateIds = new Set(routeIndex.query(visible.rect));
+    for (const id of selectedIds) candidateIds.add(id);
+    if (hoveredLinkId) candidateIds.add(hoveredLinkId);
+    if (activeCutLinkId) candidateIds.add(activeCutLinkId);
     const rendered: RenderedLink[] = [];
-    for (const link of Object.values(links.byId)) {
-      activeIds.add(link.id);
-      const source = objectBounds(link.from);
-      const target = objectBounds(link.to);
-      if (!source || !target) continue;
-      const fromColor = objectColor(link.from);
-      const toColor = objectColor(link.to);
-      const selected = selectedIds.has(link.id);
-      const cache = renderedLinkCache.get(link.id);
-      if (cache && sameLinkRenderInputs(cache, link, source, target, fromColor, toColor, selected)) {
-        rendered.push(cache.rendered);
-        continue;
-      }
-
-      const geometry = geometryForLink(link, source, target);
-      if (!geometry) continue;
-      const first = geometry.polyline[0];
-      const last = geometry.polyline.at(-1);
-      if (!first || !last) continue;
-
-      const gradient = fromColor.toLowerCase() === toColor.toLowerCase()
-        ? null
-        : {
-            id: `hive-link-${safeId(link.id)}`,
-            x1: first.x,
-            y1: first.y,
-            x2: last.x,
-            y2: last.y,
-            fromColor,
-            toColor,
-          };
-      const arrow = buildArrowGeometry(link.shape, geometry);
-      const shapeDashes = link.kind === "weak" && (link.shape === "wave" || link.shape === "zigzag")
-        ? buildShapeDashPaths(link.shape, geometry, arrow.shaftLength)
-        : [];
-      const value: RenderedLink = {
-        id: link.id,
-        kind: link.kind,
-        geometry,
-        path: geometry.path,
-        shaftPath: arrow.shaftPath,
-        headPath: arrow.headPath,
-        dashPaths: shapeDashes.length > 0 ? shapeDashes : null,
-        selected,
-        gradient,
-      };
-      renderedLinkCache.set(link.id, {
-        link,
-        from: link.from,
-        to: link.to,
-        kind: link.kind,
-        shape: link.shape,
-        fromAnchor: anchorKey(link.fromAnchor),
-        toAnchor: anchorKey(link.toAnchor),
-        source,
-        target,
-        fromColor,
-        toColor,
-        selected,
-        rendered: value,
-      });
-      rendered.push(value);
+    for (const id of candidateIds) {
+      const cache = renderedLinkCache.get(id);
+      if (!cache) continue;
+      const selected = selectedIds.has(id) || id === hoveredLinkId || id === activeCutLinkId;
+      rendered.push(cache.rendered.selected === selected ? cache.rendered : { ...cache.rendered, selected });
     }
-    for (const id of renderedLinkCache.keys()) if (!activeIds.has(id)) renderedLinkCache.delete(id);
     return rendered;
   });
+
+  onBoardMutation((ids) => {
+    if (ids === null) {
+      allLinksDirty = true;
+      rebuildOrderIndex();
+    } else {
+      for (const id of ids) {
+        for (const link of linksOf(id)) dirtyLinkIds.add(link.id);
+        if (!board.notes[id] || !orderIndex.has(id)) rebuildOrderIndex();
+      }
+    }
+    renderedRevision += 1;
+  });
+  onLinksMutation((ids) => {
+    if (ids === null) allLinksDirty = true;
+    else for (const id of ids) dirtyLinkIds.add(id);
+    renderedRevision += 1;
+  });
+
+  $effect.root(() => {
+    $effect(() => {
+      hasMeBeacon();
+      for (const link of linksOf(ME_OBJECT_ID)) dirtyLinkIds.add(link.id);
+      renderedRevision += 1;
+    });
+  });
+
+  function syncDirtyLinkGeometry(): void {
+    if (allLinksDirty) {
+      routeIndex.clear();
+      const activeIds = new Set(Object.keys(links.byId));
+      for (const id of renderedLinkCache.keys()) if (!activeIds.has(id)) renderedLinkCache.delete(id);
+      for (const id of activeIds) refreshLinkGeometry(id, true);
+      allLinksDirty = false;
+      dirtyLinkIds.clear();
+      return;
+    }
+    for (const id of dirtyLinkIds) refreshLinkGeometry(id, false);
+    dirtyLinkIds.clear();
+  }
+
+  function rebuildOrderIndex(): void {
+    orderIndex.clear();
+    for (let index = 0; index < board.order.length; index += 1) orderIndex.set(board.order[index]!, index);
+  }
+
+  function refreshLinkGeometry(id: string, forceIndex = false): void {
+    const link = links.byId[id];
+    if (!link) {
+      renderedLinkCache.delete(id);
+      routeIndex.delete(id);
+      return;
+    }
+    const source = objectBounds(link.from);
+    const target = objectBounds(link.to);
+    if (!source || !target) {
+      renderedLinkCache.delete(id);
+      routeIndex.delete(id);
+      return;
+    }
+    const fromColor = objectColor(link.from);
+    const toColor = objectColor(link.to);
+    const cache = renderedLinkCache.get(id);
+    if (cache && sameLinkRenderInputs(cache, link, source, target, fromColor, toColor, false)) {
+      if (forceIndex) routeIndex.set(id, cache.rendered.geometry.polyline);
+      return;
+    }
+    const geometry = geometryForLink(link, source, target);
+    const first = geometry?.polyline[0];
+    const last = geometry?.polyline.at(-1);
+    if (!geometry || !first || !last) {
+      renderedLinkCache.delete(id);
+      routeIndex.delete(id);
+      return;
+    }
+    const gradient = fromColor.toLowerCase() === toColor.toLowerCase()
+      ? null
+      : {
+          id: `hive-link-${safeId(id)}`,
+          x1: first.x,
+          y1: first.y,
+          x2: last.x,
+          y2: last.y,
+          fromColor,
+          toColor,
+        };
+    const arrow = buildArrowGeometry(link.shape, geometry);
+    const shapeDashes = link.kind === "weak" && (link.shape === "wave" || link.shape === "zigzag")
+      ? buildShapeDashPaths(link.shape, geometry, arrow.shaftLength)
+      : [];
+    const value: RenderedLink = {
+      id,
+      kind: link.kind,
+      geometry,
+      path: geometry.path,
+      shaftPath: arrow.shaftPath,
+      headPath: arrow.headPath,
+      dashPaths: shapeDashes.length > 0 ? shapeDashes : null,
+      selected: false,
+      gradient,
+    };
+    renderedLinkCache.set(id, {
+      link,
+      from: link.from,
+      to: link.to,
+      kind: link.kind,
+      shape: link.shape,
+      fromAnchor: anchorKey(link.fromAnchor),
+      toAnchor: anchorKey(link.toAnchor),
+      source,
+      target,
+      fromColor,
+      toColor,
+      selected: false,
+      rendered: value,
+    });
+    routeIndex.set(id, geometry.polyline);
+  }
 
   let gradients = $derived(renderedLinks.flatMap((link) => link.gradient ? [link.gradient] : []));
 
@@ -203,8 +278,9 @@
     const requestedKind = previewLinkKind(tool.active);
     if (!requestedKind) return null;
     let hoveredId: string | null = null;
-    for (let index = board.order.length - 1; index >= 0; index -= 1) {
-      const id = board.order[index];
+    const candidates = queryPoint(point);
+    candidates.sort((first, second) => (orderIndex.get(second) ?? -1) - (orderIndex.get(first) ?? -1));
+    for (const id of candidates) {
       const note = board.notes[id];
       if (!note) continue;
       const bounds = noteBounds(note);
@@ -233,14 +309,14 @@
     const surface: HTMLElement = parent;
 
     function localPoint(event: Pick<PointerEvent, "clientX" | "clientY">): Point {
-      const rect = surface.getBoundingClientRect();
+      const rect = cachedClientRect(surface);
       return clientToBoardPoint({ x: event.clientX, y: event.clientY }, rect);
     }
 
     function worldPoint(event: Pick<PointerEvent, "clientX" | "clientY">): Point {
       return clientToWorld(
         { x: event.clientX, y: event.clientY },
-        surface.getBoundingClientRect(),
+        cachedClientRect(surface),
         camera,
         viewport,
       );
@@ -257,7 +333,9 @@
       const beacon = objectBounds(ME_OBJECT_ID);
       if (beacon && world.x >= beacon.x && world.x <= beacon.x + beacon.width &&
         world.y >= beacon.y && world.y <= beacon.y + beacon.height) return ME_OBJECT_ID;
-      for (const id of [...board.order].reverse()) {
+      const candidates = queryPoint(world);
+      candidates.sort((first, second) => (orderIndex.get(second) ?? -1) - (orderIndex.get(first) ?? -1));
+      for (const id of candidates) {
         const note = board.notes[id];
         if (!note) continue;
         const bounds = noteBounds(note);
@@ -286,6 +364,7 @@
       if (isLineTool() && event.button === 2) {
         lineInteraction.suppressContextMenuUntil = 0;
         const startLinkId = linkAt(event.target);
+        activeCutLinkId = startLinkId;
         if (startLinkId) {
           event.preventDefault();
           event.stopImmediatePropagation();
@@ -373,6 +452,9 @@
     }
 
     function onPointerMove(event: PointerEvent): void {
+      const relevant = gesture?.id === event.pointerId ||
+        (Boolean(lineInteraction.sourceId) && (tool.active === "line-strong" || tool.active === "line-weak"));
+      if (!relevant) return;
       const point = localPoint(event);
       if (gesture?.id === event.pointerId) {
         if (!gesture.captured && Math.hypot(point.x - gesture.start.x, point.y - gesture.start.y) >= CUT_DRAG_THRESHOLD_PX) {
@@ -506,6 +588,7 @@
       if (!gesture || gesture.id !== event.pointerId) return;
       const active = gesture;
       gesture = null;
+      activeCutLinkId = null;
       restoreTextSelection();
       const point = localPoint(event);
 
@@ -553,6 +636,7 @@
     function onPointerCancel(event: PointerEvent): void {
       if (!gesture || gesture.id !== event.pointerId) return;
       gesture = null;
+      activeCutLinkId = null;
       linkMarquee = null;
       restoreTextSelection();
       cancelLineDraft();
@@ -615,13 +699,13 @@
     target: Bounds,
     fromColor: string,
     toColor: string,
-    selected: boolean,
+    _selected: boolean,
   ): boolean {
     return cache.link === link && cache.from === link.from && cache.to === link.to &&
       cache.kind === link.kind && cache.shape === link.shape &&
       cache.fromAnchor === anchorKey(link.fromAnchor) && cache.toAnchor === anchorKey(link.toAnchor) &&
       sameBounds(cache.source, source) && sameBounds(cache.target, target) &&
-      cache.fromColor === fromColor && cache.toColor === toColor && cache.selected === selected;
+      cache.fromColor === fromColor && cache.toColor === toColor;
   }
 
   function sameBounds(first: Bounds, second: Bounds): boolean {
@@ -685,28 +769,32 @@
         {/each}
       </defs>
       {#each renderedLinks as link (link.id)}
-        <g data-link-id={link.id} class:selected={link.selected} class:dimmed={isDimmed(links.byId[link.id]?.from ?? "") || isDimmed(links.byId[link.id]?.to ?? "")}>
+        {@const model = links.byId[link.id]}
+        {@const focusedIds = visibleInFocus()}
+        {@const detailed = lod.tier === "full" || link.selected || Boolean(model && focusedIds?.has(model.from) && focusedIds?.has(model.to))}
+        <g role="group" data-link-id={link.id} class:selected={link.selected} class:dimmed={isDimmed(model?.from ?? "") || isDimmed(model?.to ?? "")}
+          onpointerenter={() => { hoveredLinkId = link.id; }} onpointerleave={() => { if (hoveredLinkId === link.id) hoveredLinkId = null; }}>
           <path class="link-hit" d={link.path} />
-          {#if link.dashPaths}
+          {#if detailed && link.dashPaths}
             {#each link.dashPaths as dashPath, index (`${link.id}-dash-${index}`)}
               <path
                 class="link-line custom-dashes"
                 class:weak={link.kind === "weak"}
                 d={dashPath}
-                style:stroke={link.selected ? "var(--accent)" : link.gradient ? `url(#${link.gradient.id})` : undefined}
+                style:stroke={link.selected ? "var(--accent)" : detailed && link.gradient ? `url(#${link.gradient.id})` : undefined}
                 style:stroke-width={lineStrokeWidth(link.kind, link.selected)}
               />
             {/each}
           {:else}
             <path
               class="link-line"
-              class:weak={link.kind === "weak"}
-              d={link.shaftPath}
-              style:stroke={link.selected ? "var(--accent)" : link.gradient ? `url(#${link.gradient.id})` : undefined}
+              class:weak={detailed && link.kind === "weak"}
+              d={detailed ? link.shaftPath : link.path}
+              style:stroke={link.selected ? "var(--accent)" : detailed && link.gradient ? `url(#${link.gradient.id})` : undefined}
               style:stroke-width={lineStrokeWidth(link.kind, link.selected)}
             />
           {/if}
-          {#if link.headPath}
+          {#if detailed && link.headPath}
             <path
               class="link-arrow"
               class:weak={link.kind === "weak"}

@@ -207,3 +207,36 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function nonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
 }
+const YOUTUBE_METADATA_CACHE_SIZE = 128;
+const youtubeMetadataCache = new Map<string, Promise<{ title?: string; author?: string } | null>>();
+
+export interface YouTubeMetadata {
+  title?: string;
+  author?: string;
+}
+
+/** Share one oEmbed lookup per immutable video id; failures are cached as a null result too. */
+export function youtubeMetadata(videoId: string, url: string): Promise<YouTubeMetadata | null> {
+  const cached = youtubeMetadataCache.get(videoId);
+  if (cached) {
+    youtubeMetadataCache.delete(videoId);
+    youtubeMetadataCache.set(videoId, cached);
+    return cached;
+  }
+  const request = fetch(youtubeOEmbedUrl(url))
+    .then(async (response) => {
+      if (!response.ok) return null;
+      const value: unknown = await response.json();
+      if (typeof value !== "object" || value === null) return null;
+      const record = value as Record<string, unknown>;
+      const title = typeof record.title === "string" && record.title.trim() ? record.title.trim() : undefined;
+      const author = typeof record.author_name === "string" && record.author_name.trim() ? record.author_name.trim() : undefined;
+      return title || author ? { ...(title ? { title } : {}), ...(author ? { author } : {}) } : null;
+    })
+    .catch(() => null);
+  youtubeMetadataCache.set(videoId, request);
+  while (youtubeMetadataCache.size > YOUTUBE_METADATA_CACHE_SIZE) {
+    youtubeMetadataCache.delete(youtubeMetadataCache.keys().next().value!);
+  }
+  return request;
+}

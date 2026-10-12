@@ -17,7 +17,7 @@ type DebouncerHandle = Debouncer<notify::RecommendedWatcher, RecommendedCache>;
 const DEBOUNCE_DELAY: Duration = Duration::from_millis(200);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct Fingerprint {
+pub(crate) struct Fingerprint {
     size: u64,
     hash: u64,
 }
@@ -81,9 +81,20 @@ impl ProjectWatcher {
         Self { state }
     }
 
-    /// Replace the active project watch. The notes directory is watched
-    /// non-recursively; changing projects releases the previous root first.
-    pub fn watch_notes(&self, directory: &Path) -> Result<(), String> {
+    /// Replace the active watch using fingerprints already collected while loading notes.
+    pub fn watch_notes_seeded(
+        &self,
+        directory: &Path,
+        seeded_contents: &HashMap<String, Fingerprint>,
+    ) -> Result<(), String> {
+        self.watch_notes_inner(directory, seeded_contents)
+    }
+
+    fn watch_notes_inner(
+        &self,
+        directory: &Path,
+        seeded_contents: &HashMap<String, Fingerprint>,
+    ) -> Result<(), String> {
         let directory = fs::canonicalize(directory).map_err(|error| {
             format!("could not resolve notes directory for monitoring: {error}")
         })?;
@@ -121,7 +132,10 @@ impl ProjectWatcher {
             }
         }
 
-        let initial_contents = read_directory_fingerprints(&directory);
+        let initial_contents = seeded_contents
+            .iter()
+            .map(|(name, fingerprint)| (path_key(&directory.join(name)), *fingerprint))
+            .collect();
         *self
             .state
             .known_contents
@@ -447,6 +461,7 @@ fn handle_path_event(state: &WatcherState, path: &Path, hinted_kind: &str) {
                 .lock()
                 .expect("project watcher observed contents poisoned")
                 .insert(key, Some(fingerprint));
+            mark_project_changed(state);
             let kind = if hinted_kind == "created" || known.is_none() {
                 "created"
             } else {
@@ -497,6 +512,7 @@ fn handle_path_event(state: &WatcherState, path: &Path, hinted_kind: &str) {
                 .expect("project watcher observed contents poisoned")
                 .insert(key, None);
             if was_known || observed.is_some() || hinted_kind == "deleted" {
+                mark_project_changed(state);
                 emit(
                     state,
                     ProjectFileEvent {
@@ -591,6 +607,7 @@ fn handle_rename(state: &WatcherState, first: &Path, second: &Path) {
     // checks the old tracked path for deletion and treats the new file as an
     // external change only if its basename is already tracked.
     if old_known.is_some() || fingerprint.is_some() {
+        mark_project_changed(state);
         emit(
             state,
             ProjectFileEvent {
@@ -607,6 +624,19 @@ fn handle_rename(state: &WatcherState, first: &Path, second: &Path) {
 fn emit(state: &WatcherState, event: ProjectFileEvent) {
     if let Err(error) = state.app.emit("project-file-event", event) {
         eprintln!("Could not notify the frontend about a project file change: {error}");
+    }
+}
+
+fn mark_project_changed(state: &WatcherState) {
+    if let Some(directory) = state
+        .notes_directory
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone())
+    {
+        if let Some(root) = directory.parent() {
+            crate::backup::mark_project_changed(root);
+        }
     }
 }
 
@@ -635,30 +665,6 @@ fn file_name(path: &Path) -> String {
         .unwrap_or_default()
 }
 
-fn read_directory_fingerprints(directory: &Path) -> HashMap<String, Fingerprint> {
-    let mut contents = HashMap::new();
-    let entries = match fs::read_dir(directory) {
-        Ok(entries) => entries,
-        Err(error) => {
-            eprintln!(
-                "Could not read notes directory {}: {error}",
-                directory.display()
-            );
-            return contents;
-        }
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !is_markdown(&path) || !entry.file_type().is_ok_and(|file_type| file_type.is_file()) {
-            continue;
-        }
-        if let Ok(bytes) = fs::read(&path) {
-            contents.insert(path_key(&path), content_fingerprint(&bytes));
-        }
-    }
-    contents
-}
-
 fn path_key(path: &Path) -> String {
     let normalized = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let key = normalized.to_string_lossy().replace('/', "\\");
@@ -672,7 +678,7 @@ fn path_key(path: &Path) -> String {
     }
 }
 
-fn content_fingerprint(bytes: &[u8]) -> Fingerprint {
+pub(crate) fn fingerprint(bytes: &[u8]) -> Fingerprint {
     let mut hash = 0xcbf29ce484222325_u64;
     for byte in bytes {
         hash ^= u64::from(*byte);
@@ -682,6 +688,10 @@ fn content_fingerprint(bytes: &[u8]) -> Fingerprint {
         size: bytes.len() as u64,
         hash,
     }
+}
+
+fn content_fingerprint(bytes: &[u8]) -> Fingerprint {
+    fingerprint(bytes)
 }
 
 fn should_suppress_content(

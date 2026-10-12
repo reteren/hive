@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { loadFormatText, type FormatTextLoadDependencies } from "../src/formats/formatLoad";
+import { loadFormatPreview, loadFormatText, type FormatTextLoadDependencies } from "../src/formats/formatLoad";
 
 const file = `${"a".repeat(64)}.json`;
 
@@ -38,5 +38,22 @@ describe("desktop Format file loading", () => {
       .rejects.toThrow(/Could not load file: File not found \(asset URL: CSP blocked asset URL\)/);
     await expect(loadFormatText("../board.json", "asset://blocked", deps))
       .rejects.toThrow("Could not load file: invalid attachment name");
+  });
+});
+
+describe("Format read-only preview", () => {
+  it("reads only the bounded prefix and cancels the attachment stream", async () => {
+    const cancel = vi.fn();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new TextEncoder().encode("one\r\ntwo\r\nthree")); },
+      cancel,
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(stream)));
+    try {
+      await expect(loadFormatPreview(file, "asset://file", 8)).resolves.toEqual({ text: "one\ntwo", truncated: true });
+      expect(cancel).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

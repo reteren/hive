@@ -8,7 +8,9 @@
   import { drawingSelection } from "./selection.svelte";
   import { selectionMaskTexture } from "./history";
   import { drawingGpu, type DrawQuad } from "./gpu/glEngine";
-  import { DRAW_TILE_SIZE_PX, levelPxPerUnit, levelTileUnits } from "./types";
+  import { DRAW_TILE_SIZE_PX, currentDrawLevel, levelPxPerUnit, levelTileUnits } from "./types";
+  import { CoarseCompositeCache } from "./coarseCompositeCache.svelte";
+  import { drawingLodPlan } from "./lod";
 
   /*
    * The whole drawing is drawn by the GPU into one viewport canvas: one textured quad per visible tile
@@ -18,6 +20,7 @@
    */
   let host = $state<HTMLDivElement | null>(null);
   const gpu = drawingGpu();
+  const compositeCache = gpu ? new CoarseCompositeCache(gpu, drawingTileStore) : null;
 
   function render(): void {
     if (!gpu || gpu.isLost || viewport.width <= 0 || viewport.height <= 0) return;
@@ -28,11 +31,20 @@
     const originX = (viewport.width / 2) * ratio - camera.x * scale;
     const originY = (viewport.height / 2) * ratio - camera.y * scale;
     const view = { x: -originX / scale, y: -originY / scale, width: width / scale, height: height / scale };
+    // Resolve only indexed tiles in the viewport; project open and pan load those lazily from disk.
+    const desiredLevel = currentDrawLevel(camera.zoom);
+    const margin = levelTileUnits(desiredLevel) * 0.02;
+    const renderRect = { x: view.x - margin, y: view.y - margin, width: view.width + margin * 2, height: view.height + margin * 2 };
+    // Coarsen the target if a very large viewport would need too many composite tiles. Finer levels
+    // are folded into each target tile in idle batches instead of making the frame load them all.
+    const plan = drawingLodPlan(renderRect, desiredLevel, drawingTileStore.levels());
+    const visibleKeysByLevel = plan.fallbackLevels.map((level) => [level, drawingTileStore.keysInRect(renderRect, false, level)] as const);
+    const visibleKeys = visibleKeysByLevel.flatMap(([, keys]) => keys);
+    drawingTileStore.setVisibleKeys(visibleKeys);
+    void drawingTileStore.ensureTiles(visibleKeys).catch((error: unknown) => console.error("Could not load visible drawing tiles", error));
     const quads: DrawQuad[] = [];
-    // Coarsest level first: finer detail is drawn on top.
-    for (const level of drawingTileStore.levels()) {
-      const margin = levelTileUnits(level) * 0.01;
-      const keys = drawingTileStore.keysInRect({ x: view.x - margin, y: view.y - margin, width: view.width + margin * 2, height: view.height + margin * 2 }, false, level);
+    // Native coarser levels are the immediate fallback while the target-level composites warm.
+    for (const [, keys] of visibleKeysByLevel) {
       for (const key of keys) {
         const origin = tileWorldOrigin(key);
         const tile = drawingTileStore.texture(key, false);
@@ -46,6 +58,18 @@
         });
       }
     }
+    for (const key of plan.compositeKeys) {
+      const origin = tileWorldOrigin(key);
+      const tile = compositeCache?.texture(key);
+      if (!origin || !tile) continue;
+      quads.push({
+        dst: { x: originX + origin.x * scale, y: originY + origin.y * scale, width: origin.size * scale, height: origin.size * scale },
+        src: { texture: tile.tex, width: DRAW_TILE_SIZE_PX, height: DRAW_TILE_SIZE_PX, rect: { x: 0, y: 0, width: DRAW_TILE_SIZE_PX, height: DRAW_TILE_SIZE_PX } },
+        mode: "rgba",
+        color: [1, 1, 1, 1],
+      });
+    }
+    compositeCache?.request(plan.compositeKeys, plan.targetLevel);
     const strokeQuads: DrawQuad[] = [];
     const stroke = previewStroke();
     if (stroke) {
@@ -57,7 +81,13 @@
       const tint = erase ? [1, 1, 1] : stroke.color;
       const selection = drawingSelection.area;
       const clipTexture = selection ? selectionMaskTexture(gpu, selection) : null;
-      for (const piece of stroke.pieces()) {
+      const strokeBounds = {
+        x: view.x * ppu,
+        y: view.y * ppu,
+        width: view.width * ppu,
+        height: view.height * ppu,
+      };
+      for (const piece of stroke.pieces(strokeBounds)) {
         const dst = {
           x: originX + (piece.x / ppu) * scale,
           y: originY + (piece.y / ppu) * scale,
@@ -98,6 +128,8 @@
     void viewport.width;
     void viewport.height;
     void drawingTileStore.revision;
+    void drawingTileStore.contentRevision;
+    void compositeCache?.revision;
     void drawingStrokePreview.revision;
     void drawingSelection.area;
     render();
@@ -116,6 +148,7 @@
     });
     return () => {
       stopPersistence();
+      compositeCache?.dispose();
       stopRestored?.();
       window.removeEventListener("resize", onResolutionChange);
       gpu?.canvas.remove();

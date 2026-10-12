@@ -212,7 +212,7 @@ export function syncBankRowLabels(): void {
       changed = true;
       return { ...row, label: source.name };
     });
-    if (changed) calculators.byKey[key] = { ...data, rows };
+    if (changed) setCalculatorData(key, { ...data, rows });
   }
 }
 

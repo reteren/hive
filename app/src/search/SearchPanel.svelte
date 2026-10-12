@@ -4,11 +4,12 @@
 </script>
 
 <script lang="ts">
+  import { onMount } from "svelte";
   import CommandButton from "../ui/CommandButton.svelte";
-  import { board } from "../model/board.svelte";
+  import { board, onBoardMutation } from "../model/board.svelte";
   import { teleportToObject } from "../navigation/navigate";
   import {
-    searchNotes,
+    SearchIndex,
     splitSearchMatch,
     type SearchNote,
     type SearchResult,
@@ -26,17 +27,68 @@
   const SEARCH_DEBOUNCE_MS = 100;
 
   let searchInput = $state<HTMLInputElement>();
-  let noteSnapshot = $derived.by((): SearchNote[] =>
-    board.order.flatMap((id) => {
-      const note = board.notes[id];
-      return note
-        ? [{ id: note.id, name: note.name, text: note.text, createdAt: note.createdAt, type: note.type, task: Boolean(note.task) }]
-        : [];
-    }),
-  );
+  let indexRevision = $state(0);
+  let orderSnapshot = $derived(board.order.map((id) => id));
+  const searchIndex = new SearchIndex();
+  const pendingNoteIds = new Set<string>();
+  let pendingFullRefresh = false;
+  let indexFrame: number | null = null;
   let nameResults = $derived(searchState.results.filter((result) => result.kind === "name"));
   let kindResults = $derived(searchState.results.filter((result) => result.kind === "kind"));
   let textResults = $derived(searchState.results.filter((result) => result.kind === "text"));
+
+  $effect(() => {
+    const query = searchState.query;
+    const revision = indexRevision;
+    void revision;
+    const timeout = window.setTimeout(() => setSearchResults(searchIndex.search(query)), SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timeout);
+  });
+
+  $effect(() => {
+    const order = orderSnapshot;
+    searchIndex.setOrder(order);
+    indexRevision += 1;
+  });
+
+  onMount(() => {
+    searchIndex.replace(notesInBoardOrder(), board.order);
+    indexRevision += 1;
+    const unsubscribe = onBoardMutation((ids) => {
+      if (ids === null) pendingFullRefresh = true;
+      else for (const id of ids) pendingNoteIds.add(id);
+      if (indexFrame !== null) return;
+      indexFrame = requestAnimationFrame(() => {
+        indexFrame = null;
+        if (pendingFullRefresh) {
+          pendingFullRefresh = false;
+          pendingNoteIds.clear();
+          searchIndex.replace(notesInBoardOrder(), board.order);
+          indexRevision += 1;
+        } else {
+          let changed = false;
+          for (const id of pendingNoteIds) {
+            const note = board.notes[id];
+            if (!note) changed = searchIndex.remove(id) || changed;
+            else changed = searchIndex.upsert({ id, name: note.name, text: note.text, createdAt: note.createdAt, type: note.type, task: Boolean(note.task) }) || changed;
+          }
+          pendingNoteIds.clear();
+          if (changed) indexRevision += 1;
+        }
+      });
+    });
+    return () => {
+      unsubscribe();
+      if (indexFrame !== null) cancelAnimationFrame(indexFrame);
+    };
+  });
+
+  function notesInBoardOrder(): SearchNote[] {
+    return board.order.flatMap((id) => {
+      const note = board.notes[id];
+      return note ? [{ id, name: note.name, text: note.text, createdAt: note.createdAt, type: note.type, task: Boolean(note.task) }] : [];
+    });
+  }
 
   $effect(() => {
     if (!searchState.open) return;
@@ -46,13 +98,6 @@
       searchInput?.setSelectionRange(end, end);
     });
     return () => cancelAnimationFrame(frame);
-  });
-
-  $effect(() => {
-    const query = searchState.query;
-    const notes = noteSnapshot;
-    const timeout = window.setTimeout(() => setSearchResults(searchNotes(query, notes)), SEARCH_DEBOUNCE_MS);
-    return () => window.clearTimeout(timeout);
   });
 
   function updateQuery(event: Event): void {

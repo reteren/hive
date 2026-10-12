@@ -29,7 +29,10 @@ pub fn show_quick_input_window(app: &AppHandle) {
     let shown = window.show().is_ok();
     let focused = window.set_focus().is_ok();
     #[cfg(windows)]
-    let forced = window.hwnd().map(|hwnd| force_foreground(hwnd.0 as _)).unwrap_or(false);
+    let forced = window
+        .hwnd()
+        .map(|hwnd| force_foreground(hwnd.0 as _))
+        .unwrap_or(false);
     #[cfg(not(windows))]
     let forced = false;
     let _ = window.emit("hive://quick-input-focus", ());
@@ -50,8 +53,14 @@ fn force_foreground(hwnd: windows_sys::Win32::Foundation::HWND) -> bool {
             return true;
         }
         let current = GetCurrentThreadId();
-        let foreground_thread = if foreground.is_null() { 0 } else { GetWindowThreadProcessId(foreground, std::ptr::null_mut()) };
-        let attached = foreground_thread != 0 && foreground_thread != current && AttachThreadInput(current, foreground_thread, 1) != 0;
+        let foreground_thread = if foreground.is_null() {
+            0
+        } else {
+            GetWindowThreadProcessId(foreground, std::ptr::null_mut())
+        };
+        let attached = foreground_thread != 0
+            && foreground_thread != current
+            && AttachThreadInput(current, foreground_thread, 1) != 0;
         BringWindowToTop(hwnd);
         let ok = SetForegroundWindow(hwnd) != 0;
         if attached {
@@ -74,7 +83,9 @@ pub fn log_overview(app: AppHandle, message: String) {
 }
 
 fn append_log(app: &AppHandle, file: &str, message: &str) {
-    let Ok(dir) = app.path().app_log_dir() else { return };
+    let Ok(dir) = app.path().app_log_dir() else {
+        return;
+    };
     if std::fs::create_dir_all(&dir).is_err() {
         return;
     }
@@ -88,9 +99,14 @@ fn append_log(app: &AppHandle, file: &str, message: &str) {
         .unwrap_or_default();
     lines.push(format!("{stamp} {message}"));
     let start = lines.len().saturating_sub(200);
-    let _ = std::fs::write(&path, lines[start..].join("
-") + "
-");
+    let _ = std::fs::write(
+        &path,
+        lines[start..].join(
+            "
+",
+        ) + "
+",
+    );
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -110,7 +126,9 @@ struct ShortcutSpec {
 impl ShortcutSpec {
     fn parse(value: &str) -> Result<Self, String> {
         let mut parts = value.split('+').map(str::trim).collect::<Vec<_>>();
-        let key_name = parts.pop().filter(|part| !part.is_empty())
+        let key_name = parts
+            .pop()
+            .filter(|part| !part.is_empty())
             .ok_or_else(|| "Choose a supported key combination.".to_string())?;
         let mut modifiers = Modifiers::default();
 
@@ -132,8 +150,9 @@ impl ShortcutSpec {
             return Err("Use Ctrl, Alt, or the Windows key with the shortcut.".to_string());
         }
 
-        let key = parse_key(key_name)
-            .ok_or_else(|| "Choose a supported letter, number, function, Space, Enter, or Escape key.".to_string())?;
+        let key = parse_key(key_name).ok_or_else(|| {
+            "Choose a supported letter, number, function, Space, Enter, or Escape key.".to_string()
+        })?;
         Ok(Self { key, modifiers })
     }
 }
@@ -151,7 +170,8 @@ fn parse_key(value: &str) -> Option<u32> {
         "SPACE" => Some(0x20),
         "ENTER" => Some(0x0D),
         "ESCAPE" | "ESC" => Some(0x1B),
-        _ => upper.strip_prefix('F')
+        _ => upper
+            .strip_prefix('F')
             .and_then(|number| number.parse::<u32>().ok())
             .filter(|number| (1..=24).contains(number))
             .map(|number| 0x70 + number - 1),
@@ -177,7 +197,10 @@ impl QuickInputShortcutService {
         #[cfg(windows)]
         {
             let parsed = shortcut.as_deref().map(ShortcutSpec::parse).transpose()?;
-            let mut hook = self.hook.lock().map_err(|_| "Shortcut hook state is unavailable.".to_string())?;
+            let mut hook = self
+                .hook
+                .lock()
+                .map_err(|_| "Shortcut hook state is unavailable.".to_string())?;
             if hook.is_none() {
                 *hook = Some(start_hook(self.app.clone())?);
             }
@@ -204,7 +227,10 @@ struct HookRuntime {
 #[cfg(windows)]
 impl HookRuntime {
     fn set_shortcut(&self, shortcut: Option<ShortcutSpec>) -> Result<(), String> {
-        let mut keyboard = self.shared.keyboard.lock()
+        let mut keyboard = self
+            .shared
+            .keyboard
+            .lock()
             .map_err(|_| "Shortcut hook state is unavailable.".to_string())?;
         keyboard.shortcut = shortcut;
         Ok(())
@@ -232,7 +258,13 @@ struct AltSolo {
 
 impl AltSolo {
     /// `others_down`: another key or Ctrl/Shift/Win is held; `repeat`: Alt auto-repeat.
-    fn on_key(&mut self, key: u32, pressed: bool, others_down: bool, repeat: bool) -> Option<&'static str> {
+    fn on_key(
+        &mut self,
+        key: u32,
+        pressed: bool,
+        others_down: bool,
+        repeat: bool,
+    ) -> Option<&'static str> {
         if is_alt_key(key) {
             if pressed {
                 if repeat || others_down || self.active {
@@ -270,7 +302,8 @@ impl KeyboardState {
     fn process(&mut self, key: u32, pressed: bool) -> (bool, bool) {
         let modifiers_match = pressed
             && !is_modifier_key(key)
-            && self.shortcut
+            && self
+                .shortcut
                 .filter(|shortcut| shortcut.key == key)
                 .is_some_and(|shortcut| self.modifiers_match(shortcut.modifiers));
         self.process_event(key, pressed, modifiers_match)
@@ -326,7 +359,8 @@ fn is_modifier_key(key: u32) -> bool {
 }
 
 #[cfg(windows)]
-static HOOK_SHARED: std::sync::OnceLock<std::sync::Mutex<Option<Arc<HookShared>>>> = std::sync::OnceLock::new();
+static HOOK_SHARED: std::sync::OnceLock<std::sync::Mutex<Option<Arc<HookShared>>>> =
+    std::sync::OnceLock::new();
 
 #[cfg(windows)]
 fn start_hook(app: AppHandle) -> Result<HookRuntime, String> {
@@ -354,7 +388,9 @@ fn start_hook(app: AppHandle) -> Result<HookRuntime, String> {
         .spawn(move || {
             while activation_rx.recv().is_ok() {
                 let app_handle = app.clone();
-                if let Err(error) = app.run_on_main_thread(move || activate_quick_input(&app_handle)) {
+                if let Err(error) =
+                    app.run_on_main_thread(move || activate_quick_input(&app_handle))
+                {
                     eprintln!("Could not show quick input after shortcut activation: {error}");
                 }
             }
@@ -380,7 +416,10 @@ fn start_hook(app: AppHandle) -> Result<HookRuntime, String> {
 }
 
 #[cfg(windows)]
-fn keyboard_hook_thread(shared: Arc<HookShared>, ready: std::sync::mpsc::Sender<Result<(), String>>) {
+fn keyboard_hook_thread(
+    shared: Arc<HookShared>,
+    ready: std::sync::mpsc::Sender<Result<(), String>>,
+) {
     use std::ptr::null_mut;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         DispatchMessageW, GetMessageW, PeekMessageW, SetWindowsHookExW, TranslateMessage,
@@ -393,9 +432,13 @@ fn keyboard_hook_thread(shared: Arc<HookShared>, ready: std::sync::mpsc::Sender<
         PeekMessageW(&mut message, null_mut(), 0, 0, PM_NOREMOVE);
     }
 
-    let hook = unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(low_level_keyboard_proc), null_mut(), 0) };
+    let hook =
+        unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(low_level_keyboard_proc), null_mut(), 0) };
     if hook.is_null() {
-        let _ = ready.send(Err(format!("Could not install the Windows keyboard hook: {}", std::io::Error::last_os_error())));
+        let _ = ready.send(Err(format!(
+            "Could not install the Windows keyboard hook: {}",
+            std::io::Error::last_os_error()
+        )));
         return;
     }
 
@@ -403,13 +446,17 @@ fn keyboard_hook_thread(shared: Arc<HookShared>, ready: std::sync::mpsc::Sender<
     match hook_state.lock() {
         Ok(mut slot) => *slot = Some(shared),
         Err(_) => {
-            unsafe { UnhookWindowsHookEx(hook); }
+            unsafe {
+                UnhookWindowsHookEx(hook);
+            }
             let _ = ready.send(Err("Shortcut hook state is unavailable.".to_string()));
             return;
         }
     }
     if ready.send(Ok(())).is_err() {
-        unsafe { UnhookWindowsHookEx(hook); }
+        unsafe {
+            UnhookWindowsHookEx(hook);
+        }
         return;
     }
 
@@ -424,7 +471,9 @@ fn keyboard_hook_thread(shared: Arc<HookShared>, ready: std::sync::mpsc::Sender<
         }
     }
 
-    unsafe { UnhookWindowsHookEx(hook); }
+    unsafe {
+        UnhookWindowsHookEx(hook);
+    }
     if let Ok(mut slot) = hook_state.lock() {
         *slot = None;
     }
@@ -438,7 +487,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
 ) -> windows_sys::Win32::Foundation::LRESULT {
     use std::ptr::null_mut;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, KBDLLHOOKSTRUCT, HC_ACTION, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN,
+        CallNextHookEx, HC_ACTION, KBDLLHOOKSTRUCT, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN,
         WM_SYSKEYUP,
     };
 
@@ -448,14 +497,16 @@ unsafe extern "system" fn low_level_keyboard_proc(
             let is_down = matches!(wparam as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
             let is_up = matches!(wparam as u32, WM_KEYUP | WM_SYSKEYUP);
             if is_down || is_up {
-                let shared = HOOK_SHARED.get()
-                    .and_then(|slot| slot.lock().ok()?.clone());
+                let shared = HOOK_SHARED.get().and_then(|slot| slot.lock().ok()?.clone());
                 if let Some(shared) = shared {
                     let overview = shared.keyboard.lock().ok().and_then(|mut keyboard| {
                         let key = event.vkCode;
                         let repeat = is_down && keyboard.pressed.contains(&key);
                         let others_down = other_modifiers_down()
-                            || keyboard.pressed.iter().any(|held| !is_alt_key(*held) && *held != key);
+                            || keyboard
+                                .pressed
+                                .iter()
+                                .any(|held| !is_alt_key(*held) && *held != key);
                         let result = keyboard.alt_solo.on_key(key, is_down, others_down, repeat);
                         if result == Some("down") && !hive_is_foreground() {
                             keyboard.alt_solo.active = false;
@@ -466,7 +517,9 @@ unsafe extern "system" fn low_level_keyboard_proc(
                     if let Some(event) = overview {
                         let _ = shared.overview.send(event);
                     }
-                    let (swallow, activate) = shared.keyboard.lock()
+                    let (swallow, activate) = shared
+                        .keyboard
+                        .lock()
                         .map(|mut keyboard| keyboard.process(event.vkCode, is_down))
                         .unwrap_or((false, false));
                     if activate {
@@ -493,7 +546,9 @@ fn other_modifiers_down() -> bool {
 /// Only a lone Alt pressed while a hive window is in front toggles the overview.
 #[cfg(windows)]
 fn hive_is_foreground() -> bool {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetForegroundWindow, GetWindowThreadProcessId,
+    };
     unsafe {
         let window = GetForegroundWindow();
         if window.is_null() {
@@ -548,12 +603,26 @@ mod tests {
 
     #[test]
     fn parses_required_windows_shortcut_examples() {
-        assert_eq!(ShortcutSpec::parse("Ctrl+Alt+Space"), Ok(ShortcutSpec {
-            key: 0x20,
-            modifiers: Modifiers { control: true, alt: true, shift: false, windows: false },
-        }));
-        assert_eq!(ShortcutSpec::parse("Ctrl+Shift+K").unwrap().key, u32::from(b'K'));
-        assert_eq!(ShortcutSpec::parse("Win+Alt+N").unwrap().key, u32::from(b'N'));
+        assert_eq!(
+            ShortcutSpec::parse("Ctrl+Alt+Space"),
+            Ok(ShortcutSpec {
+                key: 0x20,
+                modifiers: Modifiers {
+                    control: true,
+                    alt: true,
+                    shift: false,
+                    windows: false
+                },
+            })
+        );
+        assert_eq!(
+            ShortcutSpec::parse("Ctrl+Shift+K").unwrap().key,
+            u32::from(b'K')
+        );
+        assert_eq!(
+            ShortcutSpec::parse("Win+Alt+N").unwrap().key,
+            u32::from(b'N')
+        );
         assert_eq!(ShortcutSpec::parse("Ctrl+Alt+Escape").unwrap().key, 0x1B);
     }
 
@@ -577,7 +646,12 @@ mod tests {
         let mut state = KeyboardState {
             shortcut: Some(ShortcutSpec {
                 key,
-                modifiers: Modifiers { control: true, alt: true, shift: false, windows: false },
+                modifiers: Modifiers {
+                    control: true,
+                    alt: true,
+                    shift: false,
+                    windows: false,
+                },
             }),
             ..KeyboardState::default()
         };

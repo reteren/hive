@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { externalMark, marksOnOpen, parseSeenState, seenAfterOwnSave, serializeSeenState } from "../src/changes/changeLogic";
+import { applyOwnSaveChanges, externalMark, marksOnOpen, parseSeenState, seenAfterOwnSave, serializeSeenState } from "../src/changes/changeLogic";
 import { nodeFingerprint, type NodeRecord } from "../src/changes/fingerprint";
 
 const record = (id: string, extra: Record<string, unknown> = {}): NodeRecord => ({
@@ -35,6 +35,22 @@ describe("new / changed marks", () => {
     const seen = { a: "old-a", b: "old-b", gone: "x" };
     const next = seenAfterOwnSave([record("a", { text: "mine" }), record("b", { text: "theirs" })], seen, { b: "changed" });
     expect(next).toEqual({ a: nodeFingerprint(record("a", { text: "mine" })), b: "old-b" });
+  });
+
+  it("updates own-save fingerprints and marks only for changed ids", () => {
+    const seen = { unchanged: "keep", changed: "old", marked: "before", deleted: "remove" };
+    const marks = { marked: "changed" as const, deleted: "new" as const };
+    applyOwnSaveChanges(
+      ["changed", "marked", "deleted"],
+      [record("changed", { text: "after" }), record("marked", { text: "mine" })],
+      seen,
+      marks,
+    );
+    expect(seen).toMatchObject({ unchanged: "keep", marked: "before" });
+    expect(seen.changed).not.toBe("old");
+    expect(seen.deleted).toBeUndefined();
+    expect(marks.deleted).toBeUndefined();
+    expect(marks.marked).toBe("changed");
   });
 
   it("an outside change is new until this person has seen the node once", () => {

@@ -4,6 +4,7 @@
   import { get } from "svelte/store";
   import { camera, viewport } from "../board/camera.svelte";
   import { worldToScreen, type Point } from "../board/cameraMath";
+  import { noteBounds } from "../notes/layout.svelte";
   import { board } from "../model/board.svelte";
   import { zones } from "../model/zones.svelte";
   import { zoneBounds } from "../model/zone";
@@ -83,6 +84,8 @@
     if (ids.length !== 1 || !root || ids[0] === note.id || !board.notes[ids[0]]) return null;
     // Statistics uses the module insertion path; an ordinary List link would intercept it.
     if (board.notes[ids[0]].type === "stats") return null;
+    const bounds = noteBounds(note);
+    if (point.x < bounds.x || point.x > bounds.x + bounds.width || point.y < bounds.y || point.y > bounds.y + bounds.height) return null;
     const boardRect = root.closest<HTMLElement>(".board")?.getBoundingClientRect();
     if (!boardRect) return null;
     const screen = worldToScreen(camera, viewport, point);
@@ -225,7 +228,7 @@
   .list-body.drop-target { outline: 2px solid var(--accent); outline-offset: -2px; background: rgba(var(--accent-rgb), 0.07); }
   .list-empty { margin: 0; padding: 6px; color: var(--text-dim); }
   .list-rows { display: grid; gap: 2px; }
-  .list-row { display: flex; min-width: 0; min-height: 26px; align-items: center; gap: 4px; border: 1px solid #41444a; border-radius: 3px; background: #24262b; }
+  .list-row { display: flex; min-width: 0; min-height: 26px; align-items: center; gap: 4px; border: 1px solid #41444a; border-radius: 3px; background: #24262b; content-visibility: auto; contain-intrinsic-size: auto 26px; }
   .list-content { min-width: 0; flex: 1; display: grid; gap: 2px; }
   .list-entry { position: relative; z-index: 2; }
   .list-footer { position: relative; z-index: 2; display: grid; min-width: 0; }

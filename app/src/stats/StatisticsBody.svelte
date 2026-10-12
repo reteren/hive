@@ -1,18 +1,17 @@
 <script lang="ts">
-  import { board } from "../model/board.svelte";
   import type { Note } from "../model/note";
   import ScopePicker from "../scope/ScopePicker.svelte";
-  import { resolveScope, scopeForNote } from "../scope/scope.svelte";
+  import { scopeForNote } from "../scope/scope.svelte";
   import { listViewForStats } from "./linkedList.svelte";
   import { tierlistViewForStats } from "./linkedTierlist.svelte";
-  import { summarizeTextStatistics } from "./statistics";
+  import { textStatisticsForScope } from "./statisticsCache.svelte";
 
   let { note }: { note: Note } = $props();
   let listView = $derived(listViewForStats(note.id));
   let tierlistView = $derived(tierlistViewForStats(note.id));
   let summary = $derived.by(() => {
     const selectedScope = scopeForNote(note);
-    return summarizeTextStatistics(resolveScope(selectedScope), board.notes);
+    return textStatisticsForScope(selectedScope);
   });
 </script>
 

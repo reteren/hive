@@ -12,6 +12,7 @@ const parsedMarkdown = new Map<string, MarkdownTree>();
 let cachedCharacters = 0;
 
 type MarkdownNode = MarkdownTree["topNode"];
+const linkedNotesByTree = new WeakMap<MarkdownNode, readonly string[]>();
 
 interface RenderOptions {
   from?: number;
@@ -61,6 +62,9 @@ export function parseMarkdown(text: string): MarkdownTree {
 }
 
 export function linkedNoteIds(text: string): string[] {
+  const tree = parseMarkdown(text);
+  const cached = linkedNotesByTree.get(tree.topNode);
+  if (cached) return [...cached];
   const result = new Set<string>();
   const visit = (node: MarkdownNode): void => {
     if (node.name === "Link" || node.name === "Autolink" || node.name === "URL" || node.name === "HiveAddress") {
@@ -71,8 +75,10 @@ export function linkedNoteIds(text: string): string[] {
     }
     for (const child of nodes(node)) visit(child);
   };
-  visit(parseMarkdown(text).topNode);
-  return [...result];
+  visit(tree.topNode);
+  const linkedIds = [...result];
+  linkedNotesByTree.set(tree.topNode, linkedIds);
+  return [...linkedIds];
 }
 
 export function createMarkdownFragment(

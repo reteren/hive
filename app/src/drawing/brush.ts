@@ -107,7 +107,8 @@ export interface DrawStroke {
   /** Raster rect of everything drawn so far. */
   readonly bounds: StrokeRasterRect | null;
   /** Live GPU coverage pieces for the on-screen preview (including the provisional tail). */
-  pieces(): RasterPiece[];
+  /** Pieces, optionally limited to an active raster window (used by pointer capture and preview). */
+  pieces(bounds?: StrokeRasterRect): RasterPiece[];
   finish(): FinishedStroke | null;
   dispose(): void;
 }
@@ -675,8 +676,24 @@ export function createStroke(settings: BrushSettings, zoom: number, requestedLev
     flushSegments();
   }
 
-  function pieces(preview = false): RasterPiece[] {
-    return [...tiles.values()].map(({ col, row, state }) => ({
+  function pieces(preview = false, bounds?: StrokeRasterRect): RasterPiece[] {
+    let selected: Iterable<{ col: number; row: number; state: StrokeStateTile }>;
+    if (!bounds) selected = tiles.values();
+    else {
+      const firstCol = Math.floor(bounds.x / STROKE_TILE);
+      const firstRow = Math.floor(bounds.y / STROKE_TILE);
+      const lastCol = Math.floor((bounds.x + bounds.width - 1) / STROKE_TILE);
+      const lastRow = Math.floor((bounds.y + bounds.height - 1) / STROKE_TILE);
+      const found: { col: number; row: number; state: StrokeStateTile }[] = [];
+      for (let col = firstCol; col <= lastCol; col += 1) {
+        for (let row = firstRow; row <= lastRow; row += 1) {
+          const tile = tiles.get(`${col}:${row}`);
+          if (tile) found.push(tile);
+        }
+      }
+      selected = found;
+    }
+    return [...selected].map(({ col, row, state }) => ({
       texture: preview ? state.next.state : state.current.state,
       texWidth: STROKE_TILE,
       texHeight: STROKE_TILE,
@@ -694,7 +711,7 @@ export function createStroke(settings: BrushSettings, zoom: number, requestedLev
     color,
     get lastDirtyRect() { return lastDirtyRect; },
     get bounds() { return contentBounds; },
-    pieces: () => pieces(true),
+    pieces: (bounds) => pieces(true, bounds),
     finish() {
       if (closed) return null;
       dropProvisional();

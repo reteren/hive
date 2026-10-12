@@ -1,7 +1,7 @@
 <script lang="ts">
   import { invoke, isTauri } from "@tauri-apps/api/core";
   import { board } from "../model/board.svelte";
-  import { links } from "../model/links.svelte";
+  import { linksOf } from "../model/links.svelte";
   import { normalizeNoteScale } from "../model/note";
   import { measuredHeights } from "../notes/layout.svelte";
   import { taskLog } from "../tasks/taskLog.svelte";
@@ -20,6 +20,7 @@
     formatDate,
     formatSpan,
     mediaFacts,
+    indexTaskLogByNote,
     taskStats,
     textStats,
   } from "./nodeInfoLogic";
@@ -55,8 +56,9 @@
   const noteFile = $derived(note ? savedNoteFiles().get(note.id) ?? null : null);
   const media = $derived(note ? mediaFacts(note) : null);
   const text = $derived(note && (TEXT_KINDS.has(note.type) || note.text.trim()) ? textStats(note.text) : null);
-  const collection = $derived(note ? collectionStats(note, board.notes, Object.values(links.byId)) : null);
-  const task = $derived(note ? taskStats(note, taskLog.entries) : null);
+  const taskLogByNote = $derived(indexTaskLogByNote(taskLog.entries));
+  const collection = $derived(note ? collectionStats(note, board.notes, linksOf(note.id)) : null);
+  const task = $derived(note ? taskStats(note, taskLogByNote) : null);
   const commits = $derived(disk?.git?.commits ?? []);
   const oldest = $derived(commits.at(-1));
   const newest = $derived(commits[0]);

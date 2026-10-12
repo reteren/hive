@@ -52,9 +52,7 @@ pub fn drawing_load(state: State<'_, ProjectState>) -> Result<DrawingLoadRespons
     let root = active_project_root(&state)?;
     let index = load_index_at(&root)?;
     crate::board_watch::reset_drawing(&root);
-    Ok(DrawingLoadResponse {
-        index,
-    })
+    Ok(DrawingLoadResponse { index })
 }
 
 /// Raw PNG bytes (an ArrayBuffer on the JS side, not a JSON number array: loading a big drawing
@@ -175,7 +173,11 @@ fn load_index_at(root: &Path) -> Result<Option<DrawingIndex>, String> {
                 let _ = fs::remove_file(tile_path(root, &key)?);
             }
         }
-        let meta = DrawingIndex { tiles: Vec::new(), tiles_from_files: true, ..index.clone() };
+        let meta = DrawingIndex {
+            tiles: Vec::new(),
+            tiles_from_files: true,
+            ..index.clone()
+        };
         let encoded = serde_json::to_vec(&meta)
             .map_err(|error| format!("could not encode drawing index: {error}"))?;
         atomic_write(&path, &encoded)?;
@@ -188,7 +190,9 @@ fn load_index_at(root: &Path) -> Result<Option<DrawingIndex>, String> {
 
 /// Tile keys of the PNG files in drawing/tiles ("col:row" for level 0, "level:col:row" otherwise).
 fn tile_keys_on_disk(tiles: &Path) -> Vec<String> {
-    let Ok(entries) = fs::read_dir(tiles) else { return Vec::new() };
+    let Ok(entries) = fs::read_dir(tiles) else {
+        return Vec::new();
+    };
     let mut keys: Vec<String> = entries
         .flatten()
         .filter_map(|entry| {
@@ -304,7 +308,11 @@ fn save_at(root: &Path, changes: &[DrawingTileChange], index: &DrawingIndex) -> 
         }
     }
     // The tile list lives in the file names; drawing.json only keeps the format (see tiles_from_files).
-    let meta = DrawingIndex { tiles: Vec::new(), tiles_from_files: true, ..index.clone() };
+    let meta = DrawingIndex {
+        tiles: Vec::new(),
+        tiles_from_files: true,
+        ..index.clone()
+    };
     let bytes = serde_json::to_vec(&meta)
         .map_err(|error| format!("could not encode drawing index: {error}"))?;
     if bytes.len() as u64 > MAX_INDEX_BYTES {
@@ -324,7 +332,10 @@ fn save_at(root: &Path, changes: &[DrawingTileChange], index: &DrawingIndex) -> 
         check_regular_file(path)?;
     }
     for (change, path) in changes.iter().zip(targets) {
-        let file_name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+        let file_name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
         crate::board_watch::record_drawing_write(root, &file_name, change.png.as_deref());
         if let Some(png) = &change.png {
             atomic_write(&path, png)?;

@@ -17,20 +17,29 @@ async function invokeWhenStateReady<T>(command: string, args?: Record<string, un
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { registerCloseFlush } from "../lifecycle/closeFlush";
-import { replaceBoard, board, updateNote } from "../model/board.svelte";
-import { links, replaceLinks } from "../model/links.svelte";
+import { replaceBoard, board, onBoardMutation, updateNote } from "../model/board.svelte";
+import { links, linksRevision, onLinksMutation, replaceLinks } from "../model/links.svelte";
 import type { Link } from "../model/link";
-import { replaceZones, zones } from "../model/zones.svelte";
+import { onZonesMutation, replaceZones, zones, zonesRevision } from "../model/zones.svelte";
 import type { Zone } from "../model/zone";
 import { beaconState, resetBeaconViewState } from "../beacons/beaconState.svelte";
-import { calculators, replaceCalculators } from "../calculator/calculators.svelte";
-import { archive, replaceArchive, replaceTrash, trash } from "../model/retention.svelte";
+import { calculators, calculatorsRevision, onCalculatorsMutation, replaceCalculators } from "../calculator/calculators.svelte";
+import {
+  archive,
+  archiveRevision,
+  onArchiveMutation,
+  onTrashMutation,
+  replaceArchive,
+  replaceTrash,
+  trash,
+  trashRevision,
+} from "../model/retention.svelte";
 import { copyArchiveEntry } from "../archive/serialization";
 import { copyTrashEntry } from "../trash/trash";
 import { resetTrashHistoryInvalidators } from "../trash/trashActions.svelte";
 import { resetArchiveHistoryTombstones } from "../archive/actions.svelte";
 import type { Note } from "../model/note";
-import { taskLog, type TaskLogEntry } from "../tasks/taskLog.svelte";
+import { onTaskLogMutation, replaceTaskLog, taskLog, taskLogRevision, type TaskLogEntry } from "../tasks/taskLog.svelte";
 import { resetTasksPanel } from "../tasks/tasksPanelState.svelte";
 import { clear as clearHistory, execute } from "../history/history.svelte";
 import { clearSelection } from "../selection/selection.svelte";
@@ -56,6 +65,9 @@ import {
   parseProjectIndexWithWarnings,
   projectNoteFiles,
   serializeProjectIndex,
+  serializeProjectNoteEntry,
+  type CachedIndexedNote,
+  type IndexedNote,
   type LoadedProjectNote,
   type ProjectIndex,
 } from "./index";
@@ -69,6 +81,8 @@ import {
 import { nodeFingerprint, type NodeRecord } from "../changes/fingerprint";
 import { decideExternalNoteChange } from "./externalChanges";
 import { project, type ProjectConflict } from "./project.svelte";
+import { ProjectDirtyTracker, type DirtyCapture } from "./dirtyTracking";
+import { markProjectChanged, projectChange } from "./changeSignal.svelte";
 
 const SAVE_DEBOUNCE_MS = 500;
 
@@ -102,12 +116,15 @@ interface SavedNote {
 
 interface ProjectSnapshot {
   indexJson: string;
-  notes: Note[];
-  links: Link[];
-  taskLog: TaskLogEntry[];
-  zones: Zone[];
-  beaconMarks: string[];
-  trash: ReturnType<typeof copyTrashEntry>[];
+  dirty: DirtyCapture;
+  noteIds: readonly string[];
+  changedNoteIds: readonly string[];
+  deletedNoteIds: readonly string[];
+  changedRecords: readonly NodeRecord[];
+  changedNotes: ReadonlyMap<string, { file: string; text: string }>;
+  changedFiles: readonly ChangedFile[];
+  projectIndexChanged: boolean;
+  globalRevisionStamp: string;
 }
 
 interface ChangedFile {
@@ -128,6 +145,13 @@ let initialized = false;
 let loading = false;
 let timer: number | null = null;
 let indexTemplate: ProjectIndex | undefined;
+let savedFilesById: ReadonlyMap<string, string> = new Map();
+const savedFilesState = $state({ revision: 0 });
+const dirtyTracker = new ProjectDirtyTracker();
+const noteRevisions = new Map<string, number>();
+const noteEntryCache = new Map<string, CachedIndexedNote>();
+let savedIndexedNotesById = new Map<string, IndexedNote>();
+let persistedGlobalRevisions = "";
 let lastSavedIndex = "";
 let lastSavedById = new Map<string, SavedNote>();
 let missingFileIds = new Set<string>();
@@ -205,13 +229,46 @@ async function initialize(): Promise<void> {
 function startBoardObserver(): void {
   if (initialized) return;
   initialized = true;
+  const canTrack = () => !loading && project.ready && Boolean(project.path);
+  onBoardMutation((ids) => {
+    if (!canTrack()) return;
+    markBoardMutation(ids);
+    markProjectChanged();
+    scheduleSave();
+  });
+  onLinksMutation(() => { if (canTrack()) markProjectDataChanged(); });
+  onZonesMutation(() => { if (canTrack()) markProjectDataChanged(); });
+  onTrashMutation(() => { if (canTrack()) markProjectDataChanged(); });
+  onArchiveMutation(() => { if (canTrack()) markProjectDataChanged(); });
+  onTaskLogMutation(() => { if (canTrack()) markProjectDataChanged(); });
+  onCalculatorsMutation(() => { if (canTrack()) markProjectDataChanged(); });
   $effect.root(() => {
+    let lastCounterRevision: number | undefined;
+    let lastProjectChangeRevision: number | undefined;
+    let lastMarked: readonly string[] | undefined;
+    let lastMeDeleted: boolean | undefined;
     $effect(() => {
       if (loading || !project.ready || !project.path) return;
-      // Project stopwatch totals tick every second; schedule disk writes only at runtime checkpoints.
-      void projectCounterSave.revision;
-      const snapshot = makeSnapshot();
-      if (isDirty(snapshot)) scheduleSave(snapshot);
+      const counterRevision = projectCounterSave.revision;
+      const projectChangeRevision = projectChange.revision;
+      const marked = beaconState.marked;
+      const meDeleted = beaconState.meDeleted;
+      if (lastCounterRevision === undefined) {
+        lastCounterRevision = counterRevision;
+        lastProjectChangeRevision = projectChangeRevision;
+        lastMarked = marked;
+        lastMeDeleted = meDeleted;
+        if (hasPendingDataChanges()) scheduleSave();
+        return;
+      }
+      const projectDataChanged = lastProjectChangeRevision !== projectChangeRevision;
+      const projectMetadataChanged = lastCounterRevision !== counterRevision || lastMarked !== marked || lastMeDeleted !== meDeleted;
+      lastProjectChangeRevision = projectChangeRevision;
+      lastCounterRevision = counterRevision;
+      lastMarked = marked;
+      lastMeDeleted = meDeleted;
+      if (projectMetadataChanged) markProjectDataChanged();
+      else if (projectDataChanged) scheduleSave();
     });
   });
 }
@@ -227,7 +284,7 @@ function applyProject(loaded: ProjectLoad): void {
     parsedIndex.meDeleted,
   );
   // After normalizedIndex (the saved baseline), so the renames count as changes and get saved.
-  resolveDuplicateNames(notes);
+  const duplicateRenames = resolveDuplicateNames(notes);
   const sourceIndex = JSON.parse(loaded.indexJson) as { version?: unknown; createdAt?: unknown; projectCounters?: unknown };
   const sourceVersion = sourceIndex.version;
   const hasProjectStopwatchData = typeof sourceIndex.createdAt === "number" && Number.isFinite(sourceIndex.createdAt) &&
@@ -242,8 +299,11 @@ function applyProject(loaded: ProjectLoad): void {
   clearHistory();
 
   loading = true;
+  dirtyTracker.reset();
+  noteRevisions.clear();
+  noteEntryCache.clear();
   boardRevision = loaded.revision;
-  indexTemplate = parsedIndex;
+  setIndexTemplate(parseProjectIndex(normalizedIndex), true);
   setProjectStopwatchData(parsedIndex.createdAt, parsedIndex.projectCounters);
   lastSavedById = new Map(
     loaded.notes
@@ -257,7 +317,7 @@ function applyProject(loaded: ProjectLoad): void {
   lastSavedIndex = sourceVersion === 3 && indexWarnings.length === 0 && hasProjectStopwatchData
     ? normalizedIndex
     : loaded.indexJson;
-  taskLog.entries = parsedIndex.taskLog.map((entry) => ({ ...entry }));
+  replaceTaskLog(parsedIndex.taskLog.map((entry) => ({ ...entry })));
   replaceCalculators(parsedIndex.calculators ?? {});
   replaceArchive(parsedIndex.archive.map(copyArchiveEntry));
   replaceTrash(parsedIndex.trash.map(copyTrashEntry));
@@ -272,6 +332,9 @@ function applyProject(loaded: ProjectLoad): void {
   replaceZones(parsedIndex.zones.map(copyZone));
   resetBeaconViewState(parsedIndex.beaconMarks, parsedIndex.meDeleted);
   loading = false;
+  persistedGlobalRevisions = globalRevisionStamp();
+  if (lastSavedIndex !== normalizedIndex) dirtyTracker.markIndex();
+  if (duplicateRenames.length > 0) markBoardMutation(duplicateRenames.map(({ note }) => note.id));
   const openedText = new Map(notes.map((note) => [note.id, note.text]));
   void startChangeTracking(
     loaded.path,
@@ -301,6 +364,14 @@ function changedNodeIds(beforeJson: string, afterJson: string): string[] {
     .map((record) => record.id);
 }
 
+function changedIndexedNoteIds(beforeJson: string, afterJson: string): string[] {
+  const before = new Map(parseProjectIndex(beforeJson).notes.map((note) => [note.id, note]));
+  const after = new Map(parseProjectIndex(afterJson).notes.map((note) => [note.id, note]));
+  return [...new Set([...before.keys(), ...after.keys()])].filter((id) =>
+    JSON.stringify(before.get(id)) !== JSON.stringify(after.get(id)),
+  );
+}
+
 /** Reset state whose ids or navigation context belongs to the currently open project. */
 export function resetProjectScopedState(): void {
   stopChangeTracking();
@@ -324,57 +395,119 @@ export function resetProjectScopedState(): void {
 }
 
 function makeSnapshot(): ProjectSnapshot {
-  const notes = board.order.flatMap((id) => {
-    const note = board.notes[id];
-    return note ? [{ ...note }] : [];
-  });
+  const notes = board.order.flatMap((id) => board.notes[id] ? [board.notes[id]] : []);
+  const filesById = projectNoteFiles(notes, savedFilesById);
   const currentLinks = Object.values(links.byId).map((link) => ({ ...link }));
   const currentTaskLog = taskLog.entries.map((entry) => ({ ...entry }));
   const currentZones = zones.order.flatMap((id) => zones.byId[id] ? [copyZone(zones.byId[id])] : []);
   const beaconMarks = [...beaconState.marked];
   const currentTrash = trash.entries.map(copyTrashEntry);
   const projectMetadata = currentProjectStopwatchData();
+  const allNoteIds = dirtyTracker.allNotesPending()
+    ? [...new Set([...board.order, ...lastSavedById.keys()])]
+    : [];
+  const dirty = dirtyTracker.capture(allNoteIds, missingFileIds);
+  const indexJson = serializeProjectIndex(
+    notes, indexTemplate, currentLinks, currentTaskLog, currentZones, beaconMarks, calculators.byKey,
+    archive.entries, currentTrash, projectMetadata, beaconState.meDeleted,
+    { filesById, noteRevisions, noteEntries: noteEntryCache },
+  );
+  const changedNoteIds: string[] = [];
+  const deletedNoteIds: string[] = [];
+  const changedRecords: NodeRecord[] = [];
+  const changedNotes = new Map<string, { file: string; text: string }>();
+  const files: ChangedFile[] = [];
+  const changedIndexIds = new Set<string>();
+  const conflictedIds = new Set(project.conflicts.map((conflict) => conflict.noteId));
+  for (const id of dirty.noteIds) {
+    const note = board.notes[id];
+    const savedEntry = savedIndexedNotesById.get(id);
+    if (!note) {
+      if (savedEntry || lastSavedById.has(id)) {
+        changedNoteIds.push(id);
+        deletedNoteIds.push(id);
+        changedIndexIds.add(id);
+      }
+      continue;
+    }
+    const indexed = noteEntryCache.get(id)?.entry;
+    const indexedChanged = !savedEntry || !indexed || JSON.stringify(indexed) !== JSON.stringify(savedEntry);
+    const saved = lastSavedById.get(id);
+    const file = filesById.get(id);
+    const fileChanged = Boolean(file && (!saved || saved.file !== file || saved.text !== note.text || missingFileIds.has(id)));
+    if (indexedChanged || fileChanged) changedNoteIds.push(id);
+    if (indexedChanged) changedIndexIds.add(id);
+    if (!conflictedIds.has(id) && file) {
+      changedNotes.set(id, { file, text: note.text });
+      if (fileChanged) files.push({ file, text: note.text });
+    }
+    const entry = indexed;
+    if ((indexedChanged || fileChanged) && entry) changedRecords.push({ ...entry, id, text: note.text });
+  }
   return {
-    indexJson: serializeProjectIndex(
-      notes, indexTemplate, currentLinks, currentTaskLog, currentZones, beaconMarks, calculators.byKey,
-      archive.entries, currentTrash, projectMetadata,
-      beaconState.meDeleted,
-    ),
-    notes,
-    links: currentLinks,
-    taskLog: currentTaskLog,
-    zones: currentZones,
-    beaconMarks,
-    trash: currentTrash,
+    indexJson,
+    dirty,
+    noteIds: dirty.noteIds,
+    changedNoteIds,
+    deletedNoteIds,
+    changedRecords,
+    changedNotes,
+    changedFiles: files,
+    projectIndexChanged: dirtyTracker.hasIndexChanges() || globalRevisionStamp() !== persistedGlobalRevisions || changedIndexIds.size > 0,
+    globalRevisionStamp: globalRevisionStamp(),
   };
 }
 
 function changedFiles(snapshot: ProjectSnapshot): ChangedFile[] {
-  const fileById = new Map(parseProjectIndex(snapshot.indexJson).notes.map((entry) => [entry.id, entry.file]));
-  const conflictedIds = new Set(project.conflicts.map((conflict) => conflict.noteId));
-  return snapshot.notes.flatMap((note) => {
-    if (conflictedIds.has(note.id)) return [];
-    const saved = lastSavedById.get(note.id);
-    const file = fileById.get(note.id);
-    if (!file) return [];
-    if (!saved || saved.file !== file || saved.text !== note.text
-      || missingFileIds.has(note.id)) {
-      return [{ file, text: note.text }];
-    }
-    return [];
-  });
+  return [...snapshot.changedFiles];
 }
 
 function isDirty(snapshot: ProjectSnapshot): boolean {
-  return snapshot.indexJson !== lastSavedIndex || changedFiles(snapshot).length > 0;
+  return snapshot.projectIndexChanged || changedFiles(snapshot).length > 0;
 }
 
-function scheduleSave(snapshot: ProjectSnapshot): void {
+function scheduleSave(): void {
   if (timer !== null) window.clearTimeout(timer);
   timer = window.setTimeout(() => {
     timer = null;
-    void persistSnapshot(snapshot).catch(() => undefined);
+    if (!hasPendingDataChanges()) return;
+    const snapshot = makeSnapshot();
+    if (isDirty(snapshot)) void persistSnapshot(snapshot).catch(() => undefined);
   }, SAVE_DEBOUNCE_MS);
+}
+
+function hasPendingDataChanges(): boolean {
+  if (dirtyTracker.hasIndexChanges() || globalRevisionStamp() !== persistedGlobalRevisions || missingFileIds.size > 0) return true;
+  const allNotes = dirtyTracker.allNotesPending();
+  const ids = new Set(dirtyTracker.pendingNoteIds());
+  if (allNotes) {
+    for (const id of board.order) ids.add(id);
+    for (const id of lastSavedById.keys()) ids.add(id);
+  }
+  if (ids.size === 0) return false;
+
+  const revision = dirtyTracker.currentNoteRevision();
+  const validZoneIds = new Set(zones.order);
+  for (const id of ids) {
+    const note = board.notes[id];
+    const saved = lastSavedById.get(id);
+    const savedEntry = savedIndexedNotesById.get(id);
+    if (!note) {
+      if (saved || savedEntry) return true;
+      const version = dirtyTracker.noteVersion(id);
+      if (version !== undefined) dirtyTracker.discardNote(id, version);
+      continue;
+    }
+    if (missingFileIds.has(id) || !saved || saved.text !== note.text || !savedEntry) return true;
+    const file = savedFilesById.get(id) ?? saved.file;
+    const entry = serializeProjectNoteEntry(note, savedEntry, file, validZoneIds);
+    noteEntryCache.set(id, { revision: noteRevisions.get(id) ?? 0, file, entry });
+    if (JSON.stringify(entry) !== JSON.stringify(savedEntry)) return true;
+    const version = dirtyTracker.noteVersion(id);
+    if (version !== undefined) dirtyTracker.discardNote(id, version);
+  }
+  if (allNotes) dirtyTracker.discardAllNotes(revision);
+  return dirtyTracker.hasChanges(missingFileIds);
 }
 
 function persistSnapshot(snapshot: ProjectSnapshot): Promise<void> {
@@ -386,33 +519,26 @@ function persistSnapshot(snapshot: ProjectSnapshot): Promise<void> {
       const result = await invoke<{ warnings: string[] }>("save_project", {
         request: { indexJson: snapshot.indexJson, changedFiles: files, baseRevision: boardRevision },
       });
-      indexTemplate = parseProjectIndex(snapshot.indexJson);
+      setIndexTemplate(parseProjectIndex(snapshot.indexJson));
       lastSavedIndex = snapshot.indexJson;
-      const savedText = new Map(snapshot.notes.map((note) => [note.id, note.text]));
-      recordOwnSave(nodeRecords(snapshot.indexJson, (id) => savedText.get(id)));
-      const savedById = new Map(snapshot.notes.map((note) => {
-        const entry = indexTemplate?.notes.find((item) => item.id === note.id);
-        return [note.id, { file: entry?.file ?? `${note.name}.md`, text: note.text }];
-      }));
-      for (const conflict of project.conflicts) {
-        const previous = lastSavedById.get(conflict.noteId);
-        if (previous) savedById.set(conflict.noteId, previous);
+      const conflictedIds = new Set(project.conflicts.map((conflict) => conflict.noteId));
+      recordOwnSave([...new Set([...snapshot.changedNoteIds, ...snapshot.deletedNoteIds])], snapshot.changedRecords);
+      const writtenFiles = new Set(files.map((file) => file.file));
+      for (const id of snapshot.deletedNoteIds) {
+        lastSavedById.delete(id);
+        missingFileIds.delete(id);
+        externalDeleteWarnings.delete(id);
       }
-      lastSavedById = savedById;
-      const currentIds = new Set(snapshot.notes.map((note) => note.id));
-      for (const id of missingFileIds) {
-        if (!currentIds.has(id)) {
+      for (const [id, saved] of snapshot.changedNotes) {
+        if (conflictedIds.has(id)) continue;
+        lastSavedById.set(id, saved);
+        if (writtenFiles.has(saved.file)) {
           missingFileIds.delete(id);
           externalDeleteWarnings.delete(id);
         }
       }
-      for (const note of snapshot.notes) {
-        const entry = indexTemplate.notes.find((item) => item.id === note.id);
-        if (entry && files.some((file) => file.file === entry.file)) {
-          missingFileIds.delete(note.id);
-          externalDeleteWarnings.delete(note.id);
-        }
-      }
+      dirtyTracker.acknowledge(snapshot.dirty);
+      persistedGlobalRevisions = snapshot.globalRevisionStamp;
       project.error = "";
       project.warnings = [...new Set([...result.warnings, ...externalDeleteWarnings.values()])];
     } catch (error) {
@@ -470,7 +596,10 @@ function applyExternalBoard(change: BoardChange): void {
   }));
   const notes = mergeLoadedNotes(merged, loadedNotes);
   // The pulled board stays the saved baseline, so the renames count as changes and get saved.
-  resolveDuplicateNames(notes);
+  const duplicateRenames = resolveDuplicateNames(notes);
+  const mergedIndexJson = normalizeIndexJson(JSON.stringify(document));
+  const locallyChangedNoteIds = new Set(changedIndexedNoteIds(theirsJson, mergedIndexJson));
+  for (const { note } of duplicateRenames) locallyChangedNoteIds.add(note.id);
   // Before the board shows them: nodes the pull added or changed get a "new" / "changed" mark.
   markExternalChanges(changedNodeIds(JSON.stringify(base), theirsJson));
 
@@ -478,16 +607,17 @@ function applyExternalBoard(change: BoardChange): void {
   try {
     boardRevision = change.revision;
     // What is on disk now is the new saved baseline; whatever differs from it is saved next.
-    indexTemplate = parseProjectIndexWithWarnings(theirsJson).index;
+    dirtyTracker.reset();
+    setIndexTemplate(parseProjectIndexWithWarnings(theirsJson).index, true);
     lastSavedIndex = theirsJson;
     const missingFiles = new Set(change.missingFiles);
-    for (const note of change.notes) {
-      if (!missingFiles.has(note.file)) lastSavedById.set(note.id, { file: note.file, text: note.text });
-    }
+    lastSavedById = new Map(change.notes.filter((note) => !missingFiles.has(note.file))
+      .map((note) => [note.id, { file: note.file, text: note.text }]));
+    missingFileIds = new Set(change.notes.filter((note) => missingFiles.has(note.file)).map((note) => note.id));
     // Undo steps were recorded against the board before the pull.
     clearHistory();
     if (editing.noteId && !merged.notes.some((note) => note.id === editing.noteId)) editing.noteId = null;
-    taskLog.entries = merged.taskLog.map((entry) => ({ ...entry }));
+    replaceTaskLog(merged.taskLog.map((entry) => ({ ...entry })));
     replaceCalculators(merged.calculators ?? {});
     replaceArchive(merged.archive.map(copyArchiveEntry));
     replaceTrash(merged.trash.map(copyTrashEntry));
@@ -495,6 +625,7 @@ function applyExternalBoard(change: BoardChange): void {
     replaceLinks(merged.links ?? []);
     replaceZones(merged.zones.map(copyZone));
     resetBeaconViewState(merged.beaconMarks, merged.meDeleted);
+    persistedGlobalRevisions = globalRevisionStamp();
     const notices = [...change.warnings];
     if (conflicts.length > 0) {
       notices.push(`${conflicts.length} object(s) were changed both here and in the pulled version; this window's version was kept.`);
@@ -503,6 +634,9 @@ function applyExternalBoard(change: BoardChange): void {
   } finally {
     loading = false;
   }
+  if (mergedIndexJson !== theirsJson) dirtyTracker.markIndex();
+  if (locallyChangedNoteIds.size > 0) markBoardMutation([...locallyChangedNoteIds]);
+  if (hasPendingDataChanges()) scheduleSave();
 }
 
 async function flushProject(): Promise<void> {
@@ -515,6 +649,7 @@ async function flushProject(): Promise<void> {
   // A save refused because a pull arrived meanwhile is retried once the pull is merged.
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await projectFileEventQueue;
+    if (!hasPendingDataChanges()) break;
     const snapshot = makeSnapshot();
     if (!isDirty(snapshot)) break;
     await persistSnapshot(snapshot);
@@ -735,8 +870,49 @@ async function handleExternalDelete(file: string): Promise<void> {
 }
 
 /** Note id → Markdown file as last loaded or saved; notes keep these files while their names match. */
-export function savedNoteFiles(): Map<string, string> {
-  return new Map(indexTemplate?.notes.map((note) => [note.id, note.file]) ?? []);
+export function savedNoteFiles(): ReadonlyMap<string, string> {
+  void savedFilesState.revision;
+  return savedFilesById;
+}
+
+function setIndexTemplate(next: ProjectIndex | undefined, resetNoteCache = false): void {
+  indexTemplate = next;
+  savedFilesById = new Map(next?.notes.map((note) => [note.id, note.file]) ?? []);
+  savedIndexedNotesById = new Map(next?.notes.map((note) => [note.id, note]) ?? []);
+  if (resetNoteCache) {
+    noteEntryCache.clear();
+    noteRevisions.clear();
+    for (const note of next?.notes ?? []) {
+      const revision = 0;
+      noteRevisions.set(note.id, revision);
+      noteEntryCache.set(note.id, { revision, file: note.file, entry: note });
+    }
+  }
+  savedFilesState.revision += 1;
+}
+
+function markBoardMutation(ids: readonly string[] | null): void {
+  if (ids === null) {
+    noteRevisions.clear();
+    noteEntryCache.clear();
+  } else {
+    for (const id of ids) {
+      noteRevisions.set(id, (noteRevisions.get(id) ?? 0) + 1);
+      noteEntryCache.delete(id);
+    }
+  }
+  dirtyTracker.markNotes(ids);
+}
+
+function markProjectDataChanged(): void {
+  dirtyTracker.markIndex();
+  scheduleSave();
+}
+
+function globalRevisionStamp(): string {
+  return [
+    linksRevision(), zonesRevision(), trashRevision(), archiveRevision(), taskLogRevision(), calculatorsRevision(),
+  ].join(":");
 }
 
 function noteForFile(file: string): Note | undefined {
@@ -791,8 +967,7 @@ function removeMissingFileWarning(noteId: string): void {
 }
 
 function scheduleIfDirty(): void {
-  const snapshot = makeSnapshot();
-  if (isDirty(snapshot)) scheduleSave(snapshot);
+  if (hasPendingDataChanges()) scheduleSave();
 }
 
 function errorMessage(error: unknown): string {

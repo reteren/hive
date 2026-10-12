@@ -3,6 +3,7 @@
   import type { PDFDocumentLoadingTask, PDFPageProxy } from "pdfjs-dist";
   import { attachmentUrl } from "../attachments/service";
   import { camera } from "../board/camera.svelte";
+  import { visible } from "../board/visibility.svelte";
   import { normalizeNoteScale, type Note } from "../model/note";
   import { wheelScrollsText } from "../notes/textScroll";
   import { setPdfZoom } from "./formatActions";
@@ -19,7 +20,10 @@
   let { note }: { note: Note } = $props();
   let documentViewport = $state<HTMLDivElement | null>(null);
   let pageSizes = $state<PdfPageSize[]>([]);
+  type PageMetric = { page: PdfPageSize; layout: ReturnType<typeof pdfPageLayout>; top: number; bottom: number };
   let contentWidth = $state(0);
+  let scrollTop = $state(0);
+  let viewportHeight = $state(0);
   let loading = $state(false);
   let loadError = $state("");
   let loadGeneration = 0;
@@ -27,8 +31,35 @@
   const canvases = new Map<number, HTMLCanvasElement>();
 
   let source = $derived(note.media?.kind === "pdf" ? attachmentUrl(note.media.file) : "");
+  let noteVisible = $derived(visible.ids.has(note.id));
   let pdfZoom = $derived(normalizePdfZoom(note.pdfZoom));
   let displayName = $derived(note.media?.name || note.name || "PDF");
+  let pageMetrics = $derived.by(() => {
+    let top = 8;
+    const metrics = pageSizes.map((page) => {
+      const layout = pdfPageLayout(page.width, page.height, contentWidth, pdfZoom);
+      const metric = { page, layout, top, bottom: top + layout.height };
+      top = metric.bottom + 8;
+      return metric;
+    });
+    return { metrics, totalHeight: metrics.length ? top : 16 };
+  });
+  let pageWindow = $derived.by(() => {
+    const { metrics, totalHeight } = pageMetrics;
+    if (metrics.length === 0) return { start: 0, end: 0, top: 0, bottom: totalHeight };
+    const startAt = Math.max(0, scrollTop - viewportHeight * 2);
+    const endAt = scrollTop + viewportHeight * 3;
+    const start = lowerBoundPage(metrics, startAt);
+    const end = Math.min(metrics.length, lowerBoundPage(metrics, endAt) + 1);
+    const first = metrics[start];
+    const last = metrics[Math.max(start, end - 1)];
+    return {
+      start,
+      end,
+      top: first?.top ?? 8,
+      bottom: Math.max(0, totalHeight - (last?.bottom ?? totalHeight) - 8),
+    };
+  });
 
   const renderer = createPdfRenderScheduler(renderPage, {
     onError: (error) => {
@@ -42,8 +73,7 @@
   }
 
   function layoutFor(pageNumber: number) {
-    const page = pageSizes.find((item) => item.pageNumber === pageNumber);
-    return page ? pdfPageLayout(page.width, page.height, contentWidth, pdfZoom) : { scale: 0, width: 0, height: 0 };
+    return pageMetrics.metrics[pageNumber - 1]?.layout ?? { scale: 0, width: 0, height: 0 };
   }
 
   async function renderPage(pageNumber: number): Promise<PdfRenderTaskLike> {
@@ -177,6 +207,7 @@
 
   $effect(() => {
     const currentSource = source;
+    const isVisible = noteVisible;
     const request = ++loadGeneration;
     renderer.reset();
     pages.clear();
@@ -187,6 +218,10 @@
     if (!currentSource) {
       loading = false;
       loadError = "File missing.";
+      return;
+    }
+    if (!isVisible) {
+      loading = false;
       return;
     }
 
@@ -203,10 +238,13 @@
   $effect(() => {
     const element = documentViewport;
     if (!element) return;
-    const updateWidth = (): void => { contentWidth = element.clientWidth; };
-    const observer = new ResizeObserver(updateWidth);
+    const updateSize = (): void => {
+      contentWidth = element.clientWidth;
+      viewportHeight = element.clientHeight;
+    };
+    const observer = new ResizeObserver(updateSize);
     observer.observe(element);
-    updateWidth();
+    updateSize();
     return () => observer.disconnect();
   });
 
@@ -220,6 +258,23 @@
   });
 
   onDestroy(() => renderer.destroy());
+
+  function updateScroll(event: Event): void {
+    const element = event.currentTarget as HTMLElement;
+    scrollTop = element.scrollTop;
+  }
+
+  function lowerBoundPage(metrics: readonly PageMetric[], offset: number): number {
+    let low = 0;
+    let high = metrics.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (metrics[middle]!.bottom < offset) low = middle + 1;
+      else high = middle;
+    }
+    return Math.min(low, Math.max(0, metrics.length - 1));
+  }
+
 </script>
 
 <div class="pdf-node-body" aria-label={displayName}>
@@ -230,15 +285,17 @@
       <button type="button" aria-label="Zoom in" title="Zoom in" disabled={pdfZoom === 300} onclick={() => changeZoom(1)}>+</button>
       <button type="button" class="fit-width" aria-label="Fit width" onclick={() => setPdfZoom(note.id, undefined)}>Fit width</button>
     </div>
-    <div bind:this={documentViewport} class="pdf-document" onwheel={handleWheel}>
+    <div bind:this={documentViewport} class="pdf-document" onwheel={handleWheel} onscroll={updateScroll}>
       {#if loadError}
         <div class="pdf-message" role="alert">{loadError} {displayName}</div>
       {:else if loading}
         <div class="pdf-message" role="status">Loading {displayName}…</div>
       {:else}
-        <div class="pdf-pages">
-          {#each pageSizes as page (page.pageNumber)}
-            {@const layout = pdfPageLayout(page.width, page.height, contentWidth, pdfZoom)}
+        <div class="pdf-pages" style:height={`${pageMetrics.totalHeight}px`}>
+          <div class="pdf-page-spacer" style:height={`${pageWindow.top}px`} aria-hidden="true"></div>
+          {#each pageMetrics.metrics.slice(pageWindow.start, pageWindow.end) as metric (metric.page.pageNumber)}
+            {@const page = metric.page}
+            {@const layout = metric.layout}
             <div
               class="pdf-page"
               style:width={`${layout.width}px`}
@@ -253,6 +310,7 @@
               ></canvas>
             </div>
           {/each}
+          <div class="pdf-page-spacer" style:height={`${pageWindow.bottom}px`} aria-hidden="true"></div>
         </div>
       {/if}
     </div>
@@ -339,17 +397,19 @@
     min-height: 100%;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
-    padding: 8px 0;
+    gap: 0;
     box-sizing: border-box;
   }
 
   .pdf-page {
     flex: 0 0 auto;
+    margin-bottom: 8px;
     overflow: hidden;
     background: #fff;
     box-shadow: 0 1px 5px rgb(0 0 0 / 45%);
   }
+
+  .pdf-page-spacer { flex: 0 0 auto; width: 1px; pointer-events: none; }
 
   .pdf-page canvas {
     display: block;

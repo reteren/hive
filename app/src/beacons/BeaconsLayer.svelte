@@ -1,10 +1,11 @@
 <script lang="ts">
   import { isScreenColorPicking } from "../color/screenPicker.svelte";
   import { onMount, tick } from "svelte";
-  import { board, updateNote } from "../model/board.svelte";
+  import { board, onBoardMutation, updateNote } from "../model/board.svelte";
   import HexColorPicker from "../color/HexColorPicker.svelte";
   import { liveColorSession, type LiveColorSession } from "../color/liveColor";
   import { camera, viewport } from "../board/camera.svelte";
+  import { lod, visible } from "../board/visibility.svelte";
   import { PX_PER_UNIT } from "../board/cameraMath";
   import { BEACON_SIZE, normalizeNoteScale } from "../model/note";
   import { BEACON_PALETTE } from "./beaconPalette";
@@ -14,6 +15,25 @@
   import { isMarked } from "./marks.svelte";
   import { zoneOf } from "../zones/membership.svelte";
   import { zones } from "../model/zones.svelte";
+  import { selection } from "../selection/selection.svelte";
+  import { validFocused } from "./focus.svelte";
+
+  const noteOrder = new Map(board.order.map((id, index) => [id, index]));
+  onBoardMutation((ids) => {
+    if (ids === null || ids.some((id) => !board.notes[id] || !noteOrder.has(id))) {
+      noteOrder.clear();
+      for (let index = 0; index < board.order.length; index += 1) noteOrder.set(board.order[index]!, index);
+    }
+  });
+
+  let beaconIds = $derived.by(() => {
+    const ids = new Set(visible.ids);
+    for (const id of selection.ids) ids.add(id);
+    for (const id of validFocused()) ids.add(id);
+    if (beaconEditor.noteId) ids.add(beaconEditor.noteId);
+    return [...ids].filter((id) => board.notes[id]?.type === "beacon")
+      .sort((first, second) => (noteOrder.get(first) ?? -1) - (noteOrder.get(second) ?? -1));
+  });
   import "./beacons.css";
 
   let draft = $state("");
@@ -94,7 +114,7 @@
 
 <div class="beacons-layer">
   <div class="beacons-world" style:transform={worldTransform}>
-    {#each board.order as id (id)}
+    {#each beaconIds as id (id)}
       {@const note = board.notes[id]}
       {#if note?.type === "beacon"}
         {@const color = note.color ?? BEACON_PALETTE[0]}
@@ -128,7 +148,9 @@
             ondblclick={(event) => { event.preventDefault(); event.stopPropagation(); openBeaconEditor(id, "rename"); }}
           ></button>
           {#if isMarked(id)}<span class="beacon-mark" aria-label="Marked beacon"></span>{/if}
-          <span class="beacon-label" style:color={color}>{note.name}</span>
+          {#if lod.tier === "full" || selection.ids.includes(id) || validFocused().includes(id)}
+            <span class="beacon-label" style:color={color}>{note.name}</span>
+          {/if}
           {#if beaconEditor.noteId === id}
             {#if beaconEditor.mode === "color"}
               <div class="beacon-editor" data-beacon-editor data-selection-ignore role="dialog" tabindex="-1" aria-label="Beacon colour"

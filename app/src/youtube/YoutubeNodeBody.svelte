@@ -5,13 +5,15 @@
   import type { Note } from "../model/note";
   import { showLinkStatus } from "../links-in-text/contextMenu.svelte";
   import { registerHoverPlayback } from "../media-ui/hoverPlayback";
+  import { pinNote } from "../board/visibility.svelte";
   import VideoControls from "../video/VideoControls.svelte";
   import { createControlsAutoHide } from "../video/controlsAutoHide";
+  import { beginMediaCaptureGesture } from "../video/mediaCaptureGesture";
   import { youtubeCaptureAction, youtubeLoopRestart, suppressYoutubeContextMenu } from "./interaction";
   import {
     parseYouTubePlayerMessage,
     youtubeEmbedUrl,
-    youtubeOEmbedUrl,
+    youtubeMetadata,
     youtubePlayerCommand,
     youtubeThumbnailUrl,
   } from "./logic";
@@ -20,6 +22,7 @@
   let frame = $state<HTMLIFrameElement | null>(null);
   let frameWrap = $state<HTMLElement | null>(null);
   let playerSurface = $state<HTMLElement | null>(null);
+  let nearViewport = $state(false);
   let embedActive = $state(false);
   let playing = $state(false);
   let playerState = $state(-1);
@@ -34,9 +37,9 @@
   let volume = $state(100);
   let muted = $state(false);
   let controlsVisible = $state(true);
-  // Plain guard prevents updating metadata from restarting and aborting its own request.
+  // Plain guard prevents metadata updates from restarting the same lookup.
   let requestedVideoId: string | null = null;
-  let captureGesture: { pointerId: number; start: { x: number; y: number }; moved: boolean } | null = null;
+  let cancelCaptureGesture: (() => void) | null = null;
   let loopRestartPending = false;
   let youtube = $derived(note.type === "youtube" ? note.youtube : undefined);
   let title = $derived(youtube?.title || youtube?.videoId || "YouTube video");
@@ -48,35 +51,22 @@
 
   $effect(() => {
     const current = youtube;
-    if (!current || current.title && current.author || requestedVideoId === current.videoId) return;
+    if (!current || !nearViewport || current.title && current.author || requestedVideoId === current.videoId) return;
     requestedVideoId = current.videoId;
-    const controller = new AbortController();
     const noteId = note.id;
     const videoId = current.videoId;
-    void fetch(youtubeOEmbedUrl(current.url), { signal: controller.signal })
-      .then((response) => {
-        if (!response.ok) throw new Error("YouTube metadata is unavailable.");
-        return response.json() as Promise<unknown>;
-      })
-      .then((value) => {
-        if (!isRecord(value)) return;
-        const titleValue = nonEmptyString(value.title);
-        const author = nonEmptyString(value.author_name);
-        if (!titleValue && !author) return;
-        const latest = board.notes[noteId];
-        if (latest?.type !== "youtube" || latest.youtube?.videoId !== videoId) return;
-        updateNote(noteId, {
-          youtube: {
-            ...latest.youtube,
-            ...(titleValue ? { title: titleValue } : {}),
-            ...(author ? { author } : {}),
-          },
-        });
-      })
-      .catch(() => {
-        // Offline and CSP-blocked metadata lookup both leave the video ID as the title.
+    void youtubeMetadata(videoId, current.url).then((metadata) => {
+      if (!metadata) return;
+      const latest = board.notes[noteId];
+      if (latest?.type !== "youtube" || latest.youtube?.videoId !== videoId) return;
+      updateNote(noteId, {
+        youtube: {
+          ...latest.youtube,
+          ...(metadata.title ? { title: metadata.title } : {}),
+          ...(metadata.author ? { author: metadata.author } : {}),
+        },
       });
-    return () => controller.abort();
+    });
   });
 
   $effect(() => {
@@ -111,7 +101,17 @@
     controlsAutoHide.setPlaying(playing);
   });
 
+  $effect(() => {
+    if (!playing) return;
+    return pinNote(note.id, "YouTube playback");
+  });
+
   onMount(() => {
+    const visibilityObserver = "IntersectionObserver" in window
+      ? new IntersectionObserver(([entry]) => { nearViewport = Boolean(entry?.isIntersecting); }, { rootMargin: "320px" })
+      : null;
+    if (playerSurface && visibilityObserver) visibilityObserver.observe(playerSurface);
+    else nearViewport = true;
     const onMessage = (event: MessageEvent): void => {
       if (!frame || event.source !== frame.contentWindow || !isYouTubePlayerOrigin(event.origin)) return;
       const message = parseYouTubePlayerMessage(event.data);
@@ -145,16 +145,12 @@
     };
     window.addEventListener("message", onMessage);
     const unregisterHoverPlayback = playerSurface ? registerHoverPlayback(playerSurface, togglePlayback) : undefined;
-    window.addEventListener("pointermove", onCapturePointerMove, true);
-    window.addEventListener("pointerup", onCapturePointerUp, true);
-    window.addEventListener("pointercancel", onCapturePointerCancel, true);
     return () => {
       window.removeEventListener("message", onMessage);
-      window.removeEventListener("pointermove", onCapturePointerMove, true);
-      window.removeEventListener("pointerup", onCapturePointerUp, true);
-      window.removeEventListener("pointercancel", onCapturePointerCancel, true);
+      visibilityObserver?.disconnect();
       unregisterHoverPlayback?.();
-      captureGesture = null;
+      cancelCaptureGesture?.();
+      cancelCaptureGesture = null;
     };
   });
 
@@ -189,31 +185,12 @@
   }
 
   function onYoutubeCapturePointerDown(event: PointerEvent): void {
-    if (event.button !== 0 || event.isPrimary === false) return;
-    captureGesture = {
-      pointerId: event.pointerId,
-      start: { x: event.clientX, y: event.clientY },
-      moved: false,
-    };
-  }
-
-  function onCapturePointerMove(event: PointerEvent): void {
-    const gesture = captureGesture;
-    if (!gesture || gesture.pointerId !== event.pointerId || gesture.moved) return;
-    if (youtubeCaptureAction(gesture.start, { x: event.clientX, y: event.clientY }) === "move") {
-      gesture.moved = true;
-    }
-  }
-
-  function onCapturePointerUp(event: PointerEvent): void {
-    const gesture = captureGesture;
-    if (!gesture || gesture.pointerId !== event.pointerId) return;
-    captureGesture = null;
-    if (!gesture.moved) togglePlayback();
-  }
-
-  function onCapturePointerCancel(event: PointerEvent): void {
-    if (captureGesture?.pointerId === event.pointerId) captureGesture = null;
+    cancelCaptureGesture?.();
+    cancelCaptureGesture = beginMediaCaptureGesture(
+      event,
+      (start, current) => youtubeCaptureAction(start, current) === "move",
+      togglePlayback,
+    );
   }
 
   function onCaptureKeydown(event: KeyboardEvent): void {
@@ -280,13 +257,6 @@
     }
   }
 
-  function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-  }
-
-  function nonEmptyString(value: unknown): string | undefined {
-    return typeof value === "string" && value.trim() ? value : undefined;
-  }
 </script>
 
 <section
@@ -372,7 +342,7 @@
       oncontextmenu={suppressYoutubeContextMenu}
     >
       <span class="youtube-thumbnail" data-youtube-thumbnail>
-        {#if !thumbnailFailed}
+        {#if nearViewport && !thumbnailFailed}
           <img src={thumbnail} alt="" draggable="false" onerror={() => { thumbnailFailed = true; }} />
         {/if}
         <span class="youtube-play" aria-hidden="true">▶</span>

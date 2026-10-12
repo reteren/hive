@@ -3,7 +3,7 @@ import { camera, viewport } from "../board/camera.svelte";
 import { PX_PER_UNIT } from "../board/cameraMath";
 import { board } from "../model/board.svelte";
 import { archive, trash } from "../model/retention.svelte";
-import { links } from "../model/links.svelte";
+import { links, linksOf } from "../model/links.svelte";
 import { zones } from "../model/zones.svelte";
 import { project } from "../project/project.svelte";
 import { projectNoteFiles } from "../project/index";
@@ -212,7 +212,13 @@ registerMcpMethod({
       throw new McpError("not_found", `Node '${linkedTo}' not found. Use nodes.list or search to get ids.`);
     }
 
-    let result = orderedNotes().filter((note) => {
+    const linkedIds = typeof linkedTo === "string"
+      ? new Set(linksOf(linkedTo).map((link) => link.from === linkedTo ? link.to : link.from))
+      : null;
+    const candidates = linkedIds === null
+      ? orderedNotes()
+      : [...linkedIds].flatMap((id) => board.notes[id] ? [board.notes[id]] : []);
+    let result = candidates.filter((note) => {
       if (types && !types.has(note.type)) return false;
       if (typeof zoneId === "string" && note.zoneId !== zoneId) return false;
       if (task === "open" && (!note.task || note.task.done)) return false;
@@ -220,8 +226,7 @@ registerMcpMethod({
       if (task === "any" && !note.task) return false;
       if (task === "none" && note.task) return false;
       if (bbox && !noteIntersects(note, bbox)) return false;
-      if (typeof linkedTo === "string" && !Object.values(links.byId).some((link) =>
-        (link.from === note.id && link.to === linkedTo) || (link.to === note.id && link.from === linkedTo))) return false;
+      if (linkedIds && !linkedIds.has(note.id)) return false;
       return true;
     });
     if (typeof query === "string" && query.trim()) {
@@ -251,8 +256,6 @@ registerMcpMethod({
       throw new McpError("invalid_params", "nodes.get accepts at most 50 ids and names per call.");
     }
 
-    const notes = orderedNotes();
-    const filesById = projectNoteFiles(notes, savedNoteFiles());
     const found = new Map<string, Note>();
     const missing: string[] = [];
     for (const id of ids ?? []) {
@@ -260,11 +263,21 @@ registerMcpMethod({
       if (note) found.set(note.id, note);
       else missing.push(id);
     }
+    const notes = names && names.length > 0 ? orderedNotes() : [...found.values()];
+    const filesById = projectNoteFiles(notes, savedNoteFiles());
+    const byExactName = new Map<string, Note[]>();
+    const byFoldedName = new Map<string, Note[]>();
+    for (const note of notes) {
+      const exact = byExactName.get(note.name) ?? [];
+      exact.push(note);
+      byExactName.set(note.name, exact);
+      const foldedName = note.name.toLowerCase();
+      const folded = byFoldedName.get(foldedName) ?? [];
+      folded.push(note);
+      byFoldedName.set(foldedName, folded);
+    }
     for (const name of names ?? []) {
-      const exact = notes.filter((note) => note.name === name);
-      const matches = exact.length > 0
-        ? exact
-        : notes.filter((note) => note.name.toLowerCase() === name.toLowerCase());
+      const matches = byExactName.get(name) ?? byFoldedName.get(name.toLowerCase()) ?? [];
       if (matches.length === 0) missing.push(name);
       else for (const note of matches) found.set(note.id, note);
     }

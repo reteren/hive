@@ -3,6 +3,7 @@ import type { Link } from "../model/link";
 import type { ListItem } from "../model/nodeData";
 import type { Note } from "../model/note";
 import { hasMeBeacon } from "../beacons/beaconState.svelte";
+import { reactiveLinkRevisionFor } from "../scope/scopeRevision.svelte";
 
 const WORD = /[\p{L}\p{N}][\p{L}\p{N}\p{M}]*(?:['’\u2010-\u2015-][\p{L}\p{N}\p{M}]+)*/gu;
 const MAX_ROW_CACHE_ENTRIES = 800;
@@ -30,7 +31,7 @@ export function statisticsForListRow(
   listId: string,
   item: ListItem,
   notes: Readonly<Record<string, Note | undefined>>,
-  links: Readonly<Record<string, Link | undefined>>,
+  links: Readonly<Record<string, Link | undefined>> | readonly Link[],
 ): ListRowStatistics {
   const targetId = item.targetId;
   if (targetId === null) {
@@ -43,6 +44,7 @@ export function statisticsForListRow(
   }
 
   const target = notes[targetId];
+  void reactiveLinkRevisionFor(targetId);
   if (targetId === ME_OBJECT_ID && hasMeBeacon()) {
     const signature = JSON.stringify(["beacon", "ME", countConnections(targetId, links)]);
     return memoized(`${listId}:${item.id}`, signature, () => ({
@@ -135,7 +137,8 @@ function countText(text: string): TextCounts {
   return { words: [...text.matchAll(WORD)].length, characters: [...text].length };
 }
 
-function countConnections(beaconId: string, links: Readonly<Record<string, Link | undefined>>): number {
+function countConnections(beaconId: string, links: Readonly<Record<string, Link | undefined>> | readonly Link[]): number {
+  if (Array.isArray(links)) return links.length;
   let count = 0;
   for (const link of Object.values(links)) {
     if (link && (link.from === beaconId || link.to === beaconId)) count += 1;

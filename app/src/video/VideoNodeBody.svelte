@@ -2,12 +2,14 @@
   import { convertFileSrc, invoke } from "@tauri-apps/api/core";
   import { onDestroy, onMount } from "svelte";
   import { attachmentUrl } from "../attachments/service";
+  import { pinNote } from "../board/visibility.svelte";
   import { registerHoverPlayback } from "../media-ui/hoverPlayback";
   import type { Note } from "../model/note";
   import NoteBody from "../editor/NoteBody.svelte";
   import { videoCaptureAction } from "./logic";
   import VideoControls from "./VideoControls.svelte";
   import { createControlsAutoHide } from "./controlsAutoHide";
+  import { beginMediaCaptureGesture } from "./mediaCaptureGesture";
 
   let { note }: { note: Note } = $props();
   let nodeElement = $state<HTMLElement | null>(null);
@@ -23,7 +25,7 @@
   let volume = $state(1);
   let muted = $state(false);
   let controlsVisible = $state(true);
-  let captureGesture: { pointerId: number; start: { x: number; y: number }; moved: boolean } | null = null;
+  let cancelCaptureGesture: (() => void) | null = null;
   let media = $derived(note.media?.kind === "video" ? note.media : null);
   let source = $derived(media ? (media.externalPath ? convertFileSrc(media.externalPath) : attachmentUrl(media.file)) : "");
   let displayTime = $derived(seekDraft ?? currentTime);
@@ -54,17 +56,17 @@
     controlsAutoHide.setPlaying(playing);
   });
 
+  $effect(() => {
+    if (!playing) return;
+    return pinNote(note.id, "video playback");
+  });
+
   onMount(() => {
     const unregisterHoverPlayback = nodeElement ? registerHoverPlayback(nodeElement, togglePlayback) : undefined;
-    window.addEventListener("pointermove", onCapturePointerMove, true);
-    window.addEventListener("pointerup", onCapturePointerUp, true);
-    window.addEventListener("pointercancel", onCapturePointerCancel, true);
     return () => {
-      window.removeEventListener("pointermove", onCapturePointerMove, true);
-      window.removeEventListener("pointerup", onCapturePointerUp, true);
-      window.removeEventListener("pointercancel", onCapturePointerCancel, true);
       unregisterHoverPlayback?.();
-      captureGesture = null;
+      cancelCaptureGesture?.();
+      cancelCaptureGesture = null;
     };
   });
   onDestroy(() => controlsAutoHide.dispose());
@@ -134,31 +136,12 @@
   }
 
   function onVideoCapturePointerDown(event: PointerEvent): void {
-    if (event.button !== 0 || event.isPrimary === false) return;
-    captureGesture = {
-      pointerId: event.pointerId,
-      start: { x: event.clientX, y: event.clientY },
-      moved: false,
-    };
-  }
-
-  function onCapturePointerMove(event: PointerEvent): void {
-    const gesture = captureGesture;
-    if (!gesture || gesture.pointerId !== event.pointerId || gesture.moved) return;
-    if (videoCaptureAction(gesture.start, { x: event.clientX, y: event.clientY }) === "move") {
-      gesture.moved = true;
-    }
-  }
-
-  function onCapturePointerUp(event: PointerEvent): void {
-    const gesture = captureGesture;
-    if (!gesture || gesture.pointerId !== event.pointerId) return;
-    captureGesture = null;
-    if (!gesture.moved) togglePlayback();
-  }
-
-  function onCapturePointerCancel(event: PointerEvent): void {
-    if (captureGesture?.pointerId === event.pointerId) captureGesture = null;
+    cancelCaptureGesture?.();
+    cancelCaptureGesture = beginMediaCaptureGesture(
+      event,
+      (start, current) => videoCaptureAction(start, current) === "move",
+      togglePlayback,
+    );
   }
 
   function onVideoCaptureKeydown(event: KeyboardEvent): void {
@@ -207,7 +190,7 @@
         data-video-player
         data-video-file={media?.file}
         src={source}
-        preload="metadata"
+        preload="none"
         playsinline
         aria-label={`Video player for ${media?.name ?? note.name}`}
         data-selection-ignore

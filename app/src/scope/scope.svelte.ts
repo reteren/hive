@@ -1,13 +1,14 @@
 import { board } from "../model/board.svelte";
-import { links } from "../model/links.svelte";
+import { linksOf } from "../model/links.svelte";
 import { ME_OBJECT_ID } from "../model/link";
 import type { NodeScope } from "../model/nodeData";
 import type { Note } from "../model/note";
 import { zones } from "../model/zones.svelte";
 import { beaconDescendants } from "../beacons/coverage";
 import { hasMeBeacon } from "../beacons/beaconState.svelte";
-import { zoneMembers, zoneOf } from "../zones/membership.svelte";
+import { zoneMembers } from "../zones/membership.svelte";
 import { effectiveScope, resolveScopeIn, scopeExistsIn, type ScopeSources } from "./scopeLogic";
+import { reactiveLinkRevisionFor } from "./scopeRevision.svelte";
 
 export interface ScopeOption {
   scope: NodeScope;
@@ -35,10 +36,11 @@ export function scopeExists(scope: NodeScope): boolean {
 
 /** Most recently inserted strong link to an actual beacon overrides a progress/statistics scope. */
 export function linkedBeaconForNote(noteId: string): { id: string; name: string; scope: NodeScope } | null {
+  void reactiveLinkRevisionFor(noteId);
   const note = board.notes[noteId];
   if (note?.type !== "progress" && note?.type !== "stats") return null;
 
-  const linkedIds = Object.values(links.byId)
+  const linkedIds = linksOf(noteId)
     .filter((link) => link.from === noteId && link.kind === "strong" && board.notes[link.to]?.type === "beacon")
     .map((link) => link.to);
   // Link records retain insertion order, so the last matching live link is the newest choice.
@@ -56,7 +58,8 @@ export function scopeChoiceForNote(note: Pick<Note, "scope">): NodeScope {
 
 /** Effective scope for calculations: linked beacon, stored choice, or current zone/board for Auto. */
 export function scopeForNote(note: Pick<Note, "id" | "scope">): NodeScope {
-  return linkedBeaconForNote(note.id)?.scope ?? effectiveScope(note.scope, zoneOf(note.id));
+  const currentNote = board.notes[note.id];
+  return linkedBeaconForNote(note.id)?.scope ?? effectiveScope(note.scope, currentNote?.zoneId ?? null);
 }
 
 export function scopeOptions(): ScopeOption[] {

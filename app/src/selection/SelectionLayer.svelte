@@ -117,6 +117,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
   import { resolveModuleDropDecision } from "./moduleDropDecision";
   import { clearDropTargetPreview, dropOnTarget, previewDropTarget } from "./dropTargets";
   import { MovingVisuals } from "./movingVisuals";
+  import { queryPoint, queryRect, visible } from "../board/visibility.svelte";
 
   interface Outline {
     id: string;
@@ -264,12 +265,13 @@ type PendingBoardMove =
   let zoneCollisionHint = $state(false);
   let lineToolActive = $derived(isLineTool());
   let noteOutlineCornerRadius = $derived(`${noteSelectionCornerRadius(camera.zoom)}px`);
+  let notePaintPosition = $derived(new Map(boardState.order.map((id, index) => [id, index])));
   let previousTool = tool.active;
   let previousZoneFinishRequest = zoneMode.finishRequest;
 
   let outlines = $derived.by((): Outline[] => {
     const ppu = pixelsPerUnit(camera);
-    return selection.ids.flatMap((id) => {
+    return selection.ids.filter((id) => visible.ids.has(id)).flatMap((id) => {
       const note = boardState.notes[id];
       if (!note) return [];
 
@@ -549,7 +551,7 @@ type PendingBoardMove =
       pendingAltContextPick = null;
 
       if (event.altKey) {
-        const hits = hitTestNotes(world, boardState.notes, boardState.order, noteBounds, (id) => !isDimmed(id));
+        const hits = hitTestNotes(world, boardState.notes, boardState.order, noteBounds, (id) => !isDimmed(id), queryPoint(world), notePaintPosition);
         if (hits.length > 1 && canDragFromTarget && !event.ctrlKey) {
           pendingAltContextPick = {
             pointerId: event.pointerId,
@@ -1513,7 +1515,7 @@ type PendingBoardMove =
       );
       applyFrames(gesture.gesture.after);
       updateModulePreview(gesture.gesture.before, world);
-      previewDropTarget(gesture.gesture.before.map((frame) => frame.id), world);
+      if (gesture.gesture.before.length === 1) previewDropTarget([gesture.gesture.before[0].id], world);
       return;
     }
 
@@ -1550,7 +1552,7 @@ type PendingBoardMove =
       );
       applyFrames(gesture.gesture.after);
       updateModulePreview(gesture.gesture.before, world);
-      previewDropTarget(gesture.gesture.before.map((frame) => frame.id), world);
+      if (gesture.gesture.before.length === 1) previewDropTarget([gesture.gesture.before[0].id], world);
       return;
     }
 
@@ -1612,7 +1614,7 @@ type PendingBoardMove =
       if (cancelled) {
         setMarquee(null);
       } else if (gesture.started && marquee) {
-        const ids = notesTouchingMarquee(marquee, boardState.notes, boardState.order, noteBounds, (id) => !isDimmed(id));
+        const ids = notesTouchingMarquee(marquee, boardState.notes, boardState.order, noteBounds, (id) => !isDimmed(id), queryRect(marquee), notePaintPosition);
         const zoneIds = zonesSelectedByMarquee(
           marquee,
           zones.byId,
@@ -1733,7 +1735,7 @@ type PendingBoardMove =
     );
     applyFrames(grabGesture.after);
     updateModulePreview(grabGesture.before, world);
-    previewDropTarget(grabGesture.before.map((frame) => frame.id), world);
+    if (grabGesture.before.length === 1) previewDropTarget([grabGesture.before[0].id], world);
   }
 
   function startGrab(): void {

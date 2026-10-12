@@ -430,8 +430,7 @@ mod tests {
     #[test]
     fn clear_removes_all_recent_entries() {
         let (file, directory) = test_file("clear");
-        add_at(&file, r"C:\projects\one", RecentProjectKind::Folder, 1)
-            .expect("add project");
+        add_at(&file, r"C:\projects\one", RecentProjectKind::Folder, 1).expect("add project");
 
         clear_at(&file).expect("clear recent list");
 

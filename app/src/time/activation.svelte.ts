@@ -1,5 +1,5 @@
 import { board, updateNote } from "../model/board.svelte";
-import { links } from "../model/links.svelte";
+import { linksOf } from "../model/links.svelte";
 import { copyTimeNodeData } from "./data";
 import { manualStopwatchTargets } from "./activationLogic";
 import { toggleManualStopwatch } from "./stopwatchLogic";
@@ -9,7 +9,7 @@ import { toggleManualStopwatch } from "./stopwatchLogic";
  * and retain the returned rollback for the same command's `undo` so one firing is one Undo step.
  */
 export function emitTimeActivation(sourceId: string, now = Date.now()): () => void {
-  const targets = manualStopwatchTargets(sourceId, board.notes, Object.values(links.byId));
+  const targets = manualStopwatchTargets(sourceId, board.notes, linksOf(sourceId));
   const previous = targets.flatMap((note) => note.time ? [{ noteId: note.id, time: copyTimeNodeData(note.time) }] : []);
 
   for (const note of targets) {

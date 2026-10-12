@@ -4,7 +4,7 @@ import { sprayToolHandler } from "./brushes/spray";
 import { drawingTools } from "./tools.svelte";
 import { registerDrawTool } from "./toolRegistry";
 import { drawingTileStore } from "./tileStore.svelte";
-import { affectedTileKeys, applyAcrossLevels, drawingHistoryIdle, pushDrawingHistory, rasterRectToWorld, waitForDrawingHistoryRestore } from "./history";
+import { affectedTileKeysForPieces, affectedTileKeysForSource, applyAcrossLevels, drawingHistoryIdle, pushDrawingHistory, waitForDrawingHistoryRestore } from "./history";
 import type { TileKey, TileSnapshot } from "./types";
 import { drawingSelection } from "./selection.svelte";
 
@@ -58,13 +58,14 @@ function captureEarlyBefore(stroke: DrawStroke): void {
 
 /** Incrementally snapshot tiles before a long live stroke reaches them. */
 export function captureStrokeBefore(stroke: DrawStroke, current: TileSnapshot | null): TileSnapshot | null {
-  if (!current || !stroke.bounds) return current;
+  if (!current || !stroke.lastDirtyRect) return current;
   if (commitsInFlight > 0 || !drawingHistoryIdle()) return null;
-  const bounds = stroke.bounds;
-  const keys = affectedTileKeys(rasterRectToWorld(bounds.x, bounds.y, bounds.width, bounds.height, stroke.level), stroke.level, "paint");
+  const bounds = stroke.lastDirtyRect;
+  const keys = affectedTileKeysForPieces(stroke.pieces(bounds), stroke.level, "paint", bounds);
   const missing: TileKey[] = [];
   for (const key of keys) {
     if (current.has(key)) continue;
+    if (drawingTileStore.has(key) && !drawingTileStore.texture(key, false)) continue;
     missing.push(key);
     if (missing.length >= EARLY_COPIES_PER_MOVE) break;
   }
@@ -120,13 +121,13 @@ export async function commitFinishedStroke(
   selection: typeof drawingSelection.area,
   early: TileSnapshot | null = null,
 ): Promise<void> {
-  const rect = rasterRectToWorld(finished.rasterX, finished.rasterY, finished.width, finished.height, finished.level);
   commitsInFlight += 1;
   const operation = commitQueue.then(async () => {
     try {
       await waitForDrawingHistoryRestore();
       // Keys are taken after earlier commits landed: a previous stroke may have created tiles here.
-      const keys = affectedTileKeys(rect, finished.level, "paint");
+      const keys = affectedTileKeysForSource(finished.source, "paint");
+      await drawingTileStore.ensureTiles(keys);
       const before: TileSnapshot = new Map();
       const missing: TileKey[] = [];
       for (const key of keys) {
@@ -134,7 +135,7 @@ export async function commitFinishedStroke(
         if (early && early.has(key)) before.set(key, copy ?? null);
         else missing.push(key);
       }
-      for (const [key, copy] of drawingTileStore.snapshotNow(missing)) before.set(key, copy);
+      for (const [key, copy] of await drawingTileStore.snapshot(missing)) before.set(key, copy);
       const changed = applyAcrossLevels(finished.source, finished.rasterX, finished.rasterY, finished.level, "paint", settings.opacity, selection);
       // The live preview stays until the paint is in the tiles, so the stroke never blinks out.
       hideStrokePreview(stroke);

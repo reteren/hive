@@ -13,14 +13,16 @@ fn read_text(path: &Path) -> Result<String, String> {
     if !path.is_absolute() {
         return Err("Dropped text file path must be absolute.".to_string());
     }
-    let metadata = fs::metadata(path).map_err(|error| format!("Could not read dropped text file: {error}"))?;
+    let metadata =
+        fs::metadata(path).map_err(|error| format!("Could not read dropped text file: {error}"))?;
     if !metadata.is_file() {
         return Err("Dropped text path must be a regular file.".to_string());
     }
     if metadata.len() > MAX_DROPPED_TEXT_BYTES {
         return Err("Dropped text file exceeds the 20 MB limit.".to_string());
     }
-    let bytes = fs::read(path).map_err(|error| format!("Could not read dropped text file: {error}"))?;
+    let bytes =
+        fs::read(path).map_err(|error| format!("Could not read dropped text file: {error}"))?;
     if bytes.len() as u64 > MAX_DROPPED_TEXT_BYTES {
         return Err("Dropped text file exceeds the 20 MB limit.".to_string());
     }
@@ -37,7 +39,10 @@ mod tests {
 
     #[test]
     fn reads_plain_and_bom_utf8_without_copying() {
-        let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let directory = std::env::temp_dir().join(format!("hive-dropped-text-{stamp}"));
         fs::create_dir(&directory).unwrap();
         let file = directory.join("note.md");

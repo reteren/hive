@@ -2,6 +2,7 @@
   import { onDestroy, tick } from "svelte";
   import type { MediaRef } from "../attachments/types";
   import { attachmentUrl, exportAttachmentAs } from "../attachments/service";
+  import { pinNote } from "../board/visibility.svelte";
   import { MediaIcon, MediaSlider, MediaTime } from "../media-ui";
   import { dropAudioRecordingOnBoard } from "./recording.svelte";
   import { formatMediaTime } from "../media-ui/time";
@@ -38,6 +39,12 @@
   let dragGhostElement: HTMLDivElement | null = null;
   let source = $derived(attachmentUrl(media.file));
   let safeDuration = $derived(Number.isFinite(duration) && duration > 0 ? duration : mediaDuration);
+
+  $effect(() => {
+    const noteId = sourceNoteId;
+    if (!playing || !noteId) return;
+    return pinNote(noteId, "audio playback");
+  });
 
   async function togglePlayback(): Promise<void> {
     if (!audio) return;
@@ -245,7 +252,7 @@
   <audio
     bind:this={audio}
     src={source}
-    preload="metadata"
+    preload="none"
     onloadedmetadata={syncTime}
     ondurationchange={syncTime}
     ontimeupdate={syncTime}
