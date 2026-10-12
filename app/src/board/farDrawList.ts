@@ -51,6 +51,7 @@ export interface FarDrawListInput {
   focusedObjectIds?: ReadonlySet<string> | null;
   selectedZoneIds?: ReadonlySet<string>;
   selectedLinkIds?: ReadonlySet<string>;
+  excludedLinkIds?: ReadonlySet<string>;
   imageBitmaps?: ReadonlyMap<string, CanvasImageSource>;
   zoneIds: readonly string[];
   zones: Readonly<Record<string, Zone | undefined>>;
@@ -87,7 +88,7 @@ export function buildFarDrawList(input: FarDrawListInput): FarDrawList {
   }
 
   for (const id of input.linkIds) {
-    if (input.selectedLinkIds?.has(id)) continue;
+    if (input.selectedLinkIds?.has(id) || input.excludedLinkIds?.has(id)) continue;
     const link = input.links[id];
     const points = input.routePoints(id);
     if (!link || !points || points.length < 2) continue;
@@ -130,7 +131,7 @@ export function buildFarDrawList(input: FarDrawListInput): FarDrawList {
     links: linkItems,
     notes: noteItems,
     beacons: beaconItems,
-    drawCalls: zoneItems.length * 2 + linkItems.length + noteItems.reduce((count, note) =>
+    drawCalls: zoneItems.length * 2 + linkPaintGroupCount(linkItems) + noteItems.reduce((count, note) =>
       count + (note.kind === "image" && note.bitmap ? 1 : note.headerHeight > 0 ? 2 : 1), 0) + beaconItems.length,
   };
 }
@@ -157,6 +158,16 @@ export function paintFarDrawList(
     ratio * (viewport.height / 2 - camera.y * scale),
   );
 
+  return paintFarDrawListWorld(context, drawList, imageBitmaps, scale);
+}
+
+/** Paint world-space objects using the caller's existing world-to-canvas transform. */
+export function paintFarDrawListWorld(
+  context: CanvasRenderingContext2D,
+  drawList: FarDrawList,
+  imageBitmaps: ReadonlyMap<string, CanvasImageSource> = EMPTY_BITMAPS,
+  worldScale = 1,
+): number {
   let calls = 0;
   for (const zone of drawList.zones) {
     context.beginPath();
@@ -167,22 +178,12 @@ export function paintFarDrawList(
     context.fill("evenodd");
     context.globalAlpha = 1;
     context.strokeStyle = zone.color;
-    context.lineWidth = 1.5 / scale;
+    context.lineWidth = 1.5 / Math.max(0.0001, worldScale);
     context.stroke();
     calls += 2;
   }
 
-  context.strokeStyle = "#a9a294";
-  context.lineWidth = 1 / scale;
-  for (const link of drawList.links) {
-    context.globalAlpha = link.opacity;
-    if (link.kind === "weak") context.setLineDash([4 / scale, 4 / scale]);
-    else context.setLineDash([]);
-    context.beginPath();
-    appendPolyline(context, link.points);
-    context.stroke();
-    calls += 1;
-  }
+  calls += paintFarLinks(context, drawList.links, worldScale);
   context.globalAlpha = 1;
   context.setLineDash([]);
 
@@ -223,6 +224,40 @@ export function paintFarDrawList(
   context.globalAlpha = 1;
 
   return calls;
+}
+
+/** Draw links as a handful of grouped paths instead of one stroke per route. */
+export function paintFarLinks(
+  context: CanvasRenderingContext2D,
+  links: readonly FarLinkItem[],
+  worldScale: number,
+): number {
+  if (links.length === 0) return 0;
+  const scale = Math.max(0.0001, worldScale);
+  const groups = new Map<string, { kind: Link["kind"]; opacity: number; links: FarLinkItem[] }>();
+  for (const link of links) {
+    const key = `${link.kind}:${link.opacity}`;
+    const group = groups.get(key) ?? { kind: link.kind, opacity: link.opacity, links: [] };
+    group.links.push(link);
+    groups.set(key, group);
+  }
+
+  context.strokeStyle = "#a9a294";
+  context.lineWidth = 1 / scale;
+  for (const group of groups.values()) {
+    context.globalAlpha = group.opacity;
+    context.setLineDash(group.kind === "weak" ? [4 / scale, 4 / scale] : []);
+    context.beginPath();
+    for (const link of group.links) appendPolyline(context, link.points);
+    context.stroke();
+  }
+  context.globalAlpha = 1;
+  context.setLineDash([]);
+  return groups.size;
+}
+
+function linkPaintGroupCount(links: readonly FarLinkItem[]): number {
+  return new Set(links.map((link) => `${link.kind}:${link.opacity}`)).size;
 }
 
 function frameColor(note: Note): string {
