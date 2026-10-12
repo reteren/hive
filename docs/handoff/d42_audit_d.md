@@ -1,0 +1,59 @@
+# d42 audit d — drawing engine on large areas
+
+## Scope and estimate basis
+
+Read the drawing engine, GPU tile store, persistence, fill, selection history paths, Rust tile I/O, and `docs/handoff/d24_draw_engine.md`. I did not run the existing `drawperf.mjs`: it attaches to a live Hive page, reloads it, clears history, draws, and fills. The d24 figures are a pre-GPU 1.5.7 baseline only; current costs below are estimates from allocation sizes and loops, not measurements.
+
+Drawing costs do not depend on the number of note objects. For scale, 10,000 resident drawing tiles would reserve about 13.0 GiB for tile mip chains alone. Examples below use the requested 50,000 × 50,000 u region and a 1400 × 900 viewport where relevant.
+
+At zoom 0.05 and DPR 1, `drawLevelForZoom` selects L4: 1.25 raster px/u and 409.6 u per tile. A filled 50,000 u square at L4 spans 123 × 123 = 15,129 tiles. Each 512² RGBA8 tile reserves a full mip chain (about 1.333 MiB), so that one level alone is about 19.7 GiB of GPU storage. This is a capacity estimate, not a measured allocation.
+
+## Hot paths
+
+| # | What happens / where | Complexity per event | Why it hurts; estimated cost |
+|---|---|---|---|
+| 1 | Stroke input and commit traverse the stroke bounding rectangle. `captureStrokeBefore` re-queries that rectangle on pointer moves and copies up to 16 newly encountered tiles per move ([stroke.svelte.ts:48-72](app/src/drawing/stroke.svelte.ts:48)); commit enumerates affected keys, then `applyAcrossLevels` calls `quadsForTile` for every candidate key ([history.ts:80-85](app/src/drawing/history.ts:80), [history.ts:166-215](app/src/drawing/history.ts:166), [history.ts:226-275](app/src/drawing/history.ts:226)). | Pointer move: O(A) tile-key enumeration for the accumulated bounds, plus GPU work for the event bbox. Pointer-up: O(A × P) source-piece intersection checks, where A is candidate tiles in the bounds and P is stroke tiles/pieces. | A thin diagonal over a 50,000 u square at L4 has about 15,129 candidate cells in its square bounds but only roughly 123–245 stroke tiles, depending on alignment and brush width: approximately 1.9–3.7 million piece checks at commit, plus the bounds scan. This is estimated from tile geometry. A rectangle covering over 100,000 cells returns no keys ([tileStore.svelte.ts:119-145](app/src/drawing/tileStore.svelte.ts:119)); that can make oversized paint/erase work silently skip. Note count is irrelevant. |
+| 2 | Each live brush tile allocates two ping-pong buffers; each buffer has RGBA8 state with a full mip chain plus a 512² R32F position texture ([glEngine.ts:562-601](app/src/drawing/gpu/glEngine.ts:562)). Tiles are released only after the stroke finishes ([brush.ts:754-760](app/src/drawing/brush.ts:754)). | O(K) GPU allocations for K stroke tiles; each pointer pass redraws the dirty rect in each intersected tile ([brush.ts:553-613](app/src/drawing/brush.ts:553), [glEngine.ts:603-656](app/src/drawing/gpu/glEngine.ts:603)). | One temporary stroke tile is about 4.67 MiB (2 × (1.333 MiB + 1 MiB)). A 50,000 u diagonal at L4 can touch roughly 123–245 tiles: about 575 MiB–1.12 GiB transient GPU storage before commit. Estimate; driver allocation/commit behavior varies. |
+| 3 | Every camera/tile/stroke update rebuilds a quad list and draws every intersecting tile at every populated level; each quad becomes its own `drawArrays` call ([DrawingLayer.svelte:22-48](app/src/drawing/DrawingLayer.svelte:22), [DrawingLayer.svelte:93-104](app/src/drawing/DrawingLayer.svelte:93), [glEngine.ts:701-740](app/src/drawing/gpu/glEngine.ts:701)). | O(C + V) CPU checks and O(V) GL draw calls per render, where C is all grid cells scanned and V is existing visible tiles across levels. | At zoom 0.05, 1400 × 900, DPR 1, the view is about 2800 × 1800 u. If all levels are populated, current tile-grid queries test about 41,000 candidate cells/frame across L−3…L6; L−3 and L−2 each exceed the 100,000-cell guard and are skipped. A dense L0 view alone can issue roughly 7,800 tile draws/frame. Both numbers are geometric upper-bound estimates; there is no single-level far-zoom LOD. |
+| 4 | All drawing tiles remain GPU-resident; project load decodes every PNG with `Promise.all` and uploads all tiles ([persistence.svelte.ts:57-97](app/src/drawing/persistence.svelte.ts:57), [tileStore.svelte.ts:274-294](app/src/drawing/tileStore.svelte.ts:274)). There is no resident-texture budget or offscreen eviction. | O(T) decode/upload and GPU storage at load; storage grows O(T) for the project’s lifetime. | At the 50,000² u / L4 example above, a complete fill would need about 19.7 GiB just for base+mip tile textures. Sparse marks still reserve whole 512² tiles. Current 100,000-cell guard limits a query, not resident project size. This is estimated. |
+| 5 | Undo snapshots copy whole tiles, and save reads/encodes whole changed tiles. `snapshotNow` copies every requested 512² texture ([tileStore.svelte.ts:244-255](app/src/drawing/tileStore.svelte.ts:244)); save calls synchronous `readStraight` per tile, scans transparency, and PNG-encodes it ([tileStore.svelte.ts:295-323](app/src/drawing/tileStore.svelte.ts:295), [glEngine.ts:430-442](app/src/drawing/gpu/glEngine.ts:430)); Rust writes changed files sequentially ([drawing.rs:284-340](app/src-tauri/src/drawing.rs:284)). | O(K × 512²) read/copy/encode for K changed tiles; fill can also read up to a 2048² RGBA window, then retry up to three coarser levels ([fill.ts:11-14](app/src/drawing/fill.ts:11), [fill.ts:342-395](app/src/drawing/fill.ts:342)). | A 100-tile stroke entails about 100 MiB of full-tile before snapshots; redo state adds another ~100 MiB on first Undo. Snapshot textures are capped at 160 live copies, plus a 64-texture reuse pool (up to ~224 MiB); older snapshots are read back and deflated during idle slices ([tileStore.svelte.ts:16-17](app/src/drawing/tileStore.svelte.ts:16), [tileStore.svelte.ts:48-82](app/src/drawing/tileStore.svelte.ts:48), [tileStore.svelte.ts:90-110](app/src/drawing/tileStore.svelte.ts:90)). Saving 100 changed tiles synchronously reads about 100 MiB from GPU, then does JS unpremultiplication/alpha scans and scanline copies. The 6 ms yield is checked between tiles, so one tile readback can exceed it. These are byte-count estimates; current elapsed times are unmeasured. |
+
+## Proposed fixes
+
+| # | Concrete change | Files | Risk | Expected gain |
+|---|---|---|---|---|
+| 1 | Index source pieces by destination tile and pass exact touched tile keys from the stroke, rather than repeatedly enumerating the full rectangular bounds. Preserve the existing finer-level overlap rules. Split large work into bounded chunks and return an explicit overflow/error instead of an empty result at the 100,000-cell guard. | `brush.ts`, `stroke.svelte.ts`, `history.ts`, `tileStore.svelte.ts` | Must include every pre-existing finer tile affected by paint/erase and preserve one-step Undo when operations are chunked. | Reduces diagonal stroke commit from area × piece checks toward work proportional to touched tiles; removes silent no-op at large bounds. |
+| 2 | Set a byte budget for temporary stroke state and commit/spill completed stroke sections in bounded batches while preserving one history command. Avoid reserving mip levels on transient buffers until needed, or use a compact working representation. | `gpu/glEngine.ts`, `brush.ts`, `stroke.svelte.ts` | Stroke continuity, soft-brush pass history, preview, and cancel/Undo must remain exact across chunk boundaries. | Prevents long gestures from reserving hundreds of MiB to over 1 GiB before release. |
+| 3 | Add tile-coordinate spatial indexing and a zoom-aware draw list. Batch visible quads where possible and avoid traversing every populated level when its pixels are below useful screen resolution. Preserve cross-level content by compositing/aggregating it into a coarse cache before skipping fine tiles. | `tileStore.svelte.ts`, `DrawingLayer.svelte`, `gpu/glEngine.ts` | A coarse cache must preserve marks that exist only on a finer level and current painter ordering. | Makes query/draw work track visible tiles and selected LOD, not every cell in every active level; cuts far-zoom draw calls. |
+| 4 | Add a bounded GPU residency cache, prioritize visible tiles and coarse fallbacks, and load/decode tiles incrementally as the view moves. Keep edits durable before evicting; rebuild mip/coarse caches on dirty tile changes. | `tileStore.svelte.ts`, `persistence.svelte.ts`, `api.ts`, Rust `drawing.rs` | Offscreen edits and Undo must survive eviction; panning may show a coarse placeholder while a tile loads. | Bounds GPU usage independently of project size and avoids all-at-once decode/upload at open. |
+| 5 | Use dirty-rectangle or compressed-delta Undo snapshots where safe; batch readback/encoding off the UI thread and cache the sorted tile index rather than sorting all keys for each commit/save. | `tileStore.svelte.ts`, `history.ts`, `persistence.svelte.ts`, `png.ts`, Rust `drawing.rs` | Deltas must restore exact alpha and level composition; async saves need revision checks so stale readbacks cannot overwrite newer pixels. | Reduces full-tile copies/readback for sparse edits and limits save/Undo stalls on many touched tiles. |
+
+## Culling / LOD contract
+
+Drawing needs a shared visibility service to provide:
+
+- Inputs: camera world-space viewport rectangle, zoom × device-pixel ratio, a small configurable overscan margin, and drawing tile-index/content revisions.
+- Outputs: intersecting drawing tile keys grouped by level, plus the selected screen-resolution LOD and a coarse fallback for visible content while finer tiles load.
+- Semantics: preserve the current coarsest-to-finest composition and “paint at L covers existing finer content” behavior. A global visible-note set or a single preferred level is insufficient because a drawing may have unique content at each resolution level.
+- Invalidation: update on camera/zoom changes when tile membership or LOD bands change, and on tile edits/mip-cache changes. Reuse the set while stationary. The drawing renderer must also ask for only the live stroke pieces intersecting the viewport.
+- Residency: return visible keys before offscreen keys for cache priority; expose missing/loading state so the renderer can draw a coarse fallback instead of blocking.
+
+## Quick wins (≤30 lines each)
+
+- Stop computing and sorting `allKeys()` on every tile commit when the persistence callback ignores the listener’s second argument ([tileStore.svelte.ts:202-209](app/src/drawing/tileStore.svelte.ts:202), [persistence.svelte.ts:136](app/src/drawing/persistence.svelte.ts:136)). Cache sorted keys by tile-store revision for saves that need them.
+- Filter live stroke pieces against the viewport before building GL quads; this reduces preview CPU/allocation for long strokes, though it does not reduce their temporary GPU allocation.
+- Make the 100,000-cell overflow explicit or iterate a large query in bounded sub-rectangles; never silently treat overflow as “no tiles.”
+
+## Structural changes
+
+- Exact tile/piece spatial indexes shared by rendering, stroke commit, selection/fill and history.
+- Byte-budgeted GPU residency plus incremental disk tile loading and a coarse composite cache.
+- Bounded temporary stroke processing and byte-budgeted Undo/readback/encoding.
+
+## Open questions
+
+1. What GPU memory ceiling should cover resident tiles, live stroke state, and Undo together on target integrated GPUs?
+2. At zoom 0.05, should fine-level-only marks be hidden below a screen-size threshold, or must the renderer aggregate all levels to retain every visible mark?
+3. Should operations whose rectangular bounds exceed the current 100,000 candidate-cell guard be chunked transparently or rejected with visible feedback?
+4. Is a coarse fallback during background tile load acceptable when panning into a large drawing?
+
