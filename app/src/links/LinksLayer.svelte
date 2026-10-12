@@ -169,7 +169,9 @@
     $effect(() => {
       hasMeBeacon();
       for (const link of linksOf(ME_OBJECT_ID)) dirtyLinkIds.add(link.id);
-      renderedRevision += 1;
+      // Deferred bump: `renderedRevision += 1` here would read the revision and make this effect
+      // re-run after every bump, rebuilding the visible link list in an endless loop.
+      queueRenderedRevision();
     });
   });
 
