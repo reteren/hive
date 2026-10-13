@@ -270,9 +270,31 @@ function resolveOne(objectId: string, force = false): void {
   else tieChoices.delete(objectId);
   setResolved(objectId, key, selected);
   if (note && (note.zoneId ?? null) !== selected) {
-    writingMembership.add(objectId);
-    updateNote(objectId, { zoneId: selected });
+    const write = () => {
+      if (!board.notes[objectId] || (board.notes[objectId].zoneId ?? null) === selected) return;
+      writingMembership.add(objectId);
+      updateNote(objectId, { zoneId: selected });
+    };
+    // zoneOf() resolves lazily, also while a component renders; state must not change there.
+    if ($effect.tracking()) queueMicrotask(write);
+    else write();
   }
+}
+
+let versionBumpQueued = false;
+
+/** Tell readers membership changed; from inside a render/derived read the bump waits a microtask. */
+function bumpMembershipVersion(): void {
+  if (!$effect.tracking()) {
+    membershipState.version += 1;
+    return;
+  }
+  if (versionBumpQueued) return;
+  versionBumpQueued = true;
+  queueMicrotask(() => {
+    versionBumpQueued = false;
+    membershipState.version += 1;
+  });
 }
 
 function syncMePresence(): void {
@@ -301,7 +323,7 @@ function setResolved(objectId: string, key: string, zoneId: string | null): void
     if (!members) membersByZone.set(zoneId, members = new Set());
     members.add(objectId);
   }
-  membershipState.version += 1;
+  bumpMembershipVersion();
 }
 
 function removeResolved(objectId: string): void {
@@ -309,7 +331,7 @@ function removeResolved(objectId: string): void {
   if (!previous) return;
   if (previous.zoneId) membersByZone.get(previous.zoneId)?.delete(objectId);
   resolved.delete(objectId);
-  membershipState.version += 1;
+  bumpMembershipVersion();
 }
 
 function boundsTouch(first: ZoneBounds, second: ZoneBounds): boolean {

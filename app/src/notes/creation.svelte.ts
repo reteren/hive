@@ -23,7 +23,7 @@ export function openCreationMenu(trigger: CreationTrigger): void {
   creationMenu.origin = origin.world;
   creationMenu.screenAnchor = origin.screen;
   creationMenu.zoomAtOpen = camera.zoom;
-  creationMenu.menuAnchor = fitBoardPopupAnchor(camera, viewport, origin.world, { width: 164, height: 430 });
+  creationMenu.menuAnchor = fitBoardPopupAnchor(camera, viewport, origin.world, { width: 200, height: 330 });
   creationMenu.pinned = false;
   creationMenu.open = true;
 }

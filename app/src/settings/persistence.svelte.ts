@@ -20,6 +20,7 @@ import { quickInputShortcut, setQuickInputShortcutValue } from "./quickInputShor
 import { setTimeCounters, timeCounters } from "../time/runtime.svelte";
 import { timeEnablePreference } from "../time/enablePreference.svelte";
 import { gifPlayback, setGifPlaybackMode } from "../attachments/gifPlayback.svelte";
+import { createMenuPreferencesSnapshot, setCreateMenuPreferences } from "../notes/createMenuPreferences.svelte";
 import { drawingPreferencesSnapshot, loadDrawingPreferences } from "../drawing/tools.svelte";
 import {
   cacheThemeBootstrap,
@@ -245,6 +246,7 @@ function currentSettings(): ViewSettings {
     skipCompletedTimerConfirmation: timeEnablePreference.skipCompletedTimerConfirmation,
     videoExternalThresholdMb: preferences.videoExternalThresholdMb,
     appearance: getThemeSettingsSnapshot(),
+    createMenu: createMenuPreferencesSnapshot(),
   };
 }
 
@@ -275,4 +277,5 @@ function applySettings(settings: ViewSettings): void {
   timeEnablePreference.skipCompletedTimerConfirmation = settings.skipCompletedTimerConfirmation ?? false;
   setVideoExternalThresholdMb(settings.videoExternalThresholdMb);
   setThemeSettings(settings.appearance);
+  setCreateMenuPreferences(settings.createMenu);
 }

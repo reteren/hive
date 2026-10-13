@@ -52,6 +52,7 @@ describe("view settings serialization", () => {
       skipCompletedTimerConfirmation: false,
       videoExternalThresholdMb: 125,
       appearance: DEFAULT_VIEW_SETTINGS.appearance,
+      createMenu: { starred: ["calendar" as const, "image" as const], recent: ["tierlist" as const] },
     };
 
     const serialized = serializeViewSettings(settings);
@@ -129,7 +130,17 @@ describe("view settings serialization", () => {
       skipCompletedTimerConfirmation: false,
       videoExternalThresholdMb: 20,
       appearance: DEFAULT_VIEW_SETTINGS.appearance,
+      createMenu: { starred: [], recent: [] },
     });
+  });
+
+  it("keeps the Q menu's starred and recent items, dropping unknown ones", () => {
+    const parsed = parseViewSettings(
+      JSON.stringify({ createMenu: { starred: ["calendar", "note", "nope", "calendar", "image"], recent: ["map", "list", "goal", "pdf"] } }),
+      DEFAULT_VIEW_SETTINGS,
+    );
+    expect(parsed.createMenu).toEqual({ starred: ["calendar", "image"], recent: ["map", "list", "goal"] });
+    expect(parseViewSettings("{}", DEFAULT_VIEW_SETTINGS).createMenu).toEqual({ starred: [], recent: [] });
   });
 
   it("defaults text fitting on and validates the persisted beta setting", () => {

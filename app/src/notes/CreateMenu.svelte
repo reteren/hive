@@ -1,8 +1,8 @@
 <script lang="ts">
+  import { onMount, tick } from "svelte";
   import { isTauri } from "@tauri-apps/api/core";
   import { camera, viewport } from "../board/camera.svelte";
-  import { createNote, createNoteKind, createTaskNote } from "./noteCommands";
-  import { R5_KINDS, R6_KINDS, R7_KINDS } from "../model/note";
+  import { createNoteKind, createTaskNote } from "./noteCommands";
   import { creationMenu, closeCreationMenu, toggleCreationMenuPin } from "./creation.svelte";
   import { boardPopupStyle, dismissBoardPopup, fitBoardPopupAnchor, screenAnchoredPopupStyle } from "../ui/boardAnchor";
   import { tool } from "../tools/tool.svelte";
@@ -15,95 +15,125 @@
   import { importVideoFiles, importVideoPaths, pickVideoFiles } from "../video/import";
   import { createYouTubeNote } from "../youtube/actions.svelte";
   import { parseYouTubeUrl } from "../youtube/logic";
+  import { isTextEditingTarget } from "../commands/focus";
+  import CreateItemIcon from "./CreateItemIcon.svelte";
+  import {
+    CREATE_CATEGORIES,
+    CREATE_ITEMS,
+    isStarrable,
+    searchCreateItems,
+    visibleRecentCreateItems,
+    type CreateCategoryId,
+    type CreateItemId,
+  } from "./createMenuCatalog";
+  import {
+    createMenuPreferences,
+    isStarredCreateItem,
+    recordCreatedItem,
+    toggleStarredCreateItem,
+  } from "./createMenuPreferences.svelte";
+
+  const MENU_WIDTH = 200;
+  const FLYOUT_WIDTH = 196;
+  /** Hover intent: moving across other tabs on the way to an open flyout must not switch it. */
+  const SWITCH_DELAY_MS = 140;
+  const CLOSE_DELAY_MS = 320;
+
+  type Entry = { kind: "item"; id: CreateItemId } | { kind: "tab"; id: CreateCategoryId };
 
   let menuElement = $state<HTMLElement | null>(null);
+  let flyoutElement = $state<HTMLElement | null>(null);
+  let searchInput = $state<HTMLInputElement | null>(null);
   let audioFileInput = $state<HTMLInputElement | null>(null);
   let videoFileInput = $state<HTMLInputElement | null>(null);
   let youtubeInputOpen = $state(false);
   let youtubeUrlDraft = $state("");
   let youtubeInputError = $state("");
 
-  // The menu grew past the height assumed at open time (R7/R8 kinds): measure it once it is on
-  // screen and refit, so its bottom items are never outside the window.
+  let openCategory = $state<CreateCategoryId | null>(null);
+  let flyoutSide = $state<"right" | "left">("right");
+  let flyoutTop = $state(0);
+  let query = $state("");
+  /** Keyboard focus: an entry of the main column, or an item of the open flyout. */
+  let active = $state<{ zone: "main" | "flyout"; key: string } | null>(null);
+  let switchTimer = 0;
+  let closeTimer = 0;
+
+  const tabElements: Partial<Record<CreateCategoryId, HTMLElement>> = {};
+
+  let starred = $derived(createMenuPreferences.starred);
+  let recent = $derived(visibleRecentCreateItems(createMenuPreferences));
+  let results = $derived(searchCreateItems(query));
+  let searching = $derived(query.trim().length > 0);
+  let flyoutItems = $derived(CREATE_CATEGORIES.find((category) => category.id === openCategory)?.items ?? []);
+  let mainEntries = $derived<Entry[]>(searching
+    ? results.map((id) => ({ kind: "item" as const, id }))
+    : [
+      { kind: "item" as const, id: "note" as const },
+      ...starred.map((id) => ({ kind: "item" as const, id })),
+      ...recent.map((id) => ({ kind: "item" as const, id })),
+      ...CREATE_CATEGORIES.map((category) => ({ kind: "tab" as const, id: category.id })),
+    ]);
+
+  // The menu height changes with starred/recent items: refit it so its bottom stays on screen.
   $effect(() => {
+    void starred.length;
+    void recent.length;
+    void results.length;
     if (!creationMenu.open || creationMenu.pinned || !menuElement) return;
     const height = menuElement.offsetHeight;
-    creationMenu.menuAnchor = fitBoardPopupAnchor(camera, viewport, creationMenu.origin, { width: 164, height });
+    creationMenu.menuAnchor = fitBoardPopupAnchor(camera, viewport, creationMenu.origin, { width: MENU_WIDTH, height });
+  });
+
+  // Reset transient state whenever the menu opens again.
+  $effect(() => {
+    if (creationMenu.open) return;
+    openCategory = null;
+    query = "";
+    active = null;
+    closeYouTubeInput();
+  });
+
+  // Keep the flyout inside the window vertically.
+  $effect(() => {
+    void openCategory;
+    if (!flyoutElement || !menuElement) return;
+    const rect = flyoutElement.getBoundingClientRect();
+    const scale = rect.height / Math.max(1, flyoutElement.offsetHeight);
+    const overflow = rect.bottom - (window.innerHeight - 8);
+    if (overflow > 0) flyoutTop = Math.max(-menuElement.offsetTop, flyoutTop - overflow / scale);
   });
 
   const menuStyle = $derived(creationMenu.pinned
     ? screenAnchoredPopupStyle(creationMenu.pinnedScreenAnchor)
     : boardPopupStyle(camera, viewport, creationMenu.menuAnchor, creationMenu.zoomAtOpen));
 
-  function createNoteFromMenu(): void {
-    createNote();
+  // ---------- creating ----------
+
+  function finishCreation(id: CreateItemId): void {
+    recordCreatedItem(id);
     switchToSelectToolAfterCreation();
     if (!creationMenu.pinned) closeCreationMenu();
+    else {
+      openCategory = null;
+      query = "";
+    }
   }
 
-  function createTaskFromMenu(): void {
-    createTaskNote();
-    switchToSelectToolAfterCreation();
-    if (!creationMenu.pinned) closeCreationMenu();
-  }
-
-  function createMiniNodeFromMenu(kind: "pro" | "con"): void {
-    createNoteKind(kind);
-    switchToSelectToolAfterCreation();
-    if (!creationMenu.pinned) closeCreationMenu();
-  }
-
-  function createModuleFromMenu(kind: "importance" | "purpose" | "mood"): void {
-    createNoteKind(kind);
-    switchToSelectToolAfterCreation();
-    if (!creationMenu.pinned) closeCreationMenu();
-  }
-
-  const R5_LABELS: Record<(typeof R5_KINDS)[number] | (typeof R6_KINDS)[number] | (typeof R7_KINDS)[number], string> = {
-    inbox: "Inbox",
-    list: "List",
-    source: "Source",
-    glossary: "Dictionary",
-    map: "Map",
-    random: "Random Choice",
-    markas: "Mark as",
-    archive: "Archive",
-    trash: "Trash",
-    goal: "Goal",
-    progress: "Progress",
-    calculator: "Calculator",
-    tierlist: "Tierlist",
-    stats: "Statistics",
-  };
-
-  function createR5FromMenu(kind: (typeof R5_KINDS)[number] | (typeof R6_KINDS)[number] | (typeof R7_KINDS)[number]): void {
-    createNoteKind(kind);
-    switchToSelectToolAfterCreation();
-    if (!creationMenu.pinned) closeCreationMenu();
-  }
-
-  function createBeaconFromMenu(): void {
-    createNoteKind("beacon");
-    switchToSelectToolAfterCreation();
-    if (!creationMenu.pinned) closeCreationMenu();
-  }
-
-  function createTimeFromMenu(): void {
-    createNoteKind("time");
-    switchToSelectToolAfterCreation();
-    if (!creationMenu.pinned) closeCreationMenu();
-  }
-
-  function createCalendarFromMenu(): void {
-    createNoteKind("calendar");
-    switchToSelectToolAfterCreation();
-    if (!creationMenu.pinned) closeCreationMenu();
-  }
-
-  function createMessageFromMenu(): void {
-    createNoteKind("message");
-    switchToSelectToolAfterCreation();
-    if (!creationMenu.pinned) closeCreationMenu();
+  function runItem(id: CreateItemId): void {
+    clearTimers();
+    switch (id) {
+      case "note": createNoteKind("note"); finishCreation(id); return;
+      case "task": createTaskNote(); finishCreation(id); return;
+      case "image": void createImagesFromMenu(); return;
+      case "pdf": void createFromFormatPicker("pdf", id); return;
+      case "format": void createFromFormatPicker("text", id); return;
+      case "audio": void createAudioFromMenu(); return;
+      case "record-audio": if (startAudioRecordingAt(creationMenu.origin)) finishCreation(id); return;
+      case "video": void createVideoFromMenu(); return;
+      case "youtube": openYouTubeInput(); return;
+      default: createNoteKind(id); finishCreation(id);
+    }
   }
 
   async function createImagesFromMenu(): Promise<void> {
@@ -115,24 +145,11 @@
       return;
     }
     if (paths.length === 0) return;
-    const created = await importImagePaths(paths, { x: camera.x, y: camera.y });
-    if (!created) return;
-    switchToSelectToolAfterCreation();
-    if (!creationMenu.pinned) closeCreationMenu();
+    if (await importImagePaths(paths, { x: camera.x, y: camera.y })) finishCreation("image");
   }
 
-  async function createPdfFromMenu(): Promise<void> {
-    const center = { ...creationMenu.origin };
-    if (!(await pickFormatFiles("pdf", center))) return;
-    switchToSelectToolAfterCreation();
-    if (!creationMenu.pinned) closeCreationMenu();
-  }
-
-  async function createFormatFromMenu(): Promise<void> {
-    const center = { ...creationMenu.origin };
-    if (!(await pickFormatFiles("text", center))) return;
-    switchToSelectToolAfterCreation();
-    if (!creationMenu.pinned) closeCreationMenu();
+  async function createFromFormatPicker(kind: "pdf" | "text", id: CreateItemId): Promise<void> {
+    if (await pickFormatFiles(kind, { ...creationMenu.origin })) finishCreation(id);
   }
 
   async function createAudioFromMenu(): Promise<void> {
@@ -140,10 +157,7 @@
       audioFileInput?.click();
       return;
     }
-    const created = await chooseAudioFile(creationMenu.origin);
-    if (!created) return;
-    switchToSelectToolAfterCreation();
-    if (!creationMenu.pinned) closeCreationMenu();
+    if (await chooseAudioFile(creationMenu.origin)) finishCreation("audio");
   }
 
   async function handleAudioFileInput(event: Event): Promise<void> {
@@ -151,16 +165,7 @@
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = "";
     if (!file) return;
-    const created = await importAudioFileFromBrowser(file, creationMenu.origin);
-    if (!created) return;
-    switchToSelectToolAfterCreation();
-    if (!creationMenu.pinned) closeCreationMenu();
-  }
-
-  function createRecordingFromMenu(): void {
-    if (!startAudioRecordingAt(creationMenu.origin)) return;
-    switchToSelectToolAfterCreation();
-    if (!creationMenu.pinned) closeCreationMenu();
+    if (await importAudioFileFromBrowser(file, creationMenu.origin)) finishCreation("audio");
   }
 
   async function createVideoFromMenu(): Promise<void> {
@@ -170,10 +175,7 @@
     }
     const paths = await pickVideoFiles();
     if (paths.length === 0) return;
-    const created = await importVideoPaths(paths, creationMenu.origin);
-    if (created.length === 0) return;
-    switchToSelectToolAfterCreation();
-    if (!creationMenu.pinned) closeCreationMenu();
+    if ((await importVideoPaths(paths, creationMenu.origin)).length > 0) finishCreation("video");
   }
 
   async function handleVideoFileInput(event: Event): Promise<void> {
@@ -181,13 +183,12 @@
     const files = [...(event.currentTarget.files ?? [])];
     event.currentTarget.value = "";
     if (files.length === 0) return;
-    const created = await importVideoFiles(files, creationMenu.origin);
-    if (created.length === 0) return;
-    switchToSelectToolAfterCreation();
-    if (!creationMenu.pinned) closeCreationMenu();
+    if ((await importVideoFiles(files, creationMenu.origin)).length > 0) finishCreation("video");
   }
 
   function openYouTubeInput(): void {
+    openCategory = null;
+    query = "";
     youtubeInputOpen = true;
     youtubeInputError = "";
   }
@@ -216,9 +217,8 @@
       return;
     }
     createYouTubeNote(parsed.ref, creationMenu.origin);
-    switchToSelectToolAfterCreation();
-    if (!creationMenu.pinned) closeCreationMenu();
     closeYouTubeInput();
+    finishCreation("youtube");
   }
 
   function switchToSelectToolAfterCreation(): void {
@@ -227,21 +227,218 @@
     cancelLineDraft();
     clearSelectedLink();
   }
+
+  function toggleStar(event: MouseEvent, id: CreateItemId): void {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleStarredCreateItem(id);
+  }
+
+  // ---------- flyouts ----------
+
+  function clearTimers(): void {
+    window.clearTimeout(switchTimer);
+    window.clearTimeout(closeTimer);
+  }
+
+  function openFlyout(id: CreateCategoryId): void {
+    clearTimers();
+    const tab = tabElements[id];
+    if (!tab || !menuElement) return;
+    const rect = menuElement.getBoundingClientRect();
+    const scale = rect.width / Math.max(1, menuElement.offsetWidth);
+    flyoutSide = rect.right + (FLYOUT_WIDTH + 8) * scale <= window.innerWidth || rect.left - (FLYOUT_WIDTH + 8) * scale < 0 ? "right" : "left";
+    flyoutTop = tab.offsetTop - 5;
+    openCategory = id;
+  }
+
+  function hoverTab(id: CreateCategoryId): void {
+    window.clearTimeout(closeTimer);
+    window.clearTimeout(switchTimer);
+    if (openCategory === id) return;
+    if (openCategory === null) openFlyout(id);
+    else switchTimer = window.setTimeout(() => openFlyout(id), SWITCH_DELAY_MS);
+  }
+
+  function hoverOutsideTabs(): void {
+    window.clearTimeout(switchTimer);
+    if (openCategory !== null) switchTimer = window.setTimeout(() => { openCategory = null; }, SWITCH_DELAY_MS);
+  }
+
+  function enterFlyout(): void {
+    clearTimers();
+  }
+
+  function leaveMenu(): void {
+    window.clearTimeout(closeTimer);
+    closeTimer = window.setTimeout(() => {
+      openCategory = null;
+      if (active?.zone === "flyout") active = null;
+    }, CLOSE_DELAY_MS);
+  }
+
+  function tabRef(element: HTMLElement, id: CreateCategoryId): { destroy(): void } {
+    tabElements[id] = element;
+    return { destroy() { if (tabElements[id] === element) delete tabElements[id]; } };
+  }
+
+  // ---------- keyboard ----------
+
+  function entryKey(entry: Entry): string {
+    return `${entry.kind}:${entry.id}`;
+  }
+
+  function moveActive(step: number): void {
+    if (active?.zone === "flyout" && openCategory) {
+      const index = flyoutItems.findIndex((id) => `item:${id}` === active?.key);
+      const next = flyoutItems[(index + step + flyoutItems.length) % flyoutItems.length];
+      if (next) active = { zone: "flyout", key: `item:${next}` };
+      return;
+    }
+    const keys = mainEntries.map(entryKey);
+    if (keys.length === 0) return;
+    const index = active ? keys.indexOf(active.key) : -1;
+    const next = keys[index < 0 ? (step > 0 ? 0 : keys.length - 1) : (index + step + keys.length) % keys.length];
+    active = { zone: "main", key: next };
+    if (next.startsWith("tab:")) openFlyout(next.slice(4) as CreateCategoryId);
+    else if (!searching) openCategory = null;
+  }
+
+  function enterFlyoutWithKeyboard(id: CreateCategoryId): void {
+    openFlyout(id);
+    const first = CREATE_CATEGORIES.find((category) => category.id === id)?.items[0];
+    if (first) active = { zone: "flyout", key: `item:${first}` };
+  }
+
+  function activateCurrent(): void {
+    if (!active) {
+      const first = searching ? results[0] : undefined;
+      if (first) runItem(first);
+      return;
+    }
+    const [kind, id] = active.key.split(":") as ["item" | "tab", string];
+    if (kind === "tab") enterFlyoutWithKeyboard(id as CreateCategoryId);
+    else runItem(id as CreateItemId);
+  }
+
+  function menuHasFocus(): boolean {
+    return Boolean(menuElement && document.activeElement && menuElement.contains(document.activeElement));
+  }
+
+  function startSearch(text: string): void {
+    openCategory = null;
+    query = text;
+    active = null;
+    void tick().then(() => {
+      searchInput?.focus();
+      const end = searchInput?.value.length ?? 0;
+      searchInput?.setSelectionRange(end, end);
+    });
+  }
+
+  function onWindowKeyDown(event: KeyboardEvent): void {
+    if (!creationMenu.open || event.defaultPrevented || youtubeInputOpen) return;
+    const inSearch = event.target === searchInput;
+    if (!inSearch && isTextEditingTarget(event.target)) return;
+    // A pinned list stays open while the user works on the board: it takes keys only when focused.
+    if (creationMenu.pinned && !menuHasFocus()) return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+    const consume = () => { event.preventDefault(); event.stopImmediatePropagation(); };
+    switch (event.key) {
+      case "ArrowDown": consume(); moveActive(1); return;
+      case "ArrowUp": consume(); moveActive(-1); return;
+      case "ArrowRight":
+        if (inSearch || active?.zone !== "main" || !active.key.startsWith("tab:")) return;
+        consume(); enterFlyoutWithKeyboard(active.key.slice(4) as CreateCategoryId); return;
+      case "ArrowLeft":
+        if (inSearch || active?.zone !== "flyout" || !openCategory) return;
+        consume(); active = { zone: "main", key: `tab:${openCategory}` }; return;
+      case "Enter": consume(); activateCurrent(); return;
+      case "Escape":
+        consume();
+        if (searching) { query = ""; active = null; searchInput?.blur(); }
+        else if (openCategory) { openCategory = null; if (active?.zone === "flyout") active = null; }
+        else closeCreationMenu();
+        return;
+    }
+    if (inSearch) return;
+    if (/^[1-6]$/.test(event.key) && !searching) {
+      const category = CREATE_CATEGORIES[Number(event.key) - 1];
+      if (category) { consume(); active = { zone: "main", key: `tab:${category.id}` }; enterFlyoutWithKeyboard(category.id); }
+      return;
+    }
+    // Type to search. Q is left alone so it still closes the list.
+    if (event.key.length === 1 && /\p{L}/u.test(event.key) && event.code !== "KeyQ") {
+      consume();
+      startSearch(event.key);
+    }
+  }
+
+  onMount(() => {
+    window.addEventListener("keydown", onWindowKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", onWindowKeyDown, true);
+      clearTimers();
+    };
+  });
 </script>
+
+{#snippet itemRow(id: CreateItemId, zone: "main" | "flyout", extraClass = "")}
+  {@const starredNow = isStarredCreateItem(id)}
+  <div
+    class={`create-row ${extraClass}`}
+    class:active={active?.zone === zone && active.key === `item:${id}`}
+    data-create-kind={id}
+  >
+    <button class="create-item" type="button" onclick={() => runItem(id)} onmouseenter={() => { if (zone === "main") hoverOutsideTabs(); }}>
+      <CreateItemIcon {id} />
+      <span class="item-label">{CREATE_ITEMS[id].label}</span>
+    </button>
+    {#if isStarrable(id)}
+      <button
+        class="star-toggle"
+        class:starred={starredNow}
+        type="button"
+        data-create-star={id}
+        aria-pressed={starredNow}
+        aria-label={starredNow ? `Unstar ${CREATE_ITEMS[id].label}` : `Star ${CREATE_ITEMS[id].label} (show at the top)`}
+        title={starredNow ? "Remove from the top" : "Star: show at the top, next to Note"}
+        onclick={(event) => toggleStar(event, id)}
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m8 2.2 1.8 3.7 4 .6-2.9 2.8.7 4L8 11.4l-3.6 1.9.7-4-2.9-2.8 4-.6z" /></svg>
+      </button>
+    {/if}
+  </div>
+{/snippet}
 
 {#if creationMenu.open}
   <aside
     bind:this={menuElement}
-    style:max-height={`${Math.max(160, viewport.height - 16)}px`}
     class="create-menu"
     data-create-menu
     data-selection-ignore
     aria-label="Create list"
     style={menuStyle}
-    use:dismissBoardPopup={{ close: closeCreationMenu, shouldDismissOutside: () => !creationMenu.pinned }}
+    use:dismissBoardPopup={{ close: closeCreationMenu, escape: false, shouldDismissOutside: () => !creationMenu.pinned }}
+    onmouseleave={leaveMenu}
+    onmouseenter={() => window.clearTimeout(closeTimer)}
   >
     <header class="menu-header">
-      <span>Create</span>
+      <label class="search">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.2" /><path d="m10.2 10.2 3.3 3.3" /></svg>
+        <input
+          bind:this={searchInput}
+          bind:value={query}
+          data-create-search
+          type="text"
+          placeholder="Create…"
+          aria-label="Search what to create"
+          spellcheck="false"
+          autocomplete="off"
+          oninput={() => { openCategory = null; active = null; }}
+        />
+      </label>
       <div class="menu-actions">
         <button
           class="menu-action pin-button"
@@ -255,141 +452,117 @@
             <path d="M5 2.5h6l-.8 3 2.3 2.2v1H3.5v-1l2.3-2.2zM8 8.7v4.8" />
           </svg>
         </button>
-        <button
-          class="menu-action close-button"
-          type="button"
-          aria-label="Close create list"
-          title="Close"
-          onclick={closeCreationMenu}
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="m4 4 8 8M12 4l-8 8" />
-          </svg>
+        <button class="menu-action close-button" type="button" aria-label="Close create list" title="Close" onclick={closeCreationMenu}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" /></svg>
         </button>
       </div>
     </header>
-    <div class="create-items">
-      <button class="create-item" type="button" onclick={createNoteFromMenu}>
-        <span class="note-icon" aria-hidden="true"></span>
-        <span>Note</span>
-      </button>
-      <button class="create-item" type="button" data-create-kind="task" onclick={createTaskFromMenu}>
-        <span class="task-icon" aria-hidden="true">
-          <svg viewBox="0 0 16 16" focusable="false"><circle cx="8" cy="8" r="6.2" /></svg>
-        </span>
-        <span>Task</span>
-      </button>
-      <button class="create-item" type="button" onclick={() => createMiniNodeFromMenu("pro")}>
-        <span class="kind-icon plus-icon" aria-hidden="true">+</span>
-        <span>Plus</span>
-      </button>
-      <button class="create-item" type="button" onclick={() => createMiniNodeFromMenu("con")}>
-        <span class="kind-icon minus-icon" aria-hidden="true">−</span>
-        <span>Minus</span>
-      </button>
-      <button class="create-item" type="button" onclick={() => createModuleFromMenu("importance")}>
-        <span class="module-icon importance-icon" aria-hidden="true"></span>
-        <span>Importance</span>
-      </button>
-      <button class="create-item" type="button" onclick={() => createModuleFromMenu("purpose")}>
-        <span class="module-icon purpose-icon" aria-hidden="true">
-          <svg viewBox="0 0 16 16"><path d="M8 2.5 13.5 8 8 13.5 2.5 8zM8 5v6M5 8h6" /></svg>
-        </span>
-        <span>Purpose</span>
-      </button>
-      <button class="create-item" type="button" onclick={() => createModuleFromMenu("mood")}>
-        <span class="module-icon mood-icon" aria-hidden="true"></span>
-        <span>Mood</span>
-      </button>
-      <button class="create-item" type="button" onclick={createBeaconFromMenu}>
-        <span class="beacon-icon" aria-hidden="true"></span>
-        <span>Beacon</span>
-      </button>
-      {#each [...R5_KINDS, ...R6_KINDS, ...R7_KINDS] as kind (kind)}
-        <button class="create-item" type="button" data-create-kind={kind} onclick={() => createR5FromMenu(kind)}>
-          <span class="r5-icon" aria-hidden="true"></span>
-          <span>{R5_LABELS[kind]}</span>
-        </button>
-      {/each}
-      <button class="create-item" type="button" data-create-kind="time" onclick={createTimeFromMenu}>
-        <span class="r5-icon time-icon" aria-hidden="true"></span>
-        <span>Time</span>
-      </button>
-      <button class="create-item" type="button" data-create-kind="calendar" onclick={createCalendarFromMenu}>
-        <span class="r5-icon calendar-icon" aria-hidden="true"></span>
-        <span>Calendar</span>
-      </button>
-      <button class="create-item" type="button" data-create-kind="message" onclick={createMessageFromMenu}>
-        <span class="r5-icon" aria-hidden="true"></span>
-        <span>Message</span>
-      </button>
-      <button class="create-item" type="button" data-create-kind="image" onclick={createImagesFromMenu}>
-        <span class="r5-icon image-icon" aria-hidden="true"></span>
-        <span>Image…</span>
-      </button>
-      <button class="create-item" type="button" data-create-kind="pdf" onclick={createPdfFromMenu}>
-        <span class="r5-icon pdf-icon" aria-hidden="true"></span>
-        <span>PDF…</span>
-      </button>
-      <button class="create-item" type="button" data-create-kind="format" onclick={createFormatFromMenu}>
-        <span class="r5-icon format-icon" aria-hidden="true"></span>
-        <span>File…</span>
-      </button>
-      <button class="create-item" type="button" data-create-kind="audio" onclick={() => void createAudioFromMenu()}>
-        <span class="r5-icon audio-icon" aria-hidden="true"></span>
-        <span>Audio file…</span>
-      </button>
-      <button class="create-item" type="button" data-create-kind="record-audio" onclick={createRecordingFromMenu}>
-        <span class="r5-icon record-audio-icon" aria-hidden="true"></span>
-        <span>Record audio</span>
-      </button>
-      <button class="create-item" type="button" data-create-kind="video" onclick={() => void createVideoFromMenu()}>
-        <span class="r5-icon video-icon" aria-hidden="true"></span>
-        <span>Video file…</span>
-      </button>
-      {#if youtubeInputOpen}
-        <div class="youtube-create-input" data-youtube-create>
-          <input
-            bind:value={youtubeUrlDraft}
-            data-youtube-url-input
-            type="url"
-            placeholder="Paste a YouTube URL"
-            aria-label="YouTube video URL"
-            aria-invalid={youtubeInputError ? "true" : undefined}
-            onkeydown={handleYouTubeInputKeydown}
-          />
-          {#if youtubeInputError}<span class="youtube-create-error" role="alert">{youtubeInputError}</span>{/if}
-          <div class="youtube-create-actions">
-            <button type="button" onclick={createYouTubeFromMenu}>Create</button>
-            <button type="button" onclick={closeYouTubeInput}>Cancel</button>
-          </div>
+
+    {#if youtubeInputOpen}
+      <div class="youtube-create-input" data-youtube-create>
+        <span class="youtube-create-title"><CreateItemIcon id="youtube" /> YouTube link</span>
+        <!-- svelte-ignore a11y_autofocus -->
+        <input
+          bind:value={youtubeUrlDraft}
+          data-youtube-url-input
+          type="url"
+          placeholder="Paste a YouTube URL"
+          aria-label="YouTube video URL"
+          aria-invalid={youtubeInputError ? "true" : undefined}
+          autofocus
+          onkeydown={handleYouTubeInputKeydown}
+        />
+        {#if youtubeInputError}<span class="youtube-create-error" role="alert">{youtubeInputError}</span>{/if}
+        <div class="youtube-create-actions">
+          <button type="button" onclick={closeYouTubeInput}>Cancel</button>
+          <button type="button" class="primary" onclick={createYouTubeFromMenu}>Create</button>
         </div>
-      {:else}
-        <button class="create-item" type="button" data-create-kind="youtube" onclick={openYouTubeInput}>
-          <span class="r5-icon youtube-icon" aria-hidden="true"></span>
-          <span>YouTube link…</span>
-        </button>
+      </div>
+    {:else if searching}
+      <div class="create-section results" role="listbox" aria-label="Search results">
+        {#each results as id (id)}
+          {@render itemRow(id, "main")}
+        {:else}
+          <p class="empty">Nothing matches “{query.trim()}”</p>
+        {/each}
+      </div>
+    {:else}
+      <div class="create-section top">
+        {@render itemRow("note", "main", "note-row")}
+        {#each starred as id (id)}
+          {@render itemRow(id, "main", "starred-row")}
+        {/each}
+      </div>
+
+      {#if recent.length > 0}
+        <div class="create-section recent">
+          <span class="section-label">Recent</span>
+          {#each recent as id (id)}
+            {@render itemRow(id, "main", "recent-row")}
+          {/each}
+        </div>
       {/if}
-      <input
-        bind:this={videoFileInput}
-        hidden
-        type="file"
-        accept="video/mp4,video/webm,.mp4,.webm"
-        multiple
-        tabindex="-1"
-        aria-label="Choose video files"
-        onchange={handleVideoFileInput}
-      />
-      <input
-        bind:this={audioFileInput}
-        class="hidden-file-input"
-        type="file"
-        accept="audio/mpeg,audio/wav,audio/ogg,audio/webm,audio/mp4,audio/flac,.mp3,.wav,.ogg,.oga,.webm,.weba,.m4a,.m4b,.mka,.flac"
-        tabindex="-1"
-        aria-label="Choose an audio file"
-        onchange={handleAudioFileInput}
-      />
-    </div>
+
+      <nav class="create-section tabs" aria-label="Node categories">
+        {#each CREATE_CATEGORIES as category, index (category.id)}
+          <button
+            use:tabRef={category.id}
+            class="create-tab"
+            class:open={openCategory === category.id}
+            class:active={active?.zone === "main" && active.key === `tab:${category.id}`}
+            type="button"
+            data-create-category={category.id}
+            aria-haspopup="menu"
+            aria-expanded={openCategory === category.id}
+            onmouseenter={() => hoverTab(category.id)}
+            onclick={() => (openCategory === category.id ? (openCategory = null) : openFlyout(category.id))}
+          >
+            <CreateItemIcon id={category.id} />
+            <span class="item-label">{category.label}</span>
+            <kbd>{index + 1}</kbd>
+            <svg class="chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3.5 4.5 4.5L6 12.5" /></svg>
+          </button>
+        {/each}
+      </nav>
+
+      {#if openCategory}
+        <div
+          bind:this={flyoutElement}
+          class="create-flyout"
+          class:left={flyoutSide === "left"}
+          style:top={`${flyoutTop}px`}
+          role="menu"
+          tabindex="-1"
+          aria-label={CREATE_CATEGORIES.find((category) => category.id === openCategory)?.label}
+          data-create-flyout={openCategory}
+          onmouseenter={enterFlyout}
+        >
+          {#each flyoutItems as id (id)}
+            {@render itemRow(id, "flyout")}
+          {/each}
+        </div>
+      {/if}
+    {/if}
+
+    <input
+      bind:this={videoFileInput}
+      hidden
+      type="file"
+      accept="video/mp4,video/webm,.mp4,.webm"
+      multiple
+      tabindex="-1"
+      aria-label="Choose video files"
+      onchange={handleVideoFileInput}
+    />
+    <input
+      bind:this={audioFileInput}
+      hidden
+      type="file"
+      accept="audio/mpeg,audio/wav,audio/ogg,audio/webm,audio/mp4,audio/flac,.mp3,.wav,.ogg,.oga,.webm,.weba,.m4a,.m4b,.mka,.flac"
+      tabindex="-1"
+      aria-label="Choose an audio file"
+      onchange={handleAudioFileInput}
+    />
   </aside>
 {/if}
 
@@ -397,33 +570,73 @@
   .create-menu {
     position: absolute;
     z-index: 30;
-    width: 164px;
-    overflow-x: hidden;
-    overflow-y: auto;
+    width: 200px;
     color: var(--text);
     background: var(--bg-panel);
     border: 1px solid #4b4b4b;
-    border-radius: 4px;
-    box-shadow: 0 6px 20px rgb(0 0 0 / 42%);
+    border-radius: 7px;
+    box-shadow: 0 10px 28px rgb(0 0 0 / 45%), 0 1px 0 rgb(255 255 255 / 4%) inset;
+    font-size: 12px;
   }
 
   .menu-header {
     display: flex;
-    height: 30px;
+    height: 34px;
     align-items: center;
-    justify-content: space-between;
-    padding: 0 5px 0 9px;
+    gap: 4px;
+    padding: 0 5px 0 6px;
+    border-bottom: 1px solid #3c3c3c;
+  }
+
+  .search {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    align-items: center;
+    gap: 5px;
+    height: 24px;
+    padding: 0 6px;
+    border-radius: 4px;
     color: var(--text-dim);
+  }
+
+  .search:focus-within {
     background: var(--bg-panel-raised);
-    border-bottom: 1px solid #414141;
-    font-size: 11px;
+    box-shadow: 0 0 0 1px #4a4a4a inset;
+  }
+
+  .search svg {
+    width: 13px;
+    height: 13px;
+    flex: 0 0 auto;
+    fill: none;
+    stroke: var(--icon);
+    stroke-linecap: round;
+    stroke-width: 1.4;
+    opacity: 0.75;
+  }
+
+  .search input {
+    min-width: 0;
+    width: 100%;
+    padding: 0;
+    color: var(--text);
+    background: transparent;
+    border: 0;
+    outline: none;
+    font: inherit;
+    font-weight: 600;
+  }
+
+  .search input::placeholder {
+    color: var(--text-dim);
     font-weight: 600;
   }
 
   .menu-actions {
     display: flex;
     align-items: center;
-    gap: 2px;
+    gap: 1px;
   }
 
   .menu-action {
@@ -435,7 +648,7 @@
     color: var(--text-dim);
     background: transparent;
     border: 1px solid transparent;
-    border-radius: 3px;
+    border-radius: 4px;
     cursor: pointer;
   }
 
@@ -456,175 +669,276 @@
     stroke-width: 1.35;
   }
 
-  .create-items {
+  .create-section {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    padding: 5px;
+    gap: 1px;
+    padding: 4px;
   }
 
-  .create-item {
+  .create-section + .create-section {
+    border-top: 1px solid #383838;
+  }
+
+  .top {
+    max-height: 290px;
+    overflow-y: auto;
+  }
+
+  .results {
+    max-height: 360px;
+    overflow-y: auto;
+  }
+
+  .section-label {
+    padding: 3px 8px 2px;
+    color: var(--text-dim);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .create-row {
+    position: relative;
     display: flex;
-    min-height: 30px;
     align-items: center;
-    gap: 8px;
-    padding: 0 7px;
+    border-radius: 5px;
+  }
+
+  .create-row:hover,
+  .create-row.active,
+  .create-tab:hover,
+  .create-tab.open,
+  .create-tab.active {
+    background: var(--bg-hover);
+  }
+
+  .create-row.active,
+  .create-tab.active {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 70%, transparent) inset;
+  }
+
+  .create-item,
+  .create-tab {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    min-height: 28px;
+    align-items: center;
+    gap: 9px;
+    padding: 0 8px;
+    color: inherit;
     text-align: left;
     background: transparent;
-    border: 1px solid transparent;
-    border-radius: 3px;
+    border: 0;
+    border-radius: 5px;
+    font: inherit;
     cursor: pointer;
   }
 
-  .create-item:hover {
-    background: var(--bg-hover);
-    border-color: #4a4a4a;
+  .item-label {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .note-icon {
-    width: 13px;
-    height: 15px;
-    background: color-mix(in srgb, var(--icon) 20%, transparent);
-    border: 1px solid var(--icon);
-    border-radius: 2px;
-    box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--icon) 25%, transparent);
-  }
-
-  .task-icon {
-    display: grid;
-    width: 15px;
-    height: 15px;
-    flex: 0 0 auto;
-    place-items: center;
-  }
-
-  .task-icon svg {
-    display: block;
-    width: 15px;
-    height: 15px;
-    overflow: visible;
-  }
-
-  .task-icon circle {
-    fill: transparent;
-    stroke: var(--icon);
-    stroke-width: 1.35;
-  }
-
-  .kind-icon {
-    display: grid;
-    width: 15px;
-    height: 15px;
-    place-items: center;
-    border: 1px solid currentColor;
-    border-radius: 3px;
+  .note-row .create-item {
+    min-height: 34px;
     font-size: 13px;
-    font-weight: 700;
-    line-height: 1;
+    font-weight: 650;
   }
 
-  .plus-icon {
-    color: #83c38f;
-    background: #263b2d;
+  .note-row :global(.create-icon) {
+    width: 18px;
+    height: 18px;
   }
 
-  .minus-icon {
-    color: #dc8884;
-    background: #3b2928;
-  }
-
-  .module-icon {
+  .star-toggle {
     display: grid;
-    width: 15px;
-    height: 15px;
+    width: 24px;
+    height: 24px;
     flex: 0 0 auto;
     place-items: center;
+    margin-right: 2px;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 90ms ease-out;
   }
 
-  .importance-icon {
-    width: 9px;
-    height: 9px;
-    margin-inline: 3px;
-    border: 1px solid var(--icon);
-    border-radius: 50%;
-    background: var(--icon);
-    box-shadow: 0 0 5px color-mix(in srgb, var(--icon) 35%, transparent);
+  .create-row:hover .star-toggle,
+  .create-row.active .star-toggle,
+  .star-toggle:focus-visible,
+  .star-toggle.starred {
+    opacity: 1;
   }
 
-  .purpose-icon {
-    color: var(--icon);
-  }
-
-  .mood-icon::before {
-    width: 9px;
-    height: 9px;
-    border: 1px solid #fff0b0;
-    border-radius: 50%;
-    background: #f1c85b;
-    content: "";
-  }
-
-  .purpose-icon svg {
-    width: 15px;
-    height: 15px;
+  .star-toggle svg {
+    width: 13px;
+    height: 13px;
     fill: none;
-    stroke: currentColor;
+    stroke: var(--text-dim);
+    stroke-linejoin: round;
+    stroke-width: 1.2;
+  }
+
+  .star-toggle:hover svg {
+    stroke: #f1c85b;
+  }
+
+  .star-toggle.starred svg {
+    fill: #f1c85b;
+    stroke: #f1c85b;
+  }
+
+  /* In the top list the star is the unstar handle: quiet until hovered. */
+  .starred-row .star-toggle.starred {
+    opacity: 0.55;
+  }
+
+  .starred-row:hover .star-toggle.starred {
+    opacity: 1;
+  }
+
+  .tabs {
+    padding-bottom: 5px;
+  }
+
+  .create-tab kbd {
+    min-width: 14px;
+    color: var(--text-dim);
+    font: inherit;
+    font-size: 10px;
+    text-align: center;
+    opacity: 0.6;
+  }
+
+  .chevron {
+    width: 12px;
+    height: 12px;
+    flex: 0 0 auto;
+    fill: none;
+    stroke: var(--text-dim);
     stroke-linecap: round;
     stroke-linejoin: round;
     stroke-width: 1.4;
   }
 
-  /* Placeholder glyph for R5 kinds; each kind's owner may give it a proper icon later. */
-  .r5-icon {
-    width: 11px;
-    height: 11px;
-    flex: 0 0 auto;
-    border: 1.5px solid var(--text-dim);
-    border-radius: 3px;
+  .create-tab.open .chevron {
+    stroke: var(--text);
   }
 
-  .beacon-icon {
-    width: 13px;
-    height: 13px;
-    flex: 0 0 auto;
-    border-radius: 50%;
-    background: var(--icon);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--icon) 18%, transparent);
-  }
-
-  .time-icon {
-    position: relative;
-    border-radius: 50%;
-  }
-
-  .time-icon::before,
-  .time-icon::after {
+  .create-flyout {
     position: absolute;
-    background: currentColor;
+    left: calc(100% + 4px);
+    display: flex;
+    width: 196px;
+    flex-direction: column;
+    gap: 1px;
+    padding: 4px;
+    background: var(--bg-panel);
+    border: 1px solid #4b4b4b;
+    border-radius: 7px;
+    box-shadow: 0 10px 28px rgb(0 0 0 / 45%);
+    animation: flyout-in 110ms ease-out;
+  }
+
+  /* An invisible bridge over the gap so the pointer never "falls" between menu and flyout. */
+  .create-flyout::before {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -6px;
+    width: 6px;
     content: "";
   }
 
-  .time-icon::before { top: 2px; left: 4px; width: 1px; height: 3px; }
-  .time-icon::after { top: 5px; left: 4px; width: 3px; height: 1px; }
+  .create-flyout.left {
+    right: calc(100% + 4px);
+    left: auto;
+    animation-name: flyout-in-left;
+  }
 
-  .calendar-icon { position: relative; border-radius: 2px; }
-  .calendar-icon::before { position: absolute; inset: 2px 2px auto; height: 2px; background: currentColor; content: ""; }
-  .calendar-icon::after { position: absolute; inset: 6px 2px 2px; background: repeating-linear-gradient(90deg, currentColor 0 1px, transparent 1px 3px), repeating-linear-gradient(0deg, currentColor 0 1px, transparent 1px 3px); content: ""; }
+  .create-flyout.left::before {
+    right: -6px;
+    left: auto;
+  }
 
-  .image-icon { position: relative; border-radius: 2px; }
-  .image-icon::before { position: absolute; inset: 2px; border: 1px solid currentColor; border-radius: 1px; content: ""; }
-  .image-icon::after { position: absolute; right: 3px; bottom: 3px; left: 3px; height: 5px; background: linear-gradient(140deg, transparent 0 27%, currentColor 29% 39%, transparent 41%), linear-gradient(40deg, transparent 0 41%, currentColor 43% 56%, transparent 58%); content: ""; }
-  .audio-icon { position: relative; border-radius: 50%; }
-  .audio-icon::before { position: absolute; inset: 3px; border: 1px solid currentColor; border-radius: 50%; content: ""; }
-  .audio-icon::after { position: absolute; top: 2px; bottom: 2px; left: 6px; width: 2px; border-left: 1px solid currentColor; border-right: 1px solid currentColor; content: ""; }
-  .record-audio-icon { border-radius: 50%; background: #d4473f; box-shadow: inset 0 0 0 4px var(--bg-panel); }
-  .hidden-file-input { display: none; }
-  .video-icon { position: relative; }
-  .video-icon::after { position: absolute; top: 2px; left: 4px; border-top: 3px solid transparent; border-bottom: 3px solid transparent; border-left: 4px solid currentColor; content: ""; }
-  .youtube-icon { border-color: #d05a5a; border-radius: 3px; }
-  .youtube-create-input { display: grid; gap: 5px; padding: 5px; border: 1px solid var(--border); border-radius: 3px; background: var(--bg-panel-raised); }
-  .youtube-create-input input { box-sizing: border-box; width: 100%; min-width: 0; padding: 5px; border: 1px solid var(--border); border-radius: 3px; color: var(--text); background: var(--bg-panel); font: inherit; font-size: 10px; }
-  .youtube-create-error { color: #e59a94; font-size: 10px; overflow-wrap: anywhere; }
-  .youtube-create-actions { display: flex; justify-content: flex-end; gap: 4px; }
-  .youtube-create-actions button { padding: 4px 6px; border: 1px solid var(--border); border-radius: 3px; color: var(--text); background: var(--bg-panel-raised); font: inherit; font-size: 10px; cursor: pointer; }
+  @keyframes flyout-in {
+    from { opacity: 0; transform: translateX(-4px); }
+  }
+
+  @keyframes flyout-in-left {
+    from { opacity: 0; transform: translateX(4px); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .create-flyout { animation: none; }
+  }
+
+  .empty {
+    margin: 0;
+    padding: 10px 8px;
+    color: var(--text-dim);
+    font-size: 11px;
+  }
+
+  .youtube-create-input {
+    display: grid;
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .youtube-create-title {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-weight: 600;
+  }
+
+  .youtube-create-input input {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    padding: 6px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    background: var(--bg-panel-raised);
+    font: inherit;
+    font-size: 11px;
+  }
+
+  .youtube-create-error {
+    color: #e59a94;
+    font-size: 10px;
+    overflow-wrap: anywhere;
+  }
+
+  .youtube-create-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 4px;
+  }
+
+  .youtube-create-actions button {
+    padding: 4px 9px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    background: var(--bg-panel-raised);
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+  }
+
+  .youtube-create-actions button.primary {
+    border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+  }
 </style>

@@ -20,6 +20,7 @@ export const PROFILE_KEYS = [
   "skipCompletedTimerConfirmation",
   "videoExternalThresholdMb",
   "appearance",
+  "createMenu",
 ] as const;
 
 export const MAX_PROFILES = 20;
