@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GridIndex } from "../src/board/spatialIndex";
-import { tierForZoom } from "../src/board/visibility.svelte";
+import { noteShowsFull, tierForZoom } from "../src/board/visibility.svelte";
 import { estimatedNoteHeight } from "../src/notes/layout.svelte";
 
 describe("GridIndex", () => {
@@ -39,13 +39,23 @@ describe("GridIndex", () => {
 describe("level of detail", () => {
   it("switches tiers with hysteresis", () => {
     expect(tierForZoom(1, "full")).toBe("full");
-    expect(tierForZoom(0.34, "full")).toBe("full");
-    expect(tierForZoom(0.3, "full")).toBe("simple");
-    expect(tierForZoom(0.34, "simple")).toBe("simple");
-    expect(tierForZoom(0.4, "simple")).toBe("full");
+    expect(tierForZoom(0.18, "full")).toBe("full");
+    expect(tierForZoom(0.15, "full")).toBe("simple");
+    expect(tierForZoom(0.18, "simple")).toBe("simple");
+    expect(tierForZoom(0.21, "simple")).toBe("full");
     expect(tierForZoom(0.05, "simple")).toBe("min");
     expect(tierForZoom(0.12, "min")).toBe("min");
     expect(tierForZoom(0.14, "min")).toBe("simple");
+  });
+
+  it("keeps a note's text by its size on screen: big notes much farther out than small ones", () => {
+    expect(noteShowsFull(0.25, 1, false)).toBe(true);
+    expect(noteShowsFull(0.15, 1, false)).toBe(false);
+    expect(noteShowsFull(0.18, 1, true)).toBe(true);
+    expect(noteShowsFull(0.18, 1, false)).toBe(false);
+    // A 4x note still shows its text at the farthest zoom; a half-size note loses it sooner.
+    expect(noteShowsFull(0.06, 4, false)).toBe(true);
+    expect(noteShowsFull(0.3, 0.5, false)).toBe(false);
   });
 
   it("estimates the height of a never-drawn text note from its wrapped lines", () => {

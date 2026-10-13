@@ -11,7 +11,8 @@
   import { clearTextFitWidthCache, measureAndCacheTextMinimumWidth } from "../editor/textFitWidth";
   import NoteNode from "./NoteNode.svelte";
   import NoteShell from "./NoteShell.svelte";
-  import { lod, pinned, startVisibility, visible } from "../board/visibility.svelte";
+  import { lod, noteShowsFull, pinned, startVisibility, visible } from "../board/visibility.svelte";
+  import { normalizeNoteScale } from "../model/note";
   import { selection } from "../selection/selection.svelte";
   import { editing } from "./editing.svelte";
   import { copyCursorCoordinates } from "./noteCommands";
@@ -41,10 +42,33 @@
   let paintIndex = $derived(new Map(orderedNoteIds.map((id, index) => [id, index])));
   /** Selected and edited notes stay mounted (and fully drawn) wherever they are. */
   let pinnedIds = $derived(new Set(editing.noteId ? [...selection.ids, editing.noteId] : selection.ids));
+  /** Previous per-note decision, for hysteresis (plain map: written only by `fullIds`). */
+  const shownFull = new Set<string>();
+  let fullIdsCache: ReadonlySet<string> = new Set();
+  /**
+   * Visible notes big enough on screen (zoom × the note's own scale) to draw their full body and
+   * text. Decided per note, so a huge note keeps its text far out and a small one loses it sooner.
+   */
+  let fullIds = $derived.by(() => {
+    const zoom = camera.zoom;
+    const next = new Set<string>();
+    for (const id of visible.ids) {
+      const note = board.notes[id];
+      if (note && noteShowsFull(zoom, normalizeNoteScale(note.scale), shownFull.has(id))) next.add(id);
+    }
+    // Same decision as before: keep the old Set so the note list below is not re-derived per zoom frame.
+    if (next.size === shownFull.size && [...next].every((id) => shownFull.has(id))) return fullIdsCache;
+    shownFull.clear();
+    for (const id of next) shownFull.add(id);
+    fullIdsCache = next;
+    return next;
+  });
   /** Only notes near the viewport are in the DOM, in paint order. */
   let renderedIds = $derived.by(() => {
-    // At the "min" tier FarLayer paints every note on one canvas; the DOM keeps only pinned notes.
+    // At the "min" tier FarLayer paints the notes on one canvas; the DOM keeps pinned notes and the
+    // ones still big enough on screen to show their text.
     const ids = new Set(lod.tier === "min" ? pinned.ids : visible.ids);
+    if (lod.tier === "min") for (const id of fullIds) ids.add(id);
     for (const id of pinnedIds) ids.add(id);
     const order = paintIndex;
     return [...ids].filter((id) => order.has(id)).sort((a, b) => order.get(a)! - order.get(b)!);
@@ -249,10 +273,10 @@
     {#each renderedIds as noteId (noteId)}
       {@const note = board.notes[noteId]}
       {#if note && note.type !== "beacon"}
-        {#if lod.tier === "full" || note.type === "image" || pinnedIds.has(noteId) || pinned.ids.has(noteId)}
+        {#if fullIds.has(noteId) || note.type === "image" || pinnedIds.has(noteId) || pinned.ids.has(noteId)}
           <NoteNode {note} measureHeight={observeAutoHeight} />
         {:else}
-          <NoteShell {note} tier={lod.tier} />
+          <NoteShell {note} tier={lod.tier === "min" ? "min" : "simple"} />
         {/if}
       {/if}
     {/each}

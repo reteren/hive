@@ -12,9 +12,13 @@ import { GridIndex, type Rect } from "./spatialIndex";
 
 export type LodTier = "full" | "simple" | "min";
 
-/** Zoom thresholds with hysteresis, so hovering around a boundary does not remount everything. */
-const FULL_ENTER = 0.36;
-const FULL_LEAVE = 0.32;
+/**
+ * Zoom thresholds with hysteresis, so hovering around a boundary does not remount everything.
+ * FULL_* is also the per-note text threshold, applied to zoom × the note's own scale (noteShowsFull):
+ * a big note keeps its text much farther out than a small one.
+ */
+const FULL_ENTER = 0.2;
+const FULL_LEAVE = 0.17;
 const SIMPLE_ENTER = 0.13;
 const SIMPLE_LEAVE = 0.11;
 /** Viewport margin (fraction of the viewport) a note must enter to mount, and leave to unmount. */
@@ -95,6 +99,11 @@ export function tierForZoom(zoom: number, current: LodTier): LodTier {
   if (current === "full") return zoom < FULL_LEAVE ? (zoom < SIMPLE_LEAVE ? "min" : "simple") : "full";
   if (current === "simple") return zoom >= FULL_ENTER ? "full" : zoom < SIMPLE_LEAVE ? "min" : "simple";
   return zoom >= FULL_ENTER ? "full" : zoom >= SIMPLE_ENTER ? "simple" : "min";
+}
+
+/** Whether a note draws its full body (text) at this zoom; `wasFull` adds hysteresis per note. */
+export function noteShowsFull(zoom: number, noteScale: number, wasFull: boolean): boolean {
+  return zoom * noteScale >= (wasFull ? FULL_LEAVE : FULL_ENTER);
 }
 
 /** World rectangle on screen, grown by `margin` viewports on every side. */
