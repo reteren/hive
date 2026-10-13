@@ -7,6 +7,8 @@ type UpdatePhase = "idle" | "available" | "downloading" | "installing" | "error"
 /** Update offer shown once per launch when GitHub has a newer signed release. */
 export const updater = $state({
   phase: "idle" as UpdatePhase,
+  /** Installed version and the offered one, shown as "current → new". */
+  currentVersion: "",
   version: "",
   notes: "",
   progress: 0,
@@ -14,6 +16,14 @@ export const updater = $state({
 });
 
 let pending: Update | null = null;
+
+/** Release notes worth showing: empty when they only repeat the version ("hive 1.9.3", "v1.9.3"). */
+export function meaningfulReleaseNotes(body: string | undefined, version: string): string {
+  const notes = body?.trim() ?? "";
+  const bare = notes.toLowerCase().replace(/^hive\s*/, "").replace(/^v/, "").trim();
+  return bare === version.toLowerCase().replace(/^v/, "") ? "" : notes;
+}
+
 let started = false;
 
 /** Check the release feed once after startup; failures (offline, no release yet) stay silent. */
@@ -28,8 +38,9 @@ async function runCheck(): Promise<void> {
     const update = await check();
     if (!update) return;
     pending = update;
+    updater.currentVersion = update.currentVersion;
     updater.version = update.version;
-    updater.notes = update.body?.trim() ?? "";
+    updater.notes = meaningfulReleaseNotes(update.body, update.version);
     updater.phase = "available";
   } catch (error) {
     console.warn("Update check failed.", error);
