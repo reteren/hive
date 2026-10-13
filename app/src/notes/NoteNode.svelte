@@ -178,6 +178,7 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
   style:--note-frame={paint["--note-frame"]}
   style:--note-body={paint["--note-body"]}
   style:--note-header-text={paint["--note-header-text"]}
+  style:--note-header-text-done={paint["--note-header-text-done"]}
   style:--text={paint["--text"]}
   style:--text-dim={paint["--text-dim"]}
   style:--note-header-height={`${NOTE_HEADER_HEIGHT_UNITS * PX_PER_UNIT}px`}

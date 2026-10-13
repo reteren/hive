@@ -1,6 +1,15 @@
 /** A small, shared cache of resolution-matched image decodes used by attachment previews. */
 const MAX_CACHED_PIXELS = 16_000_000;
 const MAX_CACHED_ENTRIES = 96;
+/**
+ * One small decode per picture, kept apart from the budgeted cache (zooming in fills that budget with
+ * large decodes and evicts everything else). A picture that appears again shows its preview at once
+ * while the sharp decode is made, instead of blinking empty. 2000 × 160² px ≈ 200 MB worst case.
+ */
+const PREVIEW_EDGE = 160;
+const MAX_PREVIEWS = 2000;
+const previews = new Map<string, ImageBitmap>();
+const previewsInFlight = new Set<string>();
 
 interface BitmapEntry {
   key: string;
@@ -72,6 +81,7 @@ export function acquireDisplayBitmap(
         });
         created.bitmap = bitmap;
         created.pixels = bitmap.width * bitmap.height;
+        rememberPreview(url, bitmap);
         cachedPixels += created.pixels;
         trimCache();
         return bitmap;
@@ -130,6 +140,35 @@ export function peekCachedDisplayBitmap(
     }
   }
   return best?.bitmap;
+}
+
+/** Any decode of this picture that can be drawn right now: the closest cached size, else its preview. */
+export function peekAnyDisplayBitmap(url: string, width?: number, height?: number): ImageBitmap | undefined {
+  return peekCachedDisplayBitmap(url, width, height) ?? previews.get(url);
+}
+
+function rememberPreview(url: string, bitmap: ImageBitmap): void {
+  const existing = previews.get(url);
+  if (existing) {
+    previews.delete(url);
+    previews.set(url, existing);
+    return;
+  }
+  if (previewsInFlight.has(url) || typeof createImageBitmap !== "function") return;
+  const factor = Math.min(1, PREVIEW_EDGE / Math.max(bitmap.width, bitmap.height, 1));
+  previewsInFlight.add(url);
+  void createImageBitmap(bitmap, {
+    resizeWidth: Math.max(1, Math.round(bitmap.width * factor)),
+    resizeHeight: Math.max(1, Math.round(bitmap.height * factor)),
+    resizeQuality: "medium",
+  }).then((preview) => {
+    previews.set(url, preview);
+    while (previews.size > MAX_PREVIEWS) {
+      const [oldest, old] = previews.entries().next().value as [string, ImageBitmap];
+      previews.delete(oldest);
+      old.close();
+    }
+  }).catch(() => undefined).finally(() => previewsInFlight.delete(url));
 }
 
 function trimCache(): void {

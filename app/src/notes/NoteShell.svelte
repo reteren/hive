@@ -59,6 +59,7 @@
   style:--note-frame={paint["--note-frame"]}
   style:--note-body={paint["--note-body"]}
   style:--note-header-text={paint["--note-header-text"]}
+  style:--note-header-text-done={paint["--note-header-text-done"]}
   style:transform={`translate(${note.x * PX_PER_UNIT}px, ${note.y * PX_PER_UNIT}px)${scale === 1 ? "" : ` scale(${scale})`}`}
   style:width={`${width * PX_PER_UNIT}px`}
   style:height={`${height * PX_PER_UNIT}px`}

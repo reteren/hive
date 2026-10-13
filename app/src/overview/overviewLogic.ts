@@ -96,7 +96,10 @@ export function overviewZoneLabel(name: string): string {
 export function overviewZoneFontSize(name: string, width: number, height: number, zoom: number): number | null {
   if (![width, height, zoom].every(Number.isFinite) || width <= 0 || height <= 0 || zoom <= 0) return null;
   const text = overviewZoneLabel(name);
-  const size = Math.min(5, width / (Math.max(text.length, 1) * 0.58), height * 0.36);
+  // At most 5 units up close; zoomed out the cap grows to keep 14 px on screen, so the names stay
+  // readable from afar as long as the zone itself is big enough to hold them.
+  const cap = Math.max(5, 14 / (PX_PER_UNIT * zoom));
+  const size = Math.min(cap, width / (Math.max(text.length, 1) * 0.58), height * 0.36);
   return size * PX_PER_UNIT * zoom >= 8 ? size : null;
 }
 

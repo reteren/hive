@@ -13,6 +13,9 @@ export const DEFAULT_NOTE_COLORS: Record<NoteColorPart, string> = { color: "#353
 /** Dark text that replaces the light theme text on a light background. */
 const DARK_TEXT = "#1f1f1f";
 const DARK_TEXT_DIM = "#4a4a4a";
+/** Muted title of a completed task: light grey on dark headers, dark grey on light ones. */
+const DONE_TEXT_LIGHT = "#cccccc";
+const DONE_TEXT_DARK = "#2a2a2a";
 
 /** Beacons have their own colour editor; images have no frame to paint. */
 export function canPaintNote(note: Note | undefined): note is Note {
@@ -34,6 +37,20 @@ export function needsDarkText(hex: string | undefined): boolean {
   return Boolean(hex && relativeLuminance(hex) > 0.4);
 }
 
+/** WCAG contrast ratio between two "#rrggbb" colours, 1–21. */
+export function contrastRatio(a: string, b: string): number {
+  const [light, dark] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x);
+  return (light + 0.05) / (dark + 0.05);
+}
+
+/**
+ * Title colour of a completed task on a painted header: whichever of the light and the dark grey reads
+ * better on it, so a grey node's crossed-out title never melts into the header.
+ */
+export function doneHeaderText(hex: string): string {
+  return contrastRatio(DONE_TEXT_LIGHT, hex) >= contrastRatio(DONE_TEXT_DARK, hex) ? DONE_TEXT_LIGHT : DONE_TEXT_DARK;
+}
+
 /** CSS custom properties a painted node sets on its card; empty for an unpainted one. */
 export function noteColorStyle(note: Pick<Note, "color" | "accentColor" | "type">): Record<string, string> {
   if (note.type === "beacon") return {};
@@ -41,6 +58,7 @@ export function noteColorStyle(note: Pick<Note, "color" | "accentColor" | "type"
   if (note.color) {
     style["--note-frame"] = note.color;
     if (needsDarkText(note.color)) style["--note-header-text"] = DARK_TEXT;
+    style["--note-header-text-done"] = doneHeaderText(note.color);
   }
   if (note.accentColor) {
     style["--note-body"] = note.accentColor;

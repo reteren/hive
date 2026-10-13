@@ -3,7 +3,7 @@
   import { camera } from "../board/camera.svelte";
   import type { ImageRef } from "./types";
   import { attachmentUrl } from "./service";
-  import { acquireDisplayBitmap, displayBitmapSize, type DisplayBitmapLease } from "./displayBitmap";
+  import { acquireDisplayBitmap, displayBitmapSize, peekAnyDisplayBitmap, type DisplayBitmapLease } from "./displayBitmap";
   import { gifPlayback, isGifStopped, shouldPlayGif, type GifPlaybackTarget } from "./gifPlayback.svelte";
 
   interface Props {
@@ -32,12 +32,15 @@
   let canvas = $state<HTMLCanvasElement | null>(null);
   let hovered = $state(false);
   let observedHostSelected = $state(false);
-  let visibleOnScreen = $state(false);
+  // Mounted only near the viewport; the observer corrects this, but the first frame already draws.
+  let visibleOnScreen = $state(true);
   let box = $state({ width: 0, height: 0 });
   let scaleRevision = $state(0);
   let loading = $state(true);
   let failed = $state(false);
   let stillReady = $state(false);
+  /** Source whose still is currently on the canvas (any resolution). */
+  let drawnSource = "";
   let url = $derived(attachmentUrl(image.file));
   let selected = $derived(hostSelected ?? observedHostSelected);
   let stopped = $derived(isGifStopped(target));
@@ -57,10 +60,18 @@
     void scaleRevision;
     const ratio = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
     const shouldLoadStill = visibleOnScreen || selected;
-    loading = Boolean(source);
     failed = !source;
-    stillReady = false;
-    if (!shouldLoadStill && currentCanvas) { currentCanvas.width = 1; currentCanvas.height = 1; }
+    // Off-screen stills are freed after a while, not at once (see AttachmentImage: blink on zoom).
+    const clear = !shouldLoadStill && currentCanvas
+      ? setTimeout(() => { currentCanvas.width = 1; currentCanvas.height = 1; drawnSource = ""; stillReady = false; }, 3000)
+      : 0;
+    if (clear) return () => clearTimeout(clear);
+    // A zoom step only swaps the still's resolution: keep the drawn still (and no "Loading…") until
+    // the new decode is ready — resetting here made GIFs blink while zooming.
+    if (drawnSource !== source) {
+      loading = Boolean(source);
+      stillReady = false;
+    }
     if (!source || !currentCanvas || boxWidth <= 0 || boxHeight <= 0 || !shouldLoadStill) return;
 
     const sourceWidth = image.naturalWidth || 480;
@@ -82,7 +93,13 @@
       }
       loading = false;
       stillReady = true;
+      drawnSource = source;
     };
+
+    if (drawnSource !== source && image.naturalWidth > 0 && image.naturalHeight > 0) {
+      const cached = peekAnyDisplayBitmap(source, size.width, size.height);
+      if (cached) draw(cached);
+    }
 
     if (image.naturalWidth > 0 && image.naturalHeight > 0) {
       void acquireDisplayBitmap(source, size.width, size.height).then((acquired) => {
@@ -111,6 +128,7 @@
         still.height = 0;
         loading = false;
         stillReady = true;
+        drawnSource = source;
         frame.removeAttribute("src");
       };
       frame.onerror = () => { if (active) { loading = false; failed = true; } };

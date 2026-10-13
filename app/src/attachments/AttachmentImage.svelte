@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { camera } from "../board/camera.svelte";
   import { attachmentUrl } from "./service";
-  import { acquireDisplayBitmap, displayBitmapSize, type DisplayBitmapLease } from "./displayBitmap";
+  import { acquireDisplayBitmap, displayBitmapSize, peekAnyDisplayBitmap, type DisplayBitmapLease } from "./displayBitmap";
   import type { ImageRef } from "./types";
 
   interface Props {
@@ -12,10 +12,13 @@
     alt?: string;
   }
 
+  const OFFSCREEN_CLEAR_MS = 3000;
+
   let { image, class: className = "", style = "", alt = image.name ?? image.file }: Props = $props();
   let canvas = $state<HTMLCanvasElement | null>(null);
   let box = $state({ width: 0, height: 0 });
-  let nearViewport = $state(false);
+  // Notes are mounted only near the viewport, so draw on the first frame instead of waiting for the observer.
+  let nearViewport = $state(true);
   let scaleRevision = $state(0);
   let intrinsicSize = $state({ width: 0, height: 0 });
   let loadState = $state<"loading" | "ready" | "error">("loading");
@@ -40,8 +43,12 @@
     void scaleRevision;
     const ratio = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
     if (!element || !source || boxWidth <= 0 || boxHeight <= 0 || !nearViewport) {
-      if (element && !nearViewport) { element.width = 1; element.height = 1; renderedKey = ""; }
-      return;
+      if (!element || nearViewport) return;
+      // Free the pixels of a picture that stays off screen, but not at once: while zooming, pictures
+      // cross the screen edge faster than the observer reports them back, and clearing at once made
+      // them come back empty (blink).
+      const clear = setTimeout(() => { element.width = 1; element.height = 1; renderedKey = ""; }, OFFSCREEN_CLEAR_MS);
+      return () => clearTimeout(clear);
     }
 
     const sourceWidth = image.naturalWidth || intrinsicSize.width;
@@ -77,7 +84,21 @@
     if (renderedKey === key) return;
     let current = true;
     let lease: DisplayBitmapLease | null = null;
-    loadState = "loading";
+    // A zoom step only swaps the resolution: keep the picture already on the canvas until the new
+    // decode is ready (hiding it here made pictures blink while zooming). A fresh canvas shows any
+    // cached decode of the same file at once and is hidden only when there is nothing to show.
+    if (renderedKey === "") {
+      const cached = peekAnyDisplayBitmap(source, size.width, size.height);
+      if (cached) {
+        element.width = cached.width;
+        element.height = cached.height;
+        element.getContext("2d")?.drawImage(cached, 0, 0);
+        renderedKey = `${source}\u0000cached`;
+        loadState = "ready";
+      } else {
+        loadState = "loading";
+      }
+    }
     void acquireDisplayBitmap(source, size.width, size.height).then((acquired) => {
       if (!current || !element.isConnected) {
         acquired.release();

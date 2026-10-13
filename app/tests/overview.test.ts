@@ -35,6 +35,11 @@ describe("overview labels", () => {
   it("fits zone labels inside their shape and hides tiny labels", () => {
     expect(overviewZoneFontSize("Planning", 40, 20, 1)).toBeGreaterThan(0);
     expect(overviewZoneFontSize("Long zone name", 3, 2, 1)).toBeNull();
+    // Zoomed far out a big zone keeps a readable name (>= 14 px), a tiny one still has none.
+    const far = overviewZoneFontSize("Planning", 400, 200, 0.08);
+    expect(far! * 10 * 0.08).toBeGreaterThanOrEqual(14);
+    expect(overviewZoneFontSize("Planning", 400, 200, 1)).toBe(5);
+    expect(overviewZoneFontSize("Planning", 20, 10, 0.08)).toBeNull();
   });
 });
 

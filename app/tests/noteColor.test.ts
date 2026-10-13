@@ -6,6 +6,7 @@ import { replaceLinks } from "../src/model/links.svelte";
 import { clear, redo, undo } from "../src/history/history.svelte";
 import { selection } from "../src/selection/selection.svelte";
 import { objectColor } from "../src/links/colors";
+import { contrastRatio } from "../src/notes/noteColorLogic";
 import { mergeLoadedNotes, parseProjectIndex, serializeProjectIndex } from "../src/project/index";
 import {
   closeNoteColorPopover,
@@ -108,11 +109,26 @@ describe("node colours", () => {
     expect(noteColorStyle({ type: "note" })).toEqual({});
     expect(noteColorStyle({ type: "note", color: "#202040", accentColor: "#f4f0c0" })).toEqual({
       "--note-frame": "#202040",
+      "--note-header-text-done": "#cccccc",
       "--note-body": "#f4f0c0",
       "--text": "#1f1f1f",
       "--text-dim": "#4a4a4a",
     });
     expect(noteColorStyle({ type: "note", color: "#ffe066" })["--note-header-text"]).toBe("#1f1f1f");
+  });
+
+  it("keeps a completed task's title readable on any header colour", () => {
+    const done = (color: string) => noteColorStyle({ type: "note", color })["--note-header-text-done"];
+    expect(done("#353535")).toBe("#cccccc");
+    expect(done("#202040")).toBe("#cccccc");
+    // Mid grey: the old theme grey (#a0a0a0) was nearly invisible here.
+    expect(done("#808080")).toBe("#2a2a2a");
+    expect(done("#a0a0a0")).toBe("#2a2a2a");
+    expect(done("#ffe066")).toBe("#2a2a2a");
+    for (const color of ["#353535", "#5a5a5a", "#808080", "#a0a0a0", "#c0c0c0", "#ffffff", "#ff3b30", "#2050ff"]) {
+      expect(contrastRatio(done(color)!, color)).toBeGreaterThanOrEqual(2.9);
+    }
+    expect(noteColorStyle({ type: "note" })["--note-header-text-done"]).toBeUndefined();
   });
 
   it("saves both colours with the project", () => {

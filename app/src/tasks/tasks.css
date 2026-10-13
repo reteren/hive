@@ -4,10 +4,11 @@
   gap: 5px;
 }
 
+/* A painted header sets --note-header-text-done (light or dark grey, whichever reads on it). */
 .note-card[data-task="done"] .note-name {
-  color: var(--text-dim);
+  color: var(--note-header-text-done, var(--text-dim));
   text-decoration: line-through;
-  text-decoration-color: #a0a0a0;
+  text-decoration-color: currentColor;
 }
 
 .note-card[data-task="done"] .note-content {
