@@ -2,7 +2,7 @@
   import { tool } from "../tools/tool.svelte";
   import { noteMenuItemsForContext } from "./noteMenu";
   import "../tasks/taskActions.svelte";
-  import { onMount } from "svelte";
+  import { flushSync, onMount } from "svelte";
   import type { Action } from "svelte/action";
   import { board, notifyBoardMutation } from "../model/board.svelte";
   import { camera, viewport } from "../board/camera.svelte";
@@ -63,12 +63,56 @@
     fullIdsCache = next;
     return next;
   });
+  /**
+   * What is drawn full right now. It follows `fullIds` a few notes per frame, centre of the screen
+   * first: crossing the text threshold can turn a hundred-plus shells into full notes at once, and
+   * mounting them in one frame froze wheel zoom for 70–130 ms (then the camera "teleported").
+   */
+  let drawnFull = $state.raw<ReadonlySet<string>>(new Set());
+  const FULL_SYNC_BUDGET_MS = 2;
+  const FULL_SYNC_CHUNK = 2;
+  let fullSyncFrame = 0;
+
+  function syncDrawnFull(): void {
+    fullSyncFrame = 0;
+    const target = fullIds;
+    const next = new Set(drawnFull);
+    // Notes that left the view are not mounted as full anyway: drop them at once.
+    for (const id of next) if (!target.has(id) && !visible.ids.has(id)) next.delete(id);
+    const removes = [...next].filter((id) => !target.has(id));
+    const centre = screenToWorld(camera, viewport, { x: viewport.width / 2, y: viewport.height / 2 });
+    const distance = (id: string): number => {
+      const note = board.notes[id];
+      return note ? (note.x - centre.x) ** 2 + (note.y - centre.y) ** 2 : Infinity;
+    };
+    const adds = [...target].filter((id) => !next.has(id)).sort((a, b) => distance(a) - distance(b));
+    let added = 0;
+    let removed = 0;
+    const started = performance.now();
+    do {
+      for (let k = 0; k < FULL_SYNC_CHUNK && added < adds.length; k++) next.add(adds[added++]);
+      for (let k = 0; k < FULL_SYNC_CHUNK && removed < removes.length; k++) next.delete(removes[removed++]);
+      drawnFull = new Set(next);
+      flushSync();
+    } while (performance.now() - started < FULL_SYNC_BUDGET_MS && (added < adds.length || removed < removes.length));
+    if (added < adds.length || removed < removes.length) fullSyncFrame = requestAnimationFrame(syncDrawnFull);
+  }
+
+  $effect(() => {
+    void fullIds;
+    if (!fullSyncFrame) fullSyncFrame = requestAnimationFrame(syncDrawnFull);
+  });
+
+  $effect(() => () => {
+    if (fullSyncFrame) cancelAnimationFrame(fullSyncFrame);
+  });
+
   /** Only notes near the viewport are in the DOM, in paint order. */
   let renderedIds = $derived.by(() => {
     // At the "min" tier FarLayer paints the notes on one canvas; the DOM keeps pinned notes and the
     // ones still big enough on screen to show their text.
     const ids = new Set(lod.tier === "min" ? pinned.ids : visible.ids);
-    if (lod.tier === "min") for (const id of fullIds) ids.add(id);
+    if (lod.tier === "min") for (const id of drawnFull) ids.add(id);
     for (const id of pinnedIds) ids.add(id);
     const order = paintIndex;
     return [...ids].filter((id) => order.has(id)).sort((a, b) => order.get(a)! - order.get(b)!);
@@ -273,7 +317,7 @@
     {#each renderedIds as noteId (noteId)}
       {@const note = board.notes[noteId]}
       {#if note && note.type !== "beacon"}
-        {#if fullIds.has(noteId) || note.type === "image" || pinnedIds.has(noteId) || pinned.ids.has(noteId)}
+        {#if drawnFull.has(noteId) || note.type === "image" || pinnedIds.has(noteId) || pinned.ids.has(noteId)}
           <NoteNode {note} measureHeight={observeAutoHeight} />
         {:else}
           <NoteShell {note} tier={lod.tier === "min" ? "min" : "simple"} />
