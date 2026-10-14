@@ -8,12 +8,16 @@
   let canvas: HTMLCanvasElement;
   let devicePixelRatio = $state(1);
   let themeRevision = $state(0);
+  // Grid colours come from CSS variables; reading them forces a style recalc of the whole page, so
+  // read them once per theme instead of on every camera change (a wheel burst redraws per event).
+  let gridColors: { minor: string; major: string; axis: string } | null = null;
 
   onMount(() => {
     const updatePixelRatio = () => {
       devicePixelRatio = window.devicePixelRatio || 1;
     };
     const updateTheme = () => {
+      gridColors = null;
       themeRevision += 1;
     };
 
@@ -63,11 +67,19 @@
     if (!showGrid || width === 0 || height === 0 || !Number.isFinite(currentCamera.zoom)) return;
     if (!Number.isFinite(step) || step <= 0 || currentCamera.zoom <= 0) return;
 
-    const styles = getComputedStyle(target);
-    const minorColor = styles.getPropertyValue("--grid-minor").trim();
-    const majorColor = styles.getPropertyValue("--grid-major").trim();
-    const axisColor = styles.getPropertyValue("--axis").trim();
-    if (!minorColor || !majorColor || !axisColor) return;
+    if (!gridColors) {
+      const styles = getComputedStyle(target);
+      gridColors = {
+        minor: styles.getPropertyValue("--grid-minor").trim(),
+        major: styles.getPropertyValue("--grid-major").trim(),
+        axis: styles.getPropertyValue("--axis").trim(),
+      };
+    }
+    const { minor: minorColor, major: majorColor, axis: axisColor } = gridColors;
+    if (!minorColor || !majorColor || !axisColor) {
+      gridColors = null;
+      return;
+    }
 
     const pixelsPerUnit = PX_PER_UNIT * currentCamera.zoom;
     const stride = gridLineStride(step, currentCamera.zoom);

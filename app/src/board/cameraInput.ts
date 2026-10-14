@@ -171,15 +171,33 @@ export function attachCameraInput(board: HTMLElement): () => void {
     setPointerScreen(null);
   }
 
+  // A free-spinning or high-resolution wheel fires several events per frame. Each camera change
+  // re-renders the whole board, so the events only add up here and the camera moves once a frame.
+  let wheelFrameId: number | null = null;
+  let pendingWheelDelta = 0;
+  let pendingWheelClient: Point | null = null;
+
   function onWheel(event: WheelEvent): void {
     event.preventDefault();
 
-    const screenPoint = updatePointer(event.clientX, event.clientY);
+    const deltaPixels = event.deltaY * wheelDeltaScale(event.deltaMode, board);
+    pendingWheelDelta += Math.min(2000, Math.max(-2000, deltaPixels));
+    pendingWheelClient = { x: event.clientX, y: event.clientY };
+    if (wheelFrameId === null) wheelFrameId = requestAnimationFrame(flushWheelFrame);
+  }
+
+  function flushWheelFrame(): void {
+    wheelFrameId = null;
+    const client = pendingWheelClient;
+    const delta = Math.min(2000, Math.max(-2000, pendingWheelDelta));
+    pendingWheelClient = null;
+    pendingWheelDelta = 0;
+    if (!client) return;
+
+    const screenPoint = updatePointer(client.x, client.y);
     if (!screenPoint) return;
 
-    const deltaPixels = event.deltaY * wheelDeltaScale(event.deltaMode, board);
-    const boundedDelta = Math.min(2000, Math.max(-2000, deltaPixels));
-    const factor = Math.exp(-boundedDelta * cameraSettings.zoomSensitivity);
+    const factor = Math.exp(-delta * cameraSettings.zoomSensitivity);
     const zoomed = zoomAt(camera, viewport, screenPoint, factor, cameraSettings);
     camera.x = zoomed.x;
     camera.y = zoomed.y;
@@ -238,6 +256,7 @@ export function attachCameraInput(board: HTMLElement): () => void {
     clearHeldKeys();
     if (dragPointerId !== null) endDrag(dragPointerId, true);
     if (dragFrameId !== null) cancelAnimationFrame(dragFrameId);
+    if (wheelFrameId !== null) cancelAnimationFrame(wheelFrameId);
 
     board.removeEventListener("pointerdown", onPointerDown);
     board.removeEventListener("pointermove", onPointerMove);

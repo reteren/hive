@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { camera } from "../board/camera.svelte";
+  import { createScreenScale } from "./screenScale";
   import type { ImageRef } from "./types";
   import { attachmentUrl } from "./service";
   import { acquireDisplayBitmap, displayBitmapSize, peekAnyDisplayBitmap, type DisplayBitmapLease } from "./displayBitmap";
@@ -52,6 +53,8 @@
     hoverWhenSelected,
   }));
 
+  const screenScaleOf = createScreenScale();
+
   $effect(() => {
     const source = url;
     const currentCanvas = canvas;
@@ -76,7 +79,7 @@
 
     const sourceWidth = image.naturalWidth || 480;
     const sourceHeight = image.naturalHeight || 270;
-    const screenScale = currentCanvas.getBoundingClientRect().width / boxWidth;
+    const screenScale = screenScaleOf(currentCanvas, boxWidth, camera.zoom, scaleRevision);
     const size = displayBitmapSize(sourceWidth, sourceHeight, boxWidth, boxHeight, screenScale * ratio);
     if (size.width <= 0 || size.height <= 0) return;
     let active = true;
@@ -111,7 +114,7 @@
       const frame = new Image();
       frame.onload = () => {
         if (!active || frame.naturalWidth <= 0 || frame.naturalHeight <= 0) return;
-        const screenScale = currentCanvas.getBoundingClientRect().width / boxWidth;
+        const screenScale = screenScaleOf(currentCanvas, boxWidth, camera.zoom, scaleRevision);
         const target = displayBitmapSize(frame.naturalWidth, frame.naturalHeight, boxWidth, boxHeight, screenScale * ratio);
         const still = document.createElement("canvas");
         still.width = target.width;

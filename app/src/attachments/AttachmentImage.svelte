@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { camera } from "../board/camera.svelte";
+  import { createScreenScale } from "./screenScale";
   import { attachmentUrl } from "./service";
   import { acquireDisplayBitmap, displayBitmapSize, peekAnyDisplayBitmap, type DisplayBitmapLease } from "./displayBitmap";
   import type { ImageRef } from "./types";
@@ -35,6 +36,8 @@
     renderedKey = "";
   });
 
+  const screenScaleOf = createScreenScale();
+
   $effect(() => {
     const element = canvas;
     const source = src;
@@ -53,7 +56,7 @@
 
     const sourceWidth = image.naturalWidth || intrinsicSize.width;
     const sourceHeight = image.naturalHeight || intrinsicSize.height;
-    const screenScale = element.getBoundingClientRect().width / boxWidth;
+    const screenScale = screenScaleOf(element, boxWidth, camera.zoom, scaleRevision);
     if (sourceWidth <= 0 || sourceHeight <= 0) {
       let current = true;
       const probe = new Image();

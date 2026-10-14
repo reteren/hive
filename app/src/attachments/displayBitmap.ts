@@ -41,17 +41,13 @@ export function displayBitmapSize(
   const displayedHeight = positive(boxHeight) * positive(scale) * 2;
   if (!width || !height || !displayedWidth || !displayedHeight) return { width: 0, height: 0 };
 
-  const factor = Math.min(1, displayedWidth / width, displayedHeight / height);
-  let targetWidth = Math.max(1, Math.floor(width * factor));
-  let targetHeight = Math.max(1, Math.floor(height * factor));
-  // Keep common size buckets reusable while never exceeding the requested screen resolution.
-  if (targetWidth > 64 && targetHeight > 64) {
-    const bucketWidth = Math.max(64, Math.floor(targetWidth / 64) * 64);
-    const bucketHeight = Math.max(64, Math.floor(targetHeight / 64) * 64);
-    const bucketFactor = Math.min(bucketWidth / targetWidth, bucketHeight / targetHeight);
-    targetWidth = Math.max(1, Math.floor(targetWidth * bucketFactor));
-    targetHeight = Math.max(1, Math.floor(targetHeight * bucketFactor));
-  }
+  const exact = Math.min(1, displayedWidth / width, displayedHeight / height);
+  // Snap the scale down to steps of √2 (still ≥1.4× the screen pixels). Steps of a fixed pixel size
+  // changed on almost every zoom tick, so every picture on screen was decoded and redrawn again
+  // while the wheel turned; now a picture is re-decoded only when the zoom changes by ~40%.
+  const factor = exact >= 1 ? 1 : Math.SQRT2 ** Math.floor(Math.log2(exact) * 2);
+  const targetWidth = Math.max(1, Math.floor(width * factor));
+  const targetHeight = Math.max(1, Math.floor(height * factor));
   return { width: targetWidth, height: targetHeight };
 }
 
