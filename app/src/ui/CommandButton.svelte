@@ -4,6 +4,7 @@
   import { formatKey } from "../commands/keys";
   import { getCommand, runCommand } from "../commands/registry.svelte";
   import Tooltip from "./Tooltip.svelte";
+  import { playIconMotion } from "./iconMotion";
 
   let {
     commandId,
@@ -28,6 +29,12 @@
 
   let command = $derived(getCommand(commandId));
   let iconName = $derived(iconForCommand(commandId));
+  let button = $state<HTMLButtonElement | null>(null);
+
+  function activate(): void {
+    playIconMotion(button?.querySelector(".raster-icon, svg"), icon ? "line" : iconName);
+    runCommand(commandId);
+  }
 
   function preventMouseFocus(event: MouseEvent): void {
     if (event.button !== 0) return;
@@ -65,8 +72,10 @@
       class:active={command.isActive?.() ?? false}
       aria-label={`${command.label}${command.keys.length ? `; ${command.keys.map(formatKey).join(", ")}` : ""}`}
       aria-pressed={command.isActive ? command.isActive() : undefined}
+      data-icon={icon ? undefined : iconName}
+      bind:this={button}
       onmousedown={preventMouseFocus}
-      onclick={() => runCommand(commandId)}
+      onclick={activate}
     >
       {#if !icon && iconName === "settings"}
         <span class="raster-icon" style:--raster-icon={`url("${settingsIcon}")`} aria-hidden="true"></span>
@@ -168,6 +177,15 @@
   .command-button:hover .raster-icon,
   .command-button.active .raster-icon {
     opacity: 1;
+  }
+
+  /* The gear leans into a turn on hover; a click spins it half a turn (iconMotion.ts). */
+  .command-button[data-icon="settings"] .raster-icon {
+    transition: rotate 420ms var(--ease-out), opacity var(--motion-quick) ease-out;
+  }
+
+  .command-button[data-icon="settings"]:hover .raster-icon {
+    rotate: 30deg;
   }
 
   .command-button:hover {

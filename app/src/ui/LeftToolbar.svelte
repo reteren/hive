@@ -10,6 +10,44 @@
   import { selectDrawingSubtool } from "../drawing/drawInput";
   import "../zones/commands";
 
+  /* The active tool's highlight is one shared plate that slides between tools (and follows them
+     when sub-tools unfold), instead of each button snapping its own background on and off. */
+  let toolbar = $state<HTMLElement | null>(null);
+  let indicator = $state({ y: 0, height: 26, visible: false, placed: false });
+
+  $effect(() => {
+    const nav = toolbar;
+    if (!nav) return;
+    let frame = 0;
+    const measure = (): void => {
+      frame = 0;
+      const active = nav.querySelector<HTMLElement>(".tool-button[aria-pressed=\"true\"]");
+      if (!active) {
+        indicator.visible = false;
+        return;
+      }
+      const top = active.getBoundingClientRect().top - nav.getBoundingClientRect().top + nav.scrollTop;
+      indicator.y = top;
+      indicator.height = active.offsetHeight;
+      indicator.visible = true;
+      // The first placement jumps straight there; later ones slide.
+      if (!indicator.placed) requestAnimationFrame(() => { indicator.placed = true; });
+    };
+    const schedule = (): void => {
+      if (!frame) frame = requestAnimationFrame(measure);
+    };
+    const mutations = new MutationObserver(schedule);
+    mutations.observe(nav, { subtree: true, childList: true, attributes: true, attributeFilter: ["aria-pressed"] });
+    const resize = new ResizeObserver(schedule);
+    resize.observe(nav);
+    schedule();
+    return () => {
+      mutations.disconnect();
+      resize.disconnect();
+      if (frame) cancelAnimationFrame(frame);
+    };
+  });
+
   let moveCommand = $derived(getCommand("select.move"));
   let shapeCommand = $derived(getCommand("line.cycleShape"));
   let shapeLabel = $derived(tool.lineShape[0].toUpperCase() + tool.lineShape.slice(1));
@@ -23,12 +61,21 @@
 </script>
 
 <!-- Left vertical panel of working tools (R0.4). Line and Draw unfold their sub-tools while active. -->
-<nav class="left-toolbar" aria-label="Navigation tools">
+<nav class="left-toolbar" aria-label="Navigation tools" bind:this={toolbar}>
+  <span
+    class="tool-indicator"
+    class:visible={indicator.visible}
+    class:placed={indicator.placed}
+    style:translate={`0 ${indicator.y}px`}
+    style:height={`${indicator.height}px`}
+    aria-hidden="true"
+  ></span>
   <CommandButton commandId="view.home" />
   <CommandButton commandId="notes.createMenu" />
-  <CommandButton commandId="tool.select" secondaryHint={selectHint} />
+  <CommandButton commandId="tool.select" className="tool-button" secondaryHint={selectHint} />
   <CommandButton
     commandId="tool.line"
+    className="tool-button"
     tooltipLabel={`Line · ${shapeLabel}`}
     tooltipBindings={shapeCommand?.keys ?? []}
     secondaryHint="Change line shape"
@@ -66,8 +113,8 @@
       <span class="divider end" aria-hidden="true"></span>
     </div>
   {/if}
-  <CommandButton commandId="tool.zone" />
-  <CommandButton commandId="tool.draw" />
+  <CommandButton commandId="tool.zone" className="tool-button" />
+  <CommandButton commandId="tool.draw" className="tool-button" />
   {#if tool.active === "draw"}
     <div class="subtools" role="group" aria-label="Drawing tool">
       <span class="divider" aria-hidden="true"></span>
@@ -114,6 +161,7 @@
 
 <style>
   .left-toolbar {
+    position: relative;
     display: flex;
     width: 34px;
     height: 100%;
@@ -125,6 +173,43 @@
     scrollbar-width: none;
     background: var(--bg-panel);
     border-right: 1px solid var(--border);
+  }
+
+  .tool-indicator {
+    position: absolute;
+    z-index: 0;
+    top: 0;
+    left: 50%;
+    width: 28px;
+    margin-left: -14px;
+    border: 1px solid rgba(var(--accent-rgb), 0.45);
+    border-radius: 3px;
+    background: rgba(var(--accent-rgb), 0.16);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--motion-quick) ease-out;
+  }
+
+  .tool-indicator.visible {
+    opacity: 1;
+  }
+
+  .tool-indicator.placed {
+    transition:
+      translate 280ms var(--ease-out),
+      height 280ms var(--ease-out),
+      opacity var(--motion-quick) ease-out;
+  }
+
+  /* The plate carries the highlight; the buttons sit on top of it. */
+  .left-toolbar :global(.command-button) {
+    position: relative;
+    z-index: 1;
+  }
+
+  .left-toolbar :global(.tool-button[aria-pressed="true"]) {
+    border-color: transparent;
+    background: transparent;
   }
 
   .subtools {

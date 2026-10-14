@@ -1,4 +1,5 @@
 <script lang="ts">
+  import CloseGlyph from "../ui/CloseGlyph.svelte";
   import { invoke, isTauri } from "@tauri-apps/api/core";
   import { board } from "../model/board.svelte";
   import { linksOf } from "../model/links.svelte";
@@ -229,7 +230,7 @@
         <h2>{note.name}</h2>
         <span>{KIND_LABELS[note.type] ?? note.type}</span>
       </div>
-      <button bind:this={closeButton} class="close-button" type="button" aria-label="Close info" title="Close (Esc)" onclick={closeNodeInfo}>×</button>
+      <button bind:this={closeButton} class="close-button" type="button" aria-label="Close info" title="Close (Esc)" onclick={closeNodeInfo}><CloseGlyph /></button>
     </header>
 
     <div class="info-body">

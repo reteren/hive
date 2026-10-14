@@ -4,6 +4,7 @@
 </script>
 
 <script lang="ts">
+  import CloseGlyph from "../ui/CloseGlyph.svelte";
   import { onMount, untrack } from "svelte";
   import CommandButton from "../ui/CommandButton.svelte";
   import { board, onBoardMutation } from "../model/board.svelte";
@@ -168,7 +169,7 @@
       <header class="search-heading">
         <label for="note-search-input">Search notes</label>
         <div class="search-help" aria-hidden="true"><kbd>↑</kbd><kbd>↓</kbd><span>cycle</span><kbd>Enter</kbd><span>jump</span><kbd>Esc</kbd><span>close</span></div>
-        <button class="close-button" type="button" aria-label="Close search" title="Close search" onclick={closeSearch}>×</button>
+        <button class="close-button" type="button" aria-label="Close search" title="Close search" onclick={closeSearch}><CloseGlyph /></button>
       </header>
 
       <input

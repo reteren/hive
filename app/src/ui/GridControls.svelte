@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { playIconMotion } from "./iconMotion";
   import { onMount } from "svelte";
   import "../board/gridCommands";
   import { decreaseGridStep, grid, increaseGridStep, setAutoGrid } from "../board/grid.svelte";
@@ -73,7 +74,7 @@
       aria-label={commandTitle(snapCommand)}
       aria-pressed={isSnapEnabled}
       title={commandTitle(snapCommand)}
-      onclick={() => runCommand(snapCommand.id)}
+      onclick={(event) => { playIconMotion(event.currentTarget.querySelector(".magnet-icon"), "magnet"); runCommand(snapCommand.id); }}
     >
       <span class="magnet-icon" style:--magnet-image={`url("${isSnapEnabled ? magnetOnIcon : magnetOffIcon}")`} aria-hidden="true"></span>
     </button>

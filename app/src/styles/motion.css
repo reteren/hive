@@ -1,0 +1,208 @@
+/*
+ * Interface motion. Mostly chrome; on the board only one-off moments (a note just created), never
+ * anything that would run for every note — there can be thousands.
+ *
+ * - Press: buttons sink a little on pointer-down instantly and spring back on release.
+ * - Menus and popovers arrive from their trigger (transform-origin) with a short scale-and-fade.
+ * - Dialogs materialise: dim fades in, the window rises and sharpens.
+ *
+ * Everything animates the individual `scale` / `translate` / `rotate` properties so it composes with
+ * the inline `transform` that board-anchored popups already use for their zoom compensation.
+ * Selectors sit in :where() so a component's own styles always win.
+ * html[data-reduce-motion="true"] (Settings → Reduce animations, or the OS setting) shortens every
+ * animation to nothing via App.svelte; the media query below covers the OS setting before load.
+ */
+
+/* ---------- Press feedback ---------- */
+
+:where(
+  .command-button,
+  .subtool-button,
+  .dock-button,
+  .window-button,
+  .grid-control-button,
+  .menubar > button,
+  .close-button,
+  .settings-window button:not(.preset-card):not(.app-select-option),
+  .update-actions button,
+  .panel-popup-frame button,
+  .task-checkbox,
+  .create-item,
+  .create-category
+) {
+  transition:
+    scale 260ms var(--ease-spring),
+    background-color var(--motion-quick) ease-out,
+    border-color var(--motion-quick) ease-out,
+    color var(--motion-quick) ease-out,
+    box-shadow var(--motion-quick) ease-out;
+}
+
+:where(
+  .command-button,
+  .subtool-button,
+  .dock-button,
+  .grid-control-button,
+  .menubar > button,
+  .close-button,
+  .settings-window button:not(.preset-card):not(.app-select-option),
+  .update-actions button,
+  .panel-popup-frame button,
+  .task-checkbox
+):active:not(:disabled) {
+  scale: 0.9;
+  transition-duration: var(--motion-press);
+}
+
+/* Wide rows (menu items) would look like they shrink away; they only darken a touch. */
+:where(.menu-item, .link-context-menu button, .zone-menu-command, .app-select-option, .editor-context-menu button) {
+  transition: background-color 90ms ease-out, color 90ms ease-out;
+}
+
+:where(.menu-item, .link-context-menu button, .zone-menu-command, .app-select-option, .editor-context-menu button):active:not(:disabled) {
+  background-color: color-mix(in srgb, var(--bg-hover) 70%, #000);
+  transition-duration: 0ms;
+}
+
+/* ---------- Menus and popovers ---------- */
+
+@keyframes hive-pop-in {
+  from {
+    opacity: 0;
+    scale: 0.94;
+    translate: 0 -3px;
+  }
+}
+
+@keyframes hive-pop-up {
+  from {
+    opacity: 0;
+    scale: 0.96;
+    translate: 0 4px;
+  }
+}
+
+@keyframes hive-fade-in {
+  from { opacity: 0; }
+}
+
+@keyframes hive-tip-in {
+  from {
+    opacity: 0;
+    translate: 0 3px;
+  }
+}
+
+/* Menus that hang below the button that opened them grow from its corner. */
+:where(.menubar .menu-panel) {
+  transform-origin: top left;
+  animation: hive-pop-in var(--motion-pop) var(--ease-out) backwards;
+}
+
+/* The recent-projects submenu slides out of its row instead. */
+:where(.menubar .recent-panel) {
+  animation-name: hive-submenu-in;
+}
+
+@keyframes hive-submenu-in {
+  from {
+    opacity: 0;
+    translate: -6px 0;
+  }
+}
+
+/* Board popups are placed at the cursor's corner, so they already grow from 0 0. */
+:where(
+  .link-context-menu,
+  .zone-menu,
+  .zone-color-popup,
+  .me-beacon-context,
+  .tier-context-menu,
+  .editor-context-root,
+  .note-color-popover,
+  .note-glow-popover,
+  .image-opacity-popover,
+  .create-menu
+) {
+  animation: hive-pop-in var(--motion-pop) var(--ease-out) backwards;
+}
+
+:where(.editor-context-submenu, .draw-toolbar) {
+  animation: hive-submenu-in var(--motion-pop) var(--ease-out) backwards;
+}
+
+:where(.beacon-menu, .grid-settings-popover) {
+  transform-origin: top center;
+  animation: hive-pop-in var(--motion-pop) var(--ease-out) backwards;
+}
+
+:where(.app-select-popup):popover-open {
+  transform-origin: top center;
+  animation: hive-pop-in var(--motion-quick) var(--ease-out) backwards;
+}
+
+:where(.tooltip-bubble) {
+  animation: hive-tip-in 120ms var(--ease-out) backwards;
+}
+
+/* ---------- Dialogs ---------- */
+
+@keyframes hive-dialog-in {
+  from {
+    opacity: 0;
+    scale: 0.965;
+    translate: 0 10px;
+    filter: blur(3px);
+  }
+}
+
+:where(.settings-backdrop, .panel-popup-backdrop, .search-backdrop) {
+  animation: hive-fade-in var(--motion-dialog) ease-out backwards;
+}
+
+:where(.settings-window, .panel-popup-frame, .keymap-panel, .search-dialog, .inbox-prompt) {
+  animation: hive-dialog-in var(--motion-dialog) var(--ease-out) backwards;
+}
+
+/* ---------- Active state ---------- */
+
+@keyframes hive-icon-settle {
+  0% { scale: 0.78; }
+  60% { scale: 1.12; }
+  100% { scale: 1; }
+}
+
+/* A tool that becomes active gives one small bounce, so the switch is felt as well as seen. */
+:where(.command-button[aria-pressed="true"], .subtool-button[aria-pressed="true"]) > svg {
+  animation: hive-icon-settle 300ms var(--ease-snap);
+}
+
+/* ---------- A note the user just created ---------- */
+
+/* It unfolds from its header down, so the eye lands on the new node. Only on creation
+   (notes/freshNotes.ts) — never when notes remount while the board moves. */
+@keyframes hive-note-unfold {
+  from {
+    opacity: 0.2;
+    clip-path: inset(0 0 calc(100% - var(--note-header-height, 24px)) 0);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+.note-card[data-fresh="true"] {
+  animation: hive-note-unfold 300ms var(--ease-out);
+}
+
+/* ---------- Small hover cues ---------- */
+
+:where(.menubar .submenu-arrow) {
+  display: inline-block;
+  transition: translate var(--motion-quick) var(--ease-out);
+}
+
+:where(.menubar .submenu-trigger:hover .submenu-arrow, .menubar .submenu-trigger[aria-expanded="true"] .submenu-arrow) {
+  translate: 2px 0;
+}

@@ -1,6 +1,7 @@
 import { mount } from "svelte";
 import App from "./App.svelte";
 import "./styles/theme.css";
+import "./styles/motion.css";
 import "./ui/focusGuard";
 import "./tasks/tasks.css";
 import "./modules/modules.css";

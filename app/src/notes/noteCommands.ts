@@ -1,3 +1,4 @@
+import { markNoteFresh } from "./freshNotes";
 import { defaultMessageData } from "../messages/data";
 import { registerCommand } from "../commands/registry.svelte";
 import { nodeBodyFor } from "./nodeBodies";
@@ -90,6 +91,7 @@ export function createNoteKind(kind: NoteKind, task = false): string {
     grid.step,
   );
   const note = makeNote(kind, id, position, Date.now(), task);
+  markNoteFresh(id);
   const index = board.order.length;
   const previousEditing = editing.noteId;
   const previousSelection = captureSelectionSnapshot();

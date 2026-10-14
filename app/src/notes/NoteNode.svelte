@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from "svelte";
+  import { tick, untrack } from "svelte";
   import type { Action } from "svelte/action";
   import { NOTE_HEADER_HEIGHT_UNITS, normalizeNoteScale, type Note } from "../model/note";
   import { updateNote } from "../model/board.svelte";
@@ -45,6 +45,7 @@ import { comboPullout } from "../combo/gestures.svelte";
 import { activeDropTarget } from "../selection/dropTargets";
 import { highlightsComboTextHost, isComboDropPlan } from "../combo/dropLogic";
 import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/layout";
+import { takeFreshNote } from "./freshNotes";
 
   let { note, measureHeight }: { note: Note; measureHeight: Action<HTMLElement, string> } = $props();
   let renaming = $state(false);
@@ -56,6 +57,8 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
   let customMarkGradient = $derived(customMarkGradientFor(customMarkFrameColors));
   let paint = $derived(noteColorStyle(note));
   let scale = $derived(normalizeNoteScale(note.scale));
+  /** Just created by the user: unfold once (styles/motion.css). */
+  let fresh = $state(untrack(() => takeFreshNote(note.id)));
 
   function changeLabel(id: string): string {
     const author = changeMarks.authors[id];
@@ -164,6 +167,8 @@ import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/lay
   data-dimmed={isDimmed(note.id)}
   data-editing={editing.noteId === note.id ? "true" : "false"}
   data-kind={note.type}
+  data-fresh={fresh ? "true" : undefined}
+  onanimationend={(event) => { if (event.target === event.currentTarget) fresh = false; }}
   data-task={note.task ? (note.task.done ? "done" : "open") : undefined}
   data-importance={effectiveImportance(note.id) ?? undefined}
   data-custom-mark-frame={customMarkFrameColors.length > 0 ? "true" : undefined}

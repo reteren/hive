@@ -2,6 +2,7 @@
   import type { Snippet } from "svelte";
   import { formatKey } from "../commands/keys";
   import Tooltip from "./Tooltip.svelte";
+  import { playIconPop } from "./iconMotion";
 
   let { label, bindings = [], secondaryHint, active = false, index = 0, onselect, children } = $props<{
     label: string;
@@ -31,7 +32,7 @@
       aria-label={`${label}${bindings.length ? `; ${bindings.map(formatKey).join(", ")}` : ""}`}
       aria-pressed={active}
       onmousedown={preventMouseFocus}
-      onclick={onselect}
+      onclick={(event) => { playIconPop(event.currentTarget.querySelector("svg")); onselect(); }}
     >
       <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">{@render children()}</svg>
     </button>

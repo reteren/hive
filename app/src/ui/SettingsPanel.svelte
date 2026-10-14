@@ -3,6 +3,7 @@
 </script>
 
 <script lang="ts">
+  import CloseGlyph from "./CloseGlyph.svelte";
   import packageMetadata from "../../package.json";
   import { backupSettings, setBackupInterval } from "../backup/backupSettings.svelte";
   import { openBackupsPanel } from "../backup/panel.svelte";
@@ -170,7 +171,7 @@
     <div class="settings-window" role="dialog" aria-modal="true" aria-labelledby="settings-title" tabindex="-1" onkeydown={handleKeydown}>
       <header class="settings-heading">
         <h1 id="settings-title">Settings</h1>
-        <button bind:this={closeButton} class="close-button" type="button" aria-label="Close settings" title="Close settings" onclick={closeSettingsPanel}>×</button>
+        <button bind:this={closeButton} class="close-button" type="button" aria-label="Close settings" title="Close settings" onclick={closeSettingsPanel}><CloseGlyph /></button>
       </header>
 
       <div class="settings-content">
@@ -487,11 +488,43 @@
     line-height: 1.35;
   }
 
-  input[type="checkbox"] {
-    width: 15px;
-    height: 15px;
+  /* On/off settings are switches: the knob slides over and the track fills with the accent. */
+  .settings-window :global(input[type="checkbox"]) {
+    width: 28px;
+    height: 16px;
     flex: 0 0 auto;
-    accent-color: var(--accent);
+    margin: 0;
+    appearance: none;
+    border: 1px solid #555;
+    border-radius: 999px;
+    background:
+      radial-gradient(circle at center, #d4d4d4 0 5px, transparent 5.5px) 0 50% / 14px 14px no-repeat,
+      #1b1b1b;
+    cursor: pointer;
+    transition:
+      background-position 240ms var(--ease-spring),
+      background-color var(--motion-quick) ease-out,
+      border-color var(--motion-quick) ease-out;
+  }
+
+  .settings-window :global(input[type="checkbox"]:hover) {
+    border-color: #6a6a6a;
+  }
+
+  .settings-window :global(input[type="checkbox"]:checked) {
+    border-color: var(--accent);
+    background:
+      radial-gradient(circle at center, #f4f4f4 0 5px, transparent 5.5px) 100% 50% / 14px 14px no-repeat,
+      var(--accent);
+  }
+
+  .settings-window :global(input[type="checkbox"]:active) {
+    background-size: 16px 14px, auto;
+  }
+
+  .settings-window :global(input[type="checkbox"]:disabled) {
+    opacity: 0.45;
+    cursor: default;
   }
 
   .history-limit {

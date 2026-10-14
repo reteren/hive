@@ -1,4 +1,5 @@
 <script lang="ts">
+  import CloseGlyph from "./CloseGlyph.svelte";
   import { tick } from "svelte";
   import { bindingFromEvent, editKeyBinding, type KeyBindingConflict } from "../commands/keymap";
   import { closeKeymapPanel, keymapPanelState } from "../commands/keymapPanel.svelte";
@@ -130,7 +131,7 @@
         </div>
         <div class="heading-actions">
           <button type="button" class="reset-all" onclick={() => { resetAllCommandKeyOverrides(); status = "All commands reset to defaults."; }}>Reset all</button>
-          <button bind:this={closeButton} type="button" class="close-button" aria-label="Close keymap editor" onclick={() => void close()}>×</button>
+          <button bind:this={closeButton} type="button" class="close-button" aria-label="Close keymap editor" onclick={() => void close()}><CloseGlyph /></button>
         </div>
       </header>
 

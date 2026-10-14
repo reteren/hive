@@ -1,4 +1,5 @@
 <script lang="ts">
+  import CloseGlyph from "../ui/CloseGlyph.svelte";
   import ShapeOptions from "./shapes/ShapeOptions.svelte";
   import BrushTipOptions from "./brushes/BrushTipOptions.svelte";
   import EffectOptions from "./effects/EffectOptions.svelte";
@@ -32,7 +33,7 @@
   <aside class="draw-toolbar" data-draw-toolbar data-draw-overlay-control aria-label="Drawing tools">
     <header>
       <strong>Drawing</strong>
-      <button type="button" class="close-button" aria-label="Exit drawing mode" onclick={() => { tool.active = "select"; }}>×</button>
+      <button type="button" class="close-button" aria-label="Exit drawing mode" onclick={() => { tool.active = "select"; }}><CloseGlyph /></button>
     </header>
 
 
