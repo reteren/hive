@@ -175,7 +175,13 @@ function flushSave(): void {
   if (saveTimer !== null) clearTimeout(saveTimer);
   saveTimer = null;
   if (!active || !isTauri()) return;
-  void invoke("save_seen_state", { projectPath, contents: serializeSeenState(seen, $state.snapshot(editTime.byId)) }).catch((error: unknown) => {
+  const path = projectPath;
+  const contents = serializeSeenState(seen, $state.snapshot(editTime.byId));
+  // One write at a time and in order: the command runs off the main thread, so two in flight could
+  // land out of order (and share the temp file).
+  seenWrites = seenWrites.then(() => invoke("save_seen_state", { projectPath: path, contents })).catch((error: unknown) => {
     console.warn("Could not save which changes were seen.", error);
   });
 }
+
+let seenWrites: Promise<unknown> = Promise.resolve();

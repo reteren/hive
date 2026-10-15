@@ -51,6 +51,50 @@ export function displayBitmapSize(
   return { width: targetWidth, height: targetHeight };
 }
 
+// The encoded file bytes, kept per URL so a decode at another size (every zoom step that crosses a
+// size step, every eviction) does not read the file again. Each read goes through the app's asset
+// protocol, which is served on the window's main thread: re-reading on every decode meant ~1600
+// file reads in 40 s of zooming a picture-heavy board, and wheel input queued up behind them.
+const MAX_ENCODED_BYTES = 192 * 1024 * 1024;
+const encoded = new Map<string, Promise<Blob>>();
+const encodedSizes = new Map<string, number>();
+let encodedBytes = 0;
+
+function fetchEncoded(url: string): Promise<Blob> {
+  const cached = encoded.get(url);
+  if (cached) {
+    encoded.delete(url);
+    encoded.set(url, cached);
+    return cached;
+  }
+  const request = fetch(url).then(async (response) => {
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const blob = await response.blob();
+    if (encoded.get(url) === request) {
+      encodedSizes.set(url, blob.size);
+      encodedBytes += blob.size;
+      trimEncoded();
+    }
+    return blob;
+  });
+  request.catch(() => {
+    if (encoded.get(url) === request) encoded.delete(url);
+  });
+  encoded.set(url, request);
+  return request;
+}
+
+function trimEncoded(): void {
+  for (const url of encoded.keys()) {
+    if (encodedBytes <= MAX_ENCODED_BYTES) break;
+    const size = encodedSizes.get(url);
+    if (size === undefined) continue; // still loading
+    encoded.delete(url);
+    encodedSizes.delete(url);
+    encodedBytes -= size;
+  }
+}
+
 /** Acquire a downscaled decoded copy; released entries are evicted by pixel-budget LRU. */
 export function acquireDisplayBitmap(
   url: string,
@@ -68,9 +112,8 @@ export function acquireDisplayBitmap(
       key,
       refs: 0,
       pixels: 0,
-      promise: fetch(url).then(async (response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const bitmap = await createImageBitmap(await response.blob(), {
+      promise: fetchEncoded(url).then(async (blob) => {
+        const bitmap = await createImageBitmap(blob, {
           resizeWidth: width,
           resizeHeight: height,
           resizeQuality: "high",

@@ -3,6 +3,7 @@
 </script>
 
 <script lang="ts">
+  import { untrack } from "svelte";
   import CloseGlyph from "./CloseGlyph.svelte";
   import packageMetadata from "../../package.json";
   import { backupSettings, setBackupInterval } from "../backup/backupSettings.svelte";
@@ -48,7 +49,10 @@
 
   $effect(() => {
     if (!settingsPanel.open) return;
-    if (project.path) void refreshStorageStats();
+    // untrack: refreshStorageStats reads its own busy flag; tracked, finishing a refresh re-ran this
+    // effect and started the next one — a full walk of the project folder every ~0.3 s while the
+    // settings were open, on the app's main thread (wheel input stalled behind it).
+    if (project.path) untrack(() => void refreshStorageStats());
     const frame = requestAnimationFrame(() => closeButton?.focus());
     return () => cancelAnimationFrame(frame);
   });

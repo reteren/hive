@@ -24,7 +24,7 @@ pub fn load_seen_state(app: AppHandle, project_path: String) -> Result<Option<St
 }
 
 #[tauri::command]
-pub fn save_seen_state(
+pub async fn save_seen_state(
     app: AppHandle,
     project_path: String,
     contents: String,

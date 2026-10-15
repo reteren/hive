@@ -56,9 +56,10 @@ pub fn drawing_load(state: State<'_, ProjectState>) -> Result<DrawingLoadRespons
 }
 
 /// Raw PNG bytes (an ArrayBuffer on the JS side, not a JSON number array: loading a big drawing
-/// used to spend most of its time serialising tiles as numbers).
+/// used to spend most of its time serialising tiles as numbers). Async so the disk read runs off the
+/// window's main thread: tiles stream in while zooming, and mouse-wheel input waits behind that thread.
 #[tauri::command]
-pub fn drawing_read_tile(
+pub async fn drawing_read_tile(
     state: State<'_, ProjectState>,
     key: String,
 ) -> Result<tauri::ipc::Response, String> {

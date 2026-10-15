@@ -44,8 +44,10 @@ pub fn import_project_zip(zip_path: String, destination_path: String) -> Result<
         .map(|path| path.to_string_lossy().into_owned())
 }
 
+// async: runs on the async runtime, off the window's main thread — walking a big project folder there
+// held up the window's input (mouse wheel) for the whole walk.
 #[tauri::command]
-pub fn project_storage_stats(state: State<'_, ProjectState>) -> Result<StorageStats, String> {
+pub async fn project_storage_stats(state: State<'_, ProjectState>) -> Result<StorageStats, String> {
     let root = active_project_root(&state)?;
     let project_bytes = directory_size_excluding(&root, &root.join(BACKUPS_RELATIVE_PATH))
         .map_err(|error| format!("could not measure project folder: {error}"))?;

@@ -18,7 +18,7 @@ pub fn load_view_settings(app: AppHandle) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-pub fn save_view_settings(app: AppHandle, contents: String) -> Result<(), String> {
+pub async fn save_view_settings(app: AppHandle, contents: String) -> Result<(), String> {
     let value: serde_json::Value = serde_json::from_str(&contents)
         .map_err(|error| format!("view settings must be valid JSON: {error}"))?;
     if !value.is_object() {
