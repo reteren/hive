@@ -4,7 +4,7 @@
   import { lod, queryRect, visible, viewportWorldRect } from "./visibility.svelte";
   import { PX_PER_UNIT } from "./cameraMath";
   import { attachmentUrl } from "../attachments/service";
-  import { acquireDisplayBitmap, displayBitmapSize, peekCachedDisplayBitmap, type DisplayBitmapLease } from "../attachments/displayBitmap";
+  import { acquireDisplayBitmap, displayBitmapSize, isClosedBitmap, peekCachedDisplayBitmap, type DisplayBitmapLease } from "../attachments/displayBitmap";
   import { linkRouteIndex, routeBounds } from "../links/routeIndex";
   import { links, linksOf, onLinksMutation } from "../model/links.svelte";
   import { board, onBoardMutation } from "../model/board.svelte";
@@ -214,6 +214,12 @@
     );
     const key = `${url}:${displayed.width}x${displayed.height}`;
     let resolution = imageResolutions.get(id);
+    if (resolution?.bitmap && isClosedBitmap(resolution.bitmap)) {
+      // Borrowed from the shared cache without a lease and evicted since: resolve it again.
+      resolution.lease?.release();
+      imageResolutions.delete(id);
+      resolution = undefined;
+    }
     if (resolution?.key === key) {
       if (resolution.bitmap || resolution.pendingToken || failedImages.get(id) === key) return resolution.bitmap;
     } else {

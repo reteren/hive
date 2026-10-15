@@ -1,4 +1,5 @@
 import { PX_PER_UNIT, type Point } from "./cameraMath";
+import { isClosedBitmap } from "../attachments/displayBitmap";
 import type { Rect } from "./spatialIndex";
 import type { Link } from "../model/link";
 import type { Note } from "../model/note";
@@ -201,7 +202,9 @@ export function paintFarDrawListWorld(
     context.globalAlpha = note.opacity;
     if (note.kind === "image") {
       const bitmap = imageBitmaps.get(note.id) ?? note.bitmap;
-      if (bitmap) context.drawImage(bitmap, note.x, note.y, note.width, note.height);
+      // A shared decode can be evicted (closed) by the bitmap cache; drawing a closed bitmap throws and
+      // aborted the whole tile, which was then rebuilt and failed again every frame.
+      if (bitmap && !isClosedBitmap(bitmap)) context.drawImage(bitmap, note.x, note.y, note.width, note.height);
       else {
         context.fillStyle = IMAGE_PLACEHOLDER;
         context.fillRect(note.x, note.y, note.width, note.height);

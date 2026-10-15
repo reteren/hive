@@ -185,3 +185,8 @@ function trimCache(): void {
 function positive(value: number): number {
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
+
+/** A cached decode that the cache has since evicted is closed: it reports 0×0 and cannot be drawn. */
+export function isClosedBitmap(source: CanvasImageSource): boolean {
+  return typeof ImageBitmap !== "undefined" && source instanceof ImageBitmap && (source.width === 0 || source.height === 0);
+}
