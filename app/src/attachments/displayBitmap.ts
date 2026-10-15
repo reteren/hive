@@ -1,6 +1,6 @@
 /** A small, shared cache of resolution-matched image decodes used by attachment previews. */
-const MAX_CACHED_PIXELS = 16_000_000;
-const MAX_CACHED_ENTRIES = 96;
+const MAX_CACHED_PIXELS = 32_000_000;
+const MAX_CACHED_ENTRIES = 512;
 /**
  * One small decode per picture, kept apart from the budgeted cache (zooming in fills that budget with
  * large decodes and evicts everything else). A picture that appears again shows its preview at once
@@ -158,6 +158,32 @@ export function peekCachedDisplayBitmap(
   width?: number,
   height?: number,
 ): ImageBitmap | undefined {
+  return bestCachedEntry(url, width, height)?.bitmap;
+}
+
+/**
+ * Like peekCachedDisplayBitmap, but retains the decode: the cache cannot close it until the lease is
+ * released. For callers that keep drawing the bitmap later (cached tiles), where a borrowed one
+ * could be evicted in between and vanish from the board.
+ */
+export function leaseCachedDisplayBitmap(url: string, width?: number, height?: number): DisplayBitmapLease | undefined {
+  const entry = bestCachedEntry(url, width, height);
+  const bitmap = entry?.bitmap;
+  if (!entry || !bitmap) return undefined;
+  entry.refs += 1;
+  let released = false;
+  return {
+    bitmap,
+    release() {
+      if (released) return;
+      released = true;
+      entry.refs = Math.max(0, entry.refs - 1);
+      trimCache();
+    },
+  };
+}
+
+function bestCachedEntry(url: string, width?: number, height?: number): BitmapEntry | undefined {
   const prefix = `${url}\u0000`;
   let best: BitmapEntry | undefined;
   let bestScore = Number.POSITIVE_INFINITY;
@@ -178,7 +204,7 @@ export function peekCachedDisplayBitmap(
       bestScore = score;
     }
   }
-  return best?.bitmap;
+  return best;
 }
 
 /** Any decode of this picture that can be drawn right now: the closest cached size, else its preview. */

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { acquireDisplayBitmap, displayBitmapSize, peekAnyDisplayBitmap, peekCachedDisplayBitmap } from "../src/attachments/displayBitmap";
+import { acquireDisplayBitmap, displayBitmapSize, leaseCachedDisplayBitmap, peekAnyDisplayBitmap, peekCachedDisplayBitmap } from "../src/attachments/displayBitmap";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -27,19 +27,19 @@ describe("displayBitmapSize", () => {
       // Previews are made from a decoded bitmap, decodes from the fetched blob; count decodes only.
       if (!(source instanceof Blob)) return { width: 32, height: 32, close: () => undefined } as ImageBitmap;
       const index = created.length;
-      const bitmap = { width: 64, height: 64, close: () => closed.push(String(index)) } as ImageBitmap;
+      const bitmap = { width: 16, height: 16, close: () => closed.push(String(index)) } as ImageBitmap;
       created.push(bitmap);
       return bitmap;
     }));
 
-    for (let index = 0; index < 97; index += 1) {
-      const lease = await acquireDisplayBitmap(`test://display/${index}`, 64, 64);
+    for (let index = 0; index < 513; index += 1) {
+      const lease = await acquireDisplayBitmap(`test://display/${index}`, 16, 16);
       lease.release();
     }
 
-    expect(created).toHaveLength(97);
+    expect(created).toHaveLength(513);
     expect(closed).toHaveLength(1);
-    expect(created[0]?.width).toBe(64);
+    expect(created[0]?.width).toBe(16);
   });
 
   it("keeps a small preview of an evicted decode so a returning picture is never empty", async () => {
@@ -54,10 +54,28 @@ describe("displayBitmapSize", () => {
     first.release();
     await new Promise((resolve) => setTimeout(resolve, 0));
     // Big decodes of other pictures push the first one out of the budgeted cache.
-    for (let index = 1; index <= 5; index += 1) (await acquireDisplayBitmap(`test://preview/${index}`, 2000, 2000)).release();
+    for (let index = 1; index <= 9; index += 1) (await acquireDisplayBitmap(`test://preview/${index}`, 2000, 2000)).release();
 
     expect(peekCachedDisplayBitmap("test://preview/0")).toBeUndefined();
     const preview = peekAnyDisplayBitmap("test://preview/0", 400, 400);
     expect(preview?.width).toBe(160);
+  });
+
+  it("never closes a decode leased from the cache, however full the cache gets", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, blob: async () => new Blob() })));
+    vi.stubGlobal("createImageBitmap", vi.fn(async (_source: unknown, options?: ImageBitmapOptions) => {
+      const bitmap = { width: options?.resizeWidth ?? 0, height: options?.resizeHeight ?? 0, closed: false, close: () => { bitmap.closed = true; } };
+      return bitmap as unknown as ImageBitmap;
+    }));
+
+    (await acquireDisplayBitmap("test://lease/kept", 1000, 1000)).release();
+    const lease = leaseCachedDisplayBitmap("test://lease/kept", 1000, 1000);
+    expect(lease).toBeDefined();
+    for (let index = 0; index < 40; index += 1) (await acquireDisplayBitmap(`test://lease/${index}`, 1000, 1000)).release();
+
+    expect((lease!.bitmap as unknown as { closed: boolean }).closed).toBe(false);
+    lease!.release();
+    (await acquireDisplayBitmap("test://lease/after", 1000, 1000)).release();
+    expect((lease!.bitmap as unknown as { closed: boolean }).closed).toBe(true);
   });
 });

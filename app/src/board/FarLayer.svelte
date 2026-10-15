@@ -4,7 +4,7 @@
   import { lod, queryRect, visible, viewportWorldRect } from "./visibility.svelte";
   import { PX_PER_UNIT } from "./cameraMath";
   import { attachmentUrl } from "../attachments/service";
-  import { acquireDisplayBitmap, displayBitmapSize, isClosedBitmap, peekCachedDisplayBitmap, type DisplayBitmapLease } from "../attachments/displayBitmap";
+  import { acquireDisplayBitmap, displayBitmapSize, isClosedBitmap, leaseCachedDisplayBitmap, type DisplayBitmapLease } from "../attachments/displayBitmap";
   import { linkRouteIndex, routeBounds } from "../links/routeIndex";
   import { links, linksOf, onLinksMutation } from "../model/links.svelte";
   import { board, onBoardMutation } from "../model/board.svelte";
@@ -24,7 +24,7 @@
   const TILE_PREFETCH = 1;
   const MAX_CACHED_TILES = 72;
   const MAX_IMAGE_DRAWS_PER_TILE = 32;
-  const MAX_IMAGE_RESOLUTIONS = 256;
+  const MAX_IMAGE_RESOLUTIONS = 2048;
   const GESTURE_IDLE_MS = 120;
 
   interface CachedTile {
@@ -37,6 +37,8 @@
     url: string;
     bitmap?: CanvasImageSource;
     lease?: DisplayBitmapLease;
+    /** The previous size's decode, drawn until this one is ready (a zoom step must not blank it). */
+    fallback?: DisplayBitmapLease;
     pendingToken?: symbol;
   }
 
@@ -215,26 +217,31 @@
     const key = `${url}:${displayed.width}x${displayed.height}`;
     let resolution = imageResolutions.get(id);
     if (resolution?.bitmap && isClosedBitmap(resolution.bitmap)) {
-      // Borrowed from the shared cache without a lease and evicted since: resolve it again.
-      resolution.lease?.release();
+      releaseResolution(resolution);
       imageResolutions.delete(id);
       resolution = undefined;
     }
     if (resolution?.key === key) {
-      if (resolution.bitmap || resolution.pendingToken || failedImages.get(id) === key) return resolution.bitmap;
+      if (resolution.bitmap || resolution.pendingToken || failedImages.get(id) === key) return shownBitmap(resolution);
     } else {
       if (failedImages.get(id) === key) return undefined;
       failedImages.delete(id);
-      resolution?.lease?.release();
+      // Keep what is on screen until the new size is decoded.
+      const fallback = resolution ? takeShownLease(resolution) : undefined;
+      if (resolution) releaseResolution(resolution);
       imageResolutions.delete(id);
-      if (imageResolutions.size >= MAX_IMAGE_RESOLUTIONS) return undefined;
-
-      const cached = peekCachedDisplayBitmap(url, displayed.width, displayed.height);
-      if (cached) {
-        imageResolutions.set(id, { key, url, bitmap: cached });
-        return cached;
+      if (imageResolutions.size >= MAX_IMAGE_RESOLUTIONS) {
+        fallback?.release();
+        return undefined;
       }
-      resolution = { key, url };
+
+      const cached = leaseCachedDisplayBitmap(url, displayed.width, displayed.height);
+      if (cached) {
+        fallback?.release();
+        imageResolutions.set(id, { key, url, bitmap: cached.bitmap, lease: cached });
+        return cached.bitmap;
+      }
+      resolution = { key, url, fallback };
       imageResolutions.set(id, resolution);
     }
 
@@ -255,6 +262,8 @@
         pending.pendingToken = undefined;
         pending.bitmap = lease.bitmap;
         pending.lease = lease;
+        pending.fallback?.release();
+        pending.fallback = undefined;
         disposeTiles(tiles.invalidateObject("note", id));
         scheduleFrame();
       }).catch(() => {
@@ -271,7 +280,32 @@
         scheduleFrame();
       });
     }
-    return resolution?.bitmap;
+    return resolution ? shownBitmap(resolution) : undefined;
+  }
+
+  function shownBitmap(resolution: CachedImage): CanvasImageSource | undefined {
+    if (resolution.bitmap) return resolution.bitmap;
+    const fallback = resolution.fallback?.bitmap;
+    return fallback && !isClosedBitmap(fallback) ? fallback : undefined;
+  }
+
+  /** Hands over the lease of whatever the resolution currently shows (so releasing it keeps that alive). */
+  function takeShownLease(resolution: CachedImage): DisplayBitmapLease | undefined {
+    if (resolution.lease && resolution.bitmap) {
+      const lease = resolution.lease;
+      resolution.lease = undefined;
+      return lease;
+    }
+    const fallback = resolution.fallback;
+    resolution.fallback = undefined;
+    return fallback;
+  }
+
+  function releaseResolution(resolution: CachedImage): void {
+    resolution.lease?.release();
+    resolution.fallback?.release();
+    resolution.lease = undefined;
+    resolution.fallback = undefined;
   }
 
   function dynamicLinksForFrame(view: Rect): FarLinkItem[] {
@@ -339,7 +373,7 @@
       invalidateNote(id);
       const resolution = imageResolutions.get(id);
       if (resolution && (!note?.image || attachmentUrl(note.image.file) !== resolution.url)) {
-        resolution.lease?.release();
+        releaseResolution(resolution);
         imageResolutions.delete(id);
       }
       if (!note) failedImages.delete(id);
@@ -446,7 +480,7 @@
   }
 
   function clearImageResolutions(): void {
-    for (const { lease } of imageResolutions.values()) lease?.release();
+    for (const resolution of imageResolutions.values()) releaseResolution(resolution);
     imageResolutions.clear();
     failedImages.clear();
   }
