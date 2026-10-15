@@ -4,8 +4,11 @@ import { tileWorldOrigin } from "./tileStore.svelte";
 import type { MutableDrawingTileStore } from "./tileStore.svelte";
 import { DRAW_TILE_SIZE_PX, parseTileKey, type TileKey } from "./types";
 
-/** A bounded cache of non-mipmapped 512² composites (1 MiB per entry). */
-export const MAX_COARSE_COMPOSITE_CACHE_BYTES = MAX_COMPOSITE_TARGET_TILES * DRAW_TILE_SIZE_PX * DRAW_TILE_SIZE_PX * 4;
+/**
+ * A bounded cache of non-mipmapped 512² composites (1 MiB per entry). Room for three viewports: the
+ * levels next to the current one stay cached and stand in while a new level builds after a zoom step.
+ */
+export const MAX_COARSE_COMPOSITE_CACHE_BYTES = 3 * MAX_COMPOSITE_TARGET_TILES * DRAW_TILE_SIZE_PX * DRAW_TILE_SIZE_PX * 4;
 const COMPOSITE_BYTES = DRAW_TILE_SIZE_PX * DRAW_TILE_SIZE_PX * 4;
 export const COARSE_COMPOSITE_SOURCE_BATCH_SIZE = MAX_COARSE_SOURCE_BATCH_SIZE;
 
@@ -19,6 +22,8 @@ interface CompositeEntry {
   sources: TileKey[] | null;
   nextSource: number;
   complete: boolean;
+  /** The texture holds a finished composite (maybe of older content) that can stand in while rebuilding. */
+  displayable: boolean;
   lastUsed: number;
 }
 
@@ -70,6 +75,29 @@ export class CoarseCompositeCache {
     return entry.texture;
   }
 
+  /** The current, fully built composite for this tile, or null while it is missing or still building. */
+  completeTexture(key: TileKey): GpuTexture | null {
+    const texture = this.texture(key);
+    return texture && this.entries.get(key)?.complete ? texture : null;
+  }
+
+  /** True when the tile is known to have nothing in it (no fallback needed). */
+  isEmpty(key: TileKey): boolean {
+    const entry = this.entries.get(key);
+    return Boolean(entry && entry.empty && entry.complete && entry.contentRevision === this.store.contentRevision);
+  }
+
+  /**
+   * The last finished composite for this tile even if the drawing changed since: drawn in place of a
+   * tile that is still being (re)built, so a zoom step or an edit never blanks the drawing.
+   */
+  standIn(key: TileKey): GpuTexture | null {
+    const entry = this.entries.get(key);
+    if (!entry || !entry.displayable || entry.empty || !entry.texture) return null;
+    entry.lastUsed = ++this.clock;
+    return entry.texture;
+  }
+
   /** Queue only target tiles in the current viewport; building happens after the current frame. */
   request(keys: readonly TileKey[], level: number): void {
     if (this.disposed || this.gpu.isLost) return;
@@ -106,6 +134,7 @@ export class CoarseCompositeCache {
           sources: null,
           nextSource: 0,
           complete: false,
+          displayable: false,
           lastUsed: ++this.clock,
         };
         entry.key = key;
@@ -116,6 +145,7 @@ export class CoarseCompositeCache {
         entry.sources = null;
         entry.nextSource = 0;
         entry.complete = false;
+        entry.displayable = false;
         entry.lastUsed = ++this.clock;
         this.entries.set(key, entry);
       }
@@ -193,6 +223,7 @@ export class CoarseCompositeCache {
         if (entry.sources.length === 0) {
           if (entry.needsClear && entry.texture) this.gpu.clear(entry.texture);
           entry.needsClear = false;
+          entry.displayable = false;
           entry.empty = true;
           entry.complete = true;
           this.changed();
@@ -223,13 +254,16 @@ export class CoarseCompositeCache {
       if (entry.needsClear) {
         this.gpu.clear(entry.texture);
         entry.needsClear = false;
+        entry.displayable = false;
       }
       this.gpu.drawInto(entry.texture, quads, "over");
       entry.empty = false;
       entry.nextSource += batch.length;
       entry.lastUsed = ++this.clock;
-      if (entry.nextSource >= entry.sources.length) entry.complete = true;
-      else this.queueAgain(key);
+      if (entry.nextSource >= entry.sources.length) {
+        entry.complete = true;
+        entry.displayable = true;
+      } else this.queueAgain(key);
       this.changed();
     } catch (error) {
       console.error("Could not build a coarse drawing composite", error);

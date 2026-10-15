@@ -7,8 +7,8 @@
   import { drawingTileStore, tileWorldOrigin } from "./tileStore.svelte";
   import { drawingSelection } from "./selection.svelte";
   import { selectionMaskTexture } from "./history";
-  import { drawingGpu, type DrawQuad } from "./gpu/glEngine";
-  import { DRAW_TILE_SIZE_PX, currentDrawLevel, levelPxPerUnit, levelTileUnits } from "./types";
+  import { drawingGpu, type DrawQuad, type GpuTexture } from "./gpu/glEngine";
+  import { DRAW_MAX_LEVEL, DRAW_MIN_LEVEL, DRAW_TILE_SIZE_PX, currentDrawLevel, levelPxPerUnit, levelTileUnits, parseTileKey, tileKey, type TileKey } from "./types";
   import { CoarseCompositeCache } from "./coarseCompositeCache.svelte";
   import { drawingLodPlan } from "./lod";
 
@@ -21,6 +21,35 @@
   let host = $state<HTMLDivElement | null>(null);
   const gpu = drawingGpu();
   const compositeCache = gpu ? new CoarseCompositeCache(gpu, drawingTileStore) : null;
+
+  /** Finished composites that can stand in for a tile still being built (see render). */
+  function compositeStandIn(cache: CoarseCompositeCache, key: TileKey): [TileKey, GpuTexture][] {
+    const own = cache.standIn(key);
+    if (own) return [[key, own]];
+    const tile = parseTileKey(key);
+    if (!tile) return [];
+    // Coarser parents first: one texture covers the whole tile.
+    for (let up = 1; up <= 3 && tile.level + up <= DRAW_MAX_LEVEL; up += 1) {
+      const factor = 2 ** up;
+      const parentKey = tileKey(Math.floor(tile.col / factor), Math.floor(tile.row / factor), tile.level + up);
+      const parent = cache.standIn(parentKey);
+      if (parent) return [[parentKey, parent]];
+    }
+    // Then the four (or sixteen) finer children, when zooming out past a level.
+    for (let down = 1; down <= 2 && tile.level - down >= DRAW_MIN_LEVEL; down += 1) {
+      const factor = 2 ** down;
+      const found: [TileKey, GpuTexture][] = [];
+      for (let dy = 0; dy < factor; dy += 1) {
+        for (let dx = 0; dx < factor; dx += 1) {
+          const childKey = tileKey(tile.col * factor + dx, tile.row * factor + dy, tile.level - down);
+          const child = cache.standIn(childKey);
+          if (child) found.push([childKey, child]);
+        }
+      }
+      if (found.length > 0) return found;
+    }
+    return [];
+  }
 
   function render(): void {
     if (!gpu || gpu.isLost || viewport.width <= 0 || viewport.height <= 0) return;
@@ -58,16 +87,39 @@
         });
       }
     }
-    for (const key of plan.compositeKeys) {
+    const pushComposite = (key: TileKey, texture: WebGLTexture) => {
       const origin = tileWorldOrigin(key);
-      const tile = compositeCache?.texture(key);
-      if (!origin || !tile) continue;
+      if (!origin) return;
       quads.push({
         dst: { x: originX + origin.x * scale, y: originY + origin.y * scale, width: origin.size * scale, height: origin.size * scale },
-        src: { texture: tile.tex, width: DRAW_TILE_SIZE_PX, height: DRAW_TILE_SIZE_PX, rect: { x: 0, y: 0, width: DRAW_TILE_SIZE_PX, height: DRAW_TILE_SIZE_PX } },
+        src: { texture, width: DRAW_TILE_SIZE_PX, height: DRAW_TILE_SIZE_PX, rect: { x: 0, y: 0, width: DRAW_TILE_SIZE_PX, height: DRAW_TILE_SIZE_PX } },
         mode: "rgba",
         color: [1, 1, 1, 1],
       });
+    };
+    // A target tile that is not built yet (the zoom just crossed a level, or the drawing changed) shows
+    // the nearest finished composite instead of nothing: its own previous build, a coarser parent, or
+    // finer children. Without this, drawings vanished for about a second on every zoom step.
+    const drawnStandIns = new Set<TileKey>();
+    for (const key of plan.compositeKeys) {
+      if (!compositeCache) break;
+      const complete = compositeCache.completeTexture(key);
+      if (complete) {
+        pushComposite(key, complete.tex);
+        continue;
+      }
+      if (compositeCache.isEmpty(key)) continue;
+      const standIn = compositeStandIn(compositeCache, key);
+      if (standIn.length > 0) {
+        for (const [standInKey, texture] of standIn) {
+          if (drawnStandIns.has(standInKey)) continue;
+          drawnStandIns.add(standInKey);
+          pushComposite(standInKey, texture.tex);
+        }
+        continue;
+      }
+      const partial = compositeCache.texture(key);
+      if (partial) pushComposite(key, partial.tex);
     }
     compositeCache?.request(plan.compositeKeys, plan.targetLevel);
     const strokeQuads: DrawQuad[] = [];

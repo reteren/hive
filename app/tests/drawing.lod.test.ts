@@ -57,7 +57,7 @@ describe("drawing coarse LOD cache", () => {
     expect(metrics.map(({ zoom }) => zoom)).toEqual([0.05, 0.3, 1]);
     expect(metrics.every((entry) => entry.targetTilesDrawnPerFrame <= MAX_COMPOSITE_TARGET_TILES)).toBe(true);
     expect(metrics.every((entry) => entry.maxFineTilesLoadedPerBatch <= COARSE_COMPOSITE_SOURCE_BATCH_SIZE)).toBe(true);
-    expect(MAX_COARSE_COMPOSITE_CACHE_BYTES).toBe(MAX_COMPOSITE_TARGET_TILES * DRAW_TILE_SIZE_PX * DRAW_TILE_SIZE_PX * 4);
+    expect(MAX_COARSE_COMPOSITE_CACHE_BYTES).toBe(3 * MAX_COMPOSITE_TARGET_TILES * DRAW_TILE_SIZE_PX * DRAW_TILE_SIZE_PX * 4);
   });
 
   it("incrementally loads and composites every visible fine tile within the cache and frame budgets", async () => {
