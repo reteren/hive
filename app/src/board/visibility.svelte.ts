@@ -1,3 +1,4 @@
+import { untrack } from "svelte";
 import { board, onBoardMutation } from "../model/board.svelte";
 import { noteBounds } from "../notes/layout.svelte";
 import { camera, viewport } from "./camera.svelte";
@@ -136,6 +137,10 @@ export function startVisibility(): void {
       void camera.zoom;
       void viewport.width;
       void viewport.height;
+      // The tier follows the zoom in the same frame: switching a frame later shows one frame of the
+      // old layer at the new camera, which reads as a jump of the board.
+      const tier = tierForZoom(camera.zoom, untrack(() => lod.tier));
+      if (tier !== untrack(() => lod.tier)) lod.tier = tier;
       scheduleVisibility();
     });
   });

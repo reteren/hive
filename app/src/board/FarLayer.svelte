@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { camera, viewport } from "./camera.svelte";
   import { lod, queryRect, visible, viewportWorldRect } from "./visibility.svelte";
   import { PX_PER_UNIT } from "./cameraMath";
@@ -519,7 +519,14 @@
         clearTiles();
         if (tier !== "min") clearImageResolutions();
       }
-      scheduleFrame();
+      if (tier !== "min") return;
+      // Paint now, before the browser presents this frame: a canvas painted a frame later shows the
+      // previous camera (the board jumps for a frame, worst when the tier switches to this layer).
+      if (frame !== null) {
+        cancelAnimationFrame(frame);
+        frame = null;
+      }
+      untrack(paintFrame);
     });
 
     $effect(() => {
