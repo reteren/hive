@@ -7,6 +7,7 @@ mod change_marks;
 mod clipboard_permission;
 mod drawing;
 mod export;
+mod image_clipboard;
 mod mcp_bridge;
 mod node_info;
 mod overhive;
@@ -223,6 +224,7 @@ pub fn run() {
             attachments::attachment_directory,
             attachments::attachment_write_text,
             attachments::attachment_export,
+            image_clipboard::image_copy_to_clipboard,
             set_quit_requested,
             app_quit,
             configure_quick_input_shortcut,

@@ -80,10 +80,11 @@ describe("board object context menus", () => {
 
     const imageItems = noteMenuItemsForContext("photo");
     expect(imageItems.map((item) => item.id)).toEqual([
-      "notes.copyLink", "image.opacity", "image.erase", "archive.note", "object.scale", "object.grab", "object.delete",
+      "image.copyToClipboard", "notes.copyLink", "image.opacity", "image.erase", "archive.note", "object.scale", "object.grab", "object.delete",
     ]);
-    expect(imageItems[0]?.label("photo")).toBe("Copy link to image");
-    expect(imageItems[2]?.label("photo")).toBe("Erase");
+    expect(imageItems[0]?.label("photo")).toBe("Copy to clipboard");
+    expect(imageItems[1]?.label("photo")).toBe("Copy link to image");
+    expect(imageItems[3]?.label("photo")).toBe("Erase");
     expect(imageItems.some((item) => item.id === "task.toggleFlag")).toBe(false);
     expect(imageItems.some((item) => ["notes.addPlus", "notes.addMinus", "module.importance", "module.purpose", "module.mood"].includes(item.id))).toBe(false);
   });
@@ -103,9 +104,9 @@ describe("board object context menus", () => {
     openGifContextMenu(target);
     const gifItems = noteMenuItemsForContext("gif", target);
     expect(gifItems.map((item) => item.id)).toEqual([
-      "notes.copyLink", "attachments.toggleGif", "image.opacity", "archive.note", "object.scale", "object.grab", "object.delete",
+      "image.copyToClipboard", "notes.copyLink", "attachments.toggleGif", "image.opacity", "archive.note", "object.scale", "object.grab", "object.delete",
     ]);
-    expect(gifItems[0]?.label("gif")).toBe("Copy link to gif");
+    expect(gifItems[1]?.label("gif")).toBe("Copy link to gif");
     expect(gifItems.find((item) => item.id === "attachments.toggleGif")?.label("gif")).toBe("Stop gif");
     setGifStopped(target, true);
     expect(gifItems.find((item) => item.id === "attachments.toggleGif")?.label("gif")).toBe("Play gif");

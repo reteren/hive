@@ -10,6 +10,7 @@ import { runNoteMenuCommand } from "../commands/objectMenu";
 import { camera } from "../board/camera.svelte";
 import { linkContext } from "../links-in-text/contextMenu.svelte";
 import { openImageOpacityPopover } from "../images/imageOpacity.svelte";
+import { copyImageNoteToClipboard } from "../images/imageClipboard";
 import {
   closeGifContextMenu,
   gifPlayback,
@@ -61,7 +62,7 @@ export function noteMenuItemsForContext(
   const target = gifTarget?.noteId === noteId ? gifTarget : null;
 
   if (note?.type === "image") {
-    const allowed = new Set(["notes.copyLink", "image.erase", "image.opacity", "archive.note", ...UNIVERSAL_MENU_IDS]);
+    const allowed = new Set(["notes.copyLink", "image.copyToClipboard", "image.erase", "image.opacity", "archive.note", ...UNIVERSAL_MENU_IDS]);
     if (note.task) allowed.add("task.toggleFlag");
     if (note.image?.mime === "image/gif" && target?.kind === "board") {
       allowed.add("attachments.toggleGif");
@@ -89,6 +90,14 @@ registerNoteMenuItem({
   },
   visible: (noteId) => gifPlayback.contextMenu?.target.noteId === noteId,
   order: 11,
+});
+
+registerNoteMenuItem({
+  id: "image.copyToClipboard",
+  label: () => "Copy to clipboard",
+  run: (noteId) => { void copyImageNoteToClipboard(noteId); },
+  visible: (noteId) => board.notes[noteId]?.type === "image" && Boolean(board.notes[noteId]?.image),
+  order: 9,
 });
 
 registerNoteMenuItem({
