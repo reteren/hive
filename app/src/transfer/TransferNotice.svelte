@@ -10,6 +10,7 @@
     replaceTransferText,
     transferUi,
   } from "./sync.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   type VisualItem =
     | { key: string; kind: "prompt"; targetId: string; linkId: string; sourceName: string; targetName: string }
@@ -56,21 +57,21 @@
 </script>
 
 {#if items.length > 0}
-  <div class="transfer-layer" data-selection-ignore aria-label="Text transfer notices">
+  <div class="transfer-layer" data-selection-ignore aria-label={t("Text transfer notices")}>
     {#each items as item (item.key)}
       {@const position = positionFor(item)}
       {#if item.kind === "prompt"}
         <section
           class="transfer-card confirmation"
           role="group"
-          aria-label="Text transfer confirmation"
+          aria-label={t("Text transfer confirmation")}
           style:left={`${position.left}px`}
           style:top={`${position.top}px`}
         >
-          <p>Replace text of <strong>{item.targetName}</strong> with text of <strong>{item.sourceName}</strong>?</p>
+          <p>{t("Replace text of")} <strong>{item.targetName}</strong> {t("with text of")} <strong>{item.sourceName}</strong>?</p>
           <div class="actions">
-            <button type="button" class="replace" onclick={() => replaceTransferText(item.linkId)}>Replace</button>
-            <button type="button" onclick={() => keepTaskText(item.linkId)}>Keep</button>
+            <button type="button" class="replace" onclick={() => replaceTransferText(item.linkId)}>{t("Replace")}</button>
+            <button type="button" onclick={() => keepTaskText(item.linkId)}>{t("Keep")}</button>
           </div>
         </section>
       {:else}
@@ -84,7 +85,7 @@
         >
           <span>{item.message}</span>
           {#if item.kind === "warning"}
-            <button type="button" aria-label="Dismiss text transfer warning" onclick={() => dismissTransferWarning(item.targetId)}>×</button>
+            <button type="button" aria-label={t("Dismiss text transfer warning")} onclick={() => dismissTransferWarning(item.targetId)}>×</button>
           {/if}
         </section>
       {/if}

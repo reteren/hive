@@ -3,6 +3,7 @@ import type { ImageRef } from "../attachments/types";
 import { normalizeNoteScale, type Note } from "../model/note";
 import { encodeRgbaPng } from "./png";
 import { DRAW_PX_PER_UNIT, type BrushSettings } from "./types";
+import { t } from "../i18n/i18n.svelte";
 
 export const ERASER_GIF_TOOLTIP = "Erases drawings only. Right-click an image → Erase for pictures.";
 
@@ -85,7 +86,7 @@ export function photoMaskTransform(
   pixelsPerUnit = DRAW_PX_PER_UNIT,
 ): { a: number; d: number; e: number; f: number } {
   if (!(geometry.width > 0) || !(geometry.height > 0) || !(pixelsPerUnit > 0)) {
-    throw new RangeError("Image erase mapping requires positive dimensions.");
+    throw new RangeError(t("Image erase mapping requires positive dimensions."));
   }
   const scaleX = geometry.naturalWidth / (geometry.width * pixelsPerUnit);
   const scaleY = geometry.naturalHeight / (geometry.height * pixelsPerUnit);
@@ -168,9 +169,9 @@ export async function erasePhotoCopyOnWrite(
   if (sourceMask.width <= 0 || sourceMask.height <= 0 || opacity <= 0) return null;
 
   const url = attachmentUrl(note.image.file);
-  if (!url) throw new Error(`Could not load image attachment: ${note.image.name ?? note.name}`);
+  if (!url) throw new Error(t("Could not load image attachment: {value}", { value: note.image.name ?? note.name }));
   const response = await fetch(url);
-  if (!response.ok) throw new Error(`Could not load image attachment (${response.status}): ${note.image.name ?? note.name}`);
+  if (!response.ok) throw new Error(t("Could not load image attachment ({status}): {value}", { status: response.status, value: note.image.name ?? note.name }));
   const bitmap = await createImageBitmap(await response.blob());
 
   try {
@@ -179,7 +180,7 @@ export async function erasePhotoCopyOnWrite(
     canvas.height = geometry.naturalHeight;
     // CPU-backed: toBlob of a GPU canvas waits for the next rendered frame.
     const context = canvas.getContext("2d", { willReadFrequently: true });
-    if (!context) throw new Error("Could not prepare the erased image.");
+    if (!context) throw new Error(t("Could not prepare the erased image."));
     context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     context.save();
     context.globalCompositeOperation = "destination-out";
@@ -202,7 +203,7 @@ export async function erasePhotoCopyOnWrite(
 function canvasPng(canvas: HTMLCanvasElement): Promise<Blob> {
   // Not canvas.toBlob: it waits for a rendered frame / idle time in Chromium (see png.ts).
   const context = canvas.getContext("2d", { willReadFrequently: true });
-  if (!context) return Promise.reject(new Error("Could not encode the erased image as PNG."));
+  if (!context) return Promise.reject(new Error(t("Could not encode the erased image as PNG.")));
   const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
   return encodeRgbaPng(pixels.data, pixels.width, pixels.height);
 }

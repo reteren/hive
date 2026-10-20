@@ -13,6 +13,7 @@ import "./project/commands";
 import "./scope/init";
 import { initializeViewSettingsPersistence } from "./settings/persistence.svelte";
 import { applyTheme } from "./theme/appearance.svelte";
+import { bootLanguage } from "./i18n/i18n.svelte";
 import { preferences } from "./settings/preferences.svelte";
 import { initializeProjectPersistence } from "./project/persistence.svelte";
 import { initializeMcpBridge } from "./mcp/bridge";
@@ -36,6 +37,7 @@ import "./time/init";
 import "./drawing/init";
 
 applyTheme();
+await bootLanguage();
 await initializeViewSettingsPersistence();
 await initializeProjectPersistence();
 await initializeMcpBridge(preferences.allowAiToolsMcp);

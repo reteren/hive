@@ -1,4 +1,5 @@
 import { parseKey } from "./keys";
+import { t } from "../i18n/i18n.svelte";
 
 export type KeyBindingOverrides = Record<string, string[]>;
 
@@ -116,10 +117,10 @@ export function editKeyBinding(
   binding: string,
   replaceConflicts = false,
 ): KeyBindingEditResult {
-  if (!isValidUserBinding(binding)) return { conflicts: [], overrides: null, error: "That key cannot be used as a binding." };
+  if (!isValidUserBinding(binding)) return { conflicts: [], overrides: null, error: t("That key cannot be used as a binding.") };
 
   const target = commands.find((command) => command.id === commandId);
-  if (!target) return { conflicts: [], overrides: null, error: "This command is no longer registered." };
+  if (!target) return { conflicts: [], overrides: null, error: t("This command is no longer registered.") };
   const conflicts = findBindingConflicts(commands, commandId, bindingIndex, binding);
   if (conflicts.length > 0 && !replaceConflicts) return { conflicts, overrides: null };
 
@@ -132,7 +133,7 @@ export function editKeyBinding(
 
   const targetKeys = effective.get(commandId);
   if (!targetKeys || (bindingIndex !== null && (bindingIndex < 0 || bindingIndex >= targetKeys.length))) {
-    return { conflicts: [], overrides: null, error: "The selected binding slot no longer exists." };
+    return { conflicts: [], overrides: null, error: t("The selected binding slot no longer exists.") };
   }
   if (bindingIndex === null) targetKeys.push(binding);
   else targetKeys[bindingIndex] = binding;

@@ -29,6 +29,7 @@
   import { beginContentDrag, clearContentDrag, contentDragPreview, previewContentDrop, registerContentDropTarget, type ContentSource } from "./itemDrag";
   import { createContentMoveCommand } from "./transfers.svelte";
   import { listPickerInput } from "./pickerInput";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let root: HTMLDivElement | undefined = $state();
@@ -115,11 +116,11 @@
     if (event.key === "Enter" && query.trim()) { event.preventDefault(); event.stopPropagation(); addText(); }
   }
   function openTarget(id: string): void {
-    if (teleportToObject(id, { label: "Open List item" })) return;
+    if (teleportToObject(id, { label: t("Open List item") })) return;
     const zone = zones.byId[id];
     if (!zone) return;
     const b = zoneBounds(zone);
-    teleportToPoint({ x: b.x + b.width / 2, y: b.y + b.height / 2 }, { label: "Open List zone" });
+    teleportToPoint({ x: b.x + b.width / 2, y: b.y + b.height / 2 }, { label: t("Open List zone") });
     selectZonesOnly([id]);
   }
   function beginReorder(itemId: string, event: PointerEvent): void {
@@ -175,10 +176,10 @@
   }
 </script>
 
-<div class="list-body note-body" role="group" aria-label={`List ${note.name}`} data-list-node={note.id} data-selection-ignore bind:this={root}
+<div class="list-body note-body" role="group" aria-label={t("List {name}", { name: note.name })} data-list-node={note.id} data-selection-ignore bind:this={root}
   class:drop-target={$activeDropTarget?.targetId === note.id || !!ownTarget}
   onpointermove={moveReorder} onpointerup={endReorder} onpointercancel={cancelPointer} onlostpointercapture={cancelPointer}>
-  {#if items.length === 0 && !ownTarget}<p class="list-empty">Add links or text to this List.</p>{/if}
+  {#if items.length === 0 && !ownTarget}<p class="list-empty">{t("Add links or text to this List.")}</p>{/if}
   <div class="list-rows" bind:this={rowContainer}>
     {#each visibleRows as row, index (row.id)}
       <div class="list-entry" animate:flip={{ duration: preferences.reduceAnimations ? 0 : 140 }}>
@@ -186,7 +187,7 @@
           {@const item = row.item}
           {@const display = listItemDisplay(item, board.notes, zones.byId)}
           <div class="list-row" data-list-row={item.id} class:missing={display.missing} class:insert-before={dropIndex === items.indexOf(item)}>
-            <button class="list-grip" type="button" data-list-reorder={item.id} aria-label={`Drag ${display.label}`}
+            <button class="list-grip" type="button" data-list-reorder={item.id} aria-label={t("Drag {label}", { label: display.label })}
               onpointerdown={(event) => beginReorder(item.id, event)} onkeydown={(event) => reorderByKeyboard(item.id, items.indexOf(item), event)}>&#8942;&#8942;</button>
             <div class="list-content">
               {#if item.targetId && !display.missing}
@@ -195,7 +196,7 @@
             </div>
             {#if display.missing}<span class="list-missing">missing</span>{/if}
             <ListKindIcon kind={listItemKind(item, board.notes, zones.byId)} />
-            <button class="list-remove" type="button" data-list-remove={item.id} aria-label={`Remove ${display.label}`} onclick={() => removeListRow(note.id, item.id)}>&times;</button>
+            <button class="list-remove" type="button" data-list-remove={item.id} aria-label={t("Remove {label}", { label: display.label })} onclick={() => removeListRow(note.id, item.id)}>&times;</button>
           </div>
           {@const statistics = statisticsRows[index]}
           {#if statistics}<ListStatisticsCell itemId={item.id} {statistics} />{/if}
@@ -208,17 +209,17 @@
   <div class="list-footer" bind:this={footer}>
   {#if adding}
     <div class="list-picker" data-list-picker use:dismissBoardPopup={{ close: closePicker }} use:listPickerInput={closePicker}>
-      <input data-list-search aria-label="Search board objects or type text" placeholder="Search board objects or type text" bind:this={searchInput} bind:value={query} onkeydown={handleSearchKeydown} />
+      <input data-list-search aria-label={t("Search board objects or type text")} placeholder={t("Search board objects or type text")} bind:this={searchInput} bind:value={query} onkeydown={handleSearchKeydown} />
       <div class="list-picker-results">
         {#each choices as choice (choice.id)}<button type="button" data-list-target-option={choice.id} onclick={() => addTarget(choice.id)}>{choice.name}</button>
-        {:else}{#if query.trim()}<span class="list-picker-empty">No matching board object.</span>{/if}{/each}
+        {:else}{#if query.trim()}<span class="list-picker-empty">{t("No matching board object.")}</span>{/if}{/each}
       </div>
       <div class="list-picker-actions">
-        <button type="button" data-list-add-text disabled={!query.trim()} onclick={addText}>Add text row</button>
-        <button type="button" onclick={closePicker}>Cancel</button>
+        <button type="button" data-list-add-text disabled={!query.trim()} onclick={addText}>{t("Add text row")}</button>
+        <button type="button" onclick={closePicker}>{t("Cancel")}</button>
       </div>
     </div>
-  {:else}<button class="list-add" type="button" data-list-add onclick={openPicker}>+ Add</button>{/if}
+  {:else}<button class="list-add" type="button" data-list-add onclick={openPicker}>{t("+ Add")}</button>{/if}
   {#if note.listStats}<ListStatisticsCell total={statisticsTotal} />{/if}
   </div>
 </div>

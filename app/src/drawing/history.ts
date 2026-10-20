@@ -11,6 +11,7 @@ import {
   type WorldRect,
 } from "./types";
 import type { SelectionClipMask } from "./selectionClip";
+import { t } from "../i18n/i18n.svelte";
 
 export interface DrawingHistoryExtras {
   undo(): void;
@@ -462,7 +463,7 @@ export function writeRasterRect(image: ImageData, rasterX: number, rasterY: numb
       const right = Math.min(rasterX + image.width, (col + 1) * DRAW_TILE_SIZE_PX);
       const bottom = Math.min(rasterY + image.height, (row + 1) * DRAW_TILE_SIZE_PX);
       const tile = drawingStore.texture(key, true);
-      if (!tile) throw new Error(`Could not write drawing tile ${key}.`);
+      if (!tile) throw new Error(t("Could not write drawing tile {key}.", { key: key }));
       const width = right - left;
       const chunk = new Uint8ClampedArray(width * (bottom - top) * 4);
       for (let y = top; y < bottom; y += 1) {
@@ -487,6 +488,6 @@ function enqueueRestore(snapshot: TileSnapshot): void {
 function validateRasterRect(x: number, y: number, width: number, height: number): void {
   if (![x, y, width, height].every(Number.isSafeInteger) || width < 1 || height < 1 ||
     width > 4096 || height > 4096 || width * height > 16_777_216) {
-    throw new RangeError("Drawing raster rectangle is invalid or too large.");
+    throw new RangeError(t("Drawing raster rectangle is invalid or too large."));
   }
 }

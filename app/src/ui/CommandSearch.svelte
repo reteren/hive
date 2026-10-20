@@ -4,6 +4,7 @@
   import { closeCommandSearch, commandSearchState } from "../commands/commandSearch.svelte";
   import { formatKey } from "../commands/keys";
   import { getCommands, runCommand, type Command } from "../commands/registry.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let searchInput = $state<HTMLInputElement>();
   let query = $state("");
@@ -69,10 +70,10 @@
 
 {#if commandSearchState.open}
   <div class="search-overlay">
-    <button class="search-backdrop" type="button" aria-label="Close command search" onclick={() => close()}></button>
-    <dialog open class="search-dialog" aria-modal="true" aria-label="Command search">
+    <button class="search-backdrop" type="button" aria-label={t("Close command search")} onclick={() => close()}></button>
+    <dialog open class="search-dialog" aria-modal="true" aria-label={t("Command search")}>
       <header class="search-heading">
-        <label for="command-search-input">Command search</label>
+        <label for="command-search-input">{t("Command search")}</label>
         <div class="search-help"><kbd>↑</kbd><kbd>↓</kbd><span>navigate</span><kbd>Enter</kbd><span>run</span><kbd>Esc</kbd><span>close</span></div>
       </header>
       <input
@@ -84,11 +85,11 @@
         aria-expanded="true"
         aria-controls="command-search-results"
         aria-activedescendant={selectedCommand ? `command-result-${selectedCommand.id}` : undefined}
-        placeholder="Search commands by name or id…"
+        placeholder={t("Search commands by name or id…")}
         oninput={updateQuery}
         onkeydown={handleKeydown}
       />
-      <div id="command-search-results" class="search-results" role="listbox" aria-label="Commands">
+      <div id="command-search-results" class="search-results" role="listbox" aria-label={t("Commands")}>
         {#each results as command, index (command.id)}
           <button
             id={`command-result-${command.id}`}
@@ -101,7 +102,7 @@
             onclick={() => run(command)}
           >
             <span class="result-copy">
-              <span class="result-label">{command.label}</span>
+              <span class="result-label">{t(command.label)}</span>
               <span class="result-id">{command.id}</span>
             </span>
             <span class="result-binding">
@@ -110,17 +111,17 @@
                   {#if bindingIndex > 0}<span>/</span>{/if}<kbd>{formatKey(key)}</kbd>
                 {/each}
               {:else}
-                <span>Unbound</span>
+                <span>{t("Unbound")}</span>
               {/if}
             </span>
           </button>
         {:else}
-          <p class="empty-results">No matching commands.</p>
+          <p class="empty-results">{t("No matching commands.")}</p>
         {/each}
       </div>
       <footer class="search-footer">
         <span>{results.length} commands</span>
-        <button type="button" onmousedown={preventMouseFocus} onclick={openKeymap}>Edit key bindings</button>
+        <button type="button" onmousedown={preventMouseFocus} onclick={openKeymap}>{t("Edit key bindings")}</button>
       </footer>
     </dialog>
   </div>

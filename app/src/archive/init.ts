@@ -5,12 +5,13 @@ import { registerNoteMenuItem } from "../notes/noteMenu";
 import ArchiveNodeBody from "./ArchiveNodeBody.svelte";
 import { archiveFromMenu, archiveSelected } from "./actions.svelte";
 import { canArchiveNote } from "./logic";
+import { t } from "../i18n/i18n.svelte";
 
 registerNodeBody("archive", ArchiveNodeBody);
 
 registerNoteMenuItem({
   id: "archive.note",
-  label: () => "Archive",
+  label: () => t("Archive"),
   order: 85,
   visible: (noteId) => canArchiveNote(board.notes[noteId]),
   run: archiveFromMenu,

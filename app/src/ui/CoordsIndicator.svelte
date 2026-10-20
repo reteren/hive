@@ -1,5 +1,6 @@
 <script lang="ts">
   import { camera, pointer } from "../board/camera.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   const coordinateFormat = new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 2,
@@ -16,7 +17,7 @@
 </script>
 
 <!-- Cursor X/Y indicator in units (R0.3). -->
-<div class="coords" aria-label="Board coordinates and zoom">
+<div class="coords" aria-label={t("Board coordinates and zoom")}>
   <span class="source" class:center={isCenter}>{isCenter ? "CENTER" : "CURSOR"}</span>
   <span><span class="axis-label">X</span> {formatCoordinate(position.x)} <span class="unit">u</span></span>
   <span><span class="axis-label">Y</span> {formatCoordinate(position.y)} <span class="unit">u</span></span>

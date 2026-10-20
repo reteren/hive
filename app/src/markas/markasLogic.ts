@@ -3,6 +3,7 @@ import type { Link } from "../model/link";
 import type { CustomMark } from "../model/nodeData";
 import type { Note } from "../model/note";
 import { effectiveImportanceFor } from "../modules/moduleLogic";
+import { t } from "../i18n/i18n.svelte";
 
 export const MARKAS_PALETTE = [
   "#e58b83",
@@ -28,9 +29,9 @@ export type CustomMarkInputResult =
 export function validateCustomMark(text: string, color: string): CustomMarkInputResult {
   const normalizedText = text.trim();
   const normalizedColor = color.trim().toLowerCase();
-  if (!normalizedText) return { ok: false, error: "Enter a tag name." };
-  if (normalizedText.length > 30) return { ok: false, error: "Tag names can be up to 30 characters." };
-  if (!/^#[0-9a-f]{6}$/i.test(normalizedColor)) return { ok: false, error: "Choose a valid hex colour." };
+  if (!normalizedText) return { ok: false, error: t("Enter a tag name.") };
+  if (normalizedText.length > 30) return { ok: false, error: t("Tag names can be up to 30 characters.") };
+  if (!/^#[0-9a-f]{6}$/i.test(normalizedColor)) return { ok: false, error: t("Choose a valid hex colour.") };
   return { ok: true, value: { text: normalizedText, color: normalizedColor } };
 }
 

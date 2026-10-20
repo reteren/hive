@@ -9,6 +9,7 @@ import {
   subtractShapeCells,
 } from "./shapeGrid";
 import { normalizeShape, type ZoneShape } from "./shape";
+import { t } from "../i18n/i18n.svelte";
 
 /**
  * Zone brush contract (redesign 25.09, replaces the Edit shape editor). The zone tool paints zones
@@ -37,7 +38,7 @@ export function normalizeBrushSize(size: number): number {
  * `snap = false` supports internal geometry callers; the interactive brush always snaps.
  */
 export function brushSquare(point: Point, size: number, snap = true): ZoneBounds {
-  if (![point.x, point.y].every(Number.isFinite)) throw new RangeError("Brush point must be finite.");
+  if (![point.x, point.y].every(Number.isFinite)) throw new RangeError(t("Brush point must be finite."));
   const normalizedSize = normalizeBrushSize(size);
   const corner = { x: point.x - normalizedSize / 2, y: point.y - normalizedSize / 2 };
   const snapped = snap ? snapToGrid(corner, BRUSH_GRID) : corner;
@@ -53,7 +54,7 @@ export function brushSquare(point: Point, size: number, snap = true): ZoneBounds
  * 10u grid step apart along the path, then snapped square stamps are rasterized as one union.
  */
 export function brushSegmentShape(from: Point, to: Point, size: number, snap = true): ZoneShape {
-  if (![from.x, from.y, to.x, to.y].every(Number.isFinite)) throw new RangeError("Brush segment must be finite.");
+  if (![from.x, from.y, to.x, to.y].every(Number.isFinite)) throw new RangeError(t("Brush segment must be finite."));
   const normalizedSize = normalizeBrushSize(size);
   const distance = Math.hypot(to.x - from.x, to.y - from.y);
   const sampleCount = Math.max(1, Math.ceil(distance / (BRUSH_GRID / 2)));

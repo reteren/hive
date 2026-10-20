@@ -17,6 +17,7 @@
     type PdfPageSize,
     type PdfRenderTaskLike,
   } from "./pdfRenderLogic";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let documentViewport = $state<HTMLDivElement | null>(null);
@@ -66,7 +67,7 @@
   const renderer = createPdfRenderScheduler(renderPage, {
     onError: (error) => {
       const message = error instanceof Error ? error.message : String(error);
-      loadError = `Could not render PDF page: ${message || "Unknown error"}`;
+      loadError = t("Could not render PDF page: {value}", { value: message || "Unknown error" });
     },
   });
 
@@ -153,7 +154,7 @@
       if (request !== loadGeneration) return;
       loading = false;
       const message = error instanceof Error ? error.message : String(error);
-      loadError = `Could not load PDF: ${message || "Unknown error"}`;
+      loadError = t("Could not load PDF: {value}", { value: message || "Unknown error" });
     }
   }
 
@@ -221,7 +222,7 @@
 
     if (!currentSource) {
       loading = false;
-      loadError = "File missing.";
+      loadError = t("File missing.");
       return;
     }
     if (!isVisible) {
@@ -311,17 +312,17 @@
 
 <div class="pdf-node-body" aria-label={displayName}>
   {#if source}
-    <div class="pdf-controls" role="toolbar" aria-label="PDF zoom controls" data-selection-ignore>
-      <button type="button" aria-label="Zoom out" title="Zoom out" disabled={pdfZoom === 50} onclick={() => changeZoom(-1)}>−</button>
-      <output aria-label="PDF zoom level">{pdfZoomLabel(pdfZoom)}</output>
-      <button type="button" aria-label="Zoom in" title="Zoom in" disabled={pdfZoom === 300} onclick={() => changeZoom(1)}>+</button>
-      <button type="button" class="fit-width" aria-label="Fit width" onclick={() => setPdfZoom(note.id, undefined)}>Fit width</button>
+    <div class="pdf-controls" role="toolbar" aria-label={t("PDF zoom controls")} data-selection-ignore>
+      <button type="button" aria-label={t("Zoom out")} title={t("Zoom out")} disabled={pdfZoom === 50} onclick={() => changeZoom(-1)}>−</button>
+      <output aria-label={t("PDF zoom level")}>{pdfZoomLabel(pdfZoom)}</output>
+      <button type="button" aria-label={t("Zoom in")} title={t("Zoom in")} disabled={pdfZoom === 300} onclick={() => changeZoom(1)}>+</button>
+      <button type="button" class="fit-width" aria-label={t("Fit width")} onclick={() => setPdfZoom(note.id, undefined)}>{t("Fit width")}</button>
     </div>
     <div bind:this={documentViewport} class="pdf-document" onwheel={handleWheel} onscroll={updateScroll}>
       {#if loadError}
         <div class="pdf-message" role="alert">{loadError} {displayName}</div>
       {:else if loading}
-        <div class="pdf-message" role="status">Loading {displayName}…</div>
+        <div class="pdf-message" role="status">{t("Loading {displayName}…", { displayName: displayName })}</div>
       {:else}
         <div class="pdf-pages" style:height={`${pageMetrics.totalHeight}px`}>
           <div class="pdf-page-spacer" style:height={`${pageWindow.top}px`} aria-hidden="true"></div>
@@ -335,7 +336,7 @@
               use:observePage={page.pageNumber}
             >
               <canvas
-                aria-label={`PDF page ${page.pageNumber} of ${pageSizes.length}`}
+                aria-label={t("PDF page {pageNumber} of {count}", { pageNumber: page.pageNumber, count: pageSizes.length })}
                 style:width={`${layout.width}px`}
                 style:height={`${layout.height}px`}
                 use:registerCanvas={page.pageNumber}
@@ -347,7 +348,7 @@
       {/if}
     </div>
   {:else}
-    <div class="pdf-message missing" role="status">File missing: {displayName}</div>
+    <div class="pdf-message missing" role="status">{t("File missing: {displayName}", { displayName: displayName })}</div>
   {/if}
 </div>
 

@@ -17,6 +17,7 @@
   import { toggleBeaconMark } from "./marks.svelte";
   import { deleteMeBeacon } from "../trash/trashActions.svelte";
   import "./focus.css";
+  import { t } from "../i18n/i18n.svelte";
 
   let beacons = $derived(allBeacons());
   let focused = $derived(validFocused());
@@ -91,27 +92,27 @@
     bind:this={toggleButton}
     class="beacon-menu-toggle"
     type="button"
-    aria-label="Beacon menu"
+    aria-label={t("Beacon menu")}
     aria-controls="beacon-menu"
     aria-expanded={beaconState.menuOpen}
     onclick={() => { beaconState.menuOpen = !beaconState.menuOpen; }}
-  >Beacons</button>
+  >{t("Beacons")}</button>
   {#if focused.length}
     <div class="beacon-focus-indicator" role="status">
-      <span>Focus: {focused.map(beaconName).join(", ")}</span>
-      <button type="button" aria-label="Exit beacon focus" onclick={clearFocus}>✕</button>
+      <span>{t("Focus: {map}", { map: focused.map(beaconName).join(", ") })}</span>
+      <button type="button" aria-label={t("Exit beacon focus")} onclick={clearFocus}>✕</button>
     </div>
   {/if}
   {#if beaconState.menuOpen && beaconAnchor}
-    <div id="beacon-menu" class="beacon-menu" data-beacon-menu role="group" aria-label="Beacon focus"
+    <div id="beacon-menu" class="beacon-menu" data-beacon-menu role="group" aria-label={t("Beacon focus")}
       style={`${boardPopupStyle(camera, viewport, beaconAnchor, beaconZoomAtOpen, controlsOrigin())};position:absolute`}
       use:dismissBoardPopup={{ close: () => { beaconState.menuOpen = false; }, ignoreSelector: ".beacon-menu-toggle", escape: false }}>
-      <div class="beacon-menu-title">Beacon focus</div>
+      <div class="beacon-menu-title">{t("Beacon focus")}</div>
       {#each beacons as id (id)}
         <label class="beacon-menu-row">
           <span class="beacon-color" style:background={id === ME_OBJECT_ID ? "var(--accent)" : board.notes[id]?.color ?? "var(--accent)"}></span>
           <span class="beacon-name">{beaconName(id)}</span>
-          <input type="checkbox" checked={focused.includes(id)} onchange={(event) => setFocused(id, event.currentTarget.checked)} aria-label={`Focus ${beaconName(id)}`} />
+          <input type="checkbox" checked={focused.includes(id)} onchange={(event) => setFocused(id, event.currentTarget.checked)} aria-label={t("Focus {beaconName}", { beaconName: beaconName(id) })} />
         </label>
       {/each}
     </div>
@@ -122,7 +123,7 @@
       data-me-beacon-menu
       data-selection-ignore
       role="menu"
-      aria-label="ME beacon actions"
+      aria-label={t("ME beacon actions")}
       style={`${boardPopupStyle(camera, viewport, meContextMenu, meContextMenuZoomAtOpen, controlsOrigin())};position:absolute`}
       use:dismissBoardPopup={{ close: () => { meContextMenu = null; }, escape: false }}
     >
@@ -132,7 +133,7 @@
       <button type="button" role="menuitem" onclick={() => { focusBeaconFromMenu(ME_OBJECT_ID); meContextMenu = null; }}>
         {beaconFocusActionLabel(ME_OBJECT_ID)}
       </button>
-      <button type="button" role="menuitem" data-me-delete onclick={() => { deleteMeBeacon(); meContextMenu = null; }}>Delete ME</button>
+      <button type="button" role="menuitem" data-me-delete onclick={() => { deleteMeBeacon(); meContextMenu = null; }}>{t("Delete ME")}</button>
     </div>
   {/if}
 </div>

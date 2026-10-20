@@ -31,6 +31,7 @@
   } from "./mapMath";
   import { cameraSnapshot, recordMapCameraChange, recordMapInternalZoomChange, restoreCamera, type CameraSnapshot } from "./cameraHistory";
   import { mapViewState, setMapInternalZoom } from "./mapViewState.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   const MAP_WIDTH = 400;
   const MAP_HEIGHT = 300;
@@ -281,7 +282,7 @@
     dragStartClient = null;
     dragScreenToMap = null;
     mapDragging = false;
-    recordMapCameraChange(before, "Map navigation");
+    recordMapCameraChange(before, t("Map navigation"));
   }
 
   function onPointerCancel(): void {
@@ -296,7 +297,7 @@
   function finishCameraWheelZoom(): void {
     if (cameraWheelTimer !== undefined) clearTimeout(cameraWheelTimer);
     cameraWheelTimer = undefined;
-    if (wheelBefore) recordMapCameraChange(wheelBefore, "Map zoom");
+    if (wheelBefore) recordMapCameraChange(wheelBefore, t("Map zoom"));
     wheelBefore = null;
   }
 

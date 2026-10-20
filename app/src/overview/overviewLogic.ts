@@ -1,37 +1,38 @@
 import type { Note, NoteKind } from "../model/note";
 import { PX_PER_UNIT } from "../board/cameraMath";
+import { t } from "../i18n/i18n.svelte";
 
 export const KIND_LABELS: Record<NoteKind, string> = {
-  note: "Text",
-  pro: "Plus",
-  con: "Minus",
-  importance: "Importance",
-  purpose: "Purpose",
-  mood: "Mood",
-  beacon: "Beacon",
-  goal: "Goal",
-  progress: "Progress",
-  calculator: "Calculator",
-  tierlist: "Tierlist",
-  stats: "Statistics",
-  archive: "Archive",
-  trash: "Trash",
-  inbox: "Inbox",
-  list: "List",
-  source: "Source",
-  glossary: "Dictionary",
-  map: "Map",
-  random: "Random Choice",
-  markas: "Mark as",
-  time: "Time",
-  message: "Message",
-  calendar: "Calendar",
-  image: "Image",
-  pdf: "PDF",
-  format: "Format",
-  audio: "Audio",
-  video: "Video",
-  youtube: "YouTube",
+  get note() { return t("Text"); },
+  get pro() { return t("Plus"); },
+  get con() { return t("Minus"); },
+  get importance() { return t("Importance"); },
+  get purpose() { return t("Purpose"); },
+  get mood() { return t("Mood"); },
+  get beacon() { return t("Beacon"); },
+  get goal() { return t("Goal"); },
+  get progress() { return t("Progress"); },
+  get calculator() { return t("Calculator"); },
+  get tierlist() { return t("Tierlist"); },
+  get stats() { return t("Statistics"); },
+  get archive() { return t("Archive"); },
+  get trash() { return t("Trash"); },
+  get inbox() { return t("Inbox"); },
+  get list() { return t("List"); },
+  get source() { return t("Source"); },
+  get glossary() { return t("Dictionary"); },
+  get map() { return t("Map"); },
+  get random() { return t("Random Choice"); },
+  get markas() { return t("Mark as"); },
+  get time() { return t("Time"); },
+  get message() { return t("Message"); },
+  get calendar() { return t("Calendar"); },
+  get image() { return t("Image"); },
+  get pdf() { return t("PDF"); },
+  get format() { return t("Format"); },
+  get audio() { return t("Audio"); },
+  get video() { return t("Video"); },
+  get youtube() { return t("YouTube"); },
 };
 
 export interface OverviewLabel {
@@ -88,8 +89,8 @@ export function overviewFontSize(kind: string, title: string | null, widthPx: nu
 export function overviewZoneLabel(name: string): string {
   const trimmed = name.trim();
   const numbered = /^zone(?:\s+(\d+))?$/i.exec(trimmed);
-  if (numbered) return numbered[1] ? `Zone · ${numbered[1]}` : "Zone";
-  return trimmed ? `Zone · ${trimmed}` : "Zone";
+  if (numbered) return numbered[1] ? t("Zone · {value}", { value: numbered[1] }) : t("Zone");
+  return trimmed ? t("Zone · {trimmed}", { trimmed: trimmed }) : t("Zone");
 }
 
 /** World-unit font size for the large center label drawn inside a zone. */

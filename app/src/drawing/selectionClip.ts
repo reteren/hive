@@ -1,3 +1,4 @@
+import { t } from "../i18n/i18n.svelte";
 /** Minimal selection mask shape shared by drawing operations without importing the rune store. */
 export interface SelectionClipMask {
   x: number;
@@ -132,7 +133,7 @@ export function clipRasterDataToSelection(
   level: number,
   selection: SelectionClipMask,
 ): void {
-  if (data.length !== width * height * 4) throw new RangeError("Selection clipping expects a matching RGBA buffer.");
+  if (data.length !== width * height * 4) throw new RangeError(t("Selection clipping expects a matching RGBA buffer."));
   const coverageAt = createSelectionCoverageSampler(selection, level, width * height);
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {

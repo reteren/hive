@@ -3,6 +3,7 @@
   import { board } from "../model/board.svelte";
   import { noteBounds } from "../notes/layout.svelte";
   import { extractModuleFromNote, worldPointFromClient } from "./moduleActions.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let {
     label,
@@ -172,7 +173,7 @@
     {/if}
     <span>{label}</span>
     {#if linked}
-      <span class="module-chip-linked-mark" aria-label="Linked">
+      <span class="module-chip-linked-mark" aria-label={t("Linked")}>
         <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 7.5 7.8 4.2M6.2 3.2l.7-.7a2.1 2.1 0 0 1 3 3l-.7.7M5.8 8.8l-.7.7a2.1 2.1 0 0 1-3-3l.7-.7" /></svg>
       </span>
     {/if}

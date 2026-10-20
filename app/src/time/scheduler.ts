@@ -1,4 +1,5 @@
 import { COUNT_MODES, type CalendarRule, type CountMode, type TimeNodeData, type TimeRuntime, type TimeSchedule } from "./types";
+import { t } from "../i18n/i18n.svelte";
 
 /** Clock values supplied by the runtime service. App and active totals are monotonic. */
 export interface TimeContext {
@@ -20,22 +21,22 @@ const LATE_THRESHOLD_MS = 1_500;
 
 /** Returns a validation message, or null when a schedule can be evaluated. */
 export function validateSchedule(schedule: TimeSchedule): string | null {
-  if (!schedule || typeof schedule !== "object") return "Choose a time schedule.";
+  if (!schedule || typeof schedule !== "object") return t("Choose a time schedule.");
 
   if (schedule.kind === "at") {
-    if (!isValidTime(schedule.time)) return "Enter a time in HH:MM format.";
-    if (schedule.date !== null && !isValidDate(schedule.date)) return "Enter a valid date in YYYY-MM-DD format.";
-    if (schedule.rule !== undefined && !isValidCalendarRule(schedule.rule)) return "Choose a valid calendar repeat rule.";
+    if (!isValidTime(schedule.time)) return t("Enter a time in HH:MM format.");
+    if (schedule.date !== null && !isValidDate(schedule.date)) return t("Enter a valid date in YYYY-MM-DD format.");
+    if (schedule.rule !== undefined && !isValidCalendarRule(schedule.rule)) return t("Choose a valid calendar repeat rule.");
     return null;
   }
 
   if (schedule.kind === "interval") {
-    if (!Number.isFinite(schedule.minutes) || schedule.minutes < 1) return "Interval must be at least 1 minute.";
-    if (!isCountMode(schedule.mode)) return "Choose a valid interval count mode.";
+    if (!Number.isFinite(schedule.minutes) || schedule.minutes < 1) return t("Interval must be at least 1 minute.");
+    if (!isCountMode(schedule.mode)) return t("Choose a valid interval count mode.");
     return null;
   }
 
-  return "Choose a valid time schedule.";
+  return t("Choose a valid time schedule.");
 }
 
 /**

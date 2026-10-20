@@ -5,6 +5,7 @@
   import { attachmentUrl } from "./service";
   import { acquireDisplayBitmap, displayBitmapSize, peekAnyDisplayBitmap, type DisplayBitmapLease } from "./displayBitmap";
   import type { ImageRef } from "./types";
+  import { t } from "../i18n/i18n.svelte";
 
   interface Props {
     image: ImageRef;
@@ -142,8 +143,8 @@
 </script>
 
 {#if loadState === "error" || !src}
-  <div class={`attachment-image-missing ${className}`} style={style} role="img" aria-label={`File missing: ${image.name ?? image.file}`}>
-    <span>File missing: {image.name ?? image.file}</span>
+  <div class={`attachment-image-missing ${className}`} style={style} role="img" aria-label={t("File missing: {value}", { value: image.name ?? image.file })}>
+    <span>{t("File missing: {value}", { value: image.name ?? image.file })}</span>
   </div>
 {:else}
   <div

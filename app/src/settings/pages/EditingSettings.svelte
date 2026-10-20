@@ -3,6 +3,7 @@
   import SpellcheckSettings from "../../spell/SpellcheckSettings.svelte";
   import { preferences, setFitWidthToText } from "../preferences.svelte";
   import { history, MAX_HISTORY_LIMIT, MIN_HISTORY_LIMIT, setHistoryLimit } from "../../history/history.svelte";
+  import { t } from "../../i18n/i18n.svelte";
 
   let historyLimitDraft = $state(String(history.limit));
 
@@ -30,11 +31,11 @@
 </script>
 
 <section class="settings-block" aria-labelledby="notes-settings-title">
-  <div class="settings-block-header"><h3 id="notes-settings-title" class="settings-block-title">Notes</h3></div>
+  <div class="settings-block-header"><h3 id="notes-settings-title" class="settings-block-title">{t("Notes")}</h3></div>
   <div class="settings-group">
     <SettingToggle
-      label="Fit note width to text (beta)"
-      description="Grow while typing to keep each line unwrapped."
+      label={t("Fit note width to text (beta)")}
+      description={t("Grow while typing to keep each line unwrapped.")}
       checked={preferences.fitWidthToText}
       onchange={setFitWidthToText}
     />
@@ -44,12 +45,12 @@
 <SpellcheckSettings />
 
 <section class="settings-block" aria-labelledby="history-settings-title">
-  <div class="settings-block-header"><h3 id="history-settings-title" class="settings-block-title">Undo</h3></div>
+  <div class="settings-block-header"><h3 id="history-settings-title" class="settings-block-title">{t("Undo")}</h3></div>
   <div class="settings-group">
     <label class="setting-row">
       <span class="setting-copy">
-        <span class="setting-title">Undo history limit</span>
-        <span class="setting-description">Keep between {MIN_HISTORY_LIMIT} and {MAX_HISTORY_LIMIT} steps you can undo.</span>
+        <span class="setting-title">{t("Undo history limit")}</span>
+        <span class="setting-description">{t("Keep between {min} and {max} steps you can undo.", { min: MIN_HISTORY_LIMIT, max: MAX_HISTORY_LIMIT })}</span>
       </span>
       <span class="setting-control">
         <input
@@ -59,12 +60,12 @@
           max={MAX_HISTORY_LIMIT}
           step="1"
           value={historyLimitDraft}
-          aria-label={`Undo history limit, from ${MIN_HISTORY_LIMIT} to ${MAX_HISTORY_LIMIT}`}
+          aria-label={t("Undo history limit, from {min} to {max}", { min: MIN_HISTORY_LIMIT, max: MAX_HISTORY_LIMIT })}
           oninput={(event) => (historyLimitDraft = event.currentTarget.value)}
           onchange={changeHistoryLimit}
           onkeydown={handleHistoryLimitKeydown}
         />
-        <span class="setting-unit">steps</span>
+        <span class="setting-unit">{t("steps")}</span>
       </span>
     </label>
   </div>

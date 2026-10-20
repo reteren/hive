@@ -6,6 +6,7 @@ import { clearRecentProjects } from "../ui/menubar/recentProjects.svelte";
 import type { RecentProject } from "../ui/menubar/menuModel";
 import { chooseProject, closeProjectMenu, flushPendingSave, openProjectAt } from "./persistence.svelte";
 import { project } from "./project.svelte";
+import { t } from "../i18n/i18n.svelte";
 
 let recentTarget: RecentProject | null = null;
 
@@ -83,7 +84,7 @@ async function openRecentProject(target: RecentProject): Promise<void> {
 
 async function quitHive(): Promise<void> {
   if (!isTauri()) {
-    project.error = "Quit is available in the desktop app.";
+    project.error = t("Quit is available in the desktop app.");
     return;
   }
   try {

@@ -6,6 +6,7 @@ import { newId } from "../model/note";
 import { calculatorKey, type BankRow, type CalculatorData } from "../model/nodeData";
 import { calculatorData, calculators, setCalculatorData } from "./calculators.svelte";
 import { addBankRow, removeBankRow, updateBankRow } from "./bank";
+import { t } from "../i18n/i18n.svelte";
 
 export const bankFocus = $state({ calculatorId: null as string | null, rowId: null as string | null });
 
@@ -37,14 +38,14 @@ export function createBank(name: string, bankName: string, initial: number): boo
   const title = bankName.trim();
   if (!title || !Number.isFinite(initial) || calculatorData(name).bank) return false;
   const data = calculatorData(name);
-  changeData(name, "Create bank", { ...data, bank: { name: title, initial }, rows: rowsForExistingLinks(name, data.rows) });
+  changeData(name, t("Create bank"), { ...data, bank: { name: title, initial }, rows: rowsForExistingLinks(name, data.rows) });
   return true;
 }
 
 export function removeBank(name: string): boolean {
   const data = calculatorData(name);
   if (!data.bank) return false;
-  changeData(name, "Remove bank", { ...data, bank: null, rows: [] });
+  changeData(name, t("Remove bank"), { ...data, bank: null, rows: [] });
   return true;
 }
 
@@ -52,7 +53,7 @@ export function addManualBankRow(name: string, label: string, amount: number): s
   const title = label.trim();
   if (!calculatorData(name).bank || !title || !Number.isFinite(amount)) return null;
   const row: BankRow = { id: newId(), label: title, amount, sourceNoteId: null };
-  changeData(name, "Add bank row", addBankRow(calculatorData(name), row));
+  changeData(name, t("Add bank row"), addBankRow(calculatorData(name), row));
   return row.id;
 }
 
@@ -69,7 +70,7 @@ export function deleteBankRow(name: string, rowId: string): boolean {
   const before = copyData(data);
   const after = removeBankRow(before, rowId);
   execute({
-    label: "Delete bank row", target: name,
+    label: t("Delete bank row"), target: name,
     do: () => { setCalculatorData(name, copyData(after)); linkIds.forEach((id) => suppressedLinks.add(id)); },
     undo: () => { setCalculatorData(name, copyData(before)); linkIds.forEach((id) => suppressedLinks.delete(id)); },
   });
@@ -113,26 +114,26 @@ export function commitBankName(name: string, before: string, after: string): voi
   if (!calculatorData(name).bank) return;
   const title = after.trim() || before;
   previewBankName(name, title);
-  recordFieldEdit(name, "Rename bank", before, title, previewBankName);
+  recordFieldEdit(name, t("Rename bank"), before, title, previewBankName);
 }
 
 export function commitBankInitial(name: string, before: number, after: number): void {
   if (!Number.isFinite(after) || !calculatorData(name).bank) return;
   previewBankInitial(name, after);
-  recordFieldEdit(name, "Edit bank initial", before, after, previewBankInitial);
+  recordFieldEdit(name, t("Edit bank initial"), before, after, previewBankInitial);
 }
 
 export function commitBankRowLabel(name: string, rowId: string, before: string, after: string): void {
   if (!calculatorData(name).rows.some((row) => row.id === rowId && !row.sourceNoteId)) return;
   const label = after.trim() || before;
   previewBankRowLabel(name, rowId, label);
-  recordFieldEdit(name, "Rename bank row", before, label, (key, value) => previewBankRowLabel(key, rowId, value));
+  recordFieldEdit(name, t("Rename bank row"), before, label, (key, value) => previewBankRowLabel(key, rowId, value));
 }
 
 export function commitBankRowAmount(name: string, rowId: string, before: number, after: number): void {
   if (!Number.isFinite(after) || !calculatorData(name).rows.some((row) => row.id === rowId)) return;
   previewBankRowAmount(name, rowId, after);
-  recordFieldEdit(name, "Edit bank amount", before, after, (key, value) => previewBankRowAmount(key, rowId, value));
+  recordFieldEdit(name, t("Edit bank amount"), before, after, (key, value) => previewBankRowAmount(key, rowId, value));
 }
 
 function linkedInfo(link: Link): { key: string; calculatorName: string; sourceName: string } | null {

@@ -10,6 +10,7 @@
     previewImageOpacity,
   } from "./imageOpacity.svelte";
   import { imageOpacityFromSliderValue, imageOpacitySliderValue } from "./imageLogic";
+  import { t } from "../i18n/i18n.svelte";
 
   let active = $derived(imageOpacityPopover.current);
   let note = $derived(active ? board.notes[active.noteId] : undefined);
@@ -29,20 +30,20 @@
     data-image-opacity-popover
     data-note-id={active.noteId}
     role="dialog"
-    aria-label="Image opacity"
+    aria-label={t("Image opacity")}
     tabindex="-1"
     style={boardPopupStyle(camera, viewport, { x: active.x, y: active.y }, active.zoomAtOpen)}
     use:dismissBoardPopup={{ close: closeImageOpacityPopover }}
   >
     <div class="image-opacity-heading">
-      <span>Opacity</span>
+      <span>{t("Opacity")}</span>
       <strong>{Math.round(active.value * 100)}%</strong>
     </div>
     <MediaSlider
       value={imageOpacitySliderValue(active.value)}
       max={90}
       step={5}
-      label="Image opacity"
+      label={t("Image opacity")}
       oninput={previewSliderValue}
       onchange={commitSliderValue}
       tooltip={(value) => `${Math.round(value + 10)}%`}

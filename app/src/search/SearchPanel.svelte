@@ -24,6 +24,7 @@
     setSearchQuery,
     setSearchResults,
   } from "./search.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   const SEARCH_DEBOUNCE_MS = 100;
 
@@ -130,7 +131,7 @@
   function jumpToIndex(index: number): void {
     if (!selectSearchResult(index)) return;
     const result = currentSearchResult();
-    if (result) teleportToObject(result.noteId, { label: "Search" });
+    if (result) teleportToObject(result.noteId, { label: t("Search") });
   }
 
   function jumpToResult(result: SearchResult): void {
@@ -150,11 +151,11 @@
 
   function resultObjectLabel(result: SearchResult): string {
     const type = result.objectKind;
-    const kindLabel = type === "pro" ? "Plus"
-      : type === "con" ? "Minus"
+    const kindLabel = type === "pro" ? t("Plus")
+      : type === "con" ? t("Minus")
         : type ? type[0]!.toUpperCase() + type.slice(1)
-          : "Object";
-    return result.isTask && type === "note" ? "Task · Note" : kindLabel;
+          : t("Object");
+    return result.isTask && type === "note" ? t("Task · Note") : kindLabel;
   }
 </script>
 
@@ -163,13 +164,13 @@
 </div>
 
 {#if searchState.open}
-  <div class="search-overlay" data-selection-ignore onkeydown={handleKeydown} role="dialog" aria-modal="true" aria-label="Search notes" tabindex="-1">
-    <button class="search-backdrop" type="button" aria-label="Close search" onclick={closeSearch}></button>
+  <div class="search-overlay" data-selection-ignore onkeydown={handleKeydown} role="dialog" aria-modal="true" aria-label={t("Search notes")} tabindex="-1">
+    <button class="search-backdrop" type="button" aria-label={t("Close search")} onclick={closeSearch}></button>
     <section class="search-dialog">
       <header class="search-heading">
-        <label for="note-search-input">Search notes</label>
+        <label for="note-search-input">{t("Search notes")}</label>
         <div class="search-help" aria-hidden="true"><kbd>↑</kbd><kbd>↓</kbd><span>cycle</span><kbd>Enter</kbd><span>jump</span><kbd>Esc</kbd><span>close</span></div>
-        <button class="close-button" type="button" aria-label="Close search" title="Close search" onclick={closeSearch}><CloseGlyph /></button>
+        <button class="close-button" type="button" aria-label={t("Close search")} title={t("Close search")} onclick={closeSearch}><CloseGlyph /></button>
       </header>
 
       <input
@@ -181,16 +182,16 @@
         aria-expanded="true"
         aria-controls="note-search-results"
         aria-activedescendant={currentSearchResult() ? resultId(currentSearchResult()!) : undefined}
-        placeholder="Find a note by name or text…"
+        placeholder={t("Find a note by name or text…")}
         autocomplete="off"
         value={searchState.query}
         oninput={updateQuery}
       />
 
-      <div id="note-search-results" class="search-results" role="listbox" aria-label="Search results">
+      <div id="note-search-results" class="search-results" role="listbox" aria-label={t("Search results")}>
         {#if nameResults.length > 0}
-          <section class="result-group" role="group" aria-label="Names">
-            <h2>Names <span>{nameResults.length}</span></h2>
+          <section class="result-group" role="group" aria-label={t("Names")}>
+            <h2>{t("Names")} <span>{nameResults.length}</span></h2>
             {#each nameResults as result (resultId(result))}
               {@const index = searchState.results.findIndex((item) => item.noteId === result.noteId && item.kind === result.kind)}
               {@const parts = splitSearchMatch(result)}
@@ -206,7 +207,7 @@
               >
                 <span class="result-mainline">
                   <span class="result-name">{parts.before}<mark>{parts.match}</mark>{parts.after}</span>
-                  <span class="result-type">{resultObjectLabel(result)} · Name</span>
+                  <span class="result-type">{t("{resultObjectLabel} · Name", { resultObjectLabel: resultObjectLabel(result) })}</span>
                 </span>
               </button>
             {/each}
@@ -214,8 +215,8 @@
         {/if}
 
         {#if kindResults.length > 0}
-          <section class="result-group" role="group" aria-label="Kinds">
-            <h2>Kinds <span>{kindResults.length}</span></h2>
+          <section class="result-group" role="group" aria-label={t("Kinds")}>
+            <h2>{t("Kinds")} <span>{kindResults.length}</span></h2>
             {#each kindResults as result (resultId(result))}
               {@const index = searchState.results.findIndex((item) => item.noteId === result.noteId && item.kind === result.kind)}
               {@const parts = splitSearchMatch(result)}
@@ -231,7 +232,7 @@
               >
                 <span class="result-mainline">
                   <span class="result-name">{result.noteName}</span>
-                  <span class="result-type">{resultObjectLabel(result)} · Type</span>
+                  <span class="result-type">{t("{resultObjectLabel} · Type", { resultObjectLabel: resultObjectLabel(result) })}</span>
                 </span>
                 <span class="result-snippet"><mark>{parts.match}</mark></span>
               </button>
@@ -240,8 +241,8 @@
         {/if}
 
         {#if textResults.length > 0}
-          <section class="result-group" role="group" aria-label="Text">
-            <h2>Text <span>{textResults.length}</span></h2>
+          <section class="result-group" role="group" aria-label={t("Text")}>
+            <h2>{t("Text")} <span>{textResults.length}</span></h2>
             {#each textResults as result (resultId(result))}
               {@const index = searchState.results.findIndex((item) => item.noteId === result.noteId && item.kind === result.kind)}
               {@const parts = splitSearchMatch(result)}
@@ -257,7 +258,7 @@
               >
                 <span class="result-mainline">
                   <span class="result-name">{result.noteName}</span>
-                  <span class="result-type">{resultObjectLabel(result)} · Text</span>
+                  <span class="result-type">{t("{resultObjectLabel} · Text", { resultObjectLabel: resultObjectLabel(result) })}</span>
                 </span>
                 <span class="result-snippet">{parts.before}<mark>{parts.match}</mark>{parts.after}</span>
               </button>
@@ -265,7 +266,7 @@
           </section>
         {/if}
         {#if nameResults.length === 0 && kindResults.length === 0 && textResults.length === 0}
-          <p class="empty-results">{searchState.query.trim() ? "No matching notes." : "Type to search notes."}</p>
+          <p class="empty-results">{searchState.query.trim() ? t("No matching notes.") : t("Type to search notes.")}</p>
         {/if}
       </div>
 
@@ -274,9 +275,9 @@
           {searchState.results.length ? searchState.currentIndex + 1 : 0} / {searchState.results.length}
         </span>
         <div class="result-controls">
-          <button type="button" aria-label="Previous result" title="Previous result · ↑" disabled={searchState.results.length === 0} onmousedown={preventMouseFocus} onclick={() => cycleSearchResults(-1)}>Previous</button>
-          <button type="button" aria-label="Next result" title="Next result · ↓" disabled={searchState.results.length === 0} onmousedown={preventMouseFocus} onclick={() => cycleSearchResults(1)}>Next</button>
-          <button type="button" class="jump-button" disabled={searchState.results.length === 0} onmousedown={preventMouseFocus} onclick={jumpToCurrent}>Jump</button>
+          <button type="button" aria-label={t("Previous result")} title={t("Previous result · ↑")} disabled={searchState.results.length === 0} onmousedown={preventMouseFocus} onclick={() => cycleSearchResults(-1)}>{t("Previous")}</button>
+          <button type="button" aria-label={t("Next result")} title={t("Next result · ↓")} disabled={searchState.results.length === 0} onmousedown={preventMouseFocus} onclick={() => cycleSearchResults(1)}>{t("Next")}</button>
+          <button type="button" class="jump-button" disabled={searchState.results.length === 0} onmousedown={preventMouseFocus} onclick={jumpToCurrent}>{t("Jump")}</button>
         </div>
       </footer>
     </section>

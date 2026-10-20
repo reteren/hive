@@ -1,5 +1,6 @@
 import type { Point } from "./cameraMath";
 import { PX_PER_UNIT } from "./cameraMath";
+import { t } from "../i18n/i18n.svelte";
 
 /** Presets are expressed in board units (u); a custom positive step is also allowed. */
 export const GRID_STEP_PRESETS = Object.freeze([1, 2, 5, 10, 20, 50, 100] as const);
@@ -42,7 +43,7 @@ export function gridLineStride(step: number, zoom: number): number {
 /** Round each coordinate to its nearest grid multiple without changing the input point. */
 export function snapToGrid(point: Point, step: number): Point {
   if (!isValidGridStep(step)) {
-    throw new RangeError("Grid step must be a positive finite number.");
+    throw new RangeError(t("Grid step must be a positive finite number."));
   }
 
   return {

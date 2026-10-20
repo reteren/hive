@@ -11,6 +11,7 @@ import {
   type TileSnapshot,
   type WorldRect,
 } from "./types";
+import { t } from "../i18n/i18n.svelte";
 
 const MAX_TILE_COORDINATE = 10_000_000;
 const MAX_TILES_PER_RECT = 100_000;
@@ -80,7 +81,7 @@ export class TileCopy {
       gpu.copyTexture(this.gpuCopy, target);
       return;
     }
-    if (!this.packed) throw new Error("Drawing Undo data is missing.");
+    if (!this.packed) throw new Error(t("Drawing Undo data is missing."));
     gpu.writePremultiplied(target, await inflate(await this.packed));
   }
 
@@ -224,7 +225,7 @@ export function createDrawingTileStore(): MutableDrawingTileStore {
 
   function installPngs(pngs: ReadonlyMap<TileKey, Blob>): Promise<void> {
     return Promise.all([...pngs].map(async ([key, blob]) => {
-      if (!validKey(key)) throw new Error(`Invalid drawing tile key: ${key}`);
+      if (!validKey(key)) throw new Error(t("Invalid drawing tile key: {key}", { key: key }));
       const bitmap = await createImageBitmap(blob, { premultiplyAlpha: "premultiply", colorSpaceConversion: "none" });
       return [key, bitmap] as const;
     })).then((decoded) => {
@@ -323,7 +324,7 @@ export function createDrawingTileStore(): MutableDrawingTileStore {
       const unique = [...new Set(keys)];
       await store.ensureTiles(unique);
       const unavailable = unique.filter((key) => tileIndex.has(key) && !tiles.has(key));
-      if (unavailable.length) throw new Error(`Could not snapshot ${unavailable.length} drawing tiles within the GPU residency budget.`);
+      if (unavailable.length) throw new Error(t("Could not snapshot {count} drawing tiles within the GPU residency budget.", { count: unavailable.length }));
       const snapshot: TileSnapshot = new Map();
       const chunkSize = 8;
       for (let start = 0; start < unique.length; start += chunkSize) {
@@ -335,7 +336,7 @@ export function createDrawingTileStore(): MutableDrawingTileStore {
     setKnownKeys(keys) {
       clearAll();
       for (const key of keys) {
-        if (!validKey(key)) throw new Error(`Invalid drawing tile key: ${key}`);
+        if (!validKey(key)) throw new Error(t("Invalid drawing tile key: {key}", { key: key }));
         tileIndex.add(key);
       }
       sortedKeysCache = null;
@@ -398,7 +399,7 @@ export function createDrawingTileStore(): MutableDrawingTileStore {
       const engine = requireDrawingGpu();
       const snapshot: TileSnapshot = new Map();
       for (const key of new Set(keys)) {
-        if (!validKey(key)) throw new Error(`Invalid drawing tile key: ${key}`);
+        if (!validKey(key)) throw new Error(t("Invalid drawing tile key: {key}", { key: key }));
         const texture = tiles.get(key);
         if (!texture && tileIndex.has(key)) throw new Error(`Drawing tile ${key} is not resident; load it before taking a synchronous snapshot.`);
         snapshot.set(key, texture ? new TileCopy(engine, texture) : null);
@@ -408,7 +409,7 @@ export function createDrawingTileStore(): MutableDrawingTileStore {
     async restore(snapshot) {
       const engine = requireDrawingGpu();
       for (const [key, copy] of snapshot) {
-        if (!validKey(key)) throw new Error(`Invalid drawing tile key: ${key}`);
+        if (!validKey(key)) throw new Error(t("Invalid drawing tile key: {key}", { key: key }));
         if (!copy) {
           deleteTile(key);
           continue;
@@ -434,7 +435,7 @@ export function createDrawingTileStore(): MutableDrawingTileStore {
     async replaceFromPngs(pngs) {
       clearAll();
       for (const key of pngs.keys()) {
-        if (!validKey(key)) throw new Error(`Invalid drawing tile key: ${key}`);
+        if (!validKey(key)) throw new Error(t("Invalid drawing tile key: {key}", { key: key }));
         tileIndex.add(key);
       }
       await installPngs(pngs);

@@ -1,3 +1,4 @@
+import { t } from "../../i18n/i18n.svelte";
 import { Transaction } from "@codemirror/state";
 import { WidgetType, type EditorView } from "@codemirror/view";
 
@@ -45,7 +46,7 @@ export class PreviewCheckboxWidget extends WidgetType {
     element.className = `cm-hive-preview-checkbox${this.checked ? " is-checked" : ""}`;
     element.setAttribute("role", "checkbox");
     element.setAttribute("aria-checked", String(this.checked));
-    element.setAttribute("aria-label", this.checked ? "Completed" : "Incomplete");
+    element.setAttribute("aria-label", this.checked ? t("Completed") : t("Incomplete"));
     element.tabIndex = -1;
     element.addEventListener("mousedown", (event) => {
       event.preventDefault();

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { selectKeyboardAction } from "../time/selectLogic";
+  import { t } from "../i18n/i18n.svelte";
 
   export interface SelectOption {
     value: string;
@@ -121,7 +122,7 @@
   onkeydown={handleKeydown}
   ondblclick={ondblclick}
 >
-  <span class="app-select-value">{selectedOption?.label ?? "Select…"}</span>
+  <span class="app-select-value">{selectedOption?.label ?? t("Select…")}</span>
   <span class="app-select-arrow" aria-hidden="true"></span>
 </button>
 

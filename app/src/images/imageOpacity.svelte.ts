@@ -2,6 +2,7 @@ import type { Point } from "../board/cameraMath";
 import { board, updateNote } from "../model/board.svelte";
 import { execute } from "../history/history.svelte";
 import { clampImageOpacity, normalizeImageOpacity } from "./imageLogic";
+import { t } from "../i18n/i18n.svelte";
 
 export interface ImageOpacityPopoverState {
   noteId: string;
@@ -51,7 +52,7 @@ export function commitImageOpacity(value: number): void {
   const before = current.before < 1 ? current.before : undefined;
   const after = opacity < 1 ? opacity : undefined;
   execute({
-    label: "Change image opacity",
+    label: t("Change image opacity"),
     target: note.name,
     do: () => updateNote(current.noteId, { opacity: after }),
     undo: () => updateNote(current.noteId, { opacity: before }),

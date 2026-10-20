@@ -1,3 +1,4 @@
+import { msg } from "../i18n/i18n.svelte";
 export interface ProjectConflict {
   noteId: string;
   noteName: string;
@@ -12,7 +13,7 @@ export interface ProjectConflict {
 
 export const project = $state({
   path: "",
-  name: "No project",
+  name: msg("No project"),
   ready: false,
   saving: false,
   error: "",

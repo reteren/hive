@@ -16,6 +16,7 @@ import { captureSelectionSnapshot, restoreSelectionSnapshot, selectOnly, selecti
 import { canArchiveNote, copyArchivedLink, copyArchivedNote, planArchiveRestore, type ArchiveRestorePlan, type RestorePlacement } from "./logic";
 import { linkedTimeStatesForTask } from "../time/taskLink";
 import { restartTimeNode } from "../time/runtime.svelte";
+import { t, tp } from "../i18n/i18n.svelte";
 
 /** Permanent removal must stay permanent when an older Archive/Restore step is traversed. */
 const permanentlyDeleted = new Set<string>();
@@ -50,8 +51,8 @@ export function archiveNotes(noteIds: readonly string[]): number {
   const selectedIds = new Set(uniqueIds);
   const entryByNoteId = new Map(entries.map((entry) => [entry.note.id, entry]));
   const command: HistoryCommand = {
-    label: "Archive",
-    target: entries.length === 1 ? entries[0].note.name : `${entries.length} nodes`,
+    label: t("Archive"),
+    target: entries.length === 1 ? entries[0].note.name : tp(entries.length, "{count} node", "{count} nodes"),
     do: () => {
       const activeIds = new Set(entries.filter((entry) => !permanentlyDeleted.has(entry.id)).map((entry) => entry.note.id));
       linkedTimes.forEach((time) => setTimeEnabled(time.noteId, false));
@@ -131,7 +132,7 @@ export function restoreArchived(
   const timesToResume = resumeReminders ? linkedTimes.map(({ noteId }) => noteId) : [];
   const beforeSelection = captureSelectionSnapshot();
   const command: HistoryCommand = {
-    label: "Restore from archive",
+    label: t("Restore from archive"),
     target: plan.note.name,
     do: () => {
       if (permanentlyDeleted.has(entryId)) return;
@@ -181,7 +182,7 @@ export function duplicateArchivedNear(entryId: string, archiveNodeId: string): N
   const beforeSelection = captureSelectionSnapshot();
   const calculatorCopy = entry.calculatorData ? copyCalculatorData(entry.calculatorData) : null;
   execute({
-    label: "Duplicate from archive",
+    label: t("Duplicate from archive"),
     target: copy.name,
     do: () => {
       addNote(copyArchivedNote(copy));

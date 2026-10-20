@@ -1,5 +1,6 @@
 import type { HistoryCommand } from "../history/historyStack";
 import type { SourceData } from "../model/nodeData";
+import { t } from "../i18n/i18n.svelte";
 
 export const EMPTY_SOURCE: Readonly<SourceData> = {
   url: null,
@@ -111,17 +112,17 @@ export function sourceHasPicker(source?: SourceData): boolean {
 
 export function validateSourceUrl(rawUrl: string): UrlValidation {
   const trimmed = rawUrl.trim();
-  if (!trimmed) return { valid: false, error: "Enter a URL." };
+  if (!trimmed) return { valid: false, error: t("Enter a URL.") };
 
   let parsed: URL;
   try {
     parsed = new URL(trimmed);
   } catch {
-    return { valid: false, error: "Enter a valid http or https URL." };
+    return { valid: false, error: t("Enter a valid http or https URL.") };
   }
 
   if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || !parsed.hostname) {
-    return { valid: false, error: "Use an http:// or https:// URL." };
+    return { valid: false, error: t("Use an http:// or https:// URL.") };
   }
 
   return { valid: true, url: parsed.href };
@@ -215,7 +216,7 @@ interface SourceEditCommand extends HistoryCommand {
 export function createSourceEditCommand(input: SourceEditCommandInput): HistoryCommand {
   const command: SourceEditCommand = {
     [SOURCE_COMMAND]: true,
-    label: "Edit source",
+    label: t("Edit source"),
     target: input.target,
     before: cloneSource(input.before),
     after: cloneSource(input.after),

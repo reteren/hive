@@ -17,6 +17,7 @@
     youtubePlayerCommand,
     youtubeThumbnailUrl,
   } from "./logic";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let frame = $state<HTMLIFrameElement | null>(null);
@@ -42,7 +43,7 @@
   let cancelCaptureGesture: (() => void) | null = null;
   let loopRestartPending = false;
   let youtube = $derived(note.type === "youtube" ? note.youtube : undefined);
-  let title = $derived(youtube?.title || youtube?.videoId || "YouTube video");
+  let title = $derived(youtube?.title || youtube?.videoId || t("YouTube video"));
   let thumbnail = $derived(youtube ? youtubeThumbnailUrl(youtube.videoId) : "");
   let embed = $derived(youtube ? youtubeEmbedUrl(youtube, typeof location === "undefined" ? "" : location.origin, nativeFallback) : "");
   let displayTime = $derived(seekDraft ?? currentTime);
@@ -103,7 +104,7 @@
 
   $effect(() => {
     if (!playing) return;
-    return pinNote(note.id, "YouTube playback");
+    return pinNote(note.id, t("YouTube playback"));
   });
 
   onMount(() => {
@@ -244,7 +245,7 @@
     try {
       await openUrl(youtube.url);
     } catch {
-      showLinkStatus("Could not open this YouTube link.");
+      showLinkStatus(t("Could not open this YouTube link."));
     }
   }
 
@@ -266,16 +267,16 @@
   data-frame-hidden={note.frameHidden === true ? "true" : undefined}
 >
   {#if !youtube}
-    <div class="youtube-error" role="status">YouTube link missing.</div>
+    <div class="youtube-error" role="status">{t("YouTube link missing.")}</div>
   {:else if embedError}
     <div class="youtube-error" data-youtube-error role="alert">
-      <span>This video can't be played inside hive ({embedError})</span>
-      <button type="button" data-selection-ignore onclick={() => { void openOnYouTube(); }}>Open on YouTube</button>
+      <span>{t("This video can't be played inside hive ({embedError})", { embedError: embedError })}</span>
+      <button type="button" data-selection-ignore onclick={() => { void openOnYouTube(); }}>{t("Open on YouTube")}</button>
     </div>
   {:else if playerUnavailable}
     <div class="youtube-error" data-youtube-player-timeout role="status">
-      <span>The embedded player did not respond.</span>
-      <button type="button" data-selection-ignore onclick={() => { void openOnYouTube(); }}>Open on YouTube</button>
+      <span>{t("The embedded player did not respond.")}</span>
+      <button type="button" data-selection-ignore onclick={() => { void openOnYouTube(); }}>{t("Open on YouTube")}</button>
     </div>
   {:else if embedActive}
     <div
@@ -284,7 +285,7 @@
       data-youtube-player-wrap
       data-youtube-native-fallback={nativeFallback ? "true" : undefined}
       role="group"
-      aria-label="YouTube player"
+      aria-label={t("YouTube player")}
       onpointermove={onPointerActivity}
       onpointerleave={controlsAutoHide.pointerLeave}
     >
@@ -297,7 +298,7 @@
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         allowfullscreen
         data-selection-ignore
-        onerror={() => { embedError = "The YouTube player could not be loaded."; }}
+        onerror={() => { embedError = t("The YouTube player could not be loaded."); }}
       ></iframe>
       {#if !nativeFallback}
         <div
@@ -306,7 +307,7 @@
           data-note-header
           role="button"
           tabindex="0"
-          aria-label={`Play or pause ${title}`}
+          aria-label={t("Play or pause {title}", { title: title })}
           onpointerdown={onYoutubeCapturePointerDown}
           onkeydown={onCaptureKeydown}
           oncontextmenu={suppressYoutubeContextMenu}
@@ -336,7 +337,7 @@
       data-note-header
       role="button"
       tabindex="0"
-      aria-label={`Play ${title}`}
+      aria-label={t("Play {title}", { title: title })}
       onpointerdown={onYoutubeCapturePointerDown}
       onkeydown={onCaptureKeydown}
       oncontextmenu={suppressYoutubeContextMenu}

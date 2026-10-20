@@ -3,6 +3,7 @@ import type { Note, PurposeKind, MoodKind } from "../model/note";
 import type { CustomMark } from "../model/nodeData";
 import { linkRefusalReason } from "../links/rules";
 import { mergeCustomMarks } from "../markas/markasLogic";
+import { t } from "../i18n/i18n.svelte";
 
 export type ModuleMergePlan = (
   | { field: "purposes"; values: PurposeKind[] }
@@ -26,7 +27,7 @@ export function planModuleMerge(
 ): ModuleMergeResult {
   if ((source.type !== "purpose" && source.type !== "mood" && source.type !== "markas") ||
     target.type !== source.type || source.id === target.id) {
-    return { ok: false, reason: "Only matching Purpose, Mood, or Mark as nodes can merge." };
+    return { ok: false, reason: t("Only matching Purpose, Mood, or Mark as nodes can merge.") };
   }
   const valueChange = source.type === "purpose"
     ? { field: "purposes" as const, values: appendUnique(target.purposes ?? [], source.purposes ?? []) }

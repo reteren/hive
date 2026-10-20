@@ -3,6 +3,7 @@ import type { Note } from "../model/note";
 import type { Link } from "../model/link";
 import { customMarkFrameColorsFor } from "../markas/markasLogic";
 import { linkedNoteIds } from "../editor/markdown";
+import { t } from "../i18n/i18n.svelte";
 
 export const VISIBLE_MESSAGE_LIMIT = 4;
 
@@ -38,7 +39,7 @@ export function messageCardPresentation(
   const frameSourceId = current.messageId ?? current.timeId;
   return {
     ...current,
-    title: target?.name ?? "Reminder",
+    title: target?.name ?? t("Reminder"),
     available: Boolean(target),
     linkedNotes,
     customMarkFrameColors: customMarkFrameColorsFor(frameSourceId, notes, edges),
@@ -69,7 +70,7 @@ export function visibleMessages<T extends ShownMessage>(items: readonly T[], exp
 
 export function messageDueLabel(dueAt: number): string {
   const date = new Date(dueAt);
-  return Number.isNaN(date.getTime()) ? "Unknown time" : date.toLocaleString(undefined, {
+  return Number.isNaN(date.getTime()) ? t("Unknown time") : date.toLocaleString(undefined, {
     month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
   });
 }

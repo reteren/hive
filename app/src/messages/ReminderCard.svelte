@@ -10,6 +10,7 @@
   import type { ShownMessage } from "../time/types";
   import { IMPORTANCE_OPTIONS } from "../modules/moduleLogic";
   import { messageDueIso, messageDueLabel } from "./presentation";
+  import { t } from "../i18n/i18n.svelte";
 
   let {
     card, title, available, onClose, onGoTo, linkedNotes = {}, frameColors = [], overhive = false, onNotice,
@@ -47,11 +48,11 @@
   }
 
   function navigateFromOverhive(target: OverhiveNavigationTarget): void {
-    void invoke("overhive_navigate", { target }).catch(() => showNotice("Could not open this link."));
+    void invoke("overhive_navigate", { target }).catch(() => showNotice(t("Could not open this link.")));
   }
 
   $effect(() => {
-    const source = card.text || "(Empty message)";
+    const source = card.text || t("(Empty message)");
     const linksKey = JSON.stringify(linkedNoteIds(source).map((id) => [id, resolveNote(id)?.name ?? null]));
     if (!preview || (source === renderedText && linksKey === renderedLinksKey)) return;
     preview.replaceChildren(createMarkdownFragment(source, document, {
@@ -59,12 +60,12 @@
       openExternal: openUrl,
       teleportToPoint: (point) => {
         if (overhive) navigateFromOverhive({ kind: "point", ...point });
-        else teleportToPoint(point, { label: "Text link" });
+        else teleportToPoint(point, { label: t("Text link") });
       },
       teleportToNote: (noteId) => {
         if (!resolveNote(noteId)) return false;
         if (overhive) navigateFromOverhive({ kind: "note", noteId });
-        else return teleportToObject(noteId, { label: "Text link" });
+        else return teleportToObject(noteId, { label: t("Text link") });
         return true;
       },
       onNotice: showNotice,
@@ -81,20 +82,20 @@
   style:--message-mark-gradient={frameGradient}
   style:border-color={frameColors.length > 0 || card.importance === "absolute" ? undefined : importance?.color}>
   {#if !card.headerHidden}<header data-message-card-header><span class="message-origin">{title}</span></header>{/if}
-  <button type="button" class="message-close" data-message-close={card.id} aria-label="Close reminder"
+  <button type="button" class="message-close" data-message-close={card.id} aria-label={t("Close reminder")}
     onpointerdown={(event) => event.preventDefault()} onclick={onClose}>×</button>
   <div bind:this={preview} class="message-preview" data-message-preview></div>
   <footer>
     {#if importance && frameColors.length > 0}
-      <span class="importance-badge" data-message-importance-indicator title={`Importance: ${importance.label}`}>
+      <span class="importance-badge" data-message-importance-indicator title={t("Importance: {label}", { label: importance.label })}>
         <i class:rainbow-dot={card.importance === "absolute"} class="importance-dot" style:background-color={importance.color}></i>
         {importance.label}
       </span>
     {/if}
     <time datetime={messageDueIso(card.dueAt)}>{messageDueLabel(card.dueAt)}</time>
     {#if card.overlate}<span class="message-late" data-message-late>late</span>{/if}
-    {#if available}<button type="button" class="message-go" data-message-go-to={card.id} onclick={onGoTo}>Go to</button>
-    {:else}<span class="message-unavailable">Node unavailable</span>{/if}
+    {#if available}<button type="button" class="message-go" data-message-go-to={card.id} onclick={onGoTo}>{t("Go to")}</button>
+    {:else}<span class="message-unavailable">{t("Node unavailable")}</span>{/if}
   </footer>
 </article>
 

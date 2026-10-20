@@ -5,6 +5,7 @@ import { registerNoteMenuItem } from "../notes/noteMenu";
 import { selection } from "../selection/selection.svelte";
 import { closeNodeInfo, infoWindow, openNodeInfo } from "./infoWindow.svelte";
 import NodeInfoWindow from "./NodeInfoWindow.svelte";
+import { t } from "../i18n/i18n.svelte";
 
 registerCommand({
   id: "object.info",
@@ -21,7 +22,7 @@ registerCommand({
 
 registerNoteMenuItem({
   id: "object.info",
-  label: () => "Info",
+  label: () => t("Info"),
   run: openNodeInfo,
   shortcut: () => menuShortcutLabel("object.info"),
   dividerBefore: true,

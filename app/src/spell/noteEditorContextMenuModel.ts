@@ -1,4 +1,5 @@
 import type { SpellcheckContext } from "./spellcheck";
+import { t } from "../i18n/i18n.svelte";
 
 export type NoteMenuItem = {
   id: string;
@@ -41,14 +42,14 @@ export function buildNoteEditorContextMenu(options: NoteMenuOptions): NoteMenuEn
         spellSuggestion: true,
       })));
     } else {
-      spellItems.push(item("spellcheck.noSuggestions", options.loading ? "Checking…" : "No suggestions", undefined, true));
+      spellItems.push(item("spellcheck.noSuggestions", options.loading ? t("Checking…") : t("No suggestions"), undefined, true));
     }
-    spellItems.push(item("spellcheck.addToDictionary", "Add to dictionary", undefined, false));
+    spellItems.push(item("spellcheck.addToDictionary", t("Add to dictionary"), undefined, false));
     spellItems.push(separator());
   }
 
   const linkItems: NoteMenuOption[] = options.linkUrl
-    ? [item("link.open", "Open link"), item("link.copy", "Copy link address"), separator()]
+    ? [item("link.open", t("Open link")), item("link.copy", t("Copy link address")), separator()]
     : [];
 
   return [
@@ -56,52 +57,52 @@ export function buildNoteEditorContextMenu(options: NoteMenuOptions): NoteMenuEn
     ...linkItems,
     {
       kind: "submenu",
-      label: "Formatting",
+      label: t("Formatting"),
       items: [
-        item("format.bold", "Bold", "Ctrl+B"),
-        item("format.italic", "Italic", "Ctrl+I"),
-        item("format.strikethrough", "Strikethrough"),
-        item("format.highlight", "Highlight"),
+        item("format.bold", t("Bold"), "Ctrl+B"),
+        item("format.italic", t("Italic"), "Ctrl+I"),
+        item("format.strikethrough", t("Strikethrough")),
+        item("format.highlight", t("Highlight")),
         separator(),
-        item("format.code", "Inline Code", "Ctrl+E"),
-        item("format.link", "Link", "Ctrl+K"),
+        item("format.code", t("Inline Code"), "Ctrl+E"),
+        item("format.link", t("Link"), "Ctrl+K"),
         separator(),
-        item("format.clearFormatting", "Clear Formatting"),
+        item("format.clearFormatting", t("Clear Formatting")),
       ],
     },
     {
       kind: "submenu",
-      label: "Paragraph",
+      label: t("Paragraph"),
       items: [
-        item("format.list", "Bullet List"),
-        item("format.orderedList", "Numbered List"),
-        item("format.taskList", "Task List"),
+        item("format.list", t("Bullet List")),
+        item("format.orderedList", t("Numbered List")),
+        item("format.taskList", t("Task List")),
         separator(),
         ...Array.from({ length: 6 }, (_, index) => {
           const level = index + 1;
-          return item(`format.heading${level}`, `Heading ${level}`, `Ctrl+${level}`);
+          return item(`format.heading${level}`, t("Heading {level}", { level }), `Ctrl+${level}`);
         }),
         separator(),
-        item("format.clearHeading", "Remove Heading", "Ctrl+0"),
+        item("format.clearHeading", t("Remove Heading"), "Ctrl+0"),
       ],
     },
     {
       kind: "submenu",
-      label: "Insert",
+      label: t("Insert"),
       items: [
-        item("format.table", "Table"),
-        item("format.callout", "Callout"),
-        item("format.codeBlock", "Code Block", "Ctrl+Shift+K"),
-        item("format.mathBlock", "Math Block"),
-        item("format.horizontalRule", "Horizontal Rule"),
+        item("format.table", t("Table")),
+        item("format.callout", t("Callout")),
+        item("format.codeBlock", t("Code Block"), "Ctrl+Shift+K"),
+        item("format.mathBlock", t("Math Block")),
+        item("format.horizontalRule", t("Horizontal Rule")),
       ],
     },
     separator(),
-    item("cut", "Cut", "Ctrl+X", !options.hasSelection),
-    item("copy", "Copy", "Ctrl+C", !options.hasSelection),
-    item("paste", "Paste", "Ctrl+V"),
-    item("edit.pastePlainText", "Paste as Plain Text", "Ctrl+Shift+V"),
-    item("delete", "Delete", undefined, !options.hasSelection),
-    item("select-all", "Select All", "Ctrl+A"),
+    item("cut", t("Cut"), "Ctrl+X", !options.hasSelection),
+    item("copy", t("Copy"), "Ctrl+C", !options.hasSelection),
+    item("paste", t("Paste"), "Ctrl+V"),
+    item("edit.pastePlainText", t("Paste as Plain Text"), "Ctrl+Shift+V"),
+    item("delete", t("Delete"), undefined, !options.hasSelection),
+    item("select-all", t("Select All"), "Ctrl+A"),
   ];
 }

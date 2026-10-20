@@ -6,6 +6,7 @@
   import MenuBar from "./menubar/MenuBar.svelte";
   import WindowControls from "./WindowControls.svelte";
   import { project } from "../project/project.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let { onMenuOpenChange = () => {} } = $props<{ onMenuOpenChange?: (open: boolean) => void }>();
 
@@ -18,21 +19,21 @@
   <div class="brand" aria-label="hive" data-tauri-drag-region>
     <span class="brand-mark">hive</span>
     <MenuBar onOpenChange={onMenuOpenChange} />
-    <span class="project-name" title={`Project: ${project.name}`}>{project.name}</span>
+    <span class="project-name" title={t("Project: {name}", { name: t(project.name) })}>{t(project.name)}</span>
     {#if project.error}
-      <span class="project-error-indicator" role="status" title={project.error}>Save failed: {project.error}</span>
+      <span class="project-error-indicator" role="status" title={project.error}>{t("Save failed: {error}", { error: project.error })}</span>
     {/if}
     {#if project.warnings.length > 0}
-      <span class="project-warning-indicator" role="status" title={project.warnings.join("\n")}>Warning: {project.warnings[0]}</span>
+      <span class="project-warning-indicator" role="status" title={project.warnings.join("\n")}>{t("Warning: {value}", { value: project.warnings[0] })}</span>
     {/if}
   </div>
   <div class="toolbar-center" data-tauri-drag-region>
-    <div class="view-commands" aria-label="View commands">
+    <div class="view-commands" aria-label={t("View commands")}>
       <CommandButton commandId="view.zoomOut" />
-      <output class="zoom-level" aria-label="Zoom level">{zoomPercent}%</output>
+      <output class="zoom-level" aria-label={t("Zoom level")}>{zoomPercent}%</output>
       <CommandButton commandId="view.zoomIn" />
     </div>
-    <div class="grid-slot" aria-label="Grid controls">
+    <div class="grid-slot" aria-label={t("Grid controls")}>
       <GridControls />
     </div>
   </div>

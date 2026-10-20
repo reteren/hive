@@ -45,6 +45,7 @@ import {
 import { closeModulePicker, openModulePicker, toggleModulePicker } from "./pickerState.svelte";
 import { insertStatisticsIntoList } from "../stats/listStatsActions.svelte";
 import { reactiveLinkRevisionFor } from "../scope/scopeRevision.svelte";
+import { t } from "../i18n/i18n.svelte";
 
 export { closeModulePicker, openModulePicker, toggleModulePicker };
 
@@ -137,7 +138,7 @@ export function setImportance(noteId: string, level: ImportanceLevel | null): vo
   const note = board.notes[noteId];
   if (!note) return;
   if (linkedImportanceSource(noteId)) {
-    showModuleFeedback(noteId, "Change the linked Importance or make it local first.");
+    showModuleFeedback(noteId, t("Change the linked Importance or make it local first."));
     return;
   }
   const command = createImportanceCommand(note, level, writeModulePatch);
@@ -169,7 +170,7 @@ export function makeImportanceLocal(noteId: string, level: ImportanceLevel): boo
 
   const previousImportance = target.importance;
   execute({
-    label: "Make Importance Local",
+    label: t("Make Importance Local"),
     target: target.name,
     do: () => {
       for (const link of sourceLinks) removeLink(link.id);
@@ -207,7 +208,7 @@ export function updateModuleDropPreview(moduleId: string, worldPoint: Point): vo
       ? targetAtPoint(worldPoint, moduleId)
       : null;
   const reason = module?.type === "stats" && target
-    ? target.listStats === true ? "This List already has Statistics." : null
+    ? target.listStats === true ? t("This List already has Statistics.") : null
     : target && module ? dropRefusal(module, target) : null;
   moduleDropPreview.moduleId = moduleId;
   moduleDropPreview.targetId = target?.id ?? null;
@@ -232,7 +233,7 @@ export function tryInsertModuleOnDrop(moduleId: string, worldPoint: Point): bool
       return false;
     }
     if (targetList.listStats === true) {
-      showModuleFeedback(targetList.id, "This List already has Statistics.");
+      showModuleFeedback(targetList.id, t("This List already has Statistics."));
       clearModuleDropPreview();
       return false;
     }
@@ -281,7 +282,7 @@ export function tryInsertModuleOnDrop(moduleId: string, worldPoint: Point): bool
   const moduleLabel = kindLabel(module.type as ExternalModuleKind);
 
   execute({
-    label: `Insert ${moduleLabel}`,
+    label: t("Insert {moduleLabel}", { moduleLabel: moduleLabel }),
     target: target.name,
     do: () => {
       writeModulePatch(target.id, nextPatch);
@@ -320,7 +321,7 @@ function mergeArrayModuleNodes(source: Note, target: Note): boolean {
   const nextSelection = [...new Set(previousSelection.map((id) => id === source.id ? target.id : id))];
 
   execute({
-    label: `Merge ${kindLabel(source.type as ExternalModuleKind)}`,
+    label: t("Merge {kindLabel}", { kindLabel: kindLabel(source.type as ExternalModuleKind) }),
     target: target.name,
     do: () => {
       for (const link of plan.removedLinks) removeLink(link.id);
@@ -361,7 +362,7 @@ export function extractModuleFromNote(
   if (kind === "importance") {
     if (!target.importance || target.importance !== value) return false;
     if (hasExternalImportance(noteId)) {
-      showModuleFeedback(noteId, "This note already has a linked Importance source.");
+      showModuleFeedback(noteId, t("This note already has a linked Importance source."));
       return false;
     }
     const level = value as ImportanceLevel;
@@ -402,7 +403,7 @@ export function extractModuleFromNote(
   const previousEditing = editing.noteId;
 
   execute({
-    label: `Extract ${kindLabel(kind)}`,
+    label: t("Extract {kindLabel}", { kindLabel: kindLabel(kind) }),
     target: target.name,
     do: () => {
       writeModulePatch(target.id, nextPatch);
@@ -542,7 +543,7 @@ function copyModulePatch(note: Note): ModuleDataPatch {
 }
 
 function kindLabel(kind: ExternalModuleKind): string {
-  return kind === "importance" ? "Importance" : kind === "purpose" ? "Purpose" : kind === "mood" ? "Mood" : "Mark as";
+  return kind === "importance" ? t("Importance") : kind === "purpose" ? t("Purpose") : kind === "mood" ? t("Mood") : t("Mark as");
 }
 
 function targetAtPoint(point: Point, excludedId: string): Note | null {
@@ -573,26 +574,26 @@ function listTargetAtPoint(point: Point, excludedId: string): Note | null {
 
 function dropRefusal(module: Note, target: Note): string | null {
   if (target.type === "message" && module.type !== "importance" && module.type !== "markas") {
-    return "Only Importance and Mark as can be inserted into a Message.";
+    return t("Only Importance and Mark as can be inserted into a Message.");
   }
   if (module.type === target.type && (module.type === "purpose" || module.type === "mood" || module.type === "markas")) {
     const result = planModuleMerge(module, target, Object.values(links.byId), board.notes);
     return result.ok ? null : result.reason;
   }
-  return isAssignableNote(target) ? insertionRefusal(module, target) : "Cannot insert a module into this node.";
+  return isAssignableNote(target) ? insertionRefusal(module, target) : t("Cannot insert a module into this node.");
 }
 
 function insertionRefusal(module: Note, target: Note): string | null {
   if (module.type === "importance") {
-    if (!module.importance) return "Importance module has no level.";
-    if (target.importance) return "This note already has an Importance source.";
-    if (hasExternalImportance(target.id, module.id)) return "This note already has an Importance source.";
+    if (!module.importance) return t("Importance module has no level.");
+    if (target.importance) return t("This note already has an Importance source.");
+    if (hasExternalImportance(target.id, module.id)) return t("This note already has an Importance source.");
   } else if (module.type === "purpose" && !module.purposes?.length) {
-    return "Purpose module has no label.";
+    return t("Purpose module has no label.");
   } else if (module.type === "mood" && !module.moods?.length) {
-    return "Mood module has no value.";
+    return t("Mood module has no value.");
   } else if (module.type === "markas" && !module.customMarks?.length) {
-    return "Mark as node has no tags.";
+    return t("Mark as node has no tags.");
   }
   return null;
 }

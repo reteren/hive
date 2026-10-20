@@ -8,6 +8,7 @@ import { linkContext, showLinkStatus } from "../links-in-text/contextMenu.svelte
 import { registerCommand } from "../commands/registry.svelte";
 import { registerNoteMenuItem } from "./noteMenu";
 import { canPaintNote, DEFAULT_NOTE_COLORS, type NoteColorPart } from "./noteColorLogic";
+import { t, tp } from "../i18n/i18n.svelte";
 
 export { canPaintNote, DEFAULT_NOTE_COLORS, needsDarkText, noteColorStyle, relativeLuminance, type NoteColorPart } from "./noteColorLogic";
 
@@ -26,8 +27,8 @@ export function paintNotes(ids: readonly string[], part: NoteColorPart, value: s
   const before = new Map(targets.map((id) => [id, board.notes[id]![part]]));
   const first = board.notes[targets[0]!]!;
   execute({
-    label: value === null ? "Reset node colour" : part === "color" ? "Node colour" : "Node accent colour",
-    target: targets.length === 1 ? first.name : `${targets.length} nodes`,
+    label: value === null ? t("Reset node colour") : part === "color" ? t("Node colour") : t("Node accent colour"),
+    target: targets.length === 1 ? first.name : tp(targets.length, "{count} node", "{count} nodes"),
     do: () => { for (const id of targets) updateNote(id, { [part]: next }); },
     undo: () => { for (const [id, color] of before) updateNote(id, { [part]: color }); },
   });
@@ -117,7 +118,7 @@ function openForSelection(part: NoteColorPart): void {
   const id = selection.ids.find((candidate) => canPaintNote(board.notes[candidate]));
   const note = id ? board.notes[id] : undefined;
   if (!id || !note) {
-    showLinkStatus("Select a node first.");
+    showLinkStatus(t("Select a node first."));
     return;
   }
   openNoteColorPopover(id, part, { x: note.x, y: note.y }, camera.zoom);
@@ -125,7 +126,7 @@ function openForSelection(part: NoteColorPart): void {
 
 registerNoteMenuItem({
   id: "notes.color",
-  label: () => "Change color",
+  label: () => t("Change color"),
   order: 21,
   visible: (noteId) => canPaintNote(board.notes[noteId]),
   run: (noteId) => openFromMenu(noteId, "color"),
@@ -133,7 +134,7 @@ registerNoteMenuItem({
 
 registerNoteMenuItem({
   id: "notes.accentColor",
-  label: () => "Change accent color",
+  label: () => t("Change accent color"),
   order: 22,
   visible: (noteId) => canPaintNote(board.notes[noteId]),
   run: (noteId) => openFromMenu(noteId, "accentColor"),

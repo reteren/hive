@@ -16,15 +16,18 @@
   import { timeEnablePreference } from "./enablePreference.svelte";
   import EnableTimeConfirmation from "./EnableTimeConfirmation.svelte";
   import { reactiveLinkRevisionFor } from "../scope/scopeRevision.svelte";
+  import { dateLocale, i18n, t } from "../i18n/i18n.svelte";
 
   type AtRepeatMode = "once" | "daily" | "weekly" | "workdays" | "monthly" | "yearly";
 
   const weekdays = [
-    { day: 1, label: "Mo" }, { day: 2, label: "Tu" }, { day: 3, label: "We" },
-    { day: 4, label: "Th" }, { day: 5, label: "Fr" }, { day: 6, label: "Sa" }, { day: 0, label: "Su" },
+    { day: 1, get label() { return t("Mo"); } }, { day: 2, get label() { return t("Tu"); } }, { day: 3, get label() { return t("We"); } },
+    { day: 4, get label() { return t("Th"); } }, { day: 5, get label() { return t("Fr"); } }, { day: 6, get label() { return t("Sa"); } }, { day: 0, get label() { return t("Su"); } },
   ];
-  const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
-    .map((label, index) => ({ value: String(index + 1), label }));
+  const months = $derived(Array.from({ length: 12 }, (_, index) => ({
+    value: String(index + 1),
+    label: new Intl.DateTimeFormat(i18n.locale, { month: "long" }).format(new Date(2024, index, 1, 12)),
+  })));
 
   let { note, embedded = false }: { note: Note; embedded?: boolean } = $props();
 
@@ -70,13 +73,13 @@
   const stopwatchParts = $derived(stopwatchElapsed === null ? null : formatStopwatch(stopwatchElapsed));
   const stopwatchHint = $derived(
     (stopwatch.mode === "taskCreated" || stopwatch.mode === "taskDone") && !linkedTask
-      ? "Link a task to this Time"
+      ? t("Link a task to this Time")
       : stopwatch.mode === "taskDone" && (!linkedTask?.task?.done || linkedTask.task.doneAt == null)
-        ? "Task not done yet"
+        ? t("Task not done yet")
         : stopwatch.mode === "taskCreated" && linkedTask?.createdAt === undefined
-          ? "Task creation time unavailable"
+          ? t("Task creation time unavailable")
           : stopwatch.mode === "session" && sessionStopwatch.startedAt === null
-            ? "Starting session"
+            ? t("Starting session")
             : "",
   );
   const activationSources = $derived.by(() => {
@@ -135,11 +138,11 @@
 
   const status = $derived.by(() => {
     const data = note.time;
-    if (!data?.enabled) return "Stopped";
+    if (!data?.enabled) return t("Stopped");
     const dueAt = nextDueAt(data, { now, appMs: timeCounters.appMs, activeMs: timeCounters.activeMs });
-    if (dueAt === null) return "No next reminder";
-    if (data.schedule.kind === "interval") return `Next in ${formatCountdown(dueAt - now)}`;
-    return `Next: ${new Date(dueAt).toLocaleString()}`;
+    if (dueAt === null) return t("No next reminder");
+    if (data.schedule.kind === "interval") return t("Next in {countdown}", { countdown: formatCountdown(dueAt - now) });
+    return t("Next: {date}", { date: new Date(dueAt).toLocaleString(dateLocale()) });
   });
 
   function changeMode(value: string): void {
@@ -180,7 +183,7 @@
     const next: TimeNodeData = { ...previous, schedule: copyTimeSchedule(schedule) };
 
     execute({
-      label: "Change reminder",
+      label: t("Change reminder"),
       target: current.name,
       do: () => {
         updateNote(note.id, { time: copyTimeData(next)! });
@@ -222,7 +225,7 @@
       : value !== "active" && value !== "app"
         ? false
         : previousStopwatch.mode === value ? previousStopwatch.includeProjectTime ?? false : false;
-    saveStopwatchChange("Change stopwatch mode", current.name, previous, { ...previous, stopwatch: nextStopwatch });
+    saveStopwatchChange(t("Change stopwatch mode"), current.name, previous, { ...previous, stopwatch: nextStopwatch });
   }
 
   function setProjectTimeBase(event: Event): void {
@@ -233,7 +236,7 @@
     const currentStopwatch = previous.stopwatch ?? defaultStopwatch();
     if (currentStopwatch.mode !== "active" && currentStopwatch.mode !== "app") return;
     if (Boolean(currentStopwatch.includeProjectTime) === includeProjectTime) return;
-    saveStopwatchChange("Change stopwatch start", current.name, previous, {
+    saveStopwatchChange(t("Change stopwatch start"), current.name, previous, {
       ...previous,
       stopwatch: { ...currentStopwatch, includeProjectTime },
     });
@@ -245,7 +248,7 @@
     const previous = copyTimeNodeData(current.time);
     const currentStopwatch = previous.stopwatch ?? defaultStopwatch();
     if (currentStopwatch.mode !== "manual") return;
-    saveStopwatchChange(currentStopwatch.running ? "Stop stopwatch" : "Resume stopwatch", current.name, previous, {
+    saveStopwatchChange(currentStopwatch.running ? t("Stop stopwatch") : t("Resume stopwatch"), current.name, previous, {
       ...previous,
       stopwatch: toggleManualStopwatch(currentStopwatch, now),
     });
@@ -326,9 +329,9 @@
   }
 </script>
 
-<section class="time-editor" data-time-body data-time-view={embedded ? "time" : note.time?.view ?? "time"} data-time-mode={mode} aria-label="Time node">
+<section class="time-editor" data-time-body data-time-view={embedded ? "time" : note.time?.view ?? "time"} data-time-mode={mode} aria-label={t("Time node")}>
   {#if !embedded && note.time?.view === "stopwatch"}
-    <div class="stopwatch-display" role="timer" aria-live="off" data-stopwatch-counter aria-label={stopwatchParts ? `${stopwatchParts.days} days ${stopwatchParts.hours} hours ${stopwatchParts.minutes} minutes ${stopwatchParts.seconds} seconds` : stopwatchHint}>
+    <div class="stopwatch-display" role="timer" aria-live="off" data-stopwatch-counter aria-label={stopwatchParts ? t("{days} days {hours} hours {minutes} minutes {seconds} seconds", { days: stopwatchParts.days, hours: stopwatchParts.hours, minutes: stopwatchParts.minutes, seconds: stopwatchParts.seconds }) : stopwatchHint}>
       {#if stopwatchParts}
         <span>{stopwatchParts.days}<small>d</small></span>
         <span>{stopwatchParts.hours}<small>h</small></span>
@@ -339,16 +342,16 @@
     {#if stopwatchElapsed === null}<p class="time-helper" data-stopwatch-hint>{stopwatchHint}</p>{/if}
 
     <label class="time-field stopwatch-mode-field">
-      <span>Mode</span>
-      <Select id={`time-${encodeURIComponent(note.id)}-stopwatch-mode`} ariaLabel="Stopwatch mode" value={stopwatch.mode} options={[
-        { value: "project", label: "Since project created" },
-        { value: "node", label: "Since node created" },
-        { value: "session", label: "Since hive started" },
-        { value: "taskCreated", label: "Since task created" },
-        { value: "taskDone", label: "Since task done" },
-        { value: "active", label: "While hive window is focused" },
-        { value: "app", label: "While hive runs" },
-        { value: "manual", label: "On stop/resume command" },
+      <span>{t("Mode")}</span>
+      <Select id={`time-${encodeURIComponent(note.id)}-stopwatch-mode`} ariaLabel={t("Stopwatch mode")} value={stopwatch.mode} options={[
+        { value: "project", label: t("Since project created") },
+        { value: "node", label: t("Since node created") },
+        { value: "session", label: t("Since hive started") },
+        { value: "taskCreated", label: t("Since task created") },
+        { value: "taskDone", label: t("Since task done") },
+        { value: "active", label: t("While hive window is focused") },
+        { value: "app", label: t("While hive runs") },
+        { value: "manual", label: t("On stop/resume command") },
       ]} onchange={changeStopwatchMode} />
     </label>
 
@@ -360,63 +363,63 @@
         checked={stopwatch.includeProjectTime === true}
         onchange={setProjectTimeBase}
       />
-      <span>Since project created</span>
+      <span>{t("Since project created")}</span>
     </label>
     {/if}
 
     {#if stopwatch.mode === "manual"}
       <button class="stopwatch-toggle" type="button" data-stopwatch-toggle onclick={toggleManual}>
-        {stopwatch.running ? "Stop" : "Resume"}
+        {stopwatch.running ? t("Stop") : t("Resume")}
       </button>
       <div class="stopwatch-conditions" data-stopwatch-conditions>
-        <span class="conditions-label">Conditions</span>
+        <span class="conditions-label">{t("Conditions")}</span>
         <div class="activation-list">
           {#each activationSources as source (source.id)}
             <span class="activation-chip" data-activation-id={source.id}>{source.name}</span>
           {:else}
-            <span class="conditions-empty">No activation nodes linked</span>
+            <span class="conditions-empty">{t("No activation nodes linked")}</span>
           {/each}
         </div>
       </div>
     {/if}
   {:else}
   <label class="time-field mode-field">
-    <span>Mode</span>
-    <Select id={`time-${encodeURIComponent(note.id)}-mode`} ariaLabel="Reminder mode" value={mode} options={[
-      { value: "at", label: "At time" },
-      { value: "interval", label: "Interval" },
+    <span>{t("Mode")}</span>
+    <Select id={`time-${encodeURIComponent(note.id)}-mode`} ariaLabel={t("Reminder mode")} value={mode} options={[
+      { value: "at", label: t("At time") },
+      { value: "interval", label: t("Interval") },
     ]} onchange={changeMode} />
   </label>
 
   {#if mode === "at"}
     <label class="time-field">
-      <span>Time</span>
-      <input type="time" aria-label="Reminder time" aria-required="true" required bind:value={atTime} />
+      <span>{t("Time")}</span>
+      <input type="time" aria-label={t("Reminder time")} aria-required="true" required bind:value={atTime} />
     </label>
     <label class="time-field">
-      <span>Repeat</span>
-      <Select id={`time-${encodeURIComponent(note.id)}-at-repeat`} ariaLabel="Reminder repeat" value={atRepeat} options={[
-        { value: "once", label: "Once" },
-        { value: "daily", label: "Daily" },
-        { value: "weekly", label: "Weekly" },
-        { value: "workdays", label: "Workdays" },
-        { value: "monthly", label: "Monthly" },
-        { value: "yearly", label: "Yearly" },
+      <span>{t("Repeat")}</span>
+      <Select id={`time-${encodeURIComponent(note.id)}-at-repeat`} ariaLabel={t("Reminder repeat")} value={atRepeat} options={[
+        { value: "once", label: t("Once") },
+        { value: "daily", label: t("Daily") },
+        { value: "weekly", label: t("Weekly") },
+        { value: "workdays", label: t("Workdays") },
+        { value: "monthly", label: t("Monthly") },
+        { value: "yearly", label: t("Yearly") },
       ]} onchange={changeAtRepeat} />
     </label>
     {#if atRepeat !== "daily"}
       <label class="time-field">
-        <span>{atRepeat === "once" ? "Date" : "Starts on"}</span>
+        <span>{atRepeat === "once" ? t("Date") : t("Starts on")}</span>
         <input
           type="date"
-          aria-label={atRepeat === "once" ? "Reminder date" : "Repeat starts on"}
+          aria-label={atRepeat === "once" ? t("Reminder date") : t("Repeat starts on")}
           required={atRepeat === "once"}
           bind:value={atDate}
         />
       </label>
     {/if}
     {#if atRepeat === "weekly"}
-      <div class="weekday-toggles" role="group" aria-label="Repeat weekdays">
+      <div class="weekday-toggles" role="group" aria-label={t("Repeat weekdays")}>
         {#each weekdays as weekday (weekday.day)}
           <button
             type="button"
@@ -430,42 +433,42 @@
       </div>
     {:else if atRepeat === "monthly"}
       <label class="time-field">
-        <span>Day</span>
-        <input type="number" aria-label="Day of month" min="1" max="31" step="1" bind:value={monthlyDay} />
+        <span>{t("Day")}</span>
+        <input type="number" aria-label={t("Day of month")} min="1" max="31" step="1" bind:value={monthlyDay} />
       </label>
       <p class="time-helper">31 = last day of short months</p>
     {:else if atRepeat === "yearly"}
       <div class="calendar-rule-fields">
         <label class="time-field">
-          <span>Month</span>
-          <Select id={`time-${encodeURIComponent(note.id)}-yearly-month`} ariaLabel="Repeat month" value={String(yearlyMonth)} options={months}
+          <span>{t("Month")}</span>
+          <Select id={`time-${encodeURIComponent(note.id)}-yearly-month`} ariaLabel={t("Repeat month")} value={String(yearlyMonth)} options={months}
             onchange={(value) => { const month = Number(value); if (month >= 1 && month <= 12) yearlyMonth = month; }} />
         </label>
         <label class="time-field">
-          <span>Day</span>
-          <input type="number" aria-label="Day of year" min="1" max="31" step="1" bind:value={yearlyDay} />
+          <span>{t("Day")}</span>
+          <input type="number" aria-label={t("Day of year")} min="1" max="31" step="1" bind:value={yearlyDay} />
         </label>
       </div>
     {:else if atRepeat === "daily"}
-      <p class="time-helper">Every day</p>
+      <p class="time-helper">{t("Every day")}</p>
     {/if}
   {:else}
     <label class="time-field">
-      <span>Minutes</span>
-      <input type="number" aria-label="Interval in minutes" min="1" step="1" required bind:value={intervalMinutes} />
+      <span>{t("Minutes")}</span>
+      <input type="number" aria-label={t("Interval in minutes")} min="1" step="1" required bind:value={intervalMinutes} />
       <small>{intervalHoursHint(intervalMinutes)}</small>
     </label>
     <label class="time-field">
-      <span>Count mode</span>
-      <Select id={`time-${encodeURIComponent(note.id)}-count-mode`} ariaLabel="Interval count mode" value={countMode} options={[
-        { value: "calendar", label: "Calendar time" },
-        { value: "app", label: "While hive runs (incl. tray)" },
-        { value: "active", label: "While hive window is active" },
+      <span>{t("Count mode")}</span>
+      <Select id={`time-${encodeURIComponent(note.id)}-count-mode`} ariaLabel={t("Interval count mode")} value={countMode} options={[
+        { value: "calendar", label: t("Calendar time") },
+        { value: "app", label: t("While hive runs (incl. tray)") },
+        { value: "active", label: t("While hive window is active") },
       ]} onchange={(value) => { if (value === "calendar" || value === "app" || value === "active") countMode = value; }} />
     </label>
     <label class="time-check">
       <input id={timeCheckboxId(note.id, "repeat")} type="checkbox" bind:checked={repeat} />
-      <span>Repeat</span>
+      <span>{t("Repeat")}</span>
     </label>
   {/if}
 
@@ -476,9 +479,9 @@
   <div class="time-actions">
     <label class="time-check enabled-check">
       <input id={timeCheckboxId(note.id, "enabled")} type="checkbox" checked={draftEnabled} onchange={setEnabled} />
-      <span>Enabled</span>
+      <span>{t("Enabled")}</span>
     </label>
-    <button type="button" class="time-save" onclick={saveSchedule}>Save schedule</button>
+    <button type="button" class="time-save" onclick={saveSchedule}>{t("Save schedule")}</button>
   </div>
   <p class="time-status" role="status" aria-live="polite" data-time-status>{status}</p>
   {/if}

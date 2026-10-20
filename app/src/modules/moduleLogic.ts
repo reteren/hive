@@ -10,6 +10,7 @@ import {
   type PurposeKind,
 } from "../model/note";
 import type { Link } from "../model/link";
+import { t } from "../i18n/i18n.svelte";
 
 export interface ModuleOption {
   id: string;
@@ -19,46 +20,46 @@ export interface ModuleOption {
 }
 
 export const IMPORTANCE_OPTIONS: readonly ModuleOption[] = [
-  { id: "basic", label: "Basic", color: "#d6d6d6" },
-  { id: "medium", label: "Medium", color: "#edc84d" },
-  { id: "important", label: "Important", color: "#e05b5b" },
-  { id: "immediately", label: "Immediately", color: "#a67be3" },
-  { id: "absolute", label: "Absolute", color: "#d6d6d6" },
+  { id: "basic", get label() { return t("Basic"); }, color: "#d6d6d6" },
+  { id: "medium", get label() { return t("Medium"); }, color: "#edc84d" },
+  { id: "important", get label() { return t("Important"); }, color: "#e05b5b" },
+  { id: "immediately", get label() { return t("Immediately"); }, color: "#a67be3" },
+  { id: "absolute", get label() { return t("Absolute"); }, color: "#d6d6d6" },
 ];
 
 export const PURPOSE_OPTIONS: readonly ModuleOption[] = [
-  { id: "quote", label: "Quote", color: "#d5b77b", iconPath: "M3 4h10v8H3z M5 7h6 M5 9h4" },
-  { id: "concept", label: "Concept", color: "#70b5a1", iconPath: "M8 2.5 13.5 8 8 13.5 2.5 8z M8 5v6 M5 8h6" },
-  { id: "openQuestion", label: "Open question", color: "#78a9d4", iconPath: "M5.2 5.5a2.9 2.9 0 1 1 4.8 2.2c-1.1.9-2 1.2-2 2.8 M8 12.5v.1" },
-  { id: "decision", label: "Decision", color: "#86b879", iconPath: "M3 8 6.4 11.2 13 4.8 M3 3.5h4 M9 12.5h4" },
-  { id: "hypothesis", label: "Hypothesis", color: "#b79bd9", iconPath: "M5 2.8h6 M6 2.8v4.3l-3 5.6a1 1 0 0 0 .9 1.5h8.2a1 1 0 0 0 .9-1.5l-3-5.6V2.8 M4.4 10h7.2" },
-  { id: "experiment", label: "Experiment", color: "#d38d69", iconPath: "M6 2.5h4 M7 2.5v4L3.5 12a1 1 0 0 0 .9 1.5h7.2a1 1 0 0 0 .9-1.5L9 6.5v-4 M5 10h6" },
-  { id: "compare", label: "Compare", color: "#76aabd", iconPath: "M3 4.5h4v7H3z M9 4.5h4v7H9z M7 8h2" },
-  { id: "timeline", label: "Timeline", color: "#cf91ae", iconPath: "M2.5 8h11 M4 5.5v5 M8 3.5v9 M12 6v4" },
+  { id: "quote", get label() { return t("Quote"); }, color: "#d5b77b", iconPath: "M3 4h10v8H3z M5 7h6 M5 9h4" },
+  { id: "concept", get label() { return t("Concept"); }, color: "#70b5a1", iconPath: "M8 2.5 13.5 8 8 13.5 2.5 8z M8 5v6 M5 8h6" },
+  { id: "openQuestion", get label() { return t("Open question"); }, color: "#78a9d4", iconPath: "M5.2 5.5a2.9 2.9 0 1 1 4.8 2.2c-1.1.9-2 1.2-2 2.8 M8 12.5v.1" },
+  { id: "decision", get label() { return t("Decision"); }, color: "#86b879", iconPath: "M3 8 6.4 11.2 13 4.8 M3 3.5h4 M9 12.5h4" },
+  { id: "hypothesis", get label() { return t("Hypothesis"); }, color: "#b79bd9", iconPath: "M5 2.8h6 M6 2.8v4.3l-3 5.6a1 1 0 0 0 .9 1.5h8.2a1 1 0 0 0 .9-1.5l-3-5.6V2.8 M4.4 10h7.2" },
+  { id: "experiment", get label() { return t("Experiment"); }, color: "#d38d69", iconPath: "M6 2.5h4 M7 2.5v4L3.5 12a1 1 0 0 0 .9 1.5h7.2a1 1 0 0 0 .9-1.5L9 6.5v-4 M5 10h6" },
+  { id: "compare", get label() { return t("Compare"); }, color: "#76aabd", iconPath: "M3 4.5h4v7H3z M9 4.5h4v7H9z M7 8h2" },
+  { id: "timeline", get label() { return t("Timeline"); }, color: "#cf91ae", iconPath: "M2.5 8h11 M4 5.5v5 M8 3.5v9 M12 6v4" },
 ];
 
 /** Moods use color alone; the board deliberately uses no emoji or mood pictograms. */
 export const MOOD_OPTIONS: readonly ModuleOption[] = [
-  { id: "anger", label: "Anger", color: "#f06b68" },
-  { id: "happiness", label: "Happiness", color: "#f1c85b" },
-  { id: "sadness", label: "Sadness", color: "#79a9df" },
-  { id: "disgust", label: "Disgust", color: "#a5a84e" },
-  { id: "fear", label: "Fear", color: "#9c78c7" },
-  { id: "surprise", label: "Surprise", color: "#65c6c8" },
-  { id: "joy", label: "Joy", color: "#f0aa48" },
-  { id: "love", label: "Love", color: "#e780a8" },
-  { id: "excitement", label: "Excitement", color: "#ed8951" },
-  { id: "gratitude", label: "Gratitude", color: "#7ec5a0" },
-  { id: "pride", label: "Pride", color: "#c5a0e5" },
-  { id: "envy", label: "Envy", color: "#7fae62" },
-  { id: "guilt", label: "Guilt", color: "#c28362" },
-  { id: "shame", label: "Shame", color: "#bd7894" },
-  { id: "jealousy", label: "Jealousy", color: "#688e58" },
-  { id: "disappointment", label: "Disappointment", color: "#8494b2" },
-  { id: "confusion", label: "Confusion", color: "#b1a1d5" },
-  { id: "curiosity", label: "Curiosity", color: "#71b9ae" },
-  { id: "boredom", label: "Boredom", color: "#92979e" },
-  { id: "relief", label: "Relief", color: "#8dc9bd" },
+  { id: "anger", get label() { return t("Anger"); }, color: "#f06b68" },
+  { id: "happiness", get label() { return t("Happiness"); }, color: "#f1c85b" },
+  { id: "sadness", get label() { return t("Sadness"); }, color: "#79a9df" },
+  { id: "disgust", get label() { return t("Disgust"); }, color: "#a5a84e" },
+  { id: "fear", get label() { return t("Fear"); }, color: "#9c78c7" },
+  { id: "surprise", get label() { return t("Surprise"); }, color: "#65c6c8" },
+  { id: "joy", get label() { return t("Joy"); }, color: "#f0aa48" },
+  { id: "love", get label() { return t("Love"); }, color: "#e780a8" },
+  { id: "excitement", get label() { return t("Excitement"); }, color: "#ed8951" },
+  { id: "gratitude", get label() { return t("Gratitude"); }, color: "#7ec5a0" },
+  { id: "pride", get label() { return t("Pride"); }, color: "#c5a0e5" },
+  { id: "envy", get label() { return t("Envy"); }, color: "#7fae62" },
+  { id: "guilt", get label() { return t("Guilt"); }, color: "#c28362" },
+  { id: "shame", get label() { return t("Shame"); }, color: "#bd7894" },
+  { id: "jealousy", get label() { return t("Jealousy"); }, color: "#688e58" },
+  { id: "disappointment", get label() { return t("Disappointment"); }, color: "#8494b2" },
+  { id: "confusion", get label() { return t("Confusion"); }, color: "#b1a1d5" },
+  { id: "curiosity", get label() { return t("Curiosity"); }, color: "#71b9ae" },
+  { id: "boredom", get label() { return t("Boredom"); }, color: "#92979e" },
+  { id: "relief", get label() { return t("Relief"); }, color: "#8dc9bd" },
 ];
 
 export const MODULE_NOTE_WIDTH = 14;
@@ -144,7 +145,7 @@ export function importanceMenuLabel(
   note: Pick<Note, "importance"> | undefined,
   hasLinkedSource = false,
 ): string {
-  return note?.importance || hasLinkedSource ? "Change Importance" : "Add Importance";
+  return note?.importance || hasLinkedSource ? t("Change Importance") : t("Add Importance");
 }
 
 export function moduleRowsFor(
@@ -182,7 +183,7 @@ export function createImportanceCommand(
   if ((previous ?? null) === next) return null;
 
   return {
-    label: next ? `Importance: ${next}` : "Remove Importance",
+    label: next ? t("Importance: {next}", { next: next }) : t("Remove Importance"),
     target: note.name,
     do: () => write(note.id, { importance: next }),
     undo: () => write(note.id, { importance: previous }),
@@ -221,7 +222,7 @@ function createArrayToggleCommand<T extends PurposeKind | MoodKind>(
   if (sameValues(current, next) && note[field] !== undefined) return null;
 
   return {
-    label: `${adding ? "Add" : "Remove"} ${field === "purposes" ? "Purpose" : "Mood"}: ${label}`,
+    label: `${adding ? t("Add") : t("Remove")} ${field === "purposes" ? t("Purpose") : t("Mood")}: ${label}`,
     target: note.name,
     do: () => write(note.id, { [field]: next }),
     undo: () => write(note.id, { [field]: previous }),

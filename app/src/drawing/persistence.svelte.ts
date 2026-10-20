@@ -11,6 +11,7 @@ import { project } from "../project/project.svelte";
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { clear as clearHistory } from "../history/history.svelte";
+import { t } from "../i18n/i18n.svelte";
 
 const SAVE_DEBOUNCE_MS = 300;
 
@@ -71,14 +72,14 @@ export function startDrawingPersistence(): () => void {
       if (!index) return;
       if (index.version !== 1 || index.pxPerUnit !== DRAW_PX_PER_UNIT || index.tileSizePx !== DRAW_TILE_SIZE_PX ||
         !Array.isArray(index.tiles) || index.tiles.length > 100_000) {
-        throw new Error("The drawing index has an unsupported format.");
+        throw new Error(t("The drawing index has an unsupported format."));
       }
       const uniqueKeys = new Set<TileKey>();
       for (const key of index.tiles) {
         const parsed = parseTileKey(key);
         if (!parsed || !Number.isSafeInteger(parsed.col) || !Number.isSafeInteger(parsed.row) ||
           Math.abs(parsed.col) > 10_000_000 || Math.abs(parsed.row) > 10_000_000) {
-          throw new Error(`The drawing index contains an invalid tile key: ${key}`);
+          throw new Error(t("The drawing index contains an invalid tile key: {key}", { key: key }));
         }
         uniqueKeys.add(key);
       }

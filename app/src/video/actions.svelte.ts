@@ -6,6 +6,7 @@ import type { Point } from "../board/cameraMath";
 import { captureSelectionSnapshot, clearSelection, includeSelected, restoreSelectionSnapshot, selectOnly } from "../selection/selection.svelte";
 import { uniqueName } from "../notes/naming";
 import { fitVideoSize } from "./logic";
+import { t, tp } from "../i18n/i18n.svelte";
 
 /** Add imported videos as one undoable action, centered at the user's drop/picker point. */
 export function createVideoNotes(mediaItems: readonly MediaRef[], center: Point): string[] {
@@ -36,8 +37,8 @@ export function createVideoNotes(mediaItems: readonly MediaRef[], center: Point)
   const previousSelection = captureSelectionSnapshot();
 
   execute({
-    label: videos.length === 1 ? "Import video" : "Import videos",
-    target: videos.length === 1 ? notes[0].name : `${videos.length} videos`,
+    label: videos.length === 1 ? t("Import video") : t("Import videos"),
+    target: videos.length === 1 ? notes[0].name : tp(videos.length, "{count} video", "{count} videos"),
     do: () => {
       notes.forEach((note, index) => addNote(note, startIndex + index));
       clearSelection();

@@ -10,6 +10,7 @@ import {
   skipSequentialRename,
   type SequentialRenameSession,
 } from "./sequentialRename";
+import { t } from "../i18n/i18n.svelte";
 
 export const sequentialRenameState = $state({
   session: null as SequentialRenameSession | null,
@@ -71,7 +72,7 @@ export function commitCurrentRename(): void {
   if (result.change) {
     const { id, previousName, nextName: committedName } = result.change;
     execute({
-      label: "Rename",
+      label: t("Rename"),
       target: committedName,
       do: () => updateNote(id, { name: committedName }),
       undo: () => updateNote(id, { name: previousName }),

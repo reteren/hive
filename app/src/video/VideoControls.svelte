@@ -5,6 +5,7 @@
   import MediaIcon from "../media-ui/MediaIcon.svelte";
   import { createHoverIntent } from "./hoverIntent";
   import { VIDEO_VOLUME_POPOVER } from "./volumePopover";
+  import { t } from "../i18n/i18n.svelte";
 
   interface Props {
     playing: boolean;
@@ -43,7 +44,7 @@
 </script>
 
 <div class="player-controls" class:visible data-video-controls data-selection-ignore>
-  <button class="player-button" type="button" aria-label={playing ? "Pause video" : "Play video"} onclick={onTogglePlayback}>
+  <button class="player-button" type="button" aria-label={playing ? t("Pause video") : t("Play video")} onclick={onTogglePlayback}>
     <MediaIcon name={playing ? "pause" : "play"} size={15} />
   </button>
   <MediaTime seconds={currentTime} />
@@ -52,7 +53,7 @@
     max={duration}
     buffered={buffered}
     step={0.1}
-    label="Seek video"
+    label={t("Seek video")}
     tooltip={formatTooltip}
     oninput={onSeekPreview}
     onchange={onSeek}
@@ -62,7 +63,7 @@
     class="volume-control"
     class:open={volumeOpen}
     role="group"
-    aria-label="Video volume controls"
+    aria-label={t("Video volume controls")}
     data-volume-open={volumeOpen ? "true" : undefined}
     onpointerenter={volumeIntent.pointerEnter}
     onpointerleave={volumeIntent.pointerLeave}
@@ -73,7 +74,7 @@
       volumeIntent.blur();
     }}
   >
-    <button class="player-button" type="button" aria-label={muted ? "Unmute video" : "Mute video"} aria-expanded={volumeOpen} onclick={onToggleMute}>
+    <button class="player-button" type="button" aria-label={muted ? t("Unmute video") : t("Mute video")} aria-expanded={volumeOpen} onclick={onToggleMute}>
       <MediaIcon name={muted || volume === 0 ? "mute" : "volume"} size={15} />
     </button>
     <div
@@ -81,10 +82,10 @@
       data-video-volume
       style={`--volume-popover-width: ${VIDEO_VOLUME_POPOVER.width}px; --volume-popover-height: ${VIDEO_VOLUME_POPOVER.height}px;`}
     >
-      <MediaSlider value={volume} max={1} step={0.01} label="Video volume" orientation="vertical" oninput={onVolume} onchange={onVolume} />
+      <MediaSlider value={volume} max={1} step={0.01} label={t("Video volume")} orientation="vertical" oninput={onVolume} onchange={onVolume} />
     </div>
   </div>
-  <button class="player-button" type="button" aria-label="Fullscreen" onclick={onFullscreen}>
+  <button class="player-button" type="button" aria-label={t("Fullscreen")} onclick={onFullscreen}>
     <MediaIcon name="fullscreen" size={15} />
   </button>
 </div>

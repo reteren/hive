@@ -1,3 +1,4 @@
+import { t } from "../i18n/i18n.svelte";
 /** Parsed form of the compact key notation used by registered commands. */
 export interface KeyBinding {
   code: string;
@@ -13,7 +14,7 @@ export function parseKey(notation: string): KeyBinding {
   const parts = notation.split("+");
   const code = parts.pop();
   if (!code || code.trim() !== code || parts.some((part) => part.trim() !== part)) {
-    throw new Error(`Invalid key binding: ${notation}`);
+    throw new Error(t("Invalid key binding: {notation}", { notation: notation }));
   }
 
   const modifiers = parts as string[];
@@ -23,7 +24,7 @@ export function parseKey(notation: string): KeyBinding {
     modifierIndexes.some((index) => index < 0) ||
     modifierIndexes.some((index, position) => position > 0 && index <= modifierIndexes[position - 1])
   ) {
-    throw new Error(`Invalid key binding: ${notation}`);
+    throw new Error(t("Invalid key binding: {notation}", { notation: notation }));
   }
 
   return {
@@ -47,10 +48,10 @@ const DISPLAY_CODES: Record<string, string> = {
   Escape: "Esc",
   Equal: "=",
   Minus: "-",
-  NumpadAdd: "Num +",
-  NumpadSubtract: "Num -",
-  PageDown: "Page Down",
-  PageUp: "Page Up",
+  get NumpadAdd() { return t("Num +"); },
+  get NumpadSubtract() { return t("Num -"); },
+  get PageDown() { return t("Page Down"); },
+  get PageUp() { return t("Page Up"); },
   Space: "Space",
   Tab: "Tab",
 };

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import { closePanelPopup, type PanelPopupId } from "./panelPopupState.svelte";
+  import { t } from "../../i18n/i18n.svelte";
 
   let { id, title, children } = $props<{
     id: PanelPopupId;
@@ -17,7 +18,7 @@
 </script>
 
 <div class="panel-popup-layer" data-selection-ignore role="presentation" onkeydown={handleKeydown}>
-  <button class="panel-popup-backdrop" type="button" aria-label={`Close ${title}`} onclick={() => closePanelPopup()}></button>
+  <button class="panel-popup-backdrop" type="button" aria-label={t("Close {title}", { title: title })} onclick={() => closePanelPopup()}></button>
   <div class="panel-popup-frame">
     <div class="panel-popup-surface" data-panel-popup={id} role="group" aria-label={title} tabindex="-1">
       {@render children()}

@@ -5,6 +5,7 @@
   import { listViewForStats } from "./linkedList.svelte";
   import { tierlistViewForStats } from "./linkedTierlist.svelte";
   import { textStatisticsForScope } from "./statisticsCache.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let listView = $derived(listViewForStats(note.id));
@@ -17,15 +18,15 @@
 
 <div class="statistics-body" data-stats-view={listView ? "list" : tierlistView ? "tierlist" : "text"}>
   {#if listView}
-    <div class="tierlist-lock" data-stats-list-lock title="Remove the link to change">Linked to {listView.list.name}</div>
-    <div class="statistics-list-rows" role="status" aria-live="polite" aria-label={`Statistics for ${listView.list.name}`}>
+    <div class="tierlist-lock" data-stats-list-lock title={t("Remove the link to change")}>{t("Linked to {name}", { name: listView.list.name })}</div>
+    <div class="statistics-list-rows" role="status" aria-live="polite" aria-label={t("Statistics for {name}", { name: listView.list.name })}>
       {#each listView.rows as row (row.item.id)}
         <div class="statistics-list-row" data-stats-list-row={row.item.id}>{row.text}</div>
       {/each}
     </div>
   {:else if tierlistView}
-    <div class="tierlist-lock" data-stats-tierlist-lock title="Remove the link to change">Linked to {tierlistView.tierlist.name}</div>
-    <div class="tierlist-summary" role="status" aria-live="polite" aria-label={`Tierlist statistics for ${tierlistView.tierlist.name}`}>
+    <div class="tierlist-lock" data-stats-tierlist-lock title={t("Remove the link to change")}>{t("Linked to {name}", { name: tierlistView.tierlist.name })}</div>
+    <div class="tierlist-summary" role="status" aria-live="polite" aria-label={t("Tierlist statistics for {name}", { name: tierlistView.tierlist.name })}>
       <strong class="tierlist-total" data-stats-tierlist-total>{tierlistView.summary.total} {tierlistView.summary.total === 1 ? "item" : "items"} total</strong>
       <div class="tierlist-rows">
         {#each tierlistView.summary.rows as row (row.id)}
@@ -39,10 +40,10 @@
     </div>
   {:else}
     <ScopePicker {note} />
-    <div class="statistics-grid" role="status" aria-live="polite" aria-label="Text statistics">
-      <div><span>Words</span><strong>{summary.words}</strong></div>
-      <div><span>Characters</span><strong>{summary.characters}</strong></div>
-      <div><span>Lines</span><strong>{summary.lines}</strong></div>
+    <div class="statistics-grid" role="status" aria-live="polite" aria-label={t("Text statistics")}>
+      <div><span>{t("Words")}</span><strong>{summary.words}</strong></div>
+      <div><span>{t("Characters")}</span><strong>{summary.characters}</strong></div>
+      <div><span>{t("Lines")}</span><strong>{summary.lines}</strong></div>
     </div>
   {/if}
 </div>

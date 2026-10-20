@@ -12,6 +12,7 @@
     togglePurpose,
   } from "./moduleActions.svelte";
   import { modulePicker } from "./pickerState.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let pickerKind = $derived(modulePicker.noteId === note.id ? modulePicker.kind : null);
@@ -53,7 +54,7 @@
     />
     {#if pickerKind === "importance"}
       <ModulePicker
-        title="Importance"
+        title={t("Importance")}
         mode="single"
         options={IMPORTANCE_OPTIONS}
         selected={[importance]}
@@ -63,7 +64,7 @@
       />
     {/if}
   {:else if note.type === "purpose"}
-    <button type="button" class="module-node-label" data-module-trigger data-selection-ignore onclick={() => togglePicker("purpose")}>Purpose</button>
+    <button type="button" class="module-node-label" data-module-trigger data-selection-ignore onclick={() => togglePicker("purpose")}>{t("Purpose")}</button>
     {#each purposes as purpose (purpose)}
       {@const option = PURPOSE_OPTIONS.find((item) => item.id === purpose)}
       {#if option}
@@ -71,13 +72,13 @@
       {/if}
     {/each}
     {#if purposes.length > 0}
-      <button type="button" class="module-node-add" data-module-trigger data-selection-ignore aria-label="Add Purpose" onclick={() => togglePicker("purpose")}>
+      <button type="button" class="module-node-add" data-module-trigger data-selection-ignore aria-label={t("Add Purpose")} onclick={() => togglePicker("purpose")}>
         <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M6 2.5v7M2.5 6h7" /></svg>
       </button>
     {/if}
     {#if pickerKind === "purpose"}
       <ModulePicker
-        title="Purpose"
+        title={t("Purpose")}
         mode="multiple"
         options={PURPOSE_OPTIONS}
         selected={purposes}

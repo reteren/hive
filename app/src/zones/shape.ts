@@ -11,6 +11,7 @@ import {
   shapeFromGrid,
   shapeRings,
 } from "./shapeGrid";
+import { t } from "../i18n/i18n.svelte";
 
 /**
  * R4.6–R4.8 geometry for orthogonal polygons. A shape is one or more outer parts plus holes;
@@ -184,7 +185,7 @@ export function hasThinPiece(shape: ZoneShape, minPart = MIN_ZONE_PART): boolean
 }
 
 export function translateShape(shape: ZoneShape, delta: Point): ZoneShape {
-  if (![delta.x, delta.y].every(Number.isFinite)) throw new RangeError("Zone translation must be finite.");
+  if (![delta.x, delta.y].every(Number.isFinite)) throw new RangeError(t("Zone translation must be finite."));
   return normalizeShape({
     parts: shape.parts.map((ring) => ring.map((point) => ({ x: point.x + delta.x, y: point.y + delta.y }))),
     holes: shape.holes.map((ring) => ring.map((point) => ({ x: point.x + delta.x, y: point.y + delta.y }))),
@@ -201,7 +202,7 @@ function normalizeBounds(bounds: ZoneBounds): ZoneBounds {
 
 /** Scales around `anchor` (Ctrl-drag of a corner scales the whole zone, M013). */
 export function scaleShape(shape: ZoneShape, anchor: Point, scaleX: number, scaleY: number): ZoneShape {
-  if (![anchor.x, anchor.y, scaleX, scaleY].every(Number.isFinite)) throw new RangeError("Zone scale must be finite.");
+  if (![anchor.x, anchor.y, scaleX, scaleY].every(Number.isFinite)) throw new RangeError(t("Zone scale must be finite."));
   return normalizeShape({
     parts: shape.parts.map((ring) => ring.map((point) => ({
       x: anchor.x + (point.x - anchor.x) * scaleX,

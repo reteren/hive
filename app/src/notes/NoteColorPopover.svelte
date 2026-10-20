@@ -9,9 +9,10 @@
     previewNoteColor,
     resetNoteColorPopover,
   } from "./noteColor.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let active = $derived(noteColorPopover.current);
-  let title = $derived(active?.part === "accentColor" ? "Accent colour" : "Node colour");
+  let title = $derived(active?.part === "accentColor" ? t("Accent colour") : t("Node colour"));
 
   function onKeyDown(event: KeyboardEvent): void {
     if (event.key === "Escape") {
@@ -37,7 +38,7 @@
     use:dismissBoardPopup={{ close: () => closeNoteColorPopover(true), escape: false }}
     onkeydown={onKeyDown}
   >
-    <span class="note-color-title">{title}{active.ids.length > 1 ? ` · ${active.ids.length} nodes` : ""}</span>
+    <span class="note-color-title">{title}{active.ids.length > 1 ? t(" · {count} nodes", { count: active.ids.length }) : ""}</span>
     <HexColorPicker
       value={active.value ?? noteColorPopoverStart(active)}
       label={title}
@@ -45,9 +46,9 @@
       onchange={previewNoteColor}
     />
     <div class="note-color-actions">
-      <button type="button" class="reset" onclick={resetNoteColorPopover}>Reset</button>
-      <button type="button" onclick={() => closeNoteColorPopover(false)}>Cancel</button>
-      <button type="button" onclick={() => closeNoteColorPopover(true)}>Done</button>
+      <button type="button" class="reset" onclick={resetNoteColorPopover}>{t("Reset")}</button>
+      <button type="button" onclick={() => closeNoteColorPopover(false)}>{t("Cancel")}</button>
+      <button type="button" onclick={() => closeNoteColorPopover(true)}>{t("Done")}</button>
     </div>
   </div>
 {/if}

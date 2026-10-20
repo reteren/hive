@@ -8,6 +8,7 @@
   import { getCommand, runCommand } from "../commands/registry.svelte";
   import magnetOffIcon from "./icons/magnet-off.png";
   import magnetOnIcon from "./icons/magnet-on.png";
+  import { t } from "../i18n/i18n.svelte";
 
   let controls: HTMLDivElement;
   let expandButton: HTMLButtonElement;
@@ -22,14 +23,14 @@
   function commandTitle(command: typeof showCommand): string {
     if (!command) return "";
     const keys = command.keys.map(formatKey).join(", ");
-    return keys ? `${command.label} · ${keys}` : command.label;
+    return keys ? `${t(command.label)} · ${keys}` : t(command.label);
   }
 
   function stepTitle(): string {
     const increase = commandTitle(increaseCommand);
     const decrease = commandTitle(decreaseCommand);
     const commandKeys = [increase, decrease].filter(Boolean).join(" · ");
-    return `Grid step ${formatGridStep(grid.step)} u · base ${formatGridStep(grid.baseStep)} u${commandKeys ? ` · ${commandKeys}` : ""}`;
+    return t("Grid step {gridStep} u · base {gridStep2} u{value}", { gridStep: formatGridStep(grid.step), gridStep2: formatGridStep(grid.baseStep), value: commandKeys ? ` · ${commandKeys}` : "" });
   }
 
   function onOutsidePointerDown(event: PointerEvent): void {
@@ -65,7 +66,7 @@
   });
 </script>
 
-<div class="grid-controls" bind:this={controls} data-selection-ignore aria-label="Grid controls">
+<div class="grid-controls" bind:this={controls} data-selection-ignore aria-label={t("Grid controls")}>
   {#if snapCommand}
     <button
       class="grid-control-button magnet-button"
@@ -85,10 +86,10 @@
     class:expanded
     type="button"
     bind:this={expandButton}
-    aria-label="Grid settings"
+    aria-label={t("Grid settings")}
     aria-expanded={expanded}
     aria-controls="grid-settings-popover"
-    title="Grid settings"
+    title={t("Grid settings")}
     onclick={() => (expanded = !expanded)}
   >
     <svg class="expand-arrow" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
@@ -97,7 +98,7 @@
   </button>
 
   {#if expanded}
-    <section class="grid-settings-popover" id="grid-settings-popover" aria-label="Grid settings" data-selection-ignore>
+    <section class="grid-settings-popover" id="grid-settings-popover" aria-label={t("Grid settings")} data-selection-ignore>
       {#if showCommand}
         <button
           class="popover-row grid-toggle"
@@ -110,13 +111,13 @@
           <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false">
             <path d="M2.5 2.5h5v5h-5zM10.5 2.5h5v5h-5zM2.5 10.5h5v5h-5zM10.5 10.5h5v5h-5z" />
           </svg>
-          <span>Grid</span>
-          <span class="toggle-state">{isGridShown ? "On" : "Off"}</span>
+          <span>{t("Grid")}</span>
+          <span class="toggle-state">{isGridShown ? t("On") : t("Off")}</span>
         </button>
       {/if}
 
       <div class="step-setting">
-        <span class="step-label">Grid step</span>
+        <span class="step-label">{t("Grid step")}</span>
         <button
           class="step-strip"
           type="button"
@@ -136,11 +137,11 @@
       <label class="auto-grid-setting" data-auto-grid>
         <input
           type="checkbox"
-          aria-label="Auto grid"
+          aria-label={t("Auto grid")}
           checked={grid.autoGrid}
           onchange={(event) => setAutoGrid(event.currentTarget.checked)}
         />
-        <span>Auto grid</span>
+        <span>{t("Auto grid")}</span>
       </label>
     </section>
   {/if}

@@ -4,6 +4,7 @@ import { EditorState, StateEffect, StateField, Transaction, type Extension, type
 import { Decoration, EditorView, ViewPlugin, showTooltip, type DecorationSet, type Tooltip, type ViewUpdate } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 import { addSpellingWord, checkSpelling, clearSpellcheckSuggestionCache, suggestSpelling } from "./engine";
+import { t } from "../i18n/i18n.svelte";
 
 export type SpellcheckContext = { from: number; to: number; word: string; languages: string[] };
 export type TextRange = { from: number; to: number };
@@ -197,7 +198,7 @@ function inlineTooltip(data: SpellcheckContext & { suggestions: string[] }): Too
       const dom = document.createElement("div");
       dom.className = "cm-hive-spell-suggestions";
       dom.setAttribute("role", "group");
-      dom.setAttribute("aria-label", "Spelling suggestions");
+      dom.setAttribute("aria-label", t("Spelling suggestions"));
       for (const suggestion of data.suggestions) {
         const button = document.createElement("button");
         button.type = "button";

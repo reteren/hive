@@ -9,6 +9,7 @@ import { uniqueName } from "../notes/naming";
 import { MIN_ZONE_SIZE, rectangleOverlapsZones } from "./geometry";
 import { stepBrushSize } from "./brushState.svelte";
 import { moveToTrash } from "../trash/trashActions.svelte";
+import { t } from "../i18n/i18n.svelte";
 
 export const ZONE_COLORS = ["#608ac1", "#a882c2", "#72a98b", "#c59965", "#b87582", "#73a9b6"] as const;
 
@@ -23,7 +24,7 @@ export function createZone(rect: ZoneBounds): Zone | null {
     createdAt: Date.now(),
   };
   execute({
-    label: "Create zone",
+    label: t("Create zone"),
     target: zone.name,
     do: () => addZone(zone),
     undo: () => { removeZone(zone.id); },
@@ -37,7 +38,7 @@ export function renameZone(id: string, proposed: string): boolean {
   const next = uniqueName(proposed, Object.values(zones.byId).filter((other) => other.id !== id).map((other) => other.name));
   if (next === zone.name) return false;
   const before = zone.name;
-  execute({ label: "Rename zone", target: next, do: () => updateZone(id, { name: next }), undo: () => updateZone(id, { name: before }) });
+  execute({ label: t("Rename zone"), target: next, do: () => updateZone(id, { name: next }), undo: () => updateZone(id, { name: before }) });
   return true;
 }
 
@@ -45,14 +46,14 @@ export function recolorZone(id: string, color: string): boolean {
   const zone = zones.byId[id];
   if (!zone || !/^#[0-9a-f]{6}$/i.test(color) || zone.color.toLowerCase() === color.toLowerCase()) return false;
   const before = zone.color;
-  execute({ label: "Zone colour", target: zone.name, do: () => updateZone(id, { color }), undo: () => updateZone(id, { color: before }) });
+  execute({ label: t("Zone colour"), target: zone.name, do: () => updateZone(id, { color }), undo: () => updateZone(id, { color: before }) });
   return true;
 }
 
 export function deleteZone(id: string): boolean {
   const zone = zones.byId[id];
   if (!zone) return false;
-  return moveToTrash([], [id], { label: "Delete zone", target: zone.name }) !== null;
+  return moveToTrash([], [id], { label: t("Delete zone"), target: zone.name }) !== null;
 }
 
 registerCommand({

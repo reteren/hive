@@ -9,6 +9,7 @@ import { hasMeBeacon } from "../beacons/beaconState.svelte";
 import { zoneMembers } from "../zones/membership.svelte";
 import { effectiveScope, resolveScopeIn, scopeExistsIn, type ScopeSources } from "./scopeLogic";
 import { reactiveLinkRevisionFor } from "./scopeRevision.svelte";
+import { t } from "../i18n/i18n.svelte";
 
 export interface ScopeOption {
   scope: NodeScope;
@@ -65,17 +66,17 @@ export function scopeForNote(note: Pick<Note, "id" | "scope">): NodeScope {
 export function scopeOptions(): ScopeOption[] {
   const zoneOptions: ScopeOption[] = Object.values(zones.byId).map((zone) => ({
     scope: { kind: "zone", id: zone.id },
-    label: `Zone: ${zone.name}`,
+    label: t("Zone: {name}", { name: zone.name }),
   }));
   const beaconIds = [...(hasMeBeacon() ? [ME_OBJECT_ID] : []), ...board.order.filter((id) => board.notes[id]?.type === "beacon")];
   const beaconOptions = beaconIds.flatMap((id): ScopeOption[] => {
     const name = id === ME_OBJECT_ID ? "ME" : board.notes[id]?.name;
-    return name ? [{ scope: { kind: "beacon", id }, label: `Beacon: ${name}` }] : [];
+    return name ? [{ scope: { kind: "beacon", id }, label: t("Beacon: {name}", { name: name }) }] : [];
   });
 
   return [
-    { scope: { kind: "auto" }, label: "Auto (under this node)" },
-    { scope: { kind: "board" }, label: "Board" },
+    { scope: { kind: "auto" }, label: t("Auto (under this node)") },
+    { scope: { kind: "board" }, label: t("Board") },
     ...zoneOptions.sort(compareOptions),
     ...beaconOptions.sort(compareOptions),
   ];

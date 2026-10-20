@@ -8,11 +8,12 @@
     setSwirlDirection,
     setSwirlSpeed,
   } from "./effectSettings.svelte";
+  import { t } from "../../i18n/i18n.svelte";
 
   const effectModes = [
-    { id: "blur", label: "Blur" },
-    { id: "smudge", label: "Smudge" },
-    { id: "swirl", label: "Swirl" },
+    { id: "blur", get label() { return t("Blur"); } },
+    { id: "smudge", get label() { return t("Smudge"); } },
+    { id: "swirl", get label() { return t("Swirl"); } },
   ] as const;
   let photoBlurActive = $derived(imageErase.mode === "blur");
   let activeMode = $derived(photoBlurActive ? "blur" : drawingEffects.mode);
@@ -29,10 +30,10 @@
   }
 </script>
 
-<section class="effect-options" data-effect-options aria-label="Effect options">
+<section class="effect-options" data-effect-options aria-label={t("Effect options")}>
   <div class="field">
-    <span>Effect</span>
-    <div class="mode-options" role="group" aria-label="Drawing effect" data-effect-mode>
+    <span>{t("Effect")}</span>
+    <div class="mode-options" role="group" aria-label={t("Drawing effect")} data-effect-mode>
       {#each effectModes as option (option.id)}
         <button
           type="button"
@@ -46,12 +47,12 @@
   </div>
 
   <label class="field strength-field" data-effect-strength={activeMode}>
-    <span><span>Strength</span><strong>{Math.round(activeStrength * 100)}%</strong></span>
+    <span><span>{t("Strength")}</span><strong>{Math.round(activeStrength * 100)}%</strong></span>
     <MediaSlider
       value={Math.round(activeStrength * 100)}
       max={100}
       step={1}
-      label={`${activeMode[0]!.toUpperCase()}${activeMode.slice(1)} strength`}
+      label={activeMode === "blur" ? t("Blur strength") : activeMode === "smudge" ? t("Smudge strength") : t("Swirl strength")}
       oninput={updateStrength}
       onchange={updateStrength}
     />
@@ -59,26 +60,26 @@
 
   {#if activeMode === "swirl" && !photoBlurActive}
     <fieldset class="direction-field" data-swirl-direction>
-      <legend>Direction</legend>
+      <legend>{t("Direction")}</legend>
       <label>
         <input type="radio" name="swirl-direction" value="cw" checked={drawingEffects.swirlDirection === "cw"} onchange={() => setSwirlDirection("cw")} />
-        Clockwise
+        {t("Clockwise")}
       </label>
       <label>
         <input type="radio" name="swirl-direction" value="ccw" checked={drawingEffects.swirlDirection === "ccw"} onchange={() => setSwirlDirection("ccw")} />
-        Counterclockwise
+        {t("Counterclockwise")}
       </label>
     </fieldset>
   {/if}
 
   {#if activeMode === "swirl" && !photoBlurActive}
     <label class="field" data-swirl-speed>
-      <span>Speed <strong>{drawingEffects.swirlSpeed.toFixed(1)} rad/s</strong></span>
+      <span>{t("Speed")} <strong>{drawingEffects.swirlSpeed.toFixed(1)} rad/s</strong></span>
       <MediaSlider
         value={swirlSpeedSlider}
         max={79}
         step={1}
-        label="Swirl speed in radians per second at full strength"
+        label={t("Swirl speed in radians per second at full strength")}
         oninput={updateSwirlSpeed}
         onchange={updateSwirlSpeed}
       />

@@ -7,6 +7,7 @@
   import { archive, type ArchiveEntry } from "../model/retention.svelte";
   import { deleteArchivedPermanently, duplicateArchivedNear, restoreArchived } from "./actions.svelte";
   import { planArchiveRestore } from "./logic";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let feedback = $state("");
@@ -33,7 +34,7 @@
   }
 
   function previewText(item: Note): string {
-    return item.text.trim().replace(/\s+/g, " ").slice(0, 110) || "No text preview";
+    return item.text.trim().replace(/\s+/g, " ").slice(0, 110) || t("No text preview");
   }
 
   function otherEnd(link: ArchiveEntry["links"][number], item: Note): string {
@@ -66,63 +67,63 @@
   function finishRestore(entry: ArchiveEntry, placement: "old" | "centre", resumeReminder: boolean): void {
     const result = restoreArchived(entry.id, placement, resumeReminder);
     feedback = result
-      ? result.nameChanged ? `Restored as ${result.note.name}.` : `Restored ${result.note.name}.`
-      : "This item cannot be restored while its original ID is in use.";
+      ? result.nameChanged ? t("Restored as {name}.", { name: result.note.name }) : t("Restored {name}.", { name: result.note.name })
+      : t("This item cannot be restored while its original ID is in use.");
   }
 
   function duplicate(entry: ArchiveEntry): void {
     const copy = duplicateArchivedNear(entry.id, note.id);
-    feedback = copy ? `Created ${copy.name} beside Archive.` : "Could not duplicate this item.";
+    feedback = copy ? t("Created {name} beside Archive.", { name: copy.name }) : t("Could not duplicate this item.");
   }
 
   function deletePermanently(entry: ArchiveEntry): void {
-    if (!window.confirm(`Delete ${entry.note.name} permanently from Archive? This cannot be undone.`)) return;
+    if (!window.confirm(t("Delete {name} permanently from Archive? This cannot be undone.", { name: entry.note.name }))) return;
     deleteArchivedPermanently(entry.id);
-    feedback = `Deleted ${entry.note.name} permanently.`;
+    feedback = t("Deleted {name} permanently.", { name: entry.note.name });
   }
 </script>
 
-<div class="archive-body" data-archive-node={note.id} data-selection-ignore role="region" aria-label="Project archive">
-  <div class="archive-heading"><strong>Archive</strong><span>{archive.entries.length} items</span></div>
+<div class="archive-body" data-archive-node={note.id} data-selection-ignore role="region" aria-label={t("Project archive")}>
+  <div class="archive-heading"><strong>{t("Archive")}</strong><span>{archive.entries.length} items</span></div>
   {#if feedback}<p class="archive-feedback" data-archive-feedback role="status">{feedback}</p>{/if}
   {#if items.length === 0}
-    <p class="archive-empty">Archived nodes appear here.</p>
+    <p class="archive-empty">{t("Archived nodes appear here.")}</p>
   {:else}
     <div class="archive-list">
       {#each items as item (item.entry.id)}
         {@const entry = item.entry}
         <section class="archive-item" data-archive-entry={entry.id}>
           <div class="archive-item-heading">
-            <span class="archive-kind" title={entry.note.task ? "Task" : entry.note.type} aria-label={entry.note.task ? "Task" : entry.note.type}>{kindIcon(entry.note)}</span>
+            <span class="archive-kind" title={entry.note.task ? t("Task") : entry.note.type} aria-label={entry.note.task ? t("Task") : entry.note.type}>{kindIcon(entry.note)}</span>
             <strong class="archive-name">{entry.note.name}</strong>
             <time datetime={new Date(entry.archivedAt).toISOString()}>{new Date(entry.archivedAt).toLocaleString()}</time>
           </div>
           <p class="archive-preview">{previewText(entry.note)}</p>
           {#if item.idConflict}<p class="archive-notice">Original ID is in use; restore is unavailable.</p>{/if}
-          {#if item.oldPlan.nameChanged}<p class="archive-notice">Restore will rename to {item.oldPlan.note.name}.</p>{/if}
+          {#if item.oldPlan.nameChanged}<p class="archive-notice">{t("Restore will rename to {name}.", { name: item.oldPlan.note.name })}</p>{/if}
           {#if item.oldPlan.calculatorUsesLiveData}<p class="archive-notice">A calculator with this name is active; restore will use its current data.</p>{/if}
           {#if item.oldPlan.placeOccupied}<p class="archive-notice">Old place is occupied; restored node will overlap.</p>{/if}
           {#if item.centrePlan.placeOccupied}<p class="archive-notice">Screen centre is occupied; centre restore will overlap.</p>{/if}
           {#if entry.links.length > 0}
             <details class="archive-links" data-archive-links>
-              <summary>{item.oldPlan.links.length} links return · {item.oldPlan.missingLinks.length} unavailable</summary>
+              <summary>{t("{count} links return · {count2} unavailable", { count: item.oldPlan.links.length, count2: item.oldPlan.missingLinks.length })}</summary>
               <ul>
-                {#each item.oldPlan.links as link (link.id)}<li>Returns: {otherEnd(link, entry.note)}</li>{/each}
-                {#each item.oldPlan.missingLinks as link (link.id)}<li>Unavailable: {otherEnd(link, entry.note)}</li>{/each}
+                {#each item.oldPlan.links as link (link.id)}<li>{t("Returns: {otherEnd}", { otherEnd: otherEnd(link, entry.note) })}</li>{/each}
+                {#each item.oldPlan.missingLinks as link (link.id)}<li>{t("Unavailable: {otherEnd}", { otherEnd: otherEnd(link, entry.note) })}</li>{/each}
               </ul>
             </details>
           {/if}
           <div class="archive-actions">
-            <button type="button" data-archive-restore-old disabled={item.idConflict} onclick={() => restore(entry, "old")}>Restore to old place</button>
-            <button type="button" data-archive-restore-centre disabled={item.idConflict} onclick={() => restore(entry, "centre")}>Restore to screen centre</button>
-            <button type="button" data-archive-duplicate onclick={() => duplicate(entry)}>Duplicate near Archive</button>
-            <button type="button" class="danger" data-archive-delete onclick={() => deletePermanently(entry)}>Delete permanently</button>
+            <button type="button" data-archive-restore-old disabled={item.idConflict} onclick={() => restore(entry, "old")}>{t("Restore to old place")}</button>
+            <button type="button" data-archive-restore-centre disabled={item.idConflict} onclick={() => restore(entry, "centre")}>{t("Restore to screen centre")}</button>
+            <button type="button" data-archive-duplicate onclick={() => duplicate(entry)}>{t("Duplicate near Archive")}</button>
+            <button type="button" class="danger" data-archive-delete onclick={() => deletePermanently(entry)}>{t("Delete permanently")}</button>
           </div>
           {#if pendingReminderRestore?.entryId === entry.id}
-            <div class="archive-resume-prompt" data-archive-resume-prompt role="group" aria-label="Resume reminder?">
-              <span>Resume reminder?</span>
-              <button type="button" data-archive-resume-yes onclick={() => answerReminderPrompt(true)}>Yes</button>
-              <button type="button" data-archive-resume-no onclick={() => answerReminderPrompt(false)}>No</button>
+            <div class="archive-resume-prompt" data-archive-resume-prompt role="group" aria-label={t("Resume reminder?")}>
+              <span>{t("Resume reminder?")}</span>
+              <button type="button" data-archive-resume-yes onclick={() => answerReminderPrompt(true)}>{t("Yes")}</button>
+              <button type="button" data-archive-resume-no onclick={() => answerReminderPrompt(false)}>{t("No")}</button>
             </div>
           {/if}
         </section>

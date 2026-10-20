@@ -7,6 +7,7 @@ import { registerDrawTool } from "./toolRegistry";
 import type { DrawPointerEvent, DrawToolHandler } from "./types";
 import { drawingSelection } from "./selection.svelte";
 import { createSelectionCoverageSampler, type SelectionClipMask } from "./selectionClip";
+import { t } from "../i18n/i18n.svelte";
 
 export const DEFAULT_FILL_TOLERANCE = 24;
 /** Fill window side at the working level (~1–2 screens); an open result is retried at coarser levels. */
@@ -253,13 +254,13 @@ function enqueueNeighborRuns(
 
 function validatePixels(data: Uint8ClampedArray, width: number, height: number): void {
   if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0 || data.length !== width * height * 4) {
-    throw new RangeError("Flood fill expects a non-empty RGBA pixel buffer.");
+    throw new RangeError(t("Flood fill expects a non-empty RGBA pixel buffer."));
   }
 }
 
 function parseFillColor(color: string): [number, number, number] {
   const match = /^#([\da-f]{6})$/i.exec(color);
-  if (!match) throw new TypeError("Fill colour must be a #rrggbb value.");
+  if (!match) throw new TypeError(t("Fill colour must be a #rrggbb value."));
   const value = Number.parseInt(match[1]!, 16);
   return [(value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff];
 }
@@ -368,7 +369,7 @@ async function fillAt(world: { x: number; y: number }, settings: BrushSettings, 
     await commitFill(result.image, level, selection);
     return;
   }
-  showLinkStatus("Fill needs a closed shape");
+  showLinkStatus(t("Fill needs a closed shape"));
 }
 
 async function commitFill(image: NonNullable<FloodFillResult["image"]>, level: number, selection: SelectionClipMask | null): Promise<void> {
@@ -399,7 +400,7 @@ function canvasFromRgba(data: Uint8ClampedArray, width: number, height: number):
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d");
-  if (!context) throw new Error("Could not prepare the fill.");
+  if (!context) throw new Error(t("Could not prepare the fill."));
   const image = new ImageData(width, height);
   image.data.set(data);
   context.putImageData(image, 0, 0);

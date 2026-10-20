@@ -1,22 +1,23 @@
 <script lang="ts">
   import { keepLocalVersion, useExternalVersion } from "../project/persistence.svelte";
   import { project } from "../project/project.svelte";
+  import { t } from "../i18n/i18n.svelte";
 </script>
 
 {#if project.conflicts.length > 0}
-  <div class="conflict-list" role="status" aria-live="polite" aria-label="External note changes">
+  <div class="conflict-list" role="status" aria-live="polite" aria-label={t("External note changes")}>
     {#each project.conflicts as conflict (conflict.noteId)}
       <section class="conflict">
         <div class="conflict-copy">
-          <strong>External change:</strong>
+          <strong>{t("External change:")}</strong>
           <span class="note-name" title={conflict.noteName}>{conflict.noteName}</span>
           <span class="detail">
             {#if conflict.savingCopies}
-              Saving both versions…
+              {t("Saving both versions…")}
             {:else if conflict.copyError}
               {conflict.copyError}
             {:else}
-              Both versions are preserved.
+              {t("Both versions are preserved.")}
             {/if}
           </span>
         </div>
@@ -25,12 +26,12 @@
             type="button"
             disabled={conflict.savingCopies}
             onclick={() => useExternalVersion(conflict.noteId)}
-          >Use external</button>
+          >{t("Use external")}</button>
           <button
             type="button"
             disabled={conflict.savingCopies || !conflict.externalCopyFile}
             onclick={() => void keepLocalVersion(conflict.noteId)}
-          >Keep mine</button>
+          >{t("Keep mine")}</button>
         </div>
       </section>
     {/each}

@@ -30,6 +30,7 @@ import {
   tierRowsEqual,
   updateTierCardText,
 } from "./logic";
+import { t } from "../i18n/i18n.svelte";
 
 export function rowsForTierlist(noteId: string): TierRow[] {
   const note = board.notes[noteId];
@@ -64,21 +65,21 @@ export function createTierlistChangeCommand(
 
 export function addTierlistRow(noteId: string): void {
   const rows = rowsForTierlist(noteId);
-  changeTierlist(noteId, "Add tier row", appendTierRow(rows, "New tier", DEFAULT_NEW_TIER_COLOR));
+  changeTierlist(noteId, t("Add tier row"), appendTierRow(rows, t("New tier"), DEFAULT_NEW_TIER_COLOR));
 }
 
 export function renameTierlistRow(noteId: string, rowId: string, name: string): void {
   const cleanName = name.trim();
   if (!cleanName) return;
-  changeTierlist(noteId, "Rename tier row", renameTierRow(rowsForTierlist(noteId), rowId, cleanName));
+  changeTierlist(noteId, t("Rename tier row"), renameTierRow(rowsForTierlist(noteId), rowId, cleanName));
 }
 
 export function recolorTierlistRow(noteId: string, rowId: string, color: string): void {
-  changeTierlist(noteId, "Recolour tier row", recolorTierRow(rowsForTierlist(noteId), rowId, color));
+  changeTierlist(noteId, t("Recolour tier row"), recolorTierRow(rowsForTierlist(noteId), rowId, color));
 }
 
 export function reorderTierlistRow(noteId: string, rowId: string, targetIndex: number): void {
-  changeTierlist(noteId, "Reorder tier rows", reorderTierRow(rowsForTierlist(noteId), rowId, targetIndex));
+  changeTierlist(noteId, t("Reorder tier rows"), reorderTierRow(rowsForTierlist(noteId), rowId, targetIndex));
 }
 
 export function removeTierlistRow(
@@ -87,12 +88,12 @@ export function removeTierlistRow(
   choice: "move-below" | "delete-cards" | "cancel",
 ): void {
   const next = deleteTierRow(rowsForTierlist(noteId), rowId, choice);
-  if (next) changeTierlist(noteId, "Delete tier row", next);
+  if (next) changeTierlist(noteId, t("Delete tier row"), next);
 }
 
 export function addTextTierCard(noteId: string, rowId: string): string {
   const card: TierCard = { id: newId(), kind: "text", text: "" };
-  changeTierlist(noteId, "Add tier card", addTierCard(rowsForTierlist(noteId), rowId, card));
+  changeTierlist(noteId, t("Add tier card"), addTierCard(rowsForTierlist(noteId), rowId, card));
   return card.id;
 }
 
@@ -101,7 +102,7 @@ export function addImageTierCards(noteId: string, rowId: string, images: readonl
   if (images.length === 0) return [];
   const cards: TierCard[] = images.map((image) => ({ id: newId(), kind: "image", image: { ...image } }));
   const nextRows = cards.reduce((next, card) => addTierCard(next, rowId, card), rowsForTierlist(noteId));
-  if (!changeTierlist(noteId, images.length === 1 ? "Add image card" : "Add image cards", nextRows)) return [];
+  if (!changeTierlist(noteId, images.length === 1 ? t("Add image card") : t("Add image cards"), nextRows)) return [];
   return cards.map(({ id }) => id);
 }
 
@@ -109,7 +110,7 @@ export function addNoteTierCard(noteId: string, rowId: string, sourceNoteId: str
   const card: TierCard = { id: newId(), kind: "note", noteId: sourceNoteId };
   return createTierlistChangeCommand(
     noteId,
-    "Add node preview to Tierlist",
+    t("Add node preview to Tierlist"),
     addTierCard(rowsForTierlist(noteId), rowId, card),
   );
 }
@@ -131,7 +132,7 @@ export function duplicateTierlistCard(
   const duplicate: TierCard = { ...sourceCard, id: newId() };
   return changeTierlist(
     targetNoteId,
-    "Copy tier card",
+    t("Copy tier card"),
     addTierCard(rowsForTierlist(targetNoteId), targetRowId, duplicate, targetIndex),
   );
 }
@@ -173,7 +174,7 @@ export function createTierlistTextCardNoteCommand(
   const previousEditing = editing.noteId;
 
   return {
-    label: "Move text card to board",
+    label: t("Move text card to board"),
     target: `${tierlist.name} → ${note.name}`,
     do: () => {
       updateNote(tierlist.id, { tiers: copyTierRows(afterRows) });
@@ -201,15 +202,15 @@ export function moveTierlistCard(
 ): void {
   changeTierlist(
     noteId,
-    "Move tier card",
+    t("Move tier card"),
     moveTierCard(rowsForTierlist(noteId), sourceRowId, cardId, targetRowId, targetIndex),
   );
 }
 
 export function deleteTierlistCard(noteId: string, rowId: string, cardId: string): void {
-  changeTierlist(noteId, "Delete tier card", deleteTierCard(rowsForTierlist(noteId), rowId, cardId));
+  changeTierlist(noteId, t("Delete tier card"), deleteTierCard(rowsForTierlist(noteId), rowId, cardId));
 }
 
 export function editTextTierCard(noteId: string, rowId: string, cardId: string, text: string): void {
-  changeTierlist(noteId, "Edit tier card", updateTierCardText(rowsForTierlist(noteId), rowId, cardId, text));
+  changeTierlist(noteId, t("Edit tier card"), updateTierCardText(rowsForTierlist(noteId), rowId, cardId, text));
 }

@@ -1,4 +1,5 @@
 import { hiveMarkdownParser } from "./markdownSyntax";
+import { t } from "../i18n/i18n.svelte";
 
 export const DEFAULT_HIGHLIGHT_COLOR = "#e8b030";
 
@@ -29,7 +30,7 @@ export function normalizeHexColor(color: string): string | null {
 
 export function serializeHighlight(text: string, color: string): string {
   const normalized = normalizeHexColor(color);
-  if (!normalized) throw new RangeError("Highlight color must be a six-digit hex value");
+  if (!normalized) throw new RangeError(t("Highlight color must be a six-digit hex value"));
   return `==${text}=={{${normalized}}}`;
 }
 

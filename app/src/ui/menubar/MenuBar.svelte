@@ -8,6 +8,7 @@
   import { buildEditMenu, buildFileMenu, type MenuCommandItem, type MenuItem } from "./menuModel";
   import { createHoverGraceTimer } from "./hoverGraceTimer";
   import { setOpenRecentProject } from "../../project/commands";
+  import { t } from "../../i18n/i18n.svelte";
 
   let { onOpenChange = () => {} } = $props<{ onOpenChange?: (open: boolean) => void }>();
 
@@ -39,7 +40,7 @@
   function commandTitle(id: string): string {
     const command = getCommand(id);
     if (!command) return "";
-    return command.keys.length ? `${command.label} · ${command.keys.map(formatKey).join(", ")}` : command.label;
+    return command.keys.length ? `${t(command.label)} · ${command.keys.map(formatKey).join(", ")}` : t(command.label);
   }
 
   async function open(menu: MenuName, focusFirst = false): Promise<void> {
@@ -192,12 +193,12 @@
   function itemTitle(item: MenuCommandItem): string {
     if (!item.popupHint) return commandTitle(item.commandId);
     const shortcut = itemBinding(item);
-    const action = shortcut ? `${shortcut} opens the list` : "no shortcut is assigned to open the list";
-    return `Show ${item.popupHint.buttonLabel} button in the top-right · ${action}`;
+    const action = shortcut ? t("{shortcut} opens the list", { shortcut: shortcut }) : t("no shortcut is assigned to open the list");
+    return t("Show {buttonLabel} button in the top-right · {action}", { buttonLabel: item.popupHint.buttonLabel, action: action });
   }
 </script>
 
-<div class="menubar" data-menubar role="menubar" aria-label="File and Edit menus" tabindex="-1" bind:this={root} onkeydown={handleKeydown}>
+<div class="menubar" data-menubar role="menubar" aria-label={t("File and Edit menus")} tabindex="-1" bind:this={root} onkeydown={handleKeydown}>
   <button
     bind:this={fileTrigger}
     class:active={openMenu === "file"}
@@ -206,7 +207,7 @@
     aria-haspopup="menu"
     aria-expanded={openMenu === "file"}
     onclick={() => toggle("file")}
-  >File</button>
+  >{t("File")}</button>
   <button
     bind:this={editTrigger}
     class:active={openMenu === "edit"}
@@ -215,10 +216,10 @@
     aria-haspopup="menu"
     aria-expanded={openMenu === "edit"}
     onclick={() => toggle("edit")}
-  >Edit</button>
+  >{t("Edit")}</button>
 
   {#if openMenu}
-    <div class="menu-panel" data-menu={openMenu} role="menu" aria-label={`${openMenu} menu`}>
+    <div class="menu-panel" data-menu={openMenu} role="menu" aria-label={openMenu === "file" ? t("File menu") : t("Edit menu")}>
       {#each visibleItems as item, index (item.kind === "command" ? `${item.commandId}-${index}` : item.kind === "submenu" ? item.id : `separator-${index}`)}
         {#if item.kind === "separator"}
           <div class="separator" role="separator"></div>
@@ -269,7 +270,7 @@
         data-menu="file"
         role="menu"
         tabindex="-1"
-        aria-label="Open recent"
+        aria-label={t("Open recent")}
         onpointerenter={() => recentCloseGrace.cancel()}
         onpointerleave={scheduleRecentClose}
       >

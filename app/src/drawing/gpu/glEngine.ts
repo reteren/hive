@@ -1,3 +1,4 @@
+import { t } from "../../i18n/i18n.svelte";
 /**
  * The drawing's raster lives on the GPU (debug 24): one WebGL2 context owns every tile (RGBA8,
  * premultiplied, mipmapped), the live stroke state and the Undo copies. The CPU never touches tile
@@ -298,7 +299,7 @@ export class DrawingGpu {
   constructor(canvas: HTMLCanvasElement, gl: WebGL2RenderingContext) {
     this.canvas = canvas;
     this.gl = gl;
-    if (!gl.getExtension("EXT_color_buffer_float")) throw new Error("Drawing needs float render targets (EXT_color_buffer_float).");
+    if (!gl.getExtension("EXT_color_buffer_float")) throw new Error(t("Drawing needs float render targets (EXT_color_buffer_float)."));
     this.composite = link(gl, VERTEX_SHADER, COMPOSITE_SHADER);
     this.stroke = link(gl, VERTEX_SHADER, STROKE_SHADER);
     this.effect = link(gl, VERTEX_SHADER, EFFECT_SHADER);
@@ -307,7 +308,7 @@ export class DrawingGpu {
     this.effectUniforms = uniforms(gl, this.effect, ["u_dst", "u_src", "u_clip", "u_tex", "u_clipTex", "u_mode", "u_useClip", "u_path", "u_radius", "u_core", "u_strength", "u_swirlAngle", "u_drag"]);
     const vao = gl.createVertexArray();
     const buffer = gl.createBuffer();
-    if (!vao || !buffer) throw new Error("Could not create the drawing quad.");
+    if (!vao || !buffer) throw new Error(t("Could not create the drawing quad."));
     gl.bindVertexArray(vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
@@ -353,7 +354,7 @@ export class DrawingGpu {
     const gl = this.gl;
     const tex = gl.createTexture();
     const fbo = gl.createFramebuffer();
-    if (!tex || !fbo) throw new Error("Out of GPU memory for the drawing.");
+    if (!tex || !fbo) throw new Error(t("Out of GPU memory for the drawing."));
     gl.bindTexture(gl.TEXTURE_2D, tex);
     const levels = mipmapped ? Math.floor(Math.log2(Math.max(width, height))) + 1 : 1;
     gl.texStorage2D(gl.TEXTURE_2D, levels, gl.RGBA8, width, height);
@@ -380,7 +381,7 @@ export class DrawingGpu {
   createMaskTexture(width: number, height: number, data: Uint8Array): WebGLTexture {
     const gl = this.gl;
     const tex = gl.createTexture();
-    if (!tex) throw new Error("Out of GPU memory for the drawing.");
+    if (!tex) throw new Error(t("Out of GPU memory for the drawing."));
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, width, height, 0, gl.RED, gl.UNSIGNED_BYTE, data);
@@ -566,7 +567,7 @@ export class DrawingGpu {
       const state = gl.createTexture();
       const position = gl.createTexture();
       const fbo = gl.createFramebuffer();
-      if (!state || !position || !fbo) throw new Error("Out of GPU memory for the brush.");
+      if (!state || !position || !fbo) throw new Error(t("Out of GPU memory for the brush."));
       gl.bindTexture(gl.TEXTURE_2D, state);
       gl.texStorage2D(gl.TEXTURE_2D, Math.floor(Math.log2(size)) + 1, gl.RGBA8, size, size);
       // Only level 0 is valid while drawing; ensureStrokeMips switches to trilinear for the commit.
@@ -627,7 +628,7 @@ export class DrawingGpu {
     if (snapshot.rgba.length !== expected * 4 || snapshot.position.length !== expected ||
       (snapshot.nextRgba && snapshot.nextRgba.length !== expected * 4) ||
       (snapshot.nextPosition && snapshot.nextPosition.length !== expected)) {
-      throw new RangeError("Spilled stroke state dimensions do not match its tile.");
+      throw new RangeError(t("Spilled stroke state dimensions do not match its tile."));
     }
     const gl = this.gl;
     const buffersAndPixels = [
@@ -822,24 +823,24 @@ function setBlend(gl: WebGL2RenderingContext, blend: BlendKind): void {
 
 function compile(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader {
   const shader = gl.createShader(type);
-  if (!shader) throw new Error("Could not create a drawing shader.");
+  if (!shader) throw new Error(t("Could not create a drawing shader."));
   gl.shaderSource(shader, source);
   gl.compileShader(shader);
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS) && !gl.isContextLost()) {
-    throw new Error(`Drawing shader failed: ${gl.getShaderInfoLog(shader) ?? "unknown error"}`);
+    throw new Error(t("Drawing shader failed: {value}", { value: gl.getShaderInfoLog(shader) ?? "unknown error" }));
   }
   return shader;
 }
 
 function link(gl: WebGL2RenderingContext, vertex: string, fragment: string): WebGLProgram {
   const program = gl.createProgram();
-  if (!program) throw new Error("Could not create a drawing program.");
+  if (!program) throw new Error(t("Could not create a drawing program."));
   gl.attachShader(program, compile(gl, gl.VERTEX_SHADER, vertex));
   gl.attachShader(program, compile(gl, gl.FRAGMENT_SHADER, fragment));
   gl.bindAttribLocation(program, 0, "a_pos");
   gl.linkProgram(program);
   if (!gl.getProgramParameter(program, gl.LINK_STATUS) && !gl.isContextLost()) {
-    throw new Error(`Drawing program failed: ${gl.getProgramInfoLog(program) ?? "unknown error"}`);
+    throw new Error(t("Drawing program failed: {value}", { value: gl.getProgramInfoLog(program) ?? "unknown error" }));
   }
   return program;
 }
@@ -891,6 +892,6 @@ export function drawingGpu(): DrawingGpu | null {
 /** Throwing accessor for code paths that cannot work without the GPU. */
 export function requireDrawingGpu(): DrawingGpu {
   const gpu = drawingGpu();
-  if (!gpu) throw new Error("Drawing needs WebGL2, which is not available here.");
+  if (!gpu) throw new Error(t("Drawing needs WebGL2, which is not available here."));
   return gpu;
 }

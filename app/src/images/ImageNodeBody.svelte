@@ -6,6 +6,7 @@
   import type { ImageRef } from "../attachments/types";
   import { clampImageOpacity } from "./imageLogic";
   import { eraseSessionCanvas } from "../attachments/imageErase.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let { image, selected, name, noteId, flipX, flipY }: {
     image?: ImageRef;
@@ -57,7 +58,7 @@
     aria-hidden="true"
   ></div>
   {#if image?.mime === "image/gif"}
-    <div class="image-node-picture-viewport" style:transform={`scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`} style:opacity={opacity}>
+    <div class="image-node-picture-viewport" style:transform={t("scale({value}, {value2})", { value: flipX ? -1 : 1, value2: flipY ? -1 : 1 })} style:opacity={opacity}>
       <GifView
         {image}
         target={{ kind: "board", noteId }}
@@ -69,9 +70,9 @@
       />
     </div>
   {:else if image && eraseCanvas}
-    <div class="image-node-picture-viewport image-node-erasing" style:transform={`scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`} style:opacity={opacity} use:mountCanvas={eraseCanvas}></div>
+    <div class="image-node-picture-viewport image-node-erasing" style:transform={t("scale({value}, {value2})", { value: flipX ? -1 : 1, value2: flipY ? -1 : 1 })} style:opacity={opacity} use:mountCanvas={eraseCanvas}></div>
   {:else if image}
-    <div class="image-node-picture-viewport" style:transform={`scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`} style:opacity={opacity}>
+    <div class="image-node-picture-viewport" style:transform={t("scale({value}, {value2})", { value: flipX ? -1 : 1, value2: flipY ? -1 : 1 })} style:opacity={opacity}>
       <AttachmentImage
         {image}
         alt={name}
@@ -80,7 +81,7 @@
       />
     </div>
   {:else}
-    <div class="image-node-state image-node-error" role="status">File missing: {name || "Image"}</div>
+    <div class="image-node-state image-node-error" role="status">{t("File missing: {name}", { name: name || t("Image") })}</div>
   {/if}
 </div>
 

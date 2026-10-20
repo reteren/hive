@@ -5,6 +5,7 @@
   import { occurrencesBetween } from "../time/scheduler";
   import { calendarOccurrences, formatOccurrenceTime, localDateKey, monthGrid, occurrencesOnDay, visibleGridRange } from "./calendarLogic";
   import type { Note } from "../model/note";
+  import { i18n, t, tp } from "../i18n/i18n.svelte";
 
   const initialNow = new Date();
   let now = $state(initialNow);
@@ -45,8 +46,15 @@
     counts.set(key, (counts.get(key) ?? 0) + 1);
     return counts;
   }, new Map<string, number>()));
-  const title = $derived(new Intl.DateTimeFormat("en", { month: "long", year: "numeric" }).format(month));
-  const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+  const title = $derived(new Intl.DateTimeFormat(i18n.locale, { month: "long", year: "numeric" }).format(month));
+  // 2024-01-01 is a Monday; the names come from Intl in the interface language.
+  const weekdays = $derived(Array.from({ length: 7 }, (_, index) => {
+    const day = new Date(2024, 0, 1 + index, 12);
+    return {
+      long: new Intl.DateTimeFormat(i18n.locale, { weekday: "long" }).format(day),
+      short: new Intl.DateTimeFormat(i18n.locale, { weekday: "short" }).format(day),
+    };
+  }));
 
   function moveMonth(amount: number): void {
     const nextMonth = new Date(month.getFullYear(), month.getMonth() + amount, 1, 12);
@@ -68,21 +76,21 @@
   }
 
   function goTo(targetId: string): void {
-    teleportToObject(targetId, { label: "Go to reminder" });
+    teleportToObject(targetId, { label: t("Go to reminder") });
   }
 </script>
 
-<section class="calendar-body" aria-label="Calendar" data-calendar-body>
+<section class="calendar-body" aria-label={t("Calendar")} data-calendar-body>
   <div class="calendar-heading">
-    <button type="button" aria-label="Previous month" title="Previous month" data-selection-ignore onclick={() => moveMonth(-1)}>‹</button>
+    <button type="button" aria-label={t("Previous month")} title={t("Previous month")} data-selection-ignore onclick={() => moveMonth(-1)}>‹</button>
     <h2>{title}</h2>
-    <button type="button" aria-label="Next month" title="Next month" data-selection-ignore onclick={() => moveMonth(1)}>›</button>
-    <button class="today-button" type="button" data-selection-ignore onclick={showToday}>Today</button>
+    <button type="button" aria-label={t("Next month")} title={t("Next month")} data-selection-ignore onclick={() => moveMonth(1)}>›</button>
+    <button class="today-button" type="button" data-selection-ignore onclick={showToday}>{t("Today")}</button>
   </div>
 
   <div class="calendar-grid" role="group" aria-label={title}>
     {#each weekdays as weekday}
-      <span class="weekday" aria-label={weekday}>{weekday.slice(0, 2)}</span>
+      <span class="weekday" aria-label={weekday.long}>{weekday.short}</span>
     {/each}
     {#each days as day (day.key)}
       {@const count = occurrenceCountByDay.get(day.key) ?? 0}
@@ -92,7 +100,7 @@
         class:today={day.isToday}
         class:selected={day.key === selectedDay}
         type="button"
-        aria-label={`${day.date.toLocaleDateString()}${count ? `, ${count} reminders` : ""}`}
+        aria-label={`${day.date.toLocaleDateString()}${count ? t(", {count} reminders", { count: count }) : ""}`}
         aria-pressed={day.key === selectedDay}
         data-calendar-day={day.key}
         data-selection-ignore
@@ -100,19 +108,19 @@
       >
         <span>{day.date.getDate()}</span>
         {#if count === 1}<span class="day-dot" aria-hidden="true">•</span>
-        {:else if count > 1}<span class="day-count" aria-label={`${count} reminders`}>{count > 9 ? "9+" : count}</span>{/if}
+        {:else if count > 1}<span class="day-count" aria-label={tp(count, "{count} reminder", "{count} reminders")}>{count > 9 ? "9+" : count}</span>{/if}
       </button>
     {/each}
   </div>
 
   <div class="calendar-reminders" aria-live="polite" data-calendar-reminders>
     {#if selectedOccurrences.length === 0}
-      <p class="empty-reminders">No reminders</p>
+      <p class="empty-reminders">{t("No reminders")}</p>
     {:else}
       {#each selectedOccurrences as item (`${item.timeId}-${item.dueAt}`)}
         <div class="calendar-reminder" data-calendar-occurrence>
           <span>{formatOccurrenceTime(item.dueAt)} · {item.summary}</span>
-          <button type="button" data-selection-ignore onclick={() => goTo(item.targetId)}>Go to</button>
+          <button type="button" data-selection-ignore onclick={() => goTo(item.targetId)}>{t("Go to")}</button>
         </div>
       {/each}
     {/if}

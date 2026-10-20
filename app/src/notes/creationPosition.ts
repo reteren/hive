@@ -8,6 +8,7 @@ import { board, onBoardMutation } from "../model/board.svelte";
 import { noteBounds } from "./layout.svelte";
 import { widthWithListStatistics } from "../stats/listStatsLayout";
 import { noteFileKey, sanitizeNoteName } from "../project/fileNames";
+import { t } from "../i18n/i18n.svelte";
 
 /** Keep newly created board objects visually distinct from their neighbours. */
 export const CREATION_GAP = 2;
@@ -278,10 +279,10 @@ export function randomFreeNoteCenterFromQuery(
   options: RandomPlacementOptions = {},
 ): Point {
   if (![center.x, center.y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
-    throw new RangeError("Creation position and size must be finite, with positive dimensions.");
+    throw new RangeError(t("Creation position and size must be finite, with positive dimensions."));
   }
   if (snap && (!Number.isFinite(step) || step <= 0)) {
-    throw new RangeError("Grid step must be a positive finite number when snapping is enabled.");
+    throw new RangeError(t("Grid step must be a positive finite number when snapping is enabled."));
   }
 
   const source = isValidObstacle(options.anchor)
@@ -313,7 +314,7 @@ export function randomFreeNoteCenterFromQuery(
     });
     if (free[0]) return free[0].center;
   }
-  throw new Error("Could not find a free random creation position.");
+  throw new Error(t("Could not find a free random creation position."));
 }
 
 export interface CreationGridSize {
@@ -332,10 +333,10 @@ export function placeCreationGrid<T extends CreationGridSize>(
   if (items.length === 0) return [];
   if (![center.x, center.y].every(Number.isFinite) || items.some((item) =>
     ![item.width, item.height].every(Number.isFinite) || item.width <= 0 || item.height <= 0)) {
-    throw new RangeError("Creation batch sizes and position must be finite and positive.");
+    throw new RangeError(t("Creation batch sizes and position must be finite and positive."));
   }
   if (snap && (!Number.isFinite(step) || step <= 0)) {
-    throw new RangeError("Grid step must be a positive finite number when snapping is enabled.");
+    throw new RangeError(t("Grid step must be a positive finite number when snapping is enabled."));
   }
 
   const columns = Math.ceil(Math.sqrt(items.length));
@@ -392,7 +393,7 @@ export function placeCreationGrid<T extends CreationGridSize>(
     if (snap) shift = Math.ceil(shift / step) * step;
     left += Math.max(shift, gridWidth + CREATION_GAP);
   }
-  throw new Error("Could not find a free batch creation position.");
+  throw new Error(t("Could not find a free batch creation position."));
 }
 
 /** Shift a pasted group as one unit, retaining all of its internal spacing. */
@@ -405,7 +406,7 @@ export function moveCreationGroupToFreeSpot<T extends PositionedCreationNote>(
 ): T[] {
   if (notes.length === 0) return [];
   if (snap && (!Number.isFinite(step) || step <= 0)) {
-    throw new RangeError("Grid step must be a positive finite number when snapping is enabled.");
+    throw new RangeError(t("Grid step must be a positive finite number when snapping is enabled."));
   }
   const sizes = notes.map((note) => ({
     width: note.width * normalizeNoteScale(note.scale),
@@ -455,7 +456,7 @@ export function moveCreationGroupToFreeSpot<T extends PositionedCreationNote>(
     if (snap) shift = Math.ceil(shift / step) * step;
     left += Math.max(shift, groupWidth + CREATION_GAP);
   }
-  throw new Error("Could not find a free group creation position.");
+  throw new Error(t("Could not find a free group creation position."));
 }
 
 function expandedCreationRect(center: Point, width: number, height: number, margin: number): CreationObstacle {
@@ -515,10 +516,10 @@ export function nearestFreeNoteCenter(
   step: number,
 ): Point {
   if (![center.x, center.y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
-    throw new RangeError("Creation position and size must be finite, with positive dimensions.");
+    throw new RangeError(t("Creation position and size must be finite, with positive dimensions."));
   }
   if (snap && (!Number.isFinite(step) || step <= 0)) {
-    throw new RangeError("Grid step must be a positive finite number when snapping is enabled.");
+    throw new RangeError(t("Grid step must be a positive finite number when snapping is enabled."));
   }
 
   const base = snap ? snapToGrid(center, step) : { ...center };
@@ -537,7 +538,7 @@ export function nearestFreeNoteCenter(
   if (hasClearance(base, width, height, validObstacles)) return base;
 
   const hit = findHitObstacle(base, width, height, validObstacles);
-  if (!hit) throw new Error("Could not find a creation obstacle.");
+  if (!hit) throw new Error(t("Could not find a creation obstacle."));
 
   const directions: Direction[] = ["right", "below", "left", "above"];
   for (const direction of directions) {
@@ -557,7 +558,7 @@ export function nearestFreeNoteCenter(
 
   // Moving outward in any cardinal direction must eventually leave a finite set of
   // finite obstacles. Keep a defensive failure rather than placing an overlapping node.
-  throw new Error("Could not find a free creation position.");
+  throw new Error(t("Could not find a free creation position."));
 }
 
 /**
@@ -576,10 +577,10 @@ export function randomFreeNoteCenter(
   options: RandomPlacementOptions = {},
 ): Point {
   if (![center.x, center.y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
-    throw new RangeError("Creation position and size must be finite, with positive dimensions.");
+    throw new RangeError(t("Creation position and size must be finite, with positive dimensions."));
   }
   if (snap && (!Number.isFinite(step) || step <= 0)) {
-    throw new RangeError("Grid step must be a positive finite number when snapping is enabled.");
+    throw new RangeError(t("Grid step must be a positive finite number when snapping is enabled."));
   }
 
   const source = isValidObstacle(options.anchor)
@@ -627,7 +628,7 @@ export function randomFreeNoteCenter(
     if (candidates[0]) return candidates[0].center;
   }
 
-  throw new Error("Could not find a free random creation position.");
+  throw new Error(t("Could not find a free random creation position."));
 }
 
 type RandomDirection = "right" | "below" | "left" | "above" | "right-below" | "right-above" | "left-below" | "left-above";

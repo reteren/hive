@@ -1,10 +1,11 @@
 <script lang="ts">
   import { formatListRowExtension, formatListStatisticsTotal, type ListRowStatistics, type ListStatisticsTotal } from "./listStatistics";
+  import { t } from "../i18n/i18n.svelte";
   let { itemId, statistics, total }: { itemId?: string; statistics?: ListRowStatistics; total?: ListStatisticsTotal } = $props();
   let label = $derived(total ? formatListStatisticsTotal(total) : statistics ? formatListRowExtension(statistics) : "—");
 </script>
 
-<span class="list-statistics-cell" class:total={!!total} data-list-stats-row={itemId} data-list-stats-total={total ? "true" : undefined} title={label} aria-label={`Statistics: ${label}`}>{label}</span>
+<span class="list-statistics-cell" class:total={!!total} data-list-stats-row={itemId} data-list-stats-total={total ? "true" : undefined} title={label} aria-label={t("Statistics: {label}", { label: label })}>{label}</span>
 
 <style>
   .list-statistics-cell {

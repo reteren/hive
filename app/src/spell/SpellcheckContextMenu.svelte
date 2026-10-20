@@ -13,6 +13,7 @@
   import { addWordToSpellcheckDictionary, replaceSpellcheckWord } from "./spellcheck";
   import { closeSpellcheckMenu, spellcheckMenu } from "./contextMenu.svelte";
   import { buildNoteEditorContextMenu, type NoteMenuEntry, type NoteMenuItem, type NoteMenuSubmenu } from "./noteEditorContextMenuModel";
+  import { t } from "../i18n/i18n.svelte";
 
   const boardOrigin = $derived.by((): Point => {
     const rect = document.querySelector<HTMLElement>(".board")?.getBoundingClientRect();
@@ -218,7 +219,7 @@
       await addWordToSpellcheckDictionary(context);
       if (spellcheckMenu.context === context) finish(view);
     } catch {
-      if (spellcheckMenu.context === context) spellcheckMenu.error = "Could not add that word.";
+      if (spellcheckMenu.context === context) spellcheckMenu.error = t("Could not add that word.");
     }
   }
 
@@ -345,7 +346,7 @@
       data-menu-level="root"
       role="menu"
       tabindex="-1"
-      aria-label="Note text actions"
+      aria-label={t("Note text actions")}
       onkeydown={handleRootKeydown}
       onpointerleave={scheduleSubmenuClose}
     >

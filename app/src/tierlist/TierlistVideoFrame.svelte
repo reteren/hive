@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { tierlistVideoFrame } from "./videoPreview";
+  import { t } from "../i18n/i18n.svelte";
 
   let { file, url, name, lines }: {
     file: string;
@@ -43,7 +44,7 @@
   {#if !ready}
     <div class="tier-video-fallback">
       <strong>{name}</strong>
-      <span>{lines.join("\n") || "No text"}</span>
+      <span>{lines.join("\n") || t("No text")}</span>
     </div>
   {/if}
 </div>

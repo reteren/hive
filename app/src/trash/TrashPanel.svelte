@@ -3,6 +3,7 @@
   import TrashList from "./TrashList.svelte";
   import { closePanelPopup, panelPopupState } from "../ui/popups/panelPopupState.svelte";
   import "./uiInit";
+  import { t } from "../i18n/i18n.svelte";
 
   let { variant = "dock" } = $props<{ variant?: "dock" | "popup" }>();
   let isOpen = $derived(variant === "popup" ? panelPopupState.active === "trash" : trashPanel.open);
@@ -21,12 +22,12 @@
 </script>
 
 {#if isOpen}
-  <dialog open id="trash-panel" class="trash-panel" class:popup-panel={variant === "popup"} data-selection-ignore aria-label="Trash" aria-modal={variant === "popup"} onkeydown={closeOnEscape}>
+  <dialog open id="trash-panel" class="trash-panel" class:popup-panel={variant === "popup"} data-selection-ignore aria-label={t("Trash")} aria-modal={variant === "popup"} onkeydown={closeOnEscape}>
     <header class="panel-heading">
       <div class="panel-title">
-        <h2>Trash</h2>
+        <h2>{t("Trash")}</h2>
       </div>
-      <button class="panel-control close" type="button" aria-label="Close trash panel" title="Close" onclick={closeCurrentPanel}>×</button>
+      <button class="panel-control close" type="button" aria-label={t("Close trash panel")} title={t("Close")} onclick={closeCurrentPanel}>×</button>
     </header>
     <TrashList />
   </dialog>

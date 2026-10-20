@@ -17,6 +17,7 @@ import {
   MIN_GLOW_SIZE,
   parseNoteGlow,
 } from "./noteGlowLogic";
+import { t, tp } from "../i18n/i18n.svelte";
 
 export interface NoteGlowPopoverState {
   ids: string[];
@@ -49,9 +50,9 @@ export function setNoteGlows(values: ReadonlyMap<string, NoteGlow | undefined>):
   });
   if (changes.length === 0) return false;
   const first = board.notes[changes[0]!.id]!;
-  const target = changes.length === 1 ? first.name : `${changes.length} nodes`;
+  const target = changes.length === 1 ? first.name : tp(changes.length, "{count} node", "{count} nodes");
   execute({
-    label: changes.some((change) => change.after) ? "Node glow" : "Remove node glow",
+    label: changes.some((change) => change.after) ? t("Node glow") : t("Remove node glow"),
     target,
     do: () => { for (const change of changes) updateNote(change.id, { glow: copyNoteGlow(change.after) }); },
     undo: () => { for (const change of changes) updateNote(change.id, { glow: copyNoteGlow(change.before) }); },
@@ -164,7 +165,7 @@ function sameGlow(first: NoteGlow | undefined, second: NoteGlow | undefined): bo
 
 registerNoteMenuItem({
   id: "notes.glow.edit",
-  label: (noteId) => board.notes[noteId]?.glow ? "Edit glow" : "Add glow",
+  label: (noteId) => board.notes[noteId]?.glow ? t("Edit glow") : t("Add glow"),
   run: (noteId) => {
     const note = board.notes[noteId];
     if (note) addOrEditNoteGlow(noteId, { x: note.x, y: note.y }, camera.zoom);
@@ -175,7 +176,7 @@ registerNoteMenuItem({
 
 registerNoteMenuItem({
   id: "notes.glow.remove",
-  label: () => "Remove glow",
+  label: () => t("Remove glow"),
   run: removeNoteGlow,
   visible: (noteId) => Boolean(board.notes[noteId]?.type !== "beacon" && board.notes[noteId]?.glow),
   order: 24,

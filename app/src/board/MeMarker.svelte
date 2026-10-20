@@ -7,6 +7,7 @@
   import { zones } from "../model/zones.svelte";
   import { hasMeBeacon } from "../beacons/beaconState.svelte";
   import { deleteMeBeacon } from "../trash/trashActions.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   const screen = $derived(worldToScreen(camera, viewport, ME_POSITION));
   // A beacon has a fixed size on the board, like a note: it scales together with the camera zoom.
@@ -22,9 +23,9 @@
 </script>
 
 {#if hasMeBeacon()}
-<div class="me" data-dimmed={isDimmed("me")} data-member-zone-id={memberZone?.id} style:transform={`translate(${screen.x}px, ${screen.y}px) scale(${scale})`}>
+<div class="me" data-dimmed={isDimmed("me")} data-member-zone-id={memberZone?.id} style:transform={t("translate({x}px, {y}px) scale({scale})", { x: screen.x, y: screen.y, scale: scale })}>
   <button class="dot" class:in-zone={Boolean(memberZone)} style:--zone-color={memberZone?.color ?? "transparent"} data-beacon-id="me" type="button" aria-label="ME beacon; press Delete to move to trash" onkeydown={onBeaconKeydown}></button>
-  {#if isMarked("me")}<span class="mark" aria-label="Marked beacon"></span>{/if}
+  {#if isMarked("me")}<span class="mark" aria-label={t("Marked beacon")}></span>{/if}
   <span class="label">ME</span>
 </div>
 {/if}

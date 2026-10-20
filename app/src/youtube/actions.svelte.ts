@@ -5,6 +5,7 @@ import type { Point } from "../board/cameraMath";
 import { captureSelectionSnapshot, clearSelection, restoreSelectionSnapshot, selectOnly } from "../selection/selection.svelte";
 import { uniqueName } from "../notes/naming";
 import type { YouTubeRef } from "../attachments/types";
+import { t } from "../i18n/i18n.svelte";
 
 export function createYouTubeNote(youtube: YouTubeRef, center: Point): string {
   const name = uniqueName(youtube.title?.trim() || youtube.videoId, Object.values(board.notes).map((note) => note.name));
@@ -27,7 +28,7 @@ export function createYouTubeNote(youtube: YouTubeRef, center: Point): string {
   const previousSelection = captureSelectionSnapshot();
 
   execute({
-    label: "Add YouTube video",
+    label: t("Add YouTube video"),
     target: name,
     do: () => {
       addNote(note, index);

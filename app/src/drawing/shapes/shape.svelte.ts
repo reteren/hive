@@ -10,6 +10,7 @@ import { drawingTools } from "../tools.svelte";
 import { editShapeDraft, isLineShape, lineDraft, lineEndpoints, shapeCenter, shapeDraftFromDrag, shapeSize, snapLineEnd, worldToLocal, type ShapeDraft, type ShapePoint } from "./shapeGeometry";
 import { rasterizeShape } from "./rasterize";
 import { shapeSettings, shapeUi } from "./state.svelte";
+import { t } from "../../i18n/i18n.svelte";
 
 type Gesture =
   | { kind: "create"; start: ShapePoint; shape: ShapeDraft["kind"] }
@@ -134,7 +135,7 @@ async function commitShape(): Promise<void> {
     const changed = applyAcrossLevels(raster.canvas, raster.rasterX, raster.rasterY, raster.level, "paint", 1, drawingSelection.area);
     if (changed.length > 0) pushDrawingHistory("Shape", before, changed);
   } catch (error) {
-    shapeUi.error = error instanceof Error ? error.message : "The shape could not be committed.";
+    shapeUi.error = error instanceof Error ? error.message : t("The shape could not be committed.");
     if (drawingTools.active === "shape") shapeUi.draft = { ...draft };
   } finally {
     shapeUi.committing = false;

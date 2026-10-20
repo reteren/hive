@@ -1,16 +1,17 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { dismissUpdate, installUpdate, startUpdateCheck, updater } from "./updater.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   onMount(() => startUpdateCheck());
 
   let busy = $derived(updater.phase === "downloading" || updater.phase === "installing");
   let percent = $derived(Math.round(updater.progress * 100));
   let title = $derived(
-    updater.phase === "downloading" ? "Downloading update"
-      : updater.phase === "installing" ? "Installing update"
-        : updater.phase === "error" ? "Update failed"
-          : "Update available",
+    updater.phase === "downloading" ? t("Downloading update")
+      : updater.phase === "installing" ? t("Installing update")
+        : updater.phase === "error" ? t("Update failed")
+          : t("Update available"),
   );
 </script>
 
@@ -30,12 +31,12 @@
       <strong>{title}</strong>
     </div>
 
-    <div class="update-versions" aria-label={`From ${updater.currentVersion || "this version"} to ${updater.version}`}>
+    <div class="update-versions" aria-label={t("From {value} to {version}", { value: updater.currentVersion || "this version", version: updater.version })}>
       {#if updater.currentVersion}
-        <span class="version current" title="Installed now">{updater.currentVersion}</span>
+        <span class="version current" title={t("Installed now")}>{updater.currentVersion}</span>
         <svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8h10M9 4.5 12.5 8 9 11.5" /></svg>
       {/if}
-      <span class="version next" title="New version">{updater.version}</span>
+      <span class="version next" title={t("New version")}>{updater.version}</span>
     </div>
 
     {#if updater.notes && updater.phase === "available"}
@@ -46,15 +47,15 @@
       <div class="update-progress" aria-hidden="true"><span style:width={`${updater.progress * 100}%`}></span></div>
       <span class="update-status">{percent}%</span>
     {:else if updater.phase === "installing"}
-      <span class="update-status">Saving your work — hive will restart.</span>
+      <span class="update-status">{t("Saving your work — hive will restart.")}</span>
     {:else if updater.phase === "error"}
       <span class="update-error" title={updater.error}>{updater.error}</span>
     {/if}
 
     <div class="update-actions">
-      <button type="button" class="later" onclick={dismissUpdate} disabled={busy}>Later</button>
+      <button type="button" class="later" onclick={dismissUpdate} disabled={busy}>{t("Later")}</button>
       <button type="button" class="install" onclick={() => void installUpdate()} disabled={busy}>
-        {updater.phase === "error" ? "Retry" : "Update"}
+        {updater.phase === "error" ? t("Retry") : t("Update")}
       </button>
     </div>
   </div>

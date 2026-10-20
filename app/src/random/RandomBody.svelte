@@ -5,6 +5,7 @@
   import { teleportToObject } from "../navigation/navigate";
   import { pickFromList } from "./actions.svelte";
   import { choicesForRandom, currentRandomPick, linkedListForRandom } from "./logic";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let linkedList = $derived(linkedListForRandom(note.id, board.notes, Object.values(links.byId)));
@@ -14,23 +15,23 @@
 
 <div class="random-body note-body" data-random-node={note.id} data-selection-ignore>
   <button class="random-pick" type="button" data-random-pick disabled={!linkedList || choices.length === 0}
-    onclick={() => pickFromList(note.id)}>Pick</button>
+    onclick={() => pickFromList(note.id)}>{t("Pick")}</button>
   {#if !linkedList}
-    <p class="random-hint">Draw a strong link from a List to this Random Choice.</p>
+    <p class="random-hint">{t("Draw a strong link from a List to this Random Choice.")}</p>
   {:else if choices.length === 0}
-    <p class="random-hint">{linkedList.name} has no available rows. Add text or a live board link to the List.</p>
+    <p class="random-hint">{t("{name} has no available rows. Add text or a live board link to the List.", { name: linkedList.name })}</p>
   {:else}
     {#if current}
       <div class="random-result" data-random-result>
         {#if current.item.targetId && !current.missing}
-          <button type="button" onclick={() => teleportToObject(current.item.targetId!, { label: "Open Random choice" })}>{current.label}</button>
+          <button type="button" onclick={() => teleportToObject(current.item.targetId!, { label: t("Open Random choice") })}>{current.label}</button>
         {:else}
           <strong>{current.label}</strong>
         {/if}
-        <small>from {linkedList.name}{current.missing ? " · target missing" : ""}</small>
+        <small>from {linkedList.name}{current.missing ? t(" · target missing") : ""}</small>
       </div>
     {:else if note.randomPick}
-      <p class="random-hint">The previous choice is no longer in this List.</p>
+      <p class="random-hint">{t("The previous choice is no longer in this List.")}</p>
     {/if}
   {/if}
 </div>

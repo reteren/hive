@@ -10,6 +10,7 @@
   import { createMarkdownFragment, linkedNoteIds } from "./markdown";
   import { prepareMarkdownPreview } from "./markdownSyntax";
   import { visible } from "../board/visibility.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let { text, noteId }: { text: string; noteId: string } = $props();
   let boardVisible = $derived(visible.ids.has(noteId));
@@ -34,8 +35,8 @@
         return note ? { id: note.id, name: note.name } : undefined;
       },
       openExternal: openUrl,
-      teleportToPoint: (point) => teleportToPoint(point, { label: "Text link" }),
-      teleportToNote: (noteId) => teleportToObject(noteId, { label: "Text link" }),
+      teleportToPoint: (point) => teleportToPoint(point, { label: t("Text link") }),
+      teleportToNote: (noteId) => teleportToObject(noteId, { label: t("Text link") }),
       onNotice: showLinkStatus,
     }));
 

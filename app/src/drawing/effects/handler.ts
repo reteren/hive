@@ -17,6 +17,7 @@ import { DRAW_TILE_SIZE_PX, levelPxPerUnit, parseTileKey, type TileKey, type Til
 import { drawingTools } from "../tools.svelte";
 import type { DrawPointerEvent, DrawToolHandler } from "../types";
 import type { SelectionClipMask } from "../selectionClip";
+import { t } from "../../i18n/i18n.svelte";
 
 interface EffectGesture {
   mode: DrawingEffectMode;
@@ -250,7 +251,7 @@ export function createEffectHandler(): DrawToolHandler {
       reportImportError(gesture.error instanceof Error ? gesture.error.message : String(gesture.error));
     } else if (!gesture.cancelled && gesture.changed.size) {
       pushDrawingHistory(
-        gesture.mode === "blur" ? "Blur drawing" : gesture.mode === "smudge" ? "Smudge drawing" : "Swirl drawing",
+        gesture.mode === "blur" ? t("Blur drawing") : gesture.mode === "smudge" ? t("Smudge drawing") : t("Swirl drawing"),
         gesture.before,
         [...gesture.changed],
       );

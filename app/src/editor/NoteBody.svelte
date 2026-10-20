@@ -7,6 +7,7 @@
   import MarkdownPreview from "./MarkdownPreview.svelte";
   import { startNoteEditing } from "./editorSession";
   import { canScrollTextNote, wheelScrollsText } from "../notes/textScroll";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
 
@@ -42,7 +43,7 @@
     data-gif-host-selected={selection.ids.includes(note.id) ? "true" : "false"}
     role="button"
     tabindex="0"
-    aria-label={`Edit text for ${note.name}`}
+    aria-label={t("Edit text for {name}", { name: note.name })}
     onkeydown={beginEditingFromKeyboard}
     onwheel={handleWheel}
   >

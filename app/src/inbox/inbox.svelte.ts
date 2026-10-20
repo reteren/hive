@@ -13,6 +13,7 @@ import {
 } from "../selection/selection.svelte";
 import { placeInboxEntries } from "./inboxLogic";
 import { inboxAutoHeight } from "./inboxLayout";
+import { t } from "../i18n/i18n.svelte";
 
 export type QuickInputResult =
   | { ok: true; noteIds: string[] }
@@ -38,7 +39,7 @@ export function submitQuickInput(text: string): QuickInputResult {
   const createdLinks: Link[] = inboxes.map((inbox, index) => {
     const target = notes[index];
     if (!target || !canLink(inbox.id, target.id, "strong")) {
-      throw new Error(`Could not link Inbox ${inbox.id} to its new entry.`);
+      throw new Error(t("Could not link Inbox {id} to its new entry.", { id: inbox.id }));
     }
     return {
       id: newId(),
@@ -50,9 +51,9 @@ export function submitQuickInput(text: string): QuickInputResult {
   });
 
   const firstIndex = board.order.length;
-  const target = notes.length === 1 ? notes[0].name : `${notes.length} Inbox entries`;
+  const target = notes.length === 1 ? notes[0].name : t("{count} Inbox entries", { count: notes.length });
   execute({
-    label: "Quick input to Inbox",
+    label: t("Quick input to Inbox"),
     target,
     do: () => {
       notes.forEach((note, index) => addNote(note, firstIndex + index));
@@ -94,7 +95,7 @@ export function resolveInboxTwin(noteId: string): boolean {
       : remainingSelection.ids.at(-1) ?? null;
 
   execute({
-    label: "Keep Inbox entry",
+    label: t("Keep Inbox entry"),
     target: keep.name,
     do: () => {
       updateNote(keep.id, { inboxGroup: undefined });

@@ -53,6 +53,7 @@ describe("view settings serialization", () => {
       videoExternalThresholdMb: 125,
       appearance: DEFAULT_VIEW_SETTINGS.appearance,
       createMenu: { starred: ["calendar" as const, "image" as const], recent: ["tierlist" as const] },
+      language: "ru" as const,
     };
 
     const serialized = serializeViewSettings(settings);
@@ -131,6 +132,7 @@ describe("view settings serialization", () => {
       videoExternalThresholdMb: 20,
       appearance: DEFAULT_VIEW_SETTINGS.appearance,
       createMenu: { starred: [], recent: [] },
+      language: "en",
     });
   });
 

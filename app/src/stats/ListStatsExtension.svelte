@@ -9,6 +9,7 @@
   import { listStatisticsMeasurements } from "./listStatsMeasurements.svelte";
   import { formatListRowExtension, formatListStatisticsTotal, type ListRowStatistics, type ListStatisticsTotal } from "./listStatistics";
   import { pullOutListStatistics } from "./listStatsPullOut";
+  import { t } from "../i18n/i18n.svelte";
 
   let { list, bodyElement, rowsElement, footerElement, statistics, total }: {
     list: Note; bodyElement: HTMLElement; rowsElement: HTMLElement; footerElement: HTMLElement;
@@ -60,15 +61,15 @@
 </script>
 
 <section class="list-statistics-extension" data-list-stats-extension={list.id} data-selection-ignore
-  role="group" aria-label={`Statistics attached to ${list.name}`}
+  role="group" aria-label={t("Statistics attached to {name}", { name: list.name })}
   style:left={`${geometry.left}px`} style:top={`${geometry.top}px`} style:height={`${geometry.height}px`}
   style:width="var(--list-statistics-width)"
   use:measure use:pullOutListStatistics={list.id}>
   {#if !list.headerHidden}<button class="list-statistics-header" type="button" data-list-stats-header
-    aria-label="Drag Statistics out of this List" title="Drag out to restore a linked Statistics node"
-    onkeydown={extractByKeyboard}>Statistics</button>{/if}
+    aria-label={t("Drag Statistics out of this List")} title={t("Drag out to restore a linked Statistics node")}
+    onkeydown={extractByKeyboard}>{t("Statistics")}</button>{/if}
   <div class="list-statistics-measure" data-list-stats-measure aria-hidden="true">
-    {#if !list.headerHidden}<span class="measure-header">Statistics</span>{/if}
+    {#if !list.headerHidden}<span class="measure-header">{t("Statistics")}</span>{/if}
     {#each labels as label}<span>{label}</span>{/each}
   </div>
 </section>

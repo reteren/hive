@@ -6,6 +6,7 @@
     skipCurrentRename,
     takeSequentialRenameReturnFocus,
   } from "./sequentialRenameState.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let renameInput = $state<HTMLInputElement>();
   let session = $derived(sequentialRenameState.session);
@@ -51,17 +52,17 @@
     <dialog open class="rename-panel" aria-modal="true" aria-labelledby="sequential-rename-title">
       <header class="rename-heading">
         <div>
-          <h2 id="sequential-rename-title">Rename selection</h2>
-          <span>{session.index + 1} of {session.items.length} · {current.name}</span>
+          <h2 id="sequential-rename-title">{t("Rename selection")}</h2>
+          <span>{t("{index} of {count} · {name}", { index: session.index + 1, count: session.items.length, name: current.name })}</span>
         </div>
-        <span class="rename-hint">Enter next · Esc skip</span>
+        <span class="rename-hint">{t("Enter next · Esc skip")}</span>
       </header>
-      <label for="sequential-rename-input">New name</label>
+      <label for="sequential-rename-input">{t("New name")}</label>
       <input
         id="sequential-rename-input"
         bind:this={renameInput}
         bind:value={session.draft}
-        aria-label={`New name for ${current.name}`}
+        aria-label={t("New name for {name}", { name: current.name })}
         oninput={() => { sequentialRenameState.error = ""; }}
         onkeydown={handleKeydown}
       />
@@ -69,8 +70,8 @@
         <p class="rename-error" role="alert">{sequentialRenameState.error}</p>
       {/if}
       <footer>
-        <button type="button" class="skip-button" onclick={skipCurrentRename}>Skip</button>
-        <button type="button" class="commit-button" onclick={commitCurrentRename}>Save and next</button>
+        <button type="button" class="skip-button" onclick={skipCurrentRename}>{t("Skip")}</button>
+        <button type="button" class="commit-button" onclick={commitCurrentRename}>{t("Save and next")}</button>
       </footer>
     </dialog>
   </div>

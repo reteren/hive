@@ -1,5 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { DrawingIndex, TileKey } from "./types";
+import { t } from "../i18n/i18n.svelte";
 
 export interface DrawingTileChange {
   key: TileKey;
@@ -28,7 +29,7 @@ export async function drawingLoad(): Promise<DrawingLoadResult> {
 export async function drawingReadTile(key: TileKey): Promise<Uint8Array<ArrayBuffer>> {
   if (isTauri()) return new Uint8Array(await invoke<ArrayBuffer>("drawing_read_tile", { key }));
   const png = browserTiles.get(key);
-  if (!png) throw new Error(`Drawing tile ${key} is missing.`);
+  if (!png) throw new Error(t("Drawing tile {key} is missing.", { key: key }));
   return ownedPng(png);
 }
 

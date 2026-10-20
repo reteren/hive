@@ -1,6 +1,7 @@
 import type { Point } from "../board/cameraMath";
 import type { ZoneBounds } from "../model/zone";
 import type { ZoneShape } from "./shape";
+import { t } from "../i18n/i18n.svelte";
 
 const COORDINATE_SCALE = 1_000_000;
 
@@ -476,7 +477,7 @@ function midpoint(first: number, second: number): number {
 
 function validateMinimum(minPart: number): void {
   if (!Number.isFinite(minPart) || minPart < 0) {
-    throw new RangeError("Minimum zone part must be a non-negative finite number.");
+    throw new RangeError(t("Minimum zone part must be a non-negative finite number."));
   }
 }
 

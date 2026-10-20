@@ -9,6 +9,7 @@
   import { estimateJsonSize, formatStorageSize } from "../../export/storage";
   import { exportCurrentProject, importProjectFromZip, refreshStorageStats } from "../../export/actions";
   import { exportState } from "../../export/exportState.svelte";
+  import { t } from "../../i18n/i18n.svelte";
 
   let confirmingEmptyTrash = $state(false);
   let emptyTrashCancelButton = $state<HTMLButtonElement | null>(null);
@@ -38,7 +39,7 @@
     if (trash.entries.length === 0) return;
     emptyTrash();
     confirmingEmptyTrash = false;
-    exportState.message = "Trash emptied.";
+    exportState.message = t("Trash emptied.");
     exportState.error = "";
     void refreshStorageStats();
   }
@@ -58,32 +59,32 @@
 
 <section class="settings-block" aria-labelledby="storage-settings-title" data-storage-settings>
   <div class="settings-block-header">
-    <h3 id="storage-settings-title" class="settings-block-title">This project</h3>
+    <h3 id="storage-settings-title" class="settings-block-title">{t("This project")}</h3>
     <button class="settings-button" type="button" onclick={() => void refreshStorageStats()} disabled={exportState.refreshingStorage}>
       <svg class="refresh-icon" class:spinning={exportState.refreshingStorage} viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v2.5h-2.5" /></svg>
-      {exportState.refreshingStorage ? "Refreshing…" : "Refresh"}
+      {exportState.refreshingStorage ? t("Refreshing…") : t("Refresh")}
     </button>
   </div>
   <div class="storage-stats">
     <div class="storage-stat is-main">
-      <span class="stat-label">Project folder</span>
+      <span class="stat-label">{t("Project folder")}</span>
       <span class="stat-value">{formatStorageSize(stats?.projectBytes ?? 0)}</span>
-      <span class="stat-detail">on disk</span>
+      <span class="stat-detail">{t("on disk")}</span>
     </div>
     <div class="storage-stat">
-      <span class="stat-label">Snapshots</span>
+      <span class="stat-label">{t("Snapshots")}</span>
       <span class="stat-value">{formatStorageSize(stats?.snapshotBytes ?? 0)}</span>
       <span class="stat-detail">{stats?.snapshotCount ?? "—"} saved</span>
     </div>
     <div class="storage-stat">
-      <span class="stat-label">Trash</span>
+      <span class="stat-label">{t("Trash")}</span>
       <span class="stat-value">{formatStorageSize(estimateJsonSize(trash.entries))}</span>
-      <span class="stat-detail">{trash.entries.length} entr{trash.entries.length === 1 ? "y" : "ies"}, approx.</span>
+      <span class="stat-detail">{t("{count} entr{value}, approx.", { count: trash.entries.length, value: trash.entries.length === 1 ? "y" : "ies" })}</span>
     </div>
     <div class="storage-stat">
-      <span class="stat-label">Undo history</span>
+      <span class="stat-label">{t("Undo history")}</span>
       <span class="stat-value">{history.entries.length}</span>
-      <span class="stat-detail">steps in memory</span>
+      <span class="stat-detail">{t("steps in memory")}</span>
     </div>
   </div>
   {#if exportState.storageError}
@@ -92,42 +93,42 @@
 </section>
 
 <section class="settings-block" aria-labelledby="backup-settings-title">
-  <div class="settings-block-header"><h3 id="backup-settings-title" class="settings-block-title">Backups</h3></div>
+  <div class="settings-block-header"><h3 id="backup-settings-title" class="settings-block-title">{t("Backups")}</h3></div>
   <div class="settings-group">
     <div class="setting-row">
       <span class="setting-copy">
-        <span class="setting-title">Automatic snapshots</span>
-        <span class="setting-description">Save a snapshot of the project on a timer.</span>
+        <span class="setting-title">{t("Automatic snapshots")}</span>
+        <span class="setting-description">{t("Save a snapshot of the project on a timer.")}</span>
       </span>
       <span class="settings-select">
-        <Select id="settings-backup-interval" ariaLabel="Automatic snapshot interval" value={String(backupSettings.interval)} options={[
-          { value: "0", label: "Off" },
-          { value: "15", label: "Every 15 min" },
-          { value: "30", label: "Every 30 min" },
-          { value: "60", label: "Every 60 min" },
+        <Select id="settings-backup-interval" ariaLabel={t("Automatic snapshot interval")} value={String(backupSettings.interval)} options={[
+          { value: "0", label: t("Off") },
+          { value: "15", label: t("Every 15 min") },
+          { value: "30", label: t("Every 30 min") },
+          { value: "60", label: t("Every 60 min") },
         ]} onchange={changeBackupInterval} />
       </span>
     </div>
     <div class="setting-row">
       <span class="setting-copy">
-        <span class="setting-title">Snapshots</span>
-        <span class="setting-description">Browse saved snapshots and restore one.</span>
+        <span class="setting-title">{t("Snapshots")}</span>
+        <span class="setting-description">{t("Browse saved snapshots and restore one.")}</span>
       </span>
-      <button class="settings-button" type="button" onclick={openBackupsPanel}>Open backups…</button>
+      <button class="settings-button" type="button" onclick={openBackupsPanel}>{t("Open backups…")}</button>
     </div>
     <div class="setting-row">
       <span class="setting-copy">
-        <span class="setting-title">Trash</span>
-        <span class="setting-description">Deleted items wait here until the trash is emptied.</span>
+        <span class="setting-title">{t("Trash")}</span>
+        <span class="setting-description">{t("Deleted items wait here until the trash is emptied.")}</span>
       </span>
-      <button class="settings-button is-danger" type="button" data-settings-empty-trash onclick={requestEmptyTrash} disabled={trash.entries.length === 0}>Empty trash…</button>
+      <button class="settings-button is-danger" type="button" data-settings-empty-trash onclick={requestEmptyTrash} disabled={trash.entries.length === 0}>{t("Empty trash…")}</button>
     </div>
     {#if confirmingEmptyTrash}
-      <div class="settings-inline-panel is-danger" data-settings-trash-confirm role="dialog" aria-modal="false" aria-label="Confirm empty trash" tabindex="-1" onkeydown={handleTrashConfirmKeydown}>
-        <p>Permanently delete all <strong>{trash.entries.length}</strong> {trash.entries.length === 1 ? "entry" : "entries"}? This cannot be undone.</p>
+      <div class="settings-inline-panel is-danger" data-settings-trash-confirm role="dialog" aria-modal="false" aria-label={t("Confirm empty trash")} tabindex="-1" onkeydown={handleTrashConfirmKeydown}>
+        <p>{t("Permanently delete all")} <strong>{trash.entries.length}</strong> {t("{value}? This cannot be undone.", { value: trash.entries.length === 1 ? "entry" : "entries" })}</p>
         <span class="setting-control">
-          <button bind:this={emptyTrashCancelButton} class="settings-button" type="button" data-settings-trash-cancel onclick={() => (confirmingEmptyTrash = false)}>Cancel</button>
-          <button class="settings-button is-danger is-solid" type="button" data-settings-trash-confirm-action onclick={confirmEmptyTrash}>Empty trash</button>
+          <button bind:this={emptyTrashCancelButton} class="settings-button" type="button" data-settings-trash-cancel onclick={() => (confirmingEmptyTrash = false)}>{t("Cancel")}</button>
+          <button class="settings-button is-danger is-solid" type="button" data-settings-trash-confirm-action onclick={confirmEmptyTrash}>{t("Empty trash")}</button>
         </span>
       </div>
     {/if}
@@ -135,23 +136,23 @@
 </section>
 
 <section class="settings-block" aria-labelledby="transfer-settings-title">
-  <div class="settings-block-header"><h3 id="transfer-settings-title" class="settings-block-title">Move a project</h3></div>
+  <div class="settings-block-header"><h3 id="transfer-settings-title" class="settings-block-title">{t("Move a project")}</h3></div>
   <div class="settings-group">
     <div class="setting-row">
       <span class="setting-copy">
-        <span class="setting-title">Export project</span>
-        <span class="setting-description">Pack the open project with its files into one .zip.</span>
+        <span class="setting-title">{t("Export project")}</span>
+        <span class="setting-description">{t("Pack the open project with its files into one .zip.")}</span>
       </span>
       <button class="settings-button" type="button" onclick={() => void exportCurrentProject()} disabled={!project.path || exportState.busy}>
-        {exportState.busy ? "Working…" : "Export…"}
+        {exportState.busy ? t("Working…") : t("Export…")}
       </button>
     </div>
     <div class="setting-row">
       <span class="setting-copy">
-        <span class="setting-title">Import project</span>
-        <span class="setting-description">Open a project from a .zip made by Export.</span>
+        <span class="setting-title">{t("Import project")}</span>
+        <span class="setting-description">{t("Open a project from a .zip made by Export.")}</span>
       </span>
-      <button class="settings-button" type="button" onclick={() => void importProjectFromZip()} disabled={exportState.busy}>Import .zip…</button>
+      <button class="settings-button" type="button" onclick={() => void importProjectFromZip()} disabled={exportState.busy}>{t("Import .zip…")}</button>
     </div>
   </div>
 </section>

@@ -10,6 +10,7 @@ import { tool } from "../tools/tool.svelte";
 import { registerNoteMenuItem } from "../notes/noteMenu";
 import { attachmentUrl, importImageFile, reportImportError } from "./service";
 import type { ImageRef } from "./types";
+import { t } from "../i18n/i18n.svelte";
 
 /**
  * Image erase mode (debug 24): the picture is decoded ONCE into a working canvas that replaces the
@@ -69,9 +70,9 @@ export function enterImageErase(noteId: string, mode: "erase" | "blur" = "erase"
 async function openSession(noteId: string, image: ImageRef, mode: "erase" | "blur"): Promise<void> {
   if (imageErase.noteId !== noteId) return;
   const url = attachmentUrl(image.file);
-  if (!url) throw new Error(`Could not load image attachment: ${image.name ?? "Image"}`);
+  if (!url) throw new Error(t("Could not load image attachment: {value}", { value: image.name ?? "Image" }));
   const response = await fetch(url);
-  if (!response.ok) throw new Error(`Could not load image attachment (${response.status}).`);
+  if (!response.ok) throw new Error(t("Could not load image attachment ({status}).", { status: response.status }));
   const bitmap = await createImageBitmap(await response.blob());
   try {
     if (imageErase.noteId !== noteId) return;
@@ -80,7 +81,7 @@ async function openSession(noteId: string, image: ImageRef, mode: "erase" | "blu
     canvas.height = bitmap.height;
     canvas.dataset.imageEraseCanvas = "";
     const context = canvas.getContext("2d");
-    if (!context) throw new Error("Could not prepare the picture for erasing.");
+    if (!context) throw new Error(t("Could not prepare the picture for erasing."));
     context.drawImage(bitmap, 0, 0);
     session = { noteId, mode, original: image, canvas, context, undo: [], redo: [], scratch: null, dirty: false, last: null, stroke: null };
     imageErase.revision += 1;
@@ -195,7 +196,7 @@ function blurImageDab(current: EraseSession, x: number, y: number, radius: numbe
   scratch.dataset.imageBlurScratch = "";
   current.scratch = scratch;
   const context = scratch.getContext("2d");
-  if (!context) throw new Error("Could not prepare the picture blur.");
+  if (!context) throw new Error(t("Could not prepare the picture blur."));
   context.clearRect(0, 0, size, size);
   context.save();
   context.filter = `blur(${blurRadius}px)`;
@@ -297,7 +298,7 @@ async function commitSession(ended: EraseSession | null): Promise<void> {
   if (!current || current.type !== "image" || current.image?.file !== before.file) return;
   updateNote(ended.noteId, { image: after });
   record({
-    label: ended.mode === "blur" ? "Blur image" : "Erase image",
+    label: ended.mode === "blur" ? t("Blur image") : t("Erase image"),
     target: note.name,
     do() {
       if (board.notes[ended.noteId]?.type === "image") updateNote(ended.noteId, { image: after });
@@ -315,7 +316,7 @@ export function imageEraseReady(noteId: string): boolean {
 
 registerNoteMenuItem({
   id: "image.erase",
-  label: () => "Erase",
+  label: () => t("Erase"),
   run: (noteId) => { enterImageErase(noteId); },
   visible: (noteId) => {
     const note = board.notes[noteId];
@@ -326,7 +327,7 @@ registerNoteMenuItem({
 
 registerNoteMenuItem({
   id: "image.blur",
-  label: () => "Blur",
+  label: () => t("Blur"),
   run: (noteId) => { enterImageErase(noteId, "blur"); },
   visible: (noteId) => {
     const note = board.notes[noteId];

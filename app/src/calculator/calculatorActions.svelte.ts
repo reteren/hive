@@ -2,6 +2,7 @@ import { execute } from "../history/history.svelte";
 import { newId } from "../model/note";
 import type { CalcEntry, CalculatorData } from "../model/nodeData";
 import { calculatorData, setCalculatorData } from "./calculators.svelte";
+import { t } from "../i18n/i18n.svelte";
 
 function copyData(data: CalculatorData): CalculatorData {
   return {
@@ -26,7 +27,7 @@ function commitEntries(name: string, label: string, entries: CalcEntry[]): void 
 export function addCalculatorEntry(name: string, expression: string): string | null {
   if (!expression.trim()) return null;
   const entry: CalcEntry = { id: newId(), expression };
-  commitEntries(name, "Add calculator entry", [...calculatorData(name).entries, entry]);
+  commitEntries(name, t("Add calculator entry"), [...calculatorData(name).entries, entry]);
   return entry.id;
 }
 
@@ -35,7 +36,7 @@ export function editCalculatorEntry(name: string, id: string, expression: string
   const entries = calculatorData(name).entries;
   const previous = entries.find((entry) => entry.id === id);
   if (!previous || previous.expression === expression) return false;
-  commitEntries(name, "Edit calculator entry", entries.map((entry) => entry.id === id ? { ...entry, expression } : entry));
+  commitEntries(name, t("Edit calculator entry"), entries.map((entry) => entry.id === id ? { ...entry, expression } : entry));
   return true;
 }
 
@@ -43,6 +44,6 @@ export function editCalculatorEntry(name: string, id: string, expression: string
 export function deleteCalculatorEntry(name: string, id: string): boolean {
   const entries = calculatorData(name).entries;
   if (!entries.some((entry) => entry.id === id)) return false;
-  commitEntries(name, "Delete calculator entry", entries.filter((entry) => entry.id !== id));
+  commitEntries(name, t("Delete calculator entry"), entries.filter((entry) => entry.id !== id));
   return true;
 }

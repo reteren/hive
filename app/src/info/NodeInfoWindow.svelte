@@ -25,6 +25,7 @@
     taskStats,
     textStats,
   } from "./nodeInfoLogic";
+  import { t, tp } from "../i18n/i18n.svelte";
 
   interface Commit { hash: string; author: string; at: number; subject: string }
   interface GitInfo { me: string; uncommitted: boolean; commits: Commit[]; textAuthors: [string, number][] }
@@ -144,7 +145,7 @@
         }),
       };
     } catch (error) {
-      versions = { ...versions, [hash]: `Could not load this version: ${String(error)}` };
+      versions = { ...versions, [hash]: t("Could not load this version: {error}", { error: String(error) }) };
     }
   }
 
@@ -199,8 +200,8 @@
     return whole > 0 ? `${Math.round((part / whole) * 100)}%` : "0%";
   }
 
-  function plural(count: number, word: string): string {
-    return `${count.toLocaleString("en-US")} ${word}${count === 1 ? "" : "s"}`;
+  function plural(count: number, one: string, other: string): string {
+    return tp(count, one, other, { count: count.toLocaleString("en-US") });
   }
 
   function round(value: number): string {
@@ -216,56 +217,56 @@
     class:placed={position !== null}
     style:left={position ? `${position.x}px` : undefined}
     style:top={position ? `${position.y}px` : undefined}
-    style:max-height={position ? `min(620px, calc(100vh - ${Math.round(position.y) + 8}px))` : undefined}
+    style:max-height={position ? t("min(620px, calc(100vh - {y}px))", { y: Math.round(position.y) + 8 }) : undefined}
     data-selection-ignore
     data-node-info
     role="dialog"
-    aria-label={`Info: ${note.name}`}
+    aria-label={t("Info: {name}", { name: note.name })}
     tabindex="-1"
     onkeydown={handleKeydown}
   >
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <header class="info-heading" title="Drag to move" onpointerdown={startDrag} onpointermove={moveDrag} onpointerup={endDrag} onpointercancel={endDrag}>
+    <header class="info-heading" title={t("Drag to move")} onpointerdown={startDrag} onpointermove={moveDrag} onpointerup={endDrag} onpointercancel={endDrag}>
       <div class="info-title">
         <h2>{note.name}</h2>
         <span>{KIND_LABELS[note.type] ?? note.type}</span>
       </div>
-      <button bind:this={closeButton} class="close-button" type="button" aria-label="Close info" title="Close (Esc)" onclick={closeNodeInfo}><CloseGlyph /></button>
+      <button bind:this={closeButton} class="close-button" type="button" aria-label={t("Close info")} title={t("Close (Esc)")} onclick={closeNodeInfo}><CloseGlyph /></button>
     </header>
 
     <div class="info-body">
       <dl class="facts">
-        <dt>Created</dt>
-        <dd>{#if createdAt}{formatDate(createdAt)} <span class="dim">· exists {formatSpan(now - createdAt)}</span>{:else}<span class="dim">unknown</span>{/if}</dd>
+        <dt>{t("Created")}</dt>
+        <dd>{#if createdAt}{formatDate(createdAt)} <span class="dim">{t("· exists {span}", { span: formatSpan(now - createdAt) })}</span>{:else}<span class="dim">unknown</span>{/if}</dd>
         {#if disk?.git}
-          <dt>Created by</dt>
-          <dd>{oldest?.author ?? (disk.git.uncommitted ? `${disk.git.me || "you"} (not committed yet)` : "—")}</dd>
-          <dt>Last changed</dt>
+          <dt>{t("Created by")}</dt>
+          <dd>{oldest?.author ?? (disk.git.uncommitted ? t("{value} (not committed yet)", { value: disk.git.me || "you" }) : "—")}</dd>
+          <dt>{t("Last changed")}</dt>
           <dd data-info-last-changed>
-            {#if disk.git.uncommitted}not committed yet · {disk.git.me || "you"}
+            {#if disk.git.uncommitted}{t("not committed yet · {value}", { value: disk.git.me || "you" })}
             {:else if newest}{formatAgo(newest.at * 1000, now)} · {newest.author}
             {:else}—{/if}
           </dd>
         {/if}
-        <dt>Scale</dt>
+        <dt>{t("Scale")}</dt>
         <dd>{Math.round(normalizeNoteScale(note.scale) * 100)}%</dd>
-        <dt>Position</dt>
+        <dt>{t("Position")}</dt>
         <dd class="mono">X {round(note.x)} · Y {round(note.y)} <span class="dim">· {round(note.width)} × {height === null ? "auto" : round(height)}</span></dd>
-        <dt>Your time here</dt>
+        <dt>{t("Your time here")}</dt>
         <dd>{spentMs >= 1000 ? formatSpan(spentMs) : "—"} <span class="dim">editing</span></dd>
       </dl>
 
       {#if text}
         <section class="info-section">
-          <h3>Text</h3>
+          <h3>{t("Text")}</h3>
           <p class="stat-line" data-info-text>
-            {plural(text.words, "word")} · {plural(text.characters, "character")} · {plural(text.lines, "line")}{#if text.readingMinutes} · ~{text.readingMinutes} min read{/if}
+            {plural(text.words, "{count} word", "{count} words")} · {plural(text.characters, "{count} character", "{count} characters")} · {plural(text.lines, "{count} line", "{count} lines")}{#if text.readingMinutes} {t("· ~{readingMinutes} min read", { readingMinutes: text.readingMinutes })}{/if}
           </p>
           {#if textAuthors.length > 0}
-            <ul class="authors" aria-label="Who wrote the text">
+            <ul class="authors" aria-label={t("Who wrote the text")}>
               {#each textAuthors as [author, chars] (author)}
                 <li>
-                  <span class="author-name">{author}{author === disk?.git?.me ? " (you)" : ""}</span>
+                  <span class="author-name">{author}{author === disk?.git?.me ? t(" (you)") : ""}</span>
                   <span class="author-bar"><span style:width={percent(chars, textTotal)}></span></span>
                   <span class="mono dim">{percent(chars, textTotal)}</span>
                 </li>
@@ -277,56 +278,56 @@
 
       {#if collection}
         <section class="info-section">
-          <h3>{note.type === "tierlist" ? "Cards" : "Items"}</h3>
-          <p class="stat-line">{plural(collection.items, note.type === "tierlist" ? "card" : "item")}{#if collection.done !== null} · {collection.done} done ({percent(collection.done, collection.items)}){/if}</p>
+          <h3>{note.type === "tierlist" ? t("Cards") : t("Items")}</h3>
+          <p class="stat-line">{note.type === "tierlist" ? plural(collection.items, "{count} card", "{count} cards") : plural(collection.items, "{count} item", "{count} items")}{#if collection.done !== null} {t("· {done} done ({percent})", { done: collection.done, percent: percent(collection.done, collection.items) })}{/if}</p>
         </section>
       {/if}
 
       {#if task}
         <section class="info-section">
-          <h3>Task</h3>
+          <h3>{t("Task")}</h3>
           <dl class="facts">
-            <dt>Status</dt>
-            <dd>{task.doneAt !== null ? `done ${formatDate(task.doneAt)}` : "open"}</dd>
-            {#if task.openForMs !== null}<dt>Took</dt><dd>{formatSpan(task.openForMs)} <span class="dim">from creation</span></dd>{/if}
-            <dt>Completed</dt>
-            <dd>{task.timesCompleted === 1 ? "once" : `${task.timesCompleted} times`}</dd>
+            <dt>{t("Status")}</dt>
+            <dd>{task.doneAt !== null ? t("done {date}", { date: formatDate(task.doneAt) }) : t("open")}</dd>
+            {#if task.openForMs !== null}<dt>{t("Took")}</dt><dd>{formatSpan(task.openForMs)} <span class="dim">{t("from creation")}</span></dd>{/if}
+            <dt>{t("Completed")}</dt>
+            <dd>{task.timesCompleted === 1 ? t("once") : tp(task.timesCompleted, "{count} time", "{count} times")}</dd>
           </dl>
         </section>
       {/if}
 
       {#if media || note.youtube}
         <section class="info-section">
-          <h3>Media</h3>
+          <h3>{t("Media")}</h3>
           <dl class="facts">
-            {#if media?.name}<dt>File name</dt><dd class="wrap">{media.name}</dd>{/if}
-            {#if media?.format}<dt>Format</dt><dd>{media.format}</dd>{/if}
-            {#if media?.width && media.height}<dt>Resolution</dt><dd class="mono">{media.width} × {media.height}</dd>{/if}
-            {#if media?.durationSeconds}<dt>Duration</dt><dd class="mono">{formatClock(media.durationSeconds)}</dd>{/if}
-            {#if note.type === "pdf"}<dt>Pages</dt><dd>{pdfPages ?? "…"}</dd>{/if}
+            {#if media?.name}<dt>{t("File name")}</dt><dd class="wrap">{media.name}</dd>{/if}
+            {#if media?.format}<dt>{t("Format")}</dt><dd>{media.format}</dd>{/if}
+            {#if media?.width && media.height}<dt>{t("Resolution")}</dt><dd class="mono">{media.width} × {media.height}</dd>{/if}
+            {#if media?.durationSeconds}<dt>{t("Duration")}</dt><dd class="mono">{formatClock(media.durationSeconds)}</dd>{/if}
+            {#if note.type === "pdf"}<dt>{t("Pages")}</dt><dd>{pdfPages ?? "…"}</dd>{/if}
             {#if note.youtube}
-              {#if note.youtube.title}<dt>Video</dt><dd class="wrap">{note.youtube.title}</dd>{/if}
-              {#if note.youtube.author}<dt>Channel</dt><dd>{note.youtube.author}</dd>{/if}
+              {#if note.youtube.title}<dt>{t("Video")}</dt><dd class="wrap">{note.youtube.title}</dd>{/if}
+              {#if note.youtube.author}<dt>{t("Channel")}</dt><dd>{note.youtube.author}</dd>{/if}
             {/if}
           </dl>
         </section>
       {/if}
 
       <section class="info-section">
-        <h3>On disk</h3>
+        <h3>{t("On disk")}</h3>
         {#if disk}
-          <p class="stat-line">{totalBytes !== null ? formatBytes(totalBytes) : "—"}{#if disk.attachmentBytes > 0} <span class="dim">· attachments {formatBytes(disk.attachmentBytes)}</span>{/if}</p>
+          <p class="stat-line">{totalBytes !== null ? formatBytes(totalBytes) : "—"}{#if disk.attachmentBytes > 0} <span class="dim">{t("· attachments {bytes}", { bytes: formatBytes(disk.attachmentBytes) })}</span>{/if}</p>
           <ul class="files">
             {#if disk.noteFile}
-              <li><span class="mono wrap">{disk.noteFile}</span><button type="button" onclick={() => reveal(disk!.noteFile!)}>Show in Explorer</button></li>
+              <li><span class="mono wrap">{disk.noteFile}</span><button type="button" onclick={() => reveal(disk!.noteFile!)}>{t("Show in Explorer")}</button></li>
             {/if}
-            <li><span class="mono wrap">{disk.nodeFile}</span><button type="button" onclick={() => reveal(disk!.nodeFile)}>Show in Explorer</button></li>
+            <li><span class="mono wrap">{disk.nodeFile}</span><button type="button" onclick={() => reveal(disk!.nodeFile)}>{t("Show in Explorer")}</button></li>
           </ul>
           {#if revealError}<p class="error" role="alert">{revealError}</p>{/if}
         {:else if diskError}
           <p class="error" role="alert">{diskError}</p>
         {:else}
-          <p class="stat-line dim">{isTauri() ? "Reading…" : "Available in the desktop app."}</p>
+          <p class="stat-line dim">{isTauri() ? t("Reading…") : t("Available in the desktop app.")}</p>
         {/if}
       </section>
     </div>
@@ -335,12 +336,12 @@
       <footer class="history" data-info-history>
         <button class="history-toggle" type="button" aria-expanded={logOpen} onclick={() => { logOpen = !logOpen; }}>
           <span class="chevron" class:open={logOpen} aria-hidden="true">›</span>
-          Version history
-          <span class="dim">{commits.length}{disk.git.uncommitted ? " + uncommitted" : ""}</span>
+          {t("Version history")}
+          <span class="dim">{commits.length}{disk.git.uncommitted ? t(" + uncommitted") : ""}</span>
         </button>
         {#if logOpen}
           <ol class="commits">
-            {#if commits.length === 0}<li class="dim empty">Not committed yet.</li>{/if}
+            {#if commits.length === 0}<li class="dim empty">{t("Not committed yet.")}</li>{/if}
             {#each commits as commit (commit.hash)}
               <li>
                 <button type="button" class="commit" class:open={openCommit === commit.hash} aria-expanded={openCommit === commit.hash} onclick={() => toggleCommit(commit.hash)}>
@@ -352,7 +353,7 @@
                   {@const version = versions[commit.hash]}
                   <div class="changes" data-version-changes>
                     {#if version === undefined}
-                      <p class="dim">Loading…</p>
+                      <p class="dim">{t("Loading…")}</p>
                     {:else if typeof version === "string"}
                       <p class="error">{version}</p>
                     {:else}
@@ -362,7 +363,7 @@
                         </ul>
                       {/if}
                       {#if version.text}
-                        <p class="text-change" aria-label="Text changes">{#each version.text as piece, index (index)}{#if piece.kind === "add"}<ins>{piece.text}</ins>{:else if piece.kind === "remove"}<del>{piece.text}</del>{:else}<span>{piece.text}</span>{/if}{/each}</p>
+                        <p class="text-change" aria-label={t("Text changes")}>{#each version.text as piece, index (index)}{#if piece.kind === "add"}<ins>{piece.text}</ins>{:else if piece.kind === "remove"}<del>{piece.text}</del>{:else}<span>{piece.text}</span>{/if}{/each}</p>
                       {/if}
                     {/if}
                   </div>

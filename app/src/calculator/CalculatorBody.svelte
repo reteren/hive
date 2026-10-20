@@ -5,6 +5,7 @@
   import { addCalculatorEntry, deleteCalculatorEntry, editCalculatorEntry } from "./calculatorActions.svelte";
   import { formatCalculatorResult, recomputeCalculatorEntries } from "./expression";
   import BankPanel from "./BankPanel.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let data = $derived(calculatorData(note.name));
@@ -46,23 +47,23 @@
   }
 </script>
 
-<section class="calculator-body" data-selection-ignore aria-label="Calculator">
+<section class="calculator-body" data-selection-ignore aria-label={t("Calculator")}>
   <div class="calculator-entry-form">
     <input
       bind:value={newExpression}
       type="text"
       inputmode="decimal"
-      aria-label="Expression"
-      placeholder="Expression"
+      aria-label={t("Expression")}
+      placeholder={t("Expression")}
       onkeydown={handleNewKeydown}
     />
     <button type="button" onclick={() => {
       if (addCalculatorEntry(note.name, newExpression)) newExpression = "";
-    }}>Add</button>
+    }}>{t("Add")}</button>
   </div>
 
   {#if entries.length > 0}
-    <ol class="calculator-history" aria-label="Calculation history">
+    <ol class="calculator-history" aria-label={t("Calculation history")}>
       {#each entries as entry (entry.id)}
         <li class="calculator-row" data-error={entry.error ? "true" : undefined}>
           {#if editingId === entry.id}
@@ -71,14 +72,14 @@
               class="calculator-edit"
               type="text"
               inputmode="decimal"
-              aria-label="Edit expression"
+              aria-label={t("Edit expression")}
               onkeydown={(event) => handleEditKeydown(event, entry.id)}
             />
           {:else}
             <button
               type="button"
               class="calculator-expression"
-              aria-label={`Edit ${entry.expression}`}
+              aria-label={t("Edit {expression}", { expression: entry.expression })}
               onclick={() => startEdit(entry.id, entry.expression)}
             >
               <span>{entry.expression}</span>
@@ -88,8 +89,8 @@
           <button
             type="button"
             class="calculator-delete"
-            aria-label={`Delete ${entry.expression}`}
-            title="Delete entry"
+            aria-label={t("Delete {expression}", { expression: entry.expression })}
+            title={t("Delete entry")}
             onclick={() => deleteCalculatorEntry(note.name, entry.id)}
           >×</button>
           {#if entry.error}

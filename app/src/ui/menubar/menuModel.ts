@@ -1,3 +1,4 @@
+import { t } from "../../i18n/i18n.svelte";
 export interface RecentProject {
   path: string;
   kind: "folder" | "zip";
@@ -45,24 +46,24 @@ export function buildRecentMenu(projects: readonly RecentProject[]): MenuItem[] 
     ? recent.map((item) => ({
       kind: "command",
       commandId: "project.openRecent",
-      label: `${item.name}${item.exists ? "" : " (missing)"}`,
+      label: `${item.name}${item.exists ? "" : t(" (missing)")}`,
       disabled: !item.exists,
     }))
-    : [{ kind: "command", commandId: "project.openRecent", label: "No recent projects", disabled: true }];
+    : [{ kind: "command", commandId: "project.openRecent", label: t("No recent projects"), disabled: true }];
 
-  return [...items, { kind: "separator" }, { kind: "command", commandId: "project.clearRecent", label: "Clear recent" }];
+  return [...items, { kind: "separator" }, { kind: "command", commandId: "project.clearRecent", label: t("Clear recent") }];
 }
 
 export function buildFileMenu(projects: readonly RecentProject[], hasProject: boolean): MenuItem[] {
   return [
-    { kind: "command", commandId: "project.new", label: "New…" },
-    { kind: "command", commandId: "project.open", label: "Open…" },
-    { kind: "submenu", id: "project.openRecent", label: "Open recent", items: buildRecentMenu(projects) },
-    { kind: "command", commandId: "project.save", label: "Save", disabled: !hasProject },
-    { kind: "command", commandId: "project.importZip", label: "Import zip…" },
-    { kind: "command", commandId: "project.export", label: "Export zip…", disabled: !hasProject },
+    { kind: "command", commandId: "project.new", label: t("New…") },
+    { kind: "command", commandId: "project.open", label: t("Open…") },
+    { kind: "submenu", id: "project.openRecent", label: t("Open recent"), items: buildRecentMenu(projects) },
+    { kind: "command", commandId: "project.save", label: t("Save"), disabled: !hasProject },
+    { kind: "command", commandId: "project.importZip", label: t("Import zip…") },
+    { kind: "command", commandId: "project.export", label: t("Export zip…"), disabled: !hasProject },
     { kind: "separator" },
-    { kind: "command", commandId: "app.quit", label: "Quit" },
+    { kind: "command", commandId: "app.quit", label: t("Quit") },
   ];
 }
 
@@ -73,37 +74,37 @@ export function buildEditMenu(visibility: {
   objects: boolean;
 }): MenuItem[] {
   return [
-    { kind: "command", commandId: "edit.undo", label: "Undo" },
-    { kind: "command", commandId: "edit.redo", label: "Redo" },
+    { kind: "command", commandId: "edit.undo", label: t("Undo") },
+    { kind: "command", commandId: "edit.redo", label: t("Redo") },
     {
       kind: "command",
       commandId: "dock.toggleUndoLog",
-      label: "Open undo history",
+      label: t("Open undo history"),
       checked: visibility.undoLog,
-      popupHint: { commandId: "ui.toggleUndoLog", buttonLabel: "Undo log" },
+      popupHint: { commandId: "ui.toggleUndoLog", buttonLabel: t("Undo log") },
     },
-    { kind: "command", commandId: "search.open", label: "Search" },
-    { kind: "command", commandId: "ui.commandSearch", label: "Command search" },
+    { kind: "command", commandId: "search.open", label: t("Search") },
+    { kind: "command", commandId: "ui.commandSearch", label: t("Command search") },
     {
       kind: "command",
       commandId: "dock.toggleTasks",
-      label: "Task",
+      label: t("Task"),
       checked: visibility.tasks,
-      popupHint: { commandId: "ui.toggleTasks", buttonLabel: "Tasks" },
+      popupHint: { commandId: "ui.toggleTasks", buttonLabel: t("Tasks") },
     },
     {
       kind: "command",
       commandId: "dock.toggleTrash",
-      label: "Trash",
+      label: t("Trash"),
       checked: visibility.trash,
-      popupHint: { commandId: "ui.openTrash", buttonLabel: "Trash" },
+      popupHint: { commandId: "ui.openTrash", buttonLabel: t("Trash") },
     },
     {
       kind: "command",
       commandId: "dock.toggleObjects",
-      label: "Object list",
+      label: t("Object list"),
       checked: visibility.objects,
-      popupHint: { commandId: "ui.toggleObjectsPanel", buttonLabel: "Objects" },
+      popupHint: { commandId: "ui.toggleObjectsPanel", buttonLabel: t("Objects") },
     },
   ];
 }

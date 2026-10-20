@@ -27,6 +27,7 @@
   import MoodRow from "../moods/MoodRow.svelte";
   import "../markas/init";
   import "./commands";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let isContentNote = $derived(note.type === "note" || note.type === "pro" || note.type === "con");
@@ -136,7 +137,7 @@
             color={mark.color}
             linked={isExternal}
             interactive
-            onClick={() => showModuleFeedback(note.id, isExternal ? "Edit this tag on its linked Mark as node." : "Drag this tag away to create a Mark as node.")}
+            onClick={() => showModuleFeedback(note.id, isExternal ? t("Edit this tag on its linked Mark as node.") : t("Drag this tag away to create a Mark as node."))}
             dragKind={isEmbedded && !isExternal ? "markas" : undefined}
             dragValue={isEmbedded && !isExternal ? mark.id : undefined}
             dragNoteId={isEmbedded && !isExternal ? note.id : undefined}
@@ -151,7 +152,7 @@
 
     {#if pickerKind === "importance"}
       <ModulePicker
-        title="Importance"
+        title={t("Importance")}
         mode="single"
         options={IMPORTANCE_OPTIONS}
         selected={pickerImportance ? [pickerImportance] : []}
@@ -159,15 +160,15 @@
         onClose={closeModulePicker}
         onRemove={importanceIsExternal ? undefined : () => setImportance(note.id, null)}
         deferred={importanceIsExternal}
-        description={importanceIsExternal ? "Changing the linked module affects every connected note." : undefined}
-        confirmLabel={importanceIsExternal ? "Change shared module" : undefined}
+        description={importanceIsExternal ? t("Changing the linked module affects every connected note.") : undefined}
+        confirmLabel={importanceIsExternal ? t("Change shared module") : undefined}
         onConfirm={importanceIsExternal ? changeLinkedImportance : undefined}
-        makeLocalLabel={importanceIsExternal ? "Make local" : undefined}
+        makeLocalLabel={importanceIsExternal ? t("Make local") : undefined}
         onMakeLocal={importanceIsExternal ? localizeImportance : undefined}
       />
     {:else if pickerKind === "purpose"}
       <ModulePicker
-        title="Purpose"
+        title={t("Purpose")}
         mode="multiple"
         options={PURPOSE_OPTIONS}
         selected={note.purposes ?? []}
@@ -176,7 +177,7 @@
       />
     {:else if pickerKind === "mood"}
       <ModulePicker
-        title="Mood"
+        title={t("Mood")}
         mode="multiple"
         options={MOOD_OPTIONS}
         selected={note.moods ?? []}

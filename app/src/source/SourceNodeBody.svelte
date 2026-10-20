@@ -17,6 +17,7 @@
     type SourceTextEditKind,
   } from "./logic";
   import { checkSourceFileAvailability, invalidateSourceFileAvailability } from "./fileAvailability.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let source = $derived(note.source ?? emptySource());
@@ -148,7 +149,7 @@
     fileError = "";
     try {
       const selected = await open({
-        title: "Choose a source file",
+        title: t("Choose a source file"),
         multiple: false,
         directory: false,
         defaultPath: source.filePath ?? undefined,
@@ -159,7 +160,7 @@
       fileAvailability = "available";
       urlOpenError = "";
     } catch (error) {
-      fileError = error instanceof Error ? error.message : "Could not import this file.";
+      fileError = error instanceof Error ? error.message : t("Could not import this file.");
     } finally {
       choosingFile = false;
     }
@@ -172,7 +173,7 @@
       try {
         await invoke("attachment_open_source_file", { file: source.file });
       } catch {
-        fileError = "Could not open this project file.";
+        fileError = t("Could not open this project file.");
       } finally {
         opening = false;
       }
@@ -189,7 +190,7 @@
       try {
         await openUrl(validation.url);
       } catch {
-        urlOpenError = "Could not open this URL.";
+        urlOpenError = t("Could not open this URL.");
       } finally {
         opening = false;
       }
@@ -206,7 +207,7 @@
       invalidateSourceFileAvailability(path);
       const state = await checkSourceFileAvailability(path);
       if (note.source?.filePath === path) fileAvailability = state;
-      fileError = state === "missing" ? "File not found." : "Could not open this path.";
+      fileError = state === "missing" ? t("File not found.") : t("Could not open this path.");
     } finally {
       opening = false;
     }
@@ -217,7 +218,7 @@
     try {
       await invoke("attachment_reveal_source_file", { file: source.file });
     } catch {
-      fileError = "Could not reveal this project file.";
+      fileError = t("Could not reveal this project file.");
     }
   }
 </script>
@@ -227,16 +228,16 @@
   data-source-node={note.id}
   data-selection-ignore
   role="region"
-  aria-label={`Source details for ${note.name}`}
+  aria-label={t("Source details for {name}", { name: note.name })}
   onfocusin={() => { if (source.filePath) void refreshFileAvailability(source.filePath); }}
 >
   <label class="source-field">
-    <span>URL/File</span>
+    <span>{t("URL/File")}</span>
     <input
       type="text"
       value={sourceValue}
       placeholder={'https://… or C:\\Users\\Example\\file.mp4'}
-      aria-label="Source URL or file path"
+      aria-label={t("Source URL or file path")}
       data-source-url-file
       onkeydown={(event) => rememberSelection("resource", event)}
       onbeforeinput={(event) => rememberSelection("resource", event)}
@@ -257,31 +258,31 @@
     <p class="source-file" data-source-attachment={source.file} title={source.file}>attachments/{source.file}</p>
   {/if}
   {#if source.filePath && fileAvailability === "missing"}
-    <p class="source-message error" data-source-file-missing role="status">File not found.</p>
+    <p class="source-message error" data-source-file-missing role="status">{t("File not found.")}</p>
   {:else if fileError}
     <p class="source-message error" data-source-file-error role="alert">{fileError}</p>
   {/if}
   <div class="source-actions">
     <button type="button" class="source-action" data-source-open disabled={openDisabled} title={parsedValue.kind === "path" ? parsedValue.value : undefined} onclick={openResource} onkeydown={stopBoardHotkeys}>
-      {opening ? "Opening…" : "Open"}
+      {opening ? t("Opening…") : t("Open")}
     </button>
     {#if source.file}
-      <button type="button" class="source-action" data-source-reveal disabled={opening} onclick={revealAttachment} onkeydown={stopBoardHotkeys}>Show in folder</button>
+      <button type="button" class="source-action" data-source-reveal disabled={opening} onclick={revealAttachment} onkeydown={stopBoardHotkeys}>{t("Show in folder")}</button>
     {/if}
     {#if sourceHasPicker(source)}
       <button type="button" class="source-action" data-source-choose-file disabled={choosingFile} onclick={chooseFile} onkeydown={stopBoardHotkeys}>
-        {choosingFile ? "Choosing…" : "Choose file…"}
+        {choosingFile ? t("Choosing…") : t("Choose file…")}
       </button>
     {/if}
   </div>
 
   <label class="source-field source-description-field">
-    <span>Description</span>
+    <span>{t("Description")}</span>
     <textarea
       value={source.description}
       bind:this={descriptionField}
-      placeholder="Notes about this source"
-      aria-label="Source description"
+      placeholder={t("Notes about this source")}
+      aria-label={t("Source description")}
       data-source-description
       onkeydown={(event) => rememberSelection("description", event)}
       onbeforeinput={(event) => rememberSelection("description", event)}

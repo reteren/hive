@@ -35,6 +35,7 @@
       .sort((first, second) => (noteOrder.get(first) ?? -1) - (noteOrder.get(second) ?? -1));
   });
   import "./beacons.css";
+  import { t } from "../i18n/i18n.svelte";
 
   let draft = $state("");
   let editInput = $state<HTMLInputElement>();
@@ -140,40 +141,40 @@
             class="beacon-circle"
             data-note-header
             type="button"
-            aria-label={`Beacon ${note.name}${memberZone ? `, Zone: ${memberZone.name}` : ""}`}
+            aria-label={t("Beacon {name}{value}", { name: note.name, value: memberZone ? `, Zone: ${memberZone.name}` : "" })}
             class:in-zone={Boolean(memberZone)}
             style:--beacon-color={color}
             style:--note-glow-shadow={noteGlowShadow(glow)}
             style:--zone-color={memberZone?.color ?? "transparent"}
             ondblclick={(event) => { event.preventDefault(); event.stopPropagation(); openBeaconEditor(id, "rename"); }}
           ></button>
-          {#if isMarked(id)}<span class="beacon-mark" aria-label="Marked beacon"></span>{/if}
+          {#if isMarked(id)}<span class="beacon-mark" aria-label={t("Marked beacon")}></span>{/if}
           {#if lod.tier === "full" || selection.ids.includes(id) || validFocused().includes(id)}
             <span class="beacon-label" style:color={color}>{note.name}</span>
           {/if}
           {#if beaconEditor.noteId === id}
             {#if beaconEditor.mode === "color"}
-              <div class="beacon-editor" data-beacon-editor data-selection-ignore role="dialog" tabindex="-1" aria-label="Beacon colour"
+              <div class="beacon-editor" data-beacon-editor data-selection-ignore role="dialog" tabindex="-1" aria-label={t("Beacon colour")}
                 onkeydown={(event) => { if (event.key === "Enter" && !(event.target instanceof HTMLInputElement)) { event.preventDefault(); closeBeaconEditor(); } }}>
-                <span class="beacon-editor-title">Beacon colour</span>
+                <span class="beacon-editor-title">{t("Beacon colour")}</span>
                 <HexColorPicker
                   value={note.color ?? BEACON_PALETTE[0]}
-                  label="Beacon colour"
+                  label={t("Beacon colour")}
                   oninput={(color) => colorSession?.preview(color)}
                   onchange={(color) => colorSession?.preview(color)}
                 />
                 <div class="beacon-editor-actions">
-                  <button type="button" onclick={cancelColor}>Cancel</button>
-                  <button type="button" onclick={closeBeaconEditor}>Done</button>
+                  <button type="button" onclick={cancelColor}>{t("Cancel")}</button>
+                  <button type="button" onclick={closeBeaconEditor}>{t("Done")}</button>
                 </div>
               </div>
             {:else}
-              <div class="beacon-editor" data-beacon-editor data-selection-ignore role="dialog" aria-label="Rename beacon">
-                <label for="beacon-edit-input">Beacon name</label>
+              <div class="beacon-editor" data-beacon-editor data-selection-ignore role="dialog" aria-label={t("Rename beacon")}>
+                <label for="beacon-edit-input">{t("Beacon name")}</label>
                 <input id="beacon-edit-input" bind:this={editInput} bind:value={draft} onkeydown={(event) => { if (event.key === "Enter") { event.preventDefault(); save(); } }} />
                 <div class="beacon-editor-actions">
-                  <button type="button" onclick={closeBeaconEditor}>Cancel</button>
-                  <button type="button" onclick={save}>Save</button>
+                  <button type="button" onclick={closeBeaconEditor}>{t("Cancel")}</button>
+                  <button type="button" onclick={save}>{t("Save")}</button>
                 </div>
               </div>
             {/if}

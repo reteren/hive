@@ -1,4 +1,5 @@
 import type { YouTubeRef } from "../attachments/types";
+import { t } from "../i18n/i18n.svelte";
 
 export type YouTubeUrlParseResult =
   | { kind: "youtube"; ref: YouTubeRef }
@@ -18,14 +19,14 @@ export function parseYouTubeUrl(value: string): YouTubeUrlParseResult {
     url = new URL(original);
   } catch {
     return looksLikeYouTubeUrl(original)
-      ? { kind: "invalid", error: "Enter a valid YouTube video URL." }
+      ? { kind: "invalid", error: t("Enter a valid YouTube video URL.") }
       : { kind: "other" };
   }
 
   const host = url.hostname.toLocaleLowerCase();
   if (!isYouTubeHost(host)) return { kind: "other" };
   if (url.protocol !== "https:" && url.protocol !== "http:") {
-    return { kind: "invalid", error: "YouTube links must use HTTP or HTTPS." };
+    return { kind: "invalid", error: t("YouTube links must use HTTP or HTTPS.") };
   }
 
   const path = url.pathname.split("/").filter(Boolean);
@@ -39,13 +40,13 @@ export function parseYouTubeUrl(value: string): YouTubeUrlParseResult {
   }
 
   if (!videoId || !VIDEO_ID.test(videoId)) {
-    return { kind: "invalid", error: "This YouTube URL does not contain a valid video ID." };
+    return { kind: "invalid", error: t("This YouTube URL does not contain a valid video ID.") };
   }
 
   const startValue = url.searchParams.get("t") ?? url.searchParams.get("start") ?? hashStart(url.hash);
   const start = startValue === null ? undefined : parseStartTime(startValue);
   if (start === null) {
-    return { kind: "invalid", error: "The YouTube start time is invalid." };
+    return { kind: "invalid", error: t("The YouTube start time is invalid.") };
   }
 
   return { kind: "youtube", ref: { videoId, url: original, ...(start === undefined ? {} : { start }) } };
@@ -95,12 +96,12 @@ export function youtubeEmbedUrl(ref: Pick<YouTubeRef, "videoId" | "start">, orig
 export function youtubeEmbedErrorReason(value: unknown): string | null {
   const code = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
   if (!Number.isInteger(code)) return null;
-  if (code === 101 || code === 150) return "The video owner does not allow playback on other websites.";
-  if (code === 153) return "YouTube could not identify this app.";
-  if (code === 100) return "The video was not found or is private.";
-  if (code === 2) return "The video ID is invalid.";
-  if (code === 5) return "The embedded player could not decode this video.";
-  return `YouTube player error ${code}.`;
+  if (code === 101 || code === 150) return t("The video owner does not allow playback on other websites.");
+  if (code === 153) return t("YouTube could not identify this app.");
+  if (code === 100) return t("The video was not found or is private.");
+  if (code === 2) return t("The video ID is invalid.");
+  if (code === 5) return t("The embedded player could not decode this video.");
+  return t("YouTube player error {code}.", { code: code });
 }
 
 export interface YouTubePlayerInfo {
@@ -131,7 +132,7 @@ export function parseYouTubePlayerMessage(value: unknown): YouTubePlayerMessage 
   if (message.event === "onError") {
     return {
       kind: "error",
-      reason: youtubeEmbedErrorReason(message.info) ?? "The embedded player returned an unknown error.",
+      reason: youtubeEmbedErrorReason(message.info) ?? t("The embedded player returned an unknown error."),
     };
   }
   if (message.event === "onStateChange") {

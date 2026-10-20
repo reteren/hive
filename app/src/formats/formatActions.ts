@@ -19,6 +19,7 @@ import { board, updateNote } from "../model/board.svelte";
 import { TEXT_FORMAT_LANGUAGES } from "../attachments/types";
 import { createFormatNotesAsync } from "./formatCreation";
 import { isFormatMediaKind, normalizePdfZoom } from "./formatLogic";
+import { t } from "../i18n/i18n.svelte";
 
 export type FormatPickerKind = "pdf" | "text";
 export type FormatSaveResult = { ok: true; previous: MediaRef; media: MediaRef } | { ok: false; error: string };
@@ -27,10 +28,10 @@ export type FormatSaveResult = { ok: true; previous: MediaRef; media: MediaRef }
 export async function pickFormatFiles(kind: FormatPickerKind, center: Point): Promise<boolean> {
   try {
     const selection = await open({
-      title: kind === "pdf" ? "Choose PDF files" : "Choose text files",
+      title: kind === "pdf" ? t("Choose PDF files") : t("Choose text files"),
       multiple: true,
       filters: [{
-        name: kind === "pdf" ? "PDF documents" : "Text files",
+        name: kind === "pdf" ? t("PDF documents") : t("Text files"),
         extensions: kind === "pdf" ? ["pdf"] : Object.keys(TEXT_FORMAT_LANGUAGES),
       }],
     });
@@ -49,7 +50,7 @@ export async function importFormatPaths(paths: readonly string[], center: Point,
   if (kinds.some((kind) => !isFormatMediaKind(kind)) || expected && kinds.some((kind) => kind !== expected)) return false;
 
   try {
-    return await withImportProgress("Import files", paths.length, async (run) => {
+    return await withImportProgress(t("Import files"), paths.length, async (run) => {
       const media: MediaRef[] = [];
       const errors: string[] = [];
       for (let offset = 0; offset < paths.length; offset += 200) {
@@ -59,7 +60,7 @@ export async function importFormatPaths(paths: readonly string[], center: Point,
         for (const result of results) {
           if (!result.ok) errors.push(result.error);
           else if (isFormatMediaKind(result.media.kind) && (!expected || result.media.kind === expected)) media.push(result.media);
-          else errors.push("Choose a supported PDF or text file.");
+          else errors.push(t("Choose a supported PDF or text file."));
         }
         if (importWasCancelled(run.id) || results.length < batchPaths.length) break;
       }
@@ -106,7 +107,7 @@ export async function saveFormatText(
   const note = board.notes[noteId];
   const current = note?.media;
   if (note?.type !== "format" || !current || current.kind !== "text") {
-    return { ok: false, error: "This node has no editable text file." };
+    return { ok: false, error: t("This node has no editable text file.") };
   }
   const previous: MediaRef = { ...current };
   let result: MediaImportResult;
@@ -116,14 +117,14 @@ export async function saveFormatText(
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
   if (!result.ok) return result;
-  if (result.media.kind !== "text") return { ok: false, error: "The saved attachment is not a text file." };
+  if (result.media.kind !== "text") return { ok: false, error: t("The saved attachment is not a text file.") };
   if (board.notes[noteId]?.media?.file !== previous.file) {
     return { ok: false, error: "The file changed while it was being saved; try again." };
   }
 
   const next: MediaRef = { ...result.media };
   execute({
-    label: "Save file",
+    label: t("Save file"),
     target: previous.name || note.name,
     do: () => updateNote(noteId, { media: next }),
     undo: () => updateNote(noteId, { media: previous }),
@@ -141,7 +142,7 @@ export function setPdfZoom(noteId: string, requestedZoom: number | undefined): v
   if (previous === next) return;
 
   execute({
-    label: next === undefined ? "Fit PDF to width" : "Set PDF zoom",
+    label: next === undefined ? t("Fit PDF to width") : t("Set PDF zoom"),
     target: note.name,
     do: () => updateNote(noteId, { pdfZoom: next }),
     undo: () => updateNote(noteId, { pdfZoom: previous }),

@@ -43,6 +43,7 @@
   import ImageEraseLayer from "./attachments/ImageEraseLayer.svelte";
   import NoteGlowPopover from "./notes/NoteGlowPopover.svelte";
   import ImportProgress from "./ui/ImportProgress.svelte";
+  import { t } from "./i18n/i18n.svelte";
 
   let topMenuOpen = $state(false);
   let undoLogCommand = $derived(getCommand("ui.toggleUndoLog"));
@@ -84,15 +85,15 @@
     <SearchPanel />
     <TransferNotice />
     {#if anyDockButtonVisible}
-      <div class="panel-dock" data-selection-ignore aria-label="Panels">
+      <div class="panel-dock" data-selection-ignore aria-label={t("Panels")}>
         {#if dockVisibility.undoLog}
-          <Tooltip label="Undo log" bindings={undoLogCommand?.keys ?? []}>
+          <Tooltip label={t("Undo log")} bindings={undoLogCommand?.keys ?? []}>
             <button
               class="dock-button"
               class:active={undoLogPanel.open}
               type="button"
               data-dock-button="undo-log"
-              aria-label="Undo log"
+              aria-label={t("Undo log")}
               aria-controls="undo-log-panel"
               aria-expanded={undoLogPanel.open}
               aria-pressed={undoLogPanel.open}
@@ -104,58 +105,58 @@
                 <circle cx="11" cy="10" r="1.1" />
                 <circle cx="8" cy="14.5" r="1.1" />
               </svg>
-              <span>Undo log</span>
+              <span>{t("Undo log")}</span>
             </button>
           </Tooltip>
         {/if}
         {#if dockVisibility.tasks}
-          <Tooltip label="Tasks" bindings={tasksCommand?.keys ?? []}>
+          <Tooltip label={t("Tasks")} bindings={tasksCommand?.keys ?? []}>
             <button
               class="dock-button"
               class:active={tasksPanel.open}
               type="button"
               data-dock-button="tasks"
-              aria-label="Tasks"
+              aria-label={t("Tasks")}
               aria-controls="tasks-panel"
               aria-expanded={tasksPanel.open}
               aria-pressed={tasksPanel.open}
               onclick={toggleTasksPanel}
-            >Tasks</button>
+            >{t("Tasks")}</button>
           </Tooltip>
         {/if}
         {#if dockVisibility.objects}
-          <Tooltip label="Objects" bindings={objectsCommand?.keys ?? []}>
+          <Tooltip label={t("Objects")} bindings={objectsCommand?.keys ?? []}>
             <button
               class="dock-button"
               class:active={objectsPanel.open}
               type="button"
               data-dock-button="objects"
-              aria-label="Objects"
+              aria-label={t("Objects")}
               aria-controls="objects-panel"
               aria-expanded={objectsPanel.open}
               aria-pressed={objectsPanel.open}
               onclick={toggleObjectsPanel}
-            >Objects</button>
+            >{t("Objects")}</button>
           </Tooltip>
         {/if}
         {#if dockVisibility.trash}
-          <Tooltip label="Trash" bindings={trashCommand?.keys ?? []}>
+          <Tooltip label={t("Trash")} bindings={trashCommand?.keys ?? []}>
             <button
               class="dock-button"
               class:active={trashPanel.open}
               type="button"
               data-dock-button="trash"
-              aria-label="Trash"
+              aria-label={t("Trash")}
               aria-controls="trash-panel"
               aria-expanded={trashPanel.open}
               aria-pressed={trashPanel.open}
               onclick={toggleTrashPanel}
-            >Trash</button>
+            >{t("Trash")}</button>
           </Tooltip>
         {/if}
       </div>
     {/if}
-    <div class="panel-stack" class:with-dock={anyDockButtonVisible} data-selection-ignore aria-label="Open panels">
+    <div class="panel-stack" class:with-dock={anyDockButtonVisible} data-selection-ignore aria-label={t("Open panels")}>
       <TasksPanel variant="dock" />
       {#if undoLogPanel.open}<UndoLog variant="dock" />{/if}
       <ObjectsPanel variant="dock" />

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { t } from "../i18n/i18n.svelte";
   let { onanswer }: { onanswer: (enable: boolean, remember: boolean) => void } = $props();
   let dialog: HTMLDialogElement;
   let noButton: HTMLButtonElement;
@@ -9,15 +10,15 @@
 </script>
 
 <dialog bind:this={dialog} data-time-enable-confirmation data-selection-ignore
-  aria-label="Enable timer" aria-describedby="time-enable-explanation"
+  aria-label={t("Enable timer")} aria-describedby="time-enable-explanation"
   oncancel={(event) => { event.preventDefault(); answer(false, false); }}
   onkeydown={(event) => { event.stopPropagation(); if (event.key === "Escape") { event.preventDefault(); answer(false, false); } }}>
-  <h2>Enable timer?</h2>
-  <p id="time-enable-explanation">Are you sure you want to enable the timer? All linked tasks are already done.</p>
-  <label><input type="checkbox" data-time-confirm-remember bind:checked={remember} /> <span>Don't show this again</span></label>
+  <h2>{t("Enable timer?")}</h2>
+  <p id="time-enable-explanation">{t("Are you sure you want to enable the timer? All linked tasks are already done.")}</p>
+  <label><input type="checkbox" data-time-confirm-remember bind:checked={remember} /> <span>{t("Don't show this again")}</span></label>
   <footer>
-    <button bind:this={noButton} type="button" data-time-confirm-no onclick={() => answer(false)}>No</button>
-    <button type="button" class="yes" data-time-confirm-yes onclick={() => answer(true)}>Yes</button>
+    <button bind:this={noButton} type="button" data-time-confirm-no onclick={() => answer(false)}>{t("No")}</button>
+    <button type="button" class="yes" data-time-confirm-yes onclick={() => answer(true)}>{t("Yes")}</button>
   </footer>
 </dialog>
 

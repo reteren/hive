@@ -7,6 +7,7 @@
   import { createScopeChangeCommand } from "./scopeChange";
   import { linkedBeaconForNote, scopeChoiceForNote, scopeExists, scopeOptions } from "./scope.svelte";
   import { scopeKey } from "./scopeLogic";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let linkedBeacon = $derived(linkedBeaconForNote(note.id));
@@ -27,19 +28,19 @@
 </script>
 
 <div class="scope-picker" data-selection-ignore>
-  <label for={`scope-${note.id}`}>Scope</label>
+  <label for={`scope-${note.id}`}>{t("Scope")}</label>
   <span class="scope-select">
     <Select
       id={`scope-${note.id}`}
       value={selectedKey}
-      ariaLabel={`Scope for ${note.name}`}
+      ariaLabel={t("Scope for {name}", { name: note.name })}
       options={[
-        ...(missing ? [{ value: selectedKey, label: "Scope missing", disabled: true }] : []),
+        ...(missing ? [{ value: selectedKey, label: t("Scope missing"), disabled: true }] : []),
         ...options.map((option) => ({ value: scopeKey(option.scope), label: option.label })),
       ]}
       onchange={changeScope}
       disabled={Boolean(linkedBeacon)}
-      title={linkedBeacon ? "Linked to beacon — remove the link to change" : undefined}
+      title={linkedBeacon ? t("Linked to beacon — remove the link to change") : undefined}
       ondblclick={(event) => event.stopPropagation()}
     />
   </span>

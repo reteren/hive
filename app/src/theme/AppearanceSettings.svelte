@@ -13,16 +13,17 @@
   } from "./appearance.svelte";
   import { BUILTIN_THEME_PRESETS } from "./presets";
   import type { ThemeColors } from "./colors";
+  import { t } from "../i18n/i18n.svelte";
 
   type ColorKey = keyof ThemeColors;
   type PresetEditor = { kind: "create" } | { kind: "rename" | "duplicate"; id: string };
 
   const colorRows: ReadonlyArray<{ key: ColorKey; label: string; description: string }> = [
-    { key: "base", label: "Base", description: "Panels, menus, and popovers" },
-    { key: "accent", label: "Accent", description: "Selections, highlights, and active controls" },
-    { key: "icon", label: "Icons", description: "SVG and raster icons" },
-    { key: "board", label: "Board background", description: "Workspace behind the grid" },
-    { key: "grid", label: "Grid lines", description: "Minor and major grid lines" },
+    { key: "base", get label() { return t("Base"); }, get description() { return t("Panels, menus, and popovers"); } },
+    { key: "accent", get label() { return t("Accent"); }, get description() { return t("Selections, highlights, and active controls"); } },
+    { key: "icon", get label() { return t("Icons"); }, get description() { return t("SVG and raster icons"); } },
+    { key: "board", get label() { return t("Board background"); }, get description() { return t("Workspace behind the grid"); } },
+    { key: "grid", get label() { return t("Grid lines"); }, get description() { return t("Minor and major grid lines"); } },
   ];
 
   let openColorPicker = $state<ColorKey | null>(null);
@@ -55,7 +56,7 @@
 
   function beginDuplicate(id: string): void {
     const preset = userPresets.find((item) => item.id === id);
-    if (preset) beginPresetEdit({ kind: "duplicate", id }, `${preset.name} copy`);
+    if (preset) beginPresetEdit({ kind: "duplicate", id }, t("{name} copy", { name: preset.name }));
   }
 
   function savePresetName(event: SubmitEvent): void {
@@ -81,16 +82,16 @@
 
 <section class="settings-block" aria-labelledby="appearance-themes-title" data-appearance-settings>
   <div class="settings-block-header">
-    <h3 id="appearance-themes-title" class="settings-block-title">Themes</h3>
+    <h3 id="appearance-themes-title" class="settings-block-title">{t("Themes")}</h3>
   </div>
-  <div class="theme-gallery" role="list" aria-label="Appearance presets">
+  <div class="theme-gallery" role="list" aria-label={t("Appearance presets")}>
     {#each BUILTIN_THEME_PRESETS as preset (preset.id)}
       <div class="theme-tile" role="listitem" data-theme-preset={preset.id}>
         <ThemePreviewCard
           name={preset.name}
           colors={preset.colors}
           active={activeId === preset.id}
-          label={`Apply ${preset.name} theme`}
+          label={t("Apply {name} theme", { name: preset.name })}
           onclick={() => applyThemePreset(preset.id)}
         />
       </div>
@@ -100,8 +101,8 @@
 
 <section class="settings-block" aria-labelledby="appearance-user-title">
   <div class="settings-block-header">
-    <h3 id="appearance-user-title" class="settings-block-title">Your themes</h3>
-    <button class="settings-button" class:is-primary={activeId === null} type="button" data-save-theme-preset onclick={() => beginPresetEdit({ kind: "create" })}>Save current as theme…</button>
+    <h3 id="appearance-user-title" class="settings-block-title">{t("Your themes")}</h3>
+    <button class="settings-button" class:is-primary={activeId === null} type="button" data-save-theme-preset onclick={() => beginPresetEdit({ kind: "create" })}>{t("Save current as theme…")}</button>
   </div>
 
   {#if presetEditor || confirmingDeletePreset}
@@ -109,7 +110,7 @@
       {#if presetEditor}
         <form class="settings-inline-panel" data-preset-editor onsubmit={savePresetName}>
           <label for="appearance-preset-name">
-            {presetEditor.kind === "create" ? "Save the current colours as a theme" : presetEditor.kind === "rename" ? "Rename theme" : "Duplicate theme"}
+            {presetEditor.kind === "create" ? t("Save the current colours as a theme") : presetEditor.kind === "rename" ? t("Rename theme") : t("Duplicate theme")}
           </label>
           <input
             id="appearance-preset-name"
@@ -119,20 +120,20 @@
             maxlength="36"
             autocomplete="off"
             required
-            aria-label="Theme name"
+            aria-label={t("Theme name")}
             onkeydown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); cancelPresetEdit(); } }}
           />
           <span class="setting-control">
-            <button class="settings-button" type="button" onclick={cancelPresetEdit}>Cancel</button>
-            <button class="settings-button is-primary" type="submit">Save</button>
+            <button class="settings-button" type="button" onclick={cancelPresetEdit}>{t("Cancel")}</button>
+            <button class="settings-button is-primary" type="submit">{t("Save")}</button>
           </span>
         </form>
       {:else if confirmingDeletePreset}
-        <div class="settings-inline-panel is-danger" role="alertdialog" aria-label="Delete theme">
-          <p>Delete the theme “{confirmingDeletePreset.name}”?</p>
+        <div class="settings-inline-panel is-danger" role="alertdialog" aria-label={t("Delete theme")}>
+          <p>{t("Delete the theme “{name}”?", { name: confirmingDeletePreset.name })}</p>
           <span class="setting-control">
-            <button class="settings-button" type="button" onclick={() => (confirmingDeleteId = null)}>Cancel</button>
-            <button class="settings-button is-danger is-solid" type="button" onclick={confirmDelete}>Delete</button>
+            <button class="settings-button" type="button" onclick={() => (confirmingDeleteId = null)}>{t("Cancel")}</button>
+            <button class="settings-button is-danger is-solid" type="button" onclick={confirmDelete}>{t("Delete")}</button>
           </span>
         </div>
       {/if}
@@ -140,7 +141,7 @@
   {/if}
 
   {#if userPresets.length > 0 || activeId === null}
-    <div class="theme-gallery" role="list" aria-label="Your themes">
+    <div class="theme-gallery" role="list" aria-label={t("Your themes")}>
       {#if activeId === null}
         <div class="theme-tile" role="listitem" data-theme-preset="custom">
           <ThemePreviewCard
@@ -148,7 +149,7 @@
             badge="unsaved"
             colors={appearance.settings.colors}
             active
-            label="Current colours, not saved as a theme. Save it"
+            label={t("Current colours, not saved as a theme. Save it")}
             onclick={() => beginPresetEdit({ kind: "create" })}
           />
         </div>
@@ -159,17 +160,17 @@
             name={preset.name}
             colors={preset.colors}
             active={activeId === preset.id}
-            label={`Apply ${preset.name} theme`}
+            label={t("Apply {name} theme", { name: preset.name })}
             onclick={() => applyThemePreset(preset.id)}
           />
-          <span class="theme-tools" aria-label={`${preset.name} theme actions`}>
-            <button class="settings-icon-button" type="button" title="Rename" aria-label={`Rename ${preset.name}`} onclick={() => beginRename(preset.id)}>
+          <span class="theme-tools" aria-label={t("{name} theme actions", { name: preset.name })}>
+            <button class="settings-icon-button" type="button" title={t("Rename")} aria-label={t("Rename {name}", { name: preset.name })} onclick={() => beginRename(preset.id)}>
               <svg viewBox="0 0 16 16"><path d="M10.5 2.8l2.7 2.7-7.6 7.6H2.9v-2.7z" /></svg>
             </button>
-            <button class="settings-icon-button" type="button" title="Duplicate" aria-label={`Duplicate ${preset.name}`} onclick={() => beginDuplicate(preset.id)}>
+            <button class="settings-icon-button" type="button" title={t("Duplicate")} aria-label={t("Duplicate {name}", { name: preset.name })} onclick={() => beginDuplicate(preset.id)}>
               <svg viewBox="0 0 16 16"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" /><path d="M10.5 3.5v-.5a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h.5" /></svg>
             </button>
-            <button class="settings-icon-button is-danger" type="button" title="Delete" aria-label={`Delete ${preset.name}`} onclick={() => { presetEditor = null; confirmingDeleteId = preset.id; }}>
+            <button class="settings-icon-button is-danger" type="button" title={t("Delete")} aria-label={t("Delete {name}", { name: preset.name })} onclick={() => { presetEditor = null; confirmingDeleteId = preset.id; }}>
               <svg viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" /></svg>
             </button>
           </span>
@@ -177,13 +178,13 @@
       {/each}
     </div>
   {:else}
-    <p class="setting-hint">Change any colour below, then save it here as your own theme.</p>
+    <p class="setting-hint">{t("Change any colour below, then save it here as your own theme.")}</p>
   {/if}
 </section>
 
 <section class="settings-block" aria-labelledby="appearance-colors-title">
-  <div class="settings-block-header"><h3 id="appearance-colors-title" class="settings-block-title">Colours</h3></div>
-  <div class="settings-group" aria-label="Theme colours">
+  <div class="settings-block-header"><h3 id="appearance-colors-title" class="settings-block-title">{t("Colours")}</h3></div>
+  <div class="settings-group" aria-label={t("Theme colours")}>
     {#each colorRows as row (row.key)}
       <div class="theme-color-row" class:open={openColorPicker === row.key} data-theme-color={row.key}>
         <button
@@ -214,7 +215,7 @@
       </div>
     {/each}
   </div>
-  <p class="setting-hint">Applies to both windows immediately. Editing a colour turns the theme into your own, unsaved one.</p>
+  <p class="setting-hint">{t("Applies to both windows immediately. Editing a colour turns the theme into your own, unsaved one.")}</p>
 </section>
 
 <style>

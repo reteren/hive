@@ -28,6 +28,7 @@ import {
   type TrashListItem,
   type TrashRestorePreview,
 } from "./trash";
+import { t } from "../i18n/i18n.svelte";
 
 export type { TrashListItem, TrashRestorePreview } from "./trash";
 
@@ -93,7 +94,7 @@ export function moveToTrash(
   }
 
   execute({
-    label: options.label ?? "Delete",
+    label: options.label ?? t("Delete"),
     target: options.target ?? entries.map(trashEntrySummary).join(", "),
     do: () => {
       const activeEntries = entries.filter((entry) => !permanentlyDeletedEntryIds.has(entry.id));
@@ -166,7 +167,7 @@ export function deleteMeBeacon(): TrashEntry | null {
   historyInvalidators.set(entry.id, () => { permanentlyDeletedEntry = true; });
 
   execute({
-    label: "Delete",
+    label: t("Delete"),
     target: "ME",
     do: () => {
       if (permanentlyDeletedEntry) return;
@@ -239,7 +240,7 @@ export function restoreTrashEntry(entryId: string): TrashRestorePreview | null {
   let restoredLinkIds = new Set<string>();
 
   execute({
-    label: "Restore from trash",
+    label: t("Restore from trash"),
     target: trashEntrySummary(originalEntry),
     do: () => {
       const currentIndex = trash.entries.findIndex((candidate) => candidate.id === entryId);

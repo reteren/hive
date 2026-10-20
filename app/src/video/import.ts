@@ -4,17 +4,18 @@ import { camera, viewport } from "../board/camera.svelte";
 import { screenToWorld, type Point } from "../board/cameraMath";
 import { importMediaFile, importMediaPath, mediaKindForPath, registerFileDropHandler, reportImportError } from "../attachments/service";
 import { createVideoNotes } from "./actions.svelte";
+import { t } from "../i18n/i18n.svelte";
 
 export async function pickVideoFiles(): Promise<string[]> {
   if (!isTauri()) {
-    reportImportError("The video picker is available in the desktop app.");
+    reportImportError(t("The video picker is available in the desktop app."));
     return [];
   }
   try {
     const selected = await open({
-      title: "Choose video files",
+      title: t("Choose video files"),
       multiple: true,
-      filters: [{ name: "Video files", extensions: ["mp4", "webm"] }],
+      filters: [{ name: t("Video files"), extensions: ["mp4", "webm"] }],
     });
     return Array.isArray(selected) ? selected.filter((path) => typeof path === "string" && path.length > 0) : [];
   } catch (error) {
@@ -34,7 +35,7 @@ export async function importVideoPaths(paths: readonly string[], center: Point):
   }
   const media = results.flatMap((result) => result.ok ? [result.media] : []);
   if (media.length !== paths.length || media.some((item) => item.kind !== "video")) {
-    reportImportError("Only supported MP4 and WebM videos can be imported here.");
+    reportImportError(t("Only supported MP4 and WebM videos can be imported here."));
     return [];
   }
   return createVideoNotes(media, center);
@@ -51,7 +52,7 @@ export async function importVideoFiles(files: readonly File[], center: Point): P
   }
   const media = results.flatMap((result) => result.ok ? [result.media] : []);
   if (media.length !== files.length || media.some((item) => item.kind !== "video")) {
-    reportImportError("Only supported MP4 and WebM videos can be imported here.");
+    reportImportError(t("Only supported MP4 and WebM videos can be imported here."));
     return [];
   }
   return createVideoNotes(media, center);
@@ -69,7 +70,7 @@ export function registerVideoDropHandler(): () => void {
     const center = screenToWorld(camera, viewport, { x: client.x - bounds.left, y: client.y - bounds.top });
     void importVideoPaths(videoPaths, center);
     if (videoPaths.length !== paths.length) {
-      reportImportError("Non-video files in this drop were skipped.");
+      reportImportError(t("Non-video files in this drop were skipped."));
     }
     return true;
   });

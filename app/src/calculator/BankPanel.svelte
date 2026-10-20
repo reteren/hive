@@ -20,6 +20,7 @@
     removeBank,
     startBankLabelSync,
   } from "./bankActions.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note, data }: { note: Note; data: CalculatorData } = $props();
   let root: HTMLElement;
@@ -68,7 +69,7 @@
     event.preventDefault();
     const initial = parseBankAmount(createInitial);
     if (!createName.trim() || !createInitial.trim() || initial === null || !createBank(note.name, createName, initial)) {
-      error = "Enter a bank name and a valid initial amount";
+      error = t("Enter a bank name and a valid initial amount");
       return;
     }
     error = "";
@@ -79,7 +80,7 @@
     event.preventDefault();
     const amount = parseBankAmount(newAmount);
     if (!newLabel.trim() || amount === null || !addManualBankRow(note.name, newLabel, amount)) {
-      error = "Enter a row label and a valid amount";
+      error = t("Enter a row label and a valid amount");
       return;
     }
     newLabel = "";
@@ -91,7 +92,7 @@
     initialDraft = (event.currentTarget as HTMLInputElement).value;
     const value = parseBankAmount(initialDraft);
     if (value !== null) { previewBankInitial(note.name, value); error = ""; }
-    else error = "Enter a valid amount";
+    else error = t("Enter a valid amount");
   }
 
   function finishInitial(event: FocusEvent): void {
@@ -114,7 +115,7 @@
     amountDrafts[rowId] = (event.currentTarget as HTMLInputElement).value;
     const value = parseBankAmount(amountDrafts[rowId]);
     if (value !== null) { previewBankRowAmount(note.name, rowId, value); error = ""; }
-    else error = "Enter a valid amount";
+    else error = t("Enter a valid amount");
   }
 
   function finishRowAmount(event: FocusEvent, rowId: string): void {
@@ -150,13 +151,13 @@
   }
 </script>
 
-<section class="bank-panel" aria-label="Bank" bind:this={root}>
-  <div class="bank-heading"><strong>Bank</strong></div>
+<section class="bank-panel" aria-label={t("Bank")} bind:this={root}>
+  <div class="bank-heading"><strong>{t("Bank")}</strong></div>
   {#if data.bank && totals}
     <div class="bank-title-row">
       <input
         class="bank-name"
-        aria-label="Bank name"
+        aria-label={t("Bank name")}
         value={data.bank.name}
         onfocus={() => { nameBefore = data.bank?.name ?? ""; }}
         oninput={(event) => previewBankName(note.name, event.currentTarget.value)}
@@ -166,22 +167,22 @@
           event.currentTarget.value = nameBefore;
         })}
       />
-      <button type="button" class="quiet" aria-label="Remove bank" onclick={() => {
+      <button type="button" class="quiet" aria-label={t("Remove bank")} onclick={() => {
         if (data.rows.length) confirmingRemoval = true;
         else removeBank(note.name);
-      }}>Remove</button>
+      }}>{t("Remove")}</button>
     </div>
     {#if confirmingRemoval}
       <div class="bank-confirm" role="alert">
-        <span>Remove bank and {data.rows.length} {data.rows.length === 1 ? "row" : "rows"}?</span>
-        <button type="button" onclick={() => { confirmingRemoval = false; }}>Cancel</button>
-        <button type="button" class="danger" onclick={() => { removeBank(note.name); confirmingRemoval = false; }}>Remove</button>
+        <span>{t("Remove bank and {count} {value}?", { count: data.rows.length, value: data.rows.length === 1 ? "row" : "rows" })}</span>
+        <button type="button" onclick={() => { confirmingRemoval = false; }}>{t("Cancel")}</button>
+        <button type="button" class="danger" onclick={() => { removeBank(note.name); confirmingRemoval = false; }}>{t("Remove")}</button>
       </div>
     {/if}
     <div class="bank-total">
-      <span>Initial</span>
+      <span>{t("Initial")}</span>
       <input
-        aria-label="Initial amount"
+        aria-label={t("Initial amount")}
         type="text"
         inputmode="decimal"
         value={initialDraft ?? String(data.bank.initial)}
@@ -195,18 +196,18 @@
         })}
       />
     </div>
-    <div class="bank-rows" aria-label="Bank rows">
+    <div class="bank-rows" aria-label={t("Bank rows")}>
       {#each data.rows as row (row.id)}
         <div class="bank-row">
           {#if row.sourceNoteId}
-            <div class="bank-linked-label" title={board.notes[row.sourceNoteId] ? `Linked to ${row.label}` : "Source deleted"}>
+            <div class="bank-linked-label" title={board.notes[row.sourceNoteId] ? t("Linked to {label}", { label: row.label }) : t("Source deleted")}>
               <span>{row.label}</span>
-              {#if !board.notes[row.sourceNoteId]}<small>source deleted</small>{/if}
+              {#if !board.notes[row.sourceNoteId]}<small>{t("source deleted")}</small>{/if}
             </div>
           {:else}
             <input
               class="bank-row-label"
-              aria-label="Row label"
+              aria-label={t("Row label")}
               value={row.label}
               onfocus={() => { rowBefore.set(row.id, { label: row.label, amount: row.amount }); }}
               oninput={(event) => previewBankRowLabel(note.name, row.id, event.currentTarget.value)}
@@ -221,7 +222,7 @@
           <input
             class="bank-row-amount"
             data-bank-row-amount={row.id}
-            aria-label={`Amount for ${row.label}`}
+            aria-label={t("Amount for {label}", { label: row.label })}
             type="text"
             inputmode="decimal"
             value={amountDrafts[row.id] ?? String(row.amount)}
@@ -235,31 +236,31 @@
               delete amountDrafts[row.id];
             })}
           />
-          <button type="button" class="quiet bank-row-delete" aria-label={`Delete row ${row.label}`} onclick={() => deleteBankRow(note.name, row.id)}>×</button>
+          <button type="button" class="quiet bank-row-delete" aria-label={t("Delete row {label}", { label: row.label })} onclick={() => deleteBankRow(note.name, row.id)}>×</button>
         </div>
       {/each}
     </div>
     <form class="bank-add-row" onsubmit={submitRow}>
-      <input aria-label="New row label" placeholder="New row" bind:value={newLabel} />
-      <input aria-label="New row amount" class="new-amount" type="text" inputmode="decimal" bind:value={newAmount} />
-      <button type="submit">Add</button>
+      <input aria-label={t("New row label")} placeholder={t("New row")} bind:value={newLabel} />
+      <input aria-label={t("New row amount")} class="new-amount" type="text" inputmode="decimal" bind:value={newAmount} />
+      <button type="submit">{t("Add")}</button>
     </form>
     <div class="bank-total bank-remaining" class:negative={totals.remaining < 0}>
-      <span>Remaining</span>
+      <span>{t("Remaining")}</span>
       <output>{formatBankNumber(totals.remaining)}</output>
     </div>
   {:else if creating}
     <form class="bank-create" onsubmit={submitCreate}>
-      <input aria-label="Bank name" placeholder="Bank name" bind:value={createName} bind:this={createNameInput} />
-      <input aria-label="Initial amount" type="text" inputmode="decimal" bind:value={createInitial} />
+      <input aria-label={t("Bank name")} placeholder={t("Bank name")} bind:value={createName} bind:this={createNameInput} />
+      <input aria-label={t("Initial amount")} type="text" inputmode="decimal" bind:value={createInitial} />
       <div class="bank-actions">
-        <button type="button" class="quiet" onclick={() => { creating = false; error = ""; }}>Cancel</button>
-        <button type="submit">Create bank</button>
+        <button type="button" class="quiet" onclick={() => { creating = false; error = ""; }}>{t("Cancel")}</button>
+        <button type="submit">{t("Create bank")}</button>
       </div>
     </form>
   {:else}
-    <button type="button" class="bank-create-button" onclick={openCreate}>Create bank</button>
-    {#if data.rows.length}<small class="bank-pending">{data.rows.length} linked {data.rows.length === 1 ? "row" : "rows"} ready</small>{/if}
+    <button type="button" class="bank-create-button" onclick={openCreate}>{t("Create bank")}</button>
+    {#if data.rows.length}<small class="bank-pending">{t("{count} linked {value} ready", { count: data.rows.length, value: data.rows.length === 1 ? "row" : "rows" })}</small>{/if}
   {/if}
   {#if error}<p class="bank-error" role="status">{error}</p>{/if}
 </section>

@@ -4,6 +4,7 @@ import { registerNoteMenuItem } from "../notes/noteMenu";
 import { beaconState } from "./beaconState.svelte";
 import { clearFocus, isBeacon, selectBeaconGroups, setFocused, toggleSelectedFocus, validFocused } from "./focus.svelte";
 import { isMarked, markSelectedOnly, toggleBeaconMark, toggleSelectedMarks } from "./marks.svelte";
+import { t } from "../i18n/i18n.svelte";
 
 function keyLabel(commandId: string): string {
   const keys = getCommand(commandId)?.keys ?? [];
@@ -11,11 +12,11 @@ function keyLabel(commandId: string): string {
 }
 
 export function beaconMarkActionLabel(beaconId: string): string {
-  return `${isMarked(beaconId) ? "Unmark" : "Mark"}${keyLabel("beacons.toggleMarkSelected")}`;
+  return `${isMarked(beaconId) ? t("Unmark") : t("Mark")}${keyLabel("beacons.toggleMarkSelected")}`;
 }
 
 export function beaconFocusActionLabel(beaconId: string): string {
-  return `${validFocused().includes(beaconId) ? "Exit focus" : "Focus"}${keyLabel("beacons.toggleFocus")}`;
+  return `${validFocused().includes(beaconId) ? t("Exit focus") : t("Focus")}${keyLabel("beacons.toggleFocus")}`;
 }
 
 export function focusBeaconFromMenu(beaconId: string): void {

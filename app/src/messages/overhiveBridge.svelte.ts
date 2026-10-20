@@ -9,6 +9,7 @@ import { messageQueue, dismissMessage } from "./messageQueue.svelte";
 import { goToMessage } from "./navigation";
 import { overhiveMessageCards } from "./presentation";
 import type { OverhiveNavigationTarget, OverhiveSnapshot } from "./overhiveProtocol";
+import { t } from "../i18n/i18n.svelte";
 
 /** The main queue owns cards; the desktop window receives snapshots and sends explicit actions. */
 export function initializeOverhiveBridge(): () => void {
@@ -24,10 +25,10 @@ export function initializeOverhiveBridge(): () => void {
     .catch((error: unknown) => console.warn("Could not observe Overhive actions.", error));
   void listen<OverhiveNavigationTarget>("hive://overhive-navigate", ({ payload }) => {
     if (payload.kind === "note") {
-      if (!board.notes[payload.noteId] || !teleportToObject(payload.noteId, { label: "Text link" })) {
-        showLinkStatus("This note is missing.");
+      if (!board.notes[payload.noteId] || !teleportToObject(payload.noteId, { label: t("Text link") })) {
+        showLinkStatus(t("This note is missing."));
       }
-    } else teleportToPoint({ x: payload.x, y: payload.y }, { label: "Text link" });
+    } else teleportToPoint({ x: payload.x, y: payload.y }, { label: t("Text link") });
   }).then((dispose) => { if (disposed) dispose(); else unlistenNavigate = dispose; })
     .catch((error: unknown) => console.warn("Could not observe Overhive link navigation.", error));
   const disposeEffect = $effect.root(() => {

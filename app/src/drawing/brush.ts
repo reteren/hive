@@ -7,6 +7,7 @@ import {
 import { brushTipShaderIndex } from "./brushes/tips";
 import { requireDrawingGpu, STROKE_SEGMENTS_PER_PASS, type DrawingGpu, type StrokeStateSnapshot, type StrokeStateTile } from "./gpu/glEngine";
 import type { GpuRasterSource, RasterPiece } from "./history";
+import { t } from "../i18n/i18n.svelte";
 export { readRasterRect, writeRasterRect } from "./history";
 
 /** One spray dab: a dot at x/y, or a short capsule to x + dx, y + dy. */
@@ -204,7 +205,7 @@ export function accumulateStrokeSegment(
 ): { x: number; y: number; width: number; height: number } | null {
   const { value, base, pass, position, blend } = coverage;
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || value.length !== width * height) {
-    throw new RangeError("Stroke mask dimensions do not match its buffer.");
+    throw new RangeError(t("Stroke mask dimensions do not match its buffer."));
   }
   if (![ax, ay, bx, by, startLength, endLength, radius, hardness, passWindow].every(Number.isFinite) || radius <= 0) return null;
 
@@ -284,7 +285,7 @@ export function accumulateSegmentMaxAlpha(
   hardness: number,
 ): { x: number; y: number; width: number; height: number } | null {
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || mask.length !== width * height) {
-    throw new RangeError("Stroke mask dimensions do not match its buffer.");
+    throw new RangeError(t("Stroke mask dimensions do not match its buffer."));
   }
   if (![ax, ay, bx, by, radius, hardness].every(Number.isFinite) || radius <= 0) return null;
 
@@ -345,7 +346,7 @@ export function accumulateDabMaxAlpha(
   hardness: number,
 ): { x: number; y: number; width: number; height: number } | null {
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || mask.length !== width * height) {
-    throw new RangeError("Stroke mask dimensions do not match its buffer.");
+    throw new RangeError(t("Stroke mask dimensions do not match its buffer."));
   }
   if (![centerX, centerY, radius, hardness].every(Number.isFinite) || radius <= 0) return null;
 
@@ -922,7 +923,7 @@ export function createStroke(
           canvas.width = bounds.width;
           canvas.height = bounds.height;
           const context = canvas.getContext("2d");
-          if (!context) throw new Error("Could not read the brush stroke.");
+          if (!context) throw new Error(t("Could not read the brush stroke."));
           const image = context.createImageData(bounds.width, bounds.height);
           const red = Math.round(color[0] * 255);
           const green = Math.round(color[1] * 255);

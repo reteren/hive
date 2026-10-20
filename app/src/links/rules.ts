@@ -2,6 +2,7 @@ import { board } from "../model/board.svelte";
 import { ME_OBJECT_ID, pairKey, type Link } from "../model/link";
 import { hasMeBeacon } from "../beacons/beaconState.svelte";
 import type { ModuleEdge, ModuleNoteLookup, ModuleNoteValue } from "../modules/moduleLogic";
+import { t } from "../i18n/i18n.svelte";
 
 export type LinkKind = Link["kind"];
 export type ExistingLink = Pick<Link, "from" | "to"> & Partial<Pick<Link, "kind">>;
@@ -37,8 +38,8 @@ export function linkRefusalReason(
   existing: readonly ExistingLink[],
   notes: ModuleNoteLookup = board.notes,
 ): string | null {
-  if ((from === ME_OBJECT_ID || to === ME_OBJECT_ID) && !hasMeBeacon()) return "ME beacon has been deleted.";
-  if (from === to) return "An object cannot link to itself.";
+  if ((from === ME_OBJECT_ID || to === ME_OBJECT_ID) && !hasMeBeacon()) return t("ME beacon has been deleted.");
+  if (from === to) return t("An object cannot link to itself.");
   const source = notes[from];
   const target = notes[to];
   const sourceIsBeacon = from === ME_OBJECT_ID || source?.type === "beacon";
@@ -46,37 +47,37 @@ export function linkRefusalReason(
   const sourceIsModule = isModule(source);
   const targetIsModule = isModule(target);
   const actualKind = effectiveLinkKind(from, to, kind, notes);
-  if (sourceIsBeacon && targetIsBeacon) return "Beacons cannot link to other beacons.";
+  if (sourceIsBeacon && targetIsBeacon) return t("Beacons cannot link to other beacons.");
   const isProgressBeaconScopeLink =
     to !== ME_OBJECT_ID && target?.type === "beacon" && actualKind === "strong" &&
     (source?.type === "progress" || source?.type === "stats");
-  if (targetIsBeacon && !isProgressBeaconScopeLink) return "Beacons can have outgoing links only.";
+  if (targetIsBeacon && !isProgressBeaconScopeLink) return t("Beacons can have outgoing links only.");
   if (existing.some((link) => pairKey(link.from, link.to) === pairKey(from, to))) {
-    return "These objects already have a link.";
+    return t("These objects already have a link.");
   }
 
   if (isProgressBeaconScopeLink) return null;
   if (target?.type === "tierlist" && actualKind === "strong") {
-    if (source?.type === "progress") return "Progress nodes cannot link strongly to Tierlists.";
+    if (source?.type === "progress") return t("Progress nodes cannot link strongly to Tierlists.");
     if (source?.type === "stats") return null;
   }
 
   if (target?.type === "calculator") {
-    if (sourceIsBeacon && actualKind === "strong") return "Beacons cannot fund calculators.";
+    if (sourceIsBeacon && actualKind === "strong") return t("Beacons cannot fund calculators.");
     return null;
   }
 
   if (sourceIsBeacon || (!sourceIsModule && !targetIsModule)) return null;
-  if (sourceIsModule && targetIsModule) return "Module nodes link only to notes, pluses, or minuses.";
+  if (sourceIsModule && targetIsModule) return t("Module nodes link only to notes, pluses, or minuses.");
 
   const module = sourceIsModule ? source : target;
   const content = sourceIsModule ? target : source;
   const allowedMessageModule = content?.type === "message" && (module?.type === "importance" || module?.type === "markas");
-  if (!allowedMessageModule && !isContentNote(content)) return "Module nodes link only to notes, pluses, or minuses (Importance and Mark as also link to Message).";
-  if (module?.type === "markas") return sourceIsModule ? null : "Mark as links must point outward to a note or Message.";
+  if (!allowedMessageModule && !isContentNote(content)) return t("Module nodes link only to notes, pluses, or minuses (Importance and Mark as also link to Message).");
+  if (module?.type === "markas") return sourceIsModule ? null : t("Mark as links must point outward to a note or Message.");
   if (module?.type !== "importance" || actualKind !== "strong") return null;
 
-  if (content.importance) return "This note already has an Importance source.";
+  if (content.importance) return t("This note already has an Importance source.");
   const occupiedByExternalImportance = existing.some((link) => {
     if ((link.kind ?? "strong") !== "strong") return false;
     const otherId = link.from === content.id ? link.to : link.to === content.id ? link.from : null;
@@ -84,7 +85,7 @@ export function linkRefusalReason(
     const linkedModule = notes[otherId];
     return linkedModule?.type === "importance" && Boolean(linkedModule.importance);
   });
-  return occupiedByExternalImportance ? "This note already has an Importance source." : null;
+  return occupiedByExternalImportance ? t("This note already has an Importance source.") : null;
 }
 
 function isModule(note: ModuleNoteLookup[string]): boolean {

@@ -56,6 +56,7 @@ import {
   type ClipboardLink,
   type ClipboardZone,
 } from "./payload";
+import { t, tp } from "../i18n/i18n.svelte";
 
 interface IndexedNote {
   note: Note;
@@ -74,7 +75,7 @@ export async function copySelection(): Promise<void> {
   const copiedNotes = includeActiveTaskTimes(notes);
   const selectedZonesNow = selectedZones();
   if (notes.length === 0 && selectedZonesNow.length === 0) {
-    showClipboardFeedback("Nothing selected to copy");
+    showClipboardFeedback(t("Nothing selected to copy"));
     return;
   }
   if (clipboardBusy) return;
@@ -83,9 +84,9 @@ export async function copySelection(): Promise<void> {
   try {
     const result = await writeSelectionToClipboard(copiedNotes, selectedZonesNow);
     showClipboardFeedback(result === "hive" && hasActiveTaskTime(copiedNotes, linksBetween(copiedNotes))
-      ? "Reminder copied with the task"
-      : result === "hive" ? `Copied ${selectionNoun(copiedNotes.length, selectedZonesNow.length)}`
-        : "Copied as text; Hive clipboard format is unavailable");
+      ? t("Reminder copied with the task")
+      : result === "hive" ? t("Copied {selection}", { selection: selectionNoun(copiedNotes.length, selectedZonesNow.length) })
+        : t("Copied as text; Hive clipboard format is unavailable"));
   } catch (error) {
     showClipboardFeedback(clipboardErrorMessage(error));
   } finally {
@@ -97,7 +98,7 @@ export async function cutSelection(): Promise<void> {
   const notes = selectedNotes();
   const selectedZonesNow = selectedZones();
   if (notes.length === 0 && selectedZonesNow.length === 0) {
-    showClipboardFeedback("Nothing selected to cut");
+    showClipboardFeedback(t("Nothing selected to cut"));
     return;
   }
   if (clipboardBusy) return;
@@ -117,7 +118,7 @@ export async function cutSelection(): Promise<void> {
     if (!sameNotes(notes, currentNotes) || !sameZones(selectedZonesNow, currentZones) ||
       !sameStrings(selectionAtStart, currentNotes.map((note) => note.id)) ||
       !sameStrings(selectedZoneIdsAtStart, currentZones.map((zone) => zone.id))) {
-      showClipboardFeedback("Cut cancelled because the selection changed");
+      showClipboardFeedback(t("Cut cancelled because the selection changed"));
       return;
     }
     deleteSelectionItems(notes, selectedZoneIdsAtStart, "Cut");
@@ -133,7 +134,7 @@ export function deleteSelection(): void {
   const selectedZoneIdsNow = selectedZones().map((zone) => zone.id);
   if (notes.length === 0 && selectedZoneIdsNow.length === 0) {
     if (unlinkSelected()) return;
-    showClipboardFeedback("Nothing selected to delete");
+    showClipboardFeedback(t("Nothing selected to delete"));
     return;
   }
   deleteSelectionItems(notes, selectedZoneIdsNow, "Delete");
@@ -144,7 +145,7 @@ export function duplicateSelection(): void {
   const originals = includeActiveTaskTimes(selectedNotes());
   const originalZones = selectedZones();
   if (originals.length === 0 && originalZones.length === 0) {
-    showClipboardFeedback("Nothing selected to duplicate");
+    showClipboardFeedback(t("Nothing selected to duplicate"));
     return;
   }
 
@@ -165,7 +166,7 @@ export function duplicateSelection(): void {
 
 function finishDuplicateCopies(copies: Awaited<ReturnType<typeof createCopiesAsync>>): void {
   if (!copies) {
-    showClipboardFeedback("Can't place copied zones without overlap");
+    showClipboardFeedback(t("Can't place copied zones without overlap"));
     return;
   }
   addCopies(
@@ -195,7 +196,7 @@ export async function pasteFromClipboard(): Promise<void> {
     if (source.kind === "hive") {
       const copies = await createCopiesAsync(source.payload.nodes, source.payload.zones, destination, source.payload.links);
       if (!copies) {
-        showClipboardFeedback("Can't place copied zones without overlap");
+        showClipboardFeedback(t("Can't place copied zones without overlap"));
         return;
       }
       addCopies(
@@ -210,7 +211,7 @@ export async function pasteFromClipboard(): Promise<void> {
     }
 
     if (!source.text.trim()) {
-      showClipboardFeedback("Clipboard is empty");
+      showClipboardFeedback(t("Clipboard is empty"));
       return;
     }
 
@@ -477,7 +478,7 @@ function addCopies(
     },
   };
   execute(command);
-  if (hasActiveTaskTime(placedNotes, copiedLinks)) showClipboardFeedback("Reminder copied with the task");
+  if (hasActiveTaskTime(placedNotes, copiedLinks)) showClipboardFeedback(t("Reminder copied with the task"));
 }
 
 function includeActiveTaskTimes(notes: readonly Note[]): Note[] {
@@ -526,7 +527,7 @@ function placeNewNotesWithoutOverlap(notes: readonly Note[], placementHeights?: 
 function deleteSelectionItems(notes: readonly Note[], zoneIds: readonly string[], label: "Cut" | "Delete"): void {
   if (label === "Delete") {
     moveToTrash(notes.map((note) => note.id), zoneIds, {
-      label: "Delete",
+      label: t("Delete"),
       target: selectionNoun(notes.length, zoneIds.length),
     });
     return;
@@ -579,7 +580,7 @@ async function writeSelectionToClipboard(notes: readonly Note[], copiedZones: re
   const noteText = notesAsPlainText(notes);
   const zoneText = copiedZones.map((zone) => `Zone: ${zone.name}`).join("\n\n");
   const plainText = [noteText, zoneText].filter(Boolean).join("\n\n");
-  if (!clipboard) throw new Error("Clipboard access is unavailable in this window.");
+  if (!clipboard) throw new Error(t("Clipboard access is unavailable in this window."));
 
   const serialized = serializeNotes(notes, linksBetween(notes), copiedZones);
   if (!clipboard.write || typeof ClipboardItem === "undefined") {
@@ -624,7 +625,7 @@ type ClipboardSource =
 
 async function readClipboard(): Promise<ClipboardSource> {
   const clipboard = navigator.clipboard;
-  if (!clipboard) throw new Error("Clipboard access is unavailable in this window.");
+  if (!clipboard) throw new Error(t("Clipboard access is unavailable in this window."));
 
   let plainText: string | null = null;
   let readError: unknown;
@@ -735,14 +736,12 @@ function isNoteEditingFocus(): boolean {
     activeElement.closest("[data-note-id]") !== null;
 }
 
-function noteNoun(count: number): string {
-  return count === 1 ? "note" : "notes";
-}
-
 function selectionNoun(noteCount: number, zoneCount: number): string {
-  if (noteCount === 0) return `${zoneCount} ${zoneCount === 1 ? "zone" : "zones"}`;
-  if (zoneCount === 0) return `${noteCount} ${noteNoun(noteCount)}`;
-  return `${noteCount} ${noteNoun(noteCount)} and ${zoneCount} ${zoneCount === 1 ? "zone" : "zones"}`;
+  const zones = tp(zoneCount, "{count} zone", "{count} zones");
+  const notes = tp(noteCount, "{count} note", "{count} notes");
+  if (noteCount === 0) return zones;
+  if (zoneCount === 0) return notes;
+  return t("{notes} and {zones}", { notes, zones });
 }
 
 function showClipboardFeedback(message: string): void {
@@ -757,8 +756,8 @@ function showClipboardFeedback(message: string): void {
 }
 
 function clipboardErrorMessage(error: unknown): string {
-  if (error instanceof DOMException && error.name === "NotAllowedError") return "Clipboard permission denied";
-  return "Clipboard unavailable";
+  if (error instanceof DOMException && error.name === "NotAllowedError") return t("Clipboard permission denied");
+  return t("Clipboard unavailable");
 }
 
 function runAsync(operation: () => Promise<void>): () => void {

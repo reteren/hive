@@ -4,6 +4,7 @@
   import { dismissBoardPopup } from "../ui/boardAnchor";
   import ModuleChip from "./ModuleChip.svelte";
   import type { ModuleOption } from "./moduleLogic";
+  import { t } from "../i18n/i18n.svelte";
 
   let {
     title,
@@ -130,12 +131,12 @@
   style:transform-origin="0 0"
   style:position={floating ? undefined : "absolute"}
   style:left={floating ? undefined : "0px"}
-  style:top={floating ? undefined : "calc(100% + 4px)"}
+  style:top={floating ? undefined : t("calc(100% + 4px)")}
   use:dismissBoardPopup={{ close: onClose, ignoreSelector: "[data-module-trigger]", escape: false }}
 >
   <div class="module-picker-heading">
     <span>{title}</span>
-    <button type="button" class="module-picker-close" aria-label="Close picker" onclick={onClose}>×</button>
+    <button type="button" class="module-picker-close" aria-label={t("Close picker")} onclick={onClose}>×</button>
   </div>
   <div class="module-picker-options">
     {#each options as option (option.id)}
@@ -155,10 +156,10 @@
   {/if}
   <div class="module-picker-actions">
     {#if onRemove}
-      <button type="button" class="module-picker-remove" onclick={onRemove}>Remove</button>
+      <button type="button" class="module-picker-remove" onclick={onRemove}>{t("Remove")}</button>
     {/if}
     {#if mode === "multiple"}
-      <button type="button" class="module-picker-done" onclick={onClose}>Done</button>
+      <button type="button" class="module-picker-done" onclick={onClose}>{t("Done")}</button>
     {/if}
     {#if confirmLabel && onConfirm}
       <button

@@ -1,11 +1,12 @@
 <script lang="ts">
   import { dismissExportNotice, exportState } from "./exportState.svelte";
+  import { t } from "../i18n/i18n.svelte";
 </script>
 
 {#if exportState.message || exportState.error}
   <div class="export-notice" data-export-status role={exportState.error ? "alert" : "status"} aria-live="polite">
     <span class:error={Boolean(exportState.error)}>{exportState.error || exportState.message}</span>
-    <button type="button" aria-label="Dismiss project transfer message" title="Dismiss" onclick={dismissExportNotice}>×</button>
+    <button type="button" aria-label={t("Dismiss project transfer message")} title={t("Dismiss")} onclick={dismissExportNotice}>×</button>
   </div>
 {/if}
 

@@ -8,6 +8,7 @@ import {
 import { uniqueName } from "../notes/naming";
 import type { Point } from "../board/cameraMath";
 import { INBOX_PLACEMENT_GROWTH_ROWS, INBOX_ROW_HEIGHT } from "./inboxLayout";
+import { dateLocale, t } from "../i18n/i18n.svelte";
 
 export interface InboxEntryPlacementOptions {
   groupId?: string;
@@ -24,7 +25,7 @@ export interface InboxEntryPlacementOptions {
 export function inboxEntryBaseName(text: string): string {
   const firstLine = text.split(/\r\n|\n|\r/, 1)[0] ?? "";
   const shortened = Array.from(firstLine.trim()).slice(0, 40).join("");
-  return shortened || "Inbox entry";
+  return shortened || t("Inbox entry");
 }
 
 /** Show a local HH:MM time and add a calendar date for entries from another day. */
@@ -38,7 +39,7 @@ export function formatInboxEntryTime(createdAt: number | undefined, now = new Da
     created.getMonth() === now.getMonth() &&
     created.getDate() === now.getDate();
   if (isToday) return time;
-  const date = created.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  const date = created.toLocaleDateString(dateLocale(), { day: "2-digit", month: "short", year: "numeric" });
   return `${time} · ${date}`;
 }
 

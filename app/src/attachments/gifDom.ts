@@ -6,6 +6,7 @@ import {
   shouldPlayGif,
   type GifPlaybackTarget,
 } from "./gifPlayback.svelte";
+import { t } from "../i18n/i18n.svelte";
 
 export interface InlineGifDomOptions {
   file: string;
@@ -160,7 +161,7 @@ export function mountInlineGifDom(parent: HTMLElement, options: InlineGifDomOpti
     if (surface.querySelector(".cm-inline-image-missing")) return;
     const missing = doc.createElement("span");
     missing.className = "cm-inline-image-missing";
-    missing.textContent = `File missing: ${options.alt || options.file}`;
+    missing.textContent = t("File missing: {value}", { value: options.alt || options.file });
     surface.append(missing);
   }
 }

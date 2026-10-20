@@ -14,6 +14,7 @@
   import { encodeFormatText, shouldHighlightFormatText, type FormatTextEncoding } from "./textEncoding";
   import { loadFormatPreview, loadFormatText } from "./formatLoad";
   import type { EditorView } from "@codemirror/view";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let editorHost = $state<HTMLDivElement | null>(null);
@@ -56,7 +57,7 @@
         return;
       }
       const request = ++generation;
-      host.textContent = "Loading preview…";
+      host.textContent = t("Loading preview…");
       void loadFormatPreview(file, attachmentUrl(file)).then((preview) => {
         if (request !== generation) return;
         previewFile = file;
@@ -67,7 +68,7 @@
         if (request !== generation) return;
         const message = error instanceof Error ? error.message : String(error);
         errorMessage = message;
-        host.textContent = "Preview unavailable. Select this node to open the file.";
+        host.textContent = t("Preview unavailable. Select this node to open the file.");
       });
       return () => { if (generation === request) generation += 1; };
     }
@@ -118,7 +119,7 @@
     } catch (error) {
       if (request === generation) {
         const message = error instanceof Error ? error.message : String(error);
-        errorMessage = message.startsWith("Could not load file:") ? message : `Could not load file: ${message || "Unknown error"}`;
+        errorMessage = message.startsWith(t("Could not load file:")) ? message : t("Could not load file: {value}", { value: message || "Unknown error" });
       }
     }
   }
@@ -169,20 +170,20 @@
   class="format-node-body"
   class:manual-height={note.height !== null}
   class:compact-height={note.height !== null && note.height < 14}
-  aria-label={`Text file ${displayName}`}
+  aria-label={t("Text file {displayName}", { displayName: displayName })}
 >
   <div class="format-file-row">
-    <span>Copy in project · {displayName}</span>
-    {#if dirty}<span class="format-unsaved-dot" title="Unsaved changes" aria-label="Unsaved changes">●</span>{/if}
+    <span>{t("Copy in project · {displayName}", { displayName: displayName })}</span>
+    {#if dirty}<span class="format-unsaved-dot" title={t("Unsaved changes")} aria-label={t("Unsaved changes")}>●</span>{/if}
   </div>
   {#if errorMessage}
     <div class="format-error" role="alert">{errorMessage}</div>
   {/if}
   <div class="format-editor" class:has-error={Boolean(errorMessage)} class:format-read-only-preview={!editorActive} bind:this={editorHost} onwheel={handleWheel}></div>
   <footer class="format-actions" data-selection-ignore>
-    <button type="button" disabled={!dirty || saving} onclick={() => { void saveCurrentDraft(); }}>Save</button>
-    <button type="button" disabled={!media} onclick={() => { void saveAs(); }}>Save as…</button>
-    {#if saving}<span role="status">Saving…</span>{/if}
+    <button type="button" disabled={!dirty || saving} onclick={() => { void saveCurrentDraft(); }}>{t("Save")}</button>
+    <button type="button" disabled={!media} onclick={() => { void saveAs(); }}>{t("Save as…")}</button>
+    {#if saving}<span role="status">{t("Saving…")}</span>{/if}
   </footer>
 </section>
 

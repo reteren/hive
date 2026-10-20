@@ -1,6 +1,7 @@
 import type { Note } from "../model/note";
 import type { Link } from "../model/link";
 import type { TaskLogEntry } from "../tasks/taskLog.svelte";
+import { dateLocale, t, tp } from "../i18n/i18n.svelte";
 
 const WORDS_PER_MINUTE = 200;
 
@@ -157,31 +158,31 @@ export function formatClock(seconds: number): string {
 /** "45 s", "12 min", "3 h 5 min", "4 days", "2 months". */
 export function formatSpan(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000));
-  if (seconds < 60) return `${seconds} s`;
+  if (seconds < 60) return t("{seconds} s", { seconds });
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} min`;
+  if (minutes < 60) return t("{minutes} min", { minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return minutes % 60 ? `${hours} h ${minutes % 60} min` : `${hours} h`;
+  if (hours < 24) return minutes % 60 ? t("{hours} h {minutes} min", { hours, minutes: minutes % 60 }) : t("{hours} h", { hours });
   const days = Math.floor(hours / 24);
-  if (days < 61) return days === 1 ? "1 day" : `${days} days`;
+  if (days < 61) return tp(days, "{count} day", "{count} days");
   const months = Math.floor(days / 30.4);
-  if (months < 24) return `${months} months`;
-  return `${Math.floor(days / 365)} years`;
+  if (months < 24) return tp(months, "{count} month", "{count} months");
+  return tp(Math.floor(days / 365), "{count} year", "{count} years");
 }
 
 /** "just now", "5 minutes ago", "2 hours ago", "3 days ago", or the date for anything older than a month. */
 export function formatAgo(at: number, now = Date.now()): string {
   const seconds = Math.floor((now - at) / 1000);
-  if (seconds < 45) return "just now";
+  if (seconds < 45) return t("just now");
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return minutes === 1 ? "a minute ago" : `${minutes} minutes ago`;
+  if (minutes < 60) return minutes === 1 ? t("a minute ago") : tp(minutes, "{count} minute ago", "{count} minutes ago");
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return hours === 1 ? "an hour ago" : `${hours} hours ago`;
+  if (hours < 24) return hours === 1 ? t("an hour ago") : tp(hours, "{count} hour ago", "{count} hours ago");
   const days = Math.round(hours / 24);
-  if (days < 31) return days === 1 ? "yesterday" : `${days} days ago`;
+  if (days < 31) return days === 1 ? t("yesterday") : tp(days, "{count} day ago", "{count} days ago");
   return formatDate(at);
 }
 
 export function formatDate(at: number): string {
-  return new Date(at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return new Date(at).toLocaleString(dateLocale(), { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }

@@ -96,6 +96,7 @@ import {
   type ProjectDelta,
 } from "./delta";
 import { calculatorNoteFileName, noteFileKey, noteFileMatchesName, noteMarkdownFileNameWithId } from "./fileNames";
+import { msg, t } from "../i18n/i18n.svelte";
 
 const SAVE_DEBOUNCE_MS = 500;
 
@@ -217,7 +218,7 @@ export function initializeProjectPersistence(): Promise<void> {
 async function initialize(): Promise<void> {
   if (!isTauri()) {
     project.ready = true;
-    project.error = "Project storage is available in the desktop app.";
+    project.error = t("Project storage is available in the desktop app.");
     startBoardObserver();
     return;
   }
@@ -235,7 +236,7 @@ async function initialize(): Promise<void> {
         },
       );
     } catch (error) {
-      project.warnings = ["External note monitoring could not start: " + errorMessage(error)];
+      project.warnings = [t("External note monitoring could not start: {errorMessage}", { errorMessage: errorMessage(error) })];
     }
   }
   if (!boardChangeUnlisten) {
@@ -256,7 +257,7 @@ async function initialize(): Promise<void> {
         stopFailed();
       };
     } catch (error) {
-      project.warnings = [...project.warnings, "Changes from Git pulls will appear after reopening the project: " + errorMessage(error)];
+      project.warnings = [...project.warnings, t("Changes from Git pulls will appear after reopening the project: {errorMessage}", { errorMessage: errorMessage(error) })];
     }
   }
 
@@ -265,7 +266,7 @@ async function initialize(): Promise<void> {
     applyProject(loaded);
   } catch (error) {
     project.error = errorMessage(error);
-    project.name = "Project unavailable";
+    project.name = msg("Project unavailable");
     project.ready = true;
   }
   startBoardObserver();
@@ -550,7 +551,7 @@ function hasDeltaChanges(snapshot: DeltaSnapshot): boolean {
 
 function makeDeltaSnapshot(): DeltaSnapshot {
   const baseline = indexTemplate;
-  if (!baseline) throw new Error("A project must be open before creating a delta save.");
+  if (!baseline) throw new Error(t("A project must be open before creating a delta save."));
   const reservedDeltaFiles = new Set<string>();
   const allNoteIds = dirtyTracker.allNotesPending()
     ? [...new Set([...board.order, ...savedIndexedNotesById.keys(), ...lastSavedById.keys()])]
@@ -740,7 +741,7 @@ function applyOrderedDelta<T>(
 
 function applyDeltaBaseline(snapshot: DeltaSnapshot): void {
   const baseline = indexTemplate;
-  if (!baseline) throw new Error("The project baseline disappeared during delta save.");
+  if (!baseline) throw new Error(t("The project baseline disappeared during delta save."));
   const { delta } = snapshot.request;
   applyOrderedDelta(baseline.notes, savedPositions.notes, delta.notes, (note) => note.id);
   applyOrderedDelta(baseline.links ??= [], savedPositions.links, delta.links, (link) => link.id);
@@ -1049,7 +1050,7 @@ async function flushProject(): Promise<void> {
 /** Pick a folder, flush the current project, and switch only after the new one loads. */
 export async function chooseProject(mode: "new" | "open"): Promise<void> {
   if (!isTauri()) {
-    project.error = "Project storage is available in the desktop app.";
+    project.error = t("Project storage is available in the desktop app.");
     return;
   }
   if (project.path) {
@@ -1065,7 +1066,7 @@ export async function chooseProject(mode: "new" | "open"): Promise<void> {
     selected = await open({
       directory: true,
       multiple: false,
-      title: mode === "new" ? "Choose a folder for the new project" : "Open project folder",
+      title: mode === "new" ? t("Choose a folder for the new project") : t("Open project folder"),
       defaultPath: mode === "new" ? undefined : project.path || undefined,
     });
   } catch (error) {
@@ -1100,7 +1101,7 @@ export function useExternalVersion(noteId: string): void {
   // Silent reloads never touch history. This is an explicit user choice, so
   // it is undoable while preserving the history that already exists.
   execute({
-    label: "Use external version",
+    label: t("Use external version"),
     target: note.name,
     do: () => updateNote(noteId, { text: externalText }),
     undo: () => updateNote(noteId, { text: localText }),
@@ -1141,8 +1142,8 @@ async function handleProjectFileEvent(event: ProjectFileEvent): Promise<void> {
 
 async function handleExternalBody(event: ProjectFileEvent): Promise<void> {
   if (event.readError || typeof event.text !== "string") {
-    project.error = "Could not read external note " + event.file + ": "
-      + (event.readError ?? "file contents were unavailable.");
+    project.error = t("Could not read external note ") + event.file + ": "
+      + (event.readError ?? t("file contents were unavailable."));
     return;
   }
 
@@ -1224,13 +1225,13 @@ async function handleExternalBody(event: ProjectFileEvent): Promise<void> {
   conflict.copyError = errors.join(" · ");
   project.conflicts = project.conflicts.map((item) => item.noteId === note.id ? { ...conflict } : item);
   if (errors.length > 0) {
-    project.error = "Could not preserve both versions of " + note.name + ": " + errors.join("; ");
+    project.error = t("Could not preserve both versions of {name}: {errors}", { name: note.name, errors: errors.join("; ") });
     return;
   }
 
   const acknowledged = await acknowledgeExternalChange(event.file, event.text);
   if (!acknowledged) {
-    project.error = "The external file changed again while preserving " + note.name + ".";
+    project.error = t("The external file changed again while preserving {name}.", { name: note.name });
     return;
   }
   scheduleIfDirty();
@@ -1251,7 +1252,7 @@ async function handleExternalDelete(file: string): Promise<void> {
   }
 
   missingFileIds.add(note.id);
-  const warning = "Note file " + file + " was deleted outside Hive; it will be recreated on the next save.";
+  const warning = t("Note file ") + file + " was deleted outside Hive; it will be recreated on the next save.";
   externalDeleteWarnings.set(note.id, warning);
   if (!project.warnings.includes(warning)) project.warnings = [...project.warnings, warning];
   await acknowledgeExternalChange(file, undefined);
@@ -1366,7 +1367,7 @@ async function acknowledgeExternalChange(file: string, text: string | undefined)
     });
     return acknowledged;
   } catch (error) {
-    project.error = "Could not acknowledge external note " + file + ": " + errorMessage(error);
+    project.error = t("Could not acknowledge external note {file}: {errorMessage}", { file: file, errorMessage: errorMessage(error) });
     return false;
   }
 }
@@ -1422,7 +1423,7 @@ export async function flushPendingSave(): Promise<void> {
 
 /** Reload an already-written project folder; callers must flush before changing projects. */
 export async function openProjectAt(path: string): Promise<void> {
-  if (!isTauri()) throw new Error("Project storage is available in the desktop app.");
+  if (!isTauri()) throw new Error(t("Project storage is available in the desktop app."));
   try {
     const loaded = await invoke<ProjectLoad>("open_project", { path });
     applyProject(loaded);

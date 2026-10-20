@@ -1,3 +1,4 @@
+import { t } from "../i18n/i18n.svelte";
 /** A small, shared cache of resolution-matched image decodes used by attachment previews. */
 const MAX_CACHED_PIXELS = 32_000_000;
 const MAX_CACHED_ENTRIES = 512;
@@ -101,7 +102,7 @@ export function acquireDisplayBitmap(
   width: number,
   height: number,
 ): Promise<DisplayBitmapLease> {
-  if (!url || width <= 0 || height <= 0) return Promise.reject(new Error("Image has no display size."));
+  if (!url || width <= 0 || height <= 0) return Promise.reject(new Error(t("Image has no display size.")));
   const key = `${url}\u0000${width}x${height}`;
   let entry = entries.get(key);
   if (entry) {

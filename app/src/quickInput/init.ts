@@ -7,6 +7,7 @@ import { initializeViewSettingsPersistence } from "../settings/persistence.svelt
 import { initializeQuickInputShortcut } from "./shortcutRegistration";
 import { showQuickInputWindow as showQuickInputWindowHandle } from "./windowActivation";
 import { enableTrayCloseMode, flushBeforeAppQuit, markQuitRequested } from "../lifecycle/closeFlush";
+import { t } from "../i18n/i18n.svelte";
 
 let toastTimer: number | null = null;
 let toastElement: HTMLElement | null = null;
@@ -63,7 +64,7 @@ async function showQuickInputWindow(): Promise<void> {
 function showFirstTrayNotice(): void {
   clearTrayNotice();
   const notice = document.createElement("div");
-  notice.textContent = "hive is still running in the tray";
+  notice.textContent = t("hive is still running in the tray");
   notice.dataset.trayNotice = "true";
   Object.assign(notice.style, {
     position: "fixed",

@@ -3,6 +3,7 @@ import type { TierCard, TierRow } from "../model/nodeData";
 import type { Zone } from "../model/zone";
 import type { ImageRef } from "../attachments/types";
 import { youtubeThumbnailUrl } from "../youtube/logic";
+import { t } from "../i18n/i18n.svelte";
 
 export const DEFAULT_TIERS = [
   { name: "S", color: "#FF4B5C" },
@@ -324,8 +325,8 @@ export function tierRowsEqual(first: readonly TierRow[], second: readonly TierRo
 export function nextTierlistNoteName(existingNames: readonly string[]): string {
   const occupied = new Set(existingNames.map((name) => name.toLocaleLowerCase()));
   for (let index = 1; index < Number.MAX_SAFE_INTEGER; index += 1) {
-    const candidate = `Tierlist note #${index}`;
+    const candidate = t("Tierlist note #{index}", { index: index });
     if (!occupied.has(candidate.toLocaleLowerCase())) return candidate;
   }
-  throw new Error("Could not find a free Tierlist note number.");
+  throw new Error(t("Could not find a free Tierlist note number."));
 }

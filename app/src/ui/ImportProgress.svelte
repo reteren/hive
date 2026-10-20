@@ -9,6 +9,7 @@
     type ImportProgressEvent,
     type ImportProgressState,
   } from "../attachments/service";
+  import { t } from "../i18n/i18n.svelte";
 
   let progress = $state<ImportProgressState>({
     id: null, active: false, label: "", total: 0, completed: 0,
@@ -73,16 +74,16 @@
           <h2 id="import-title">{progress.label}</h2>
           <p id="import-description" aria-live="polite">
             {#if progress.cancelRequested}
-              Finishing the current batch before stopping…
+              {t("Finishing the current batch before stopping…")}
             {:else}
-              {progress.completed.toLocaleString()} of {progress.total.toLocaleString()} files
+              {t("{completed} of {total} files", { completed: progress.completed.toLocaleString(), total: progress.total.toLocaleString() })}
             {/if}
           </p>
         </div>
         <strong class="import-percent">{percent}%</strong>
       </div>
 
-      <progress max={Math.max(1, progress.total)} value={progress.completed} aria-label="Import progress"></progress>
+      <progress max={Math.max(1, progress.total)} value={progress.completed} aria-label={t("Import progress")}></progress>
 
       <div class="import-details">
         <span>{progress.succeeded.toLocaleString()} imported</span>
@@ -101,7 +102,7 @@
         disabled={progress.cancelRequested}
         onclick={requestImportCancel}
       >
-        {progress.cancelRequested ? "Stopping…" : "Cancel import"}
+        {progress.cancelRequested ? t("Stopping…") : t("Cancel import")}
       </button>
     </dialog>
   </div>

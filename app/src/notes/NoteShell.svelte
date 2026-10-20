@@ -5,6 +5,7 @@
   import { noteColorStyle } from "./noteColorLogic";
   import { pinNote, type LodTier } from "../board/visibility.svelte";
   import { tick } from "svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   /**
    * Far-zoom stand-in for NoteNode: the node's box in its colours, with its title at the "simple" tier
@@ -60,7 +61,7 @@
   style:--note-body={paint["--note-body"]}
   style:--note-header-text={paint["--note-header-text"]}
   style:--note-header-text-done={paint["--note-header-text-done"]}
-  style:transform={`translate(${note.x * PX_PER_UNIT}px, ${note.y * PX_PER_UNIT}px)${scale === 1 ? "" : ` scale(${scale})`}`}
+  style:transform={t("translate({x}px, {y}px){value}", { x: note.x * PX_PER_UNIT, y: note.y * PX_PER_UNIT, value: scale === 1 ? "" : ` scale(${scale})` })}
   style:width={`${width * PX_PER_UNIT}px`}
   style:height={`${height * PX_PER_UNIT}px`}
   style:--shell-header={`${(note.headerHidden ? 0 : NOTE_HEADER_HEIGHT_UNITS) * PX_PER_UNIT}px`}

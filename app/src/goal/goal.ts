@@ -2,6 +2,7 @@ import { board } from "../model/board.svelte";
 import type { Link } from "../model/link";
 import { links } from "../model/links.svelte";
 import type { Note } from "../model/note";
+import { t } from "../i18n/i18n.svelte";
 
 export interface GoalState {
   /** Number of directly connected task notes. */
@@ -32,7 +33,7 @@ export function visibleGoalRows(state: GoalState): GoalRow[] {
   const rows: GoalRow[] = [];
   if (state.connected > 0) rows.push({
     kind: "tasks", done: state.done, total: state.connected,
-    label: state.connected === 1 ? "task done" : "tasks done",
+    label: state.connected === 1 ? t("task done") : t("tasks done"),
   });
   if (state.subtasks > 0) rows.push({
     kind: "subtasks", done: state.doneSubtasks, total: state.subtasks, label: "subtasks",

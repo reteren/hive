@@ -1,11 +1,12 @@
 <script lang="ts">
   import type { Note } from "../model/note";
   import TrashList from "./TrashList.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
 </script>
 
-<div class="trash-node-body" data-trash-node-body aria-label={`Trash contents for ${note.name}`}>
+<div class="trash-node-body" data-trash-node-body aria-label={t("Trash contents for {name}", { name: note.name })}>
   <TrashList compact />
 </div>
 

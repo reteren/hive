@@ -7,6 +7,7 @@
   import { MARKAS_PALETTE } from "./markasLogic";
   import { recolorMarkAsTag, removeMarkAsTag, saveMarkAsTag, setCustomMarkFrame } from "./markasActions.svelte";
   import { isMarkAsEditorCollapsed, toggleMarkAsEditor } from "./markasUi.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: { id: string; type: string; customMarks?: CustomMark[]; customMarkFrame?: boolean } } = $props();
   let marks = $derived(note.customMarks ?? []);
@@ -139,20 +140,20 @@
 
 <div class="markas-node" data-selection-ignore>
   <div class="markas-head">
-    <ul class="markas-tags" aria-label="Tags">
+    <ul class="markas-tags" aria-label={t("Tags")}>
       {#each marks as mark (mark.id)}
         <li class="markas-tag" class:editing={editingId === mark.id} style:--tag-color={editingId === mark.id ? draftColor : mark.color}>
-          <button type="button" class="markas-tag-label" title="Edit tag" onclick={() => editMark(mark)}>
+          <button type="button" class="markas-tag-label" title={t("Edit tag")} onclick={() => editMark(mark)}>
             <span class="markas-dot" aria-hidden="true"></span>
             <span class="markas-tag-text">{mark.text}</span>
           </button>
-          <button type="button" class="markas-tag-remove" aria-label={`Delete tag ${mark.text}`} title="Delete tag" onclick={() => removeMark(mark)}>
+          <button type="button" class="markas-tag-remove" aria-label={t("Delete tag {text}", { text: mark.text })} title={t("Delete tag")} onclick={() => removeMark(mark)}>
             <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 2.5l5 5M7.5 2.5l-5 5" /></svg>
           </button>
         </li>
       {/each}
     </ul>
-    <button type="button" class="markas-add" data-markas-add title={editingId ? "Save tag" : "Add tag"} aria-label={editingId ? "Save tag" : "Add tag"} onpointerdown={(event) => event.preventDefault()} onclick={addFromHeader}>
+    <button type="button" class="markas-add" data-markas-add title={editingId ? t("Save tag") : t("Add tag")} aria-label={editingId ? t("Save tag") : t("Add tag")} onpointerdown={(event) => event.preventDefault()} onclick={addFromHeader}>
       {#if editingId}
         <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.3l2.3 2.3 4.7-5" /></svg>
       {:else}
@@ -166,7 +167,7 @@
     class="markas-collapse"
     class:collapsed
     aria-expanded={!collapsed}
-    title={collapsed ? "Show tag editor" : "Hide tag editor"}
+    title={collapsed ? t("Show tag editor") : t("Hide tag editor")}
     data-markas-collapse
     onclick={() => toggleMarkAsEditor(note.id)}
   >
@@ -176,14 +177,14 @@
   {#if !collapsed}
     <form class="markas-editor" onsubmit={submit} data-markas-editor>
       <label class="markas-field">
-        <span class="markas-field-name">Tag</span>
+        <span class="markas-field-name">{t("Tag")}</span>
         <input
           class="markas-text"
           bind:this={textInput}
           bind:value={draftText}
           maxlength="30"
-          placeholder={editingId ? "Edit tag" : "New tag"}
-          aria-label="Tag name"
+          placeholder={editingId ? t("Edit tag") : t("New tag")}
+          aria-label={t("Tag name")}
           autocomplete="off"
           spellcheck="false"
           data-markas-text
@@ -191,7 +192,7 @@
       </label>
 
       <div class="markas-field">
-        <span class="markas-field-name">Color</span>
+        <span class="markas-field-name">{t("Color")}</span>
         <button
           type="button"
           class="markas-color-toggle"
@@ -211,7 +212,7 @@
         <div class="markas-picker" data-markas-picker>
           <HexColorPicker
             value={draftColor}
-            label="Tag colour"
+            label={t("Tag colour")}
             oninput={(color) => colorSession?.preview(color)}
             onchange={(color) => colorSession?.preview(color)}
           />
@@ -219,14 +220,14 @@
       {/if}
 
       <div class="markas-footer">
-        <label class="markas-frame" title="Colour the frame of the note this Mark as is inserted in or linked to">
+        <label class="markas-frame" title={t("Colour the frame of the note this Mark as is inserted in or linked to")}>
           <input
             type="checkbox"
             checked={note.customMarkFrame === true}
             data-markas-frame
             onchange={(event) => setCustomMarkFrame(note.id, event.currentTarget.checked)}
           />
-          <span>Frame</span>
+          <span>{t("Frame")}</span>
         </label>
       </div>
       {#if error}<p class="markas-error" role="alert">{error}</p>{/if}

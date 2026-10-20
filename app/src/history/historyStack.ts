@@ -1,3 +1,4 @@
+import { t } from "../i18n/i18n.svelte";
 /** A user-visible operation in the shared text and board history. */
 export interface HistoryCommand {
   /** Short English action name shown in the Undo log. */
@@ -53,7 +54,7 @@ export class HistoryStack {
 
   commitTransaction(): HistoryCommand | undefined {
     const transaction = this.transactions.pop();
-    if (!transaction) throw new Error("No history transaction is active.");
+    if (!transaction) throw new Error(t("No history transaction is active."));
     if (transaction.commands.length === 0) return undefined;
 
     const commands = [...transaction.commands];
@@ -77,7 +78,7 @@ export class HistoryStack {
 
   abortTransaction(): void {
     const transaction = this.transactions.pop();
-    if (!transaction) throw new Error("No history transaction is active.");
+    if (!transaction) throw new Error(t("No history transaction is active."));
     let firstError: unknown;
     for (let index = transaction.commands.length - 1; index >= 0; index -= 1) {
       try {
@@ -124,7 +125,7 @@ export class HistoryStack {
   /** Move to the state after `index` entries, applying each transition in order. */
   jumpTo(index: number): number {
     if (!Number.isInteger(index) || index < 0 || index > this.entries.length) {
-      throw new RangeError(`History index must be between 0 and ${this.entries.length}.`);
+      throw new RangeError(t("History index must be between 0 and {count}.", { count: this.entries.length }));
     }
     while (this.cursor > index) this.undo();
     while (this.cursor < index) this.redo();

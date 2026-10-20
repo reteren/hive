@@ -1,11 +1,12 @@
 <script lang="ts">
   import type { Note } from "../model/note";
   import MapView from "./MapView.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
 </script>
 
-<div class="map-node-body" data-map-node={note.id} data-map-node-body={note.id} data-selection-ignore aria-label={`Map minimap for ${note.name}`}>
+<div class="map-node-body" data-map-node={note.id} data-map-node-body={note.id} data-selection-ignore aria-label={t("Map minimap for {name}", { name: note.name })}>
   <MapView variant="node" />
 </div>
 

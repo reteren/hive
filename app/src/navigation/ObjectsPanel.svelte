@@ -20,6 +20,7 @@
   } from "./panelState.svelte";
   import { closePanelPopup, panelPopupState } from "../ui/popups/panelPopupState.svelte";
   import { NameIndex } from "../search/nameIndex";
+  import { t } from "../i18n/i18n.svelte";
 
   let { variant = "dock" } = $props<{ variant?: "dock" | "popup" }>();
 
@@ -103,7 +104,7 @@
   }
 
   function jumpToNote(id: string): void {
-    if (!teleportToObject(id, { label: "Objects panel" })) return;
+    if (!teleportToObject(id, { label: t("Objects panel") })) return;
     if (!objectsPanel.pinned) closeCurrentPanel();
   }
 
@@ -132,28 +133,28 @@
     class:popup-panel={variant === "popup"}
     data-selection-ignore
     aria-modal={variant === "popup"}
-    aria-label="Objects panel"
+    aria-label={t("Objects panel")}
     onkeydown={handleKeydown}
   >
     <header class="panel-heading">
       <div class="panel-title">
-        <h2>Objects</h2>
+        <h2>{t("Objects")}</h2>
         <span>{visibleNotes.length}</span>
       </div>
       <div class="panel-controls">
         <button
           type="button"
           class="panel-control"
-          aria-label={`Navigate back${backKeys ? `; ${backKeys}` : ""}`}
-          title={`Navigate back${backKeys ? ` · ${backKeys}` : ""}`}
+          aria-label={t("Navigate back{value}", { value: backKeys ? `; ${backKeys}` : "" })}
+          title={t("Navigate back{value}", { value: backKeys ? ` · ${backKeys}` : "" })}
           disabled={!canGoBack}
           onclick={() => runCommand("navigation.back")}
         >←</button>
         <button
           type="button"
           class="panel-control"
-          aria-label={`Navigate forward${forwardKeys ? `; ${forwardKeys}` : ""}`}
-          title={`Navigate forward${forwardKeys ? ` · ${forwardKeys}` : ""}`}
+          aria-label={t("Navigate forward{value}", { value: forwardKeys ? `; ${forwardKeys}` : "" })}
+          title={t("Navigate forward{value}", { value: forwardKeys ? ` · ${forwardKeys}` : "" })}
           disabled={!canGoForward}
           onclick={() => runCommand("navigation.forward")}
         >→</button>
@@ -161,16 +162,16 @@
           type="button"
           class="panel-control"
           class:pinned={objectsPanel.pinned}
-          aria-label={objectsPanel.pinned ? "Unpin search" : "Pin search"}
+          aria-label={objectsPanel.pinned ? t("Unpin search") : t("Pin search")}
           aria-pressed={objectsPanel.pinned}
           title={objectsPanel.pinned ? "Unpin search; close after jumping" : "Pin search; keep the panel open after jumping"}
           onclick={toggleSearchPin}
-        >{objectsPanel.pinned ? "Pinned" : "Pin search"}</button>
+        >{objectsPanel.pinned ? t("Pinned") : t("Pin search")}</button>
         <button
           type="button"
           class="panel-control close"
-          aria-label="Close objects panel"
-          title="Close"
+          aria-label={t("Close objects panel")}
+          title={t("Close")}
           onclick={closeCurrentPanel}
         >×</button>
       </div>
@@ -178,33 +179,33 @@
 
     <div class="objects-tools">
       <label class="filter-label">
-        <span class="visually-hidden">Filter objects by name</span>
+        <span class="visually-hidden">{t("Filter objects by name")}</span>
         <input
           bind:this={filterInput}
           type="search"
           value={objectsPanel.query}
-          placeholder="Filter notes…"
-          aria-label="Filter objects by name"
+          placeholder={t("Filter notes…")}
+          aria-label={t("Filter objects by name")}
           oninput={(event) => (objectsPanel.query = event.currentTarget.value)}
         />
       </label>
       <button
         class="sort-button"
         type="button"
-        aria-label={objectsPanel.sort === "name" ? "Sort by creation time" : "Sort by name"}
-        title={objectsPanel.sort === "name" ? "Sort by creation time" : "Sort by name"}
+        aria-label={objectsPanel.sort === "name" ? t("Sort by creation time") : t("Sort by name")}
+        title={objectsPanel.sort === "name" ? t("Sort by creation time") : t("Sort by name")}
         onclick={() => (objectsPanel.sort = objectsPanel.sort === "name" ? "recent" : "name")}
-      >{objectsPanel.sort === "name" ? "Name" : "Recent"}</button>
+      >{objectsPanel.sort === "name" ? t("Name") : t("Recent")}</button>
     </div>
 
-    <ul class="object-list" aria-label="Notes">
+    <ul class="object-list" aria-label={t("Notes")}>
       {#each visibleNotes as note (note.id)}
         <li>
           <button
             class="object-entry"
             class:selected={selection.ids.includes(note.id)}
             type="button"
-            title={`Go to ${note.name} · ${note.x}, ${note.y}`}
+            title={t("Go to {name} · {x}, {y}", { name: note.name, x: note.x, y: note.y })}
             aria-current={selection.primaryId === note.id ? "true" : undefined}
             onclick={() => jumpToNote(note.id)}
           >
@@ -214,7 +215,7 @@
           </button>
         </li>
       {:else}
-        <li class="empty-state">{objectsPanel.query ? "No notes match this filter." : "No notes in this project."}</li>
+        <li class="empty-state">{objectsPanel.query ? t("No notes match this filter.") : t("No notes in this project.")}</li>
       {/each}
     </ul>
   </dialog>
@@ -225,10 +226,10 @@
     type="button"
     aria-controls="objects-panel"
     aria-expanded={objectsPanel.open}
-    aria-label={`Open objects panel${toggleKeys ? `; ${toggleKeys}` : ""}`}
-    title={`Objects${toggleKeys ? ` · ${toggleKeys}` : ""}`}
+    aria-label={t("Open objects panel{value}", { value: toggleKeys ? `; ${toggleKeys}` : "" })}
+    title={t("Objects{value}", { value: toggleKeys ? ` · ${toggleKeys}` : "" })}
     onclick={toggleObjectsPanel}
-  >Objects</button>
+  >{t("Objects")}</button>
 {/if}
 
 <style>

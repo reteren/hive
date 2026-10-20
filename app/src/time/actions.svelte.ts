@@ -6,6 +6,7 @@ import { timeEnablePreference } from "./enablePreference.svelte";
 import { restartTimeNode } from "./runtime.svelte";
 import { linkedTaskCompletionForTime } from "./taskLink";
 import { defaultAtTimeSchedule } from "./uiSchedule";
+import { t } from "../i18n/i18n.svelte";
 
 /** Shared by standalone and embedded Time controls; confirmation creates no history entry. */
 export function setTimeEnabled(noteId: string, enabled: boolean, confirmed = false): "changed" | "confirmation-required" | "unchanged" {
@@ -20,7 +21,7 @@ export function setTimeEnabled(noteId: string, enabled: boolean, confirmed = fal
   }
   const next = { ...previous, enabled };
   execute({
-    label: enabled ? "Enable reminder" : "Stop reminder",
+    label: enabled ? t("Enable reminder") : t("Stop reminder"),
     target: note.name,
     do: () => { updateNote(noteId, { time: copyTimeNodeData(next) }); restartTimeNode(noteId); },
     undo: () => { updateNote(noteId, { time: copyTimeNodeData(previous) }); restartTimeNode(noteId); },

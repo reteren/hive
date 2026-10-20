@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../i18n/i18n.svelte";
   import settingsIcon from "./icons/settings.png";
   import type { Snippet } from "svelte";
   import { formatKey } from "../commands/keys";
@@ -64,7 +65,7 @@
 </script>
 
 {#if command}
-  <Tooltip label={tooltipLabel ?? command.label} bindings={tooltipBindings ?? command.keys} secondaryHint={secondaryHint}>
+  <Tooltip label={tooltipLabel ?? t(command.label)} bindings={tooltipBindings ?? command.keys} secondaryHint={secondaryHint}>
     <button
       type="button"
       class="command-button {className}"
@@ -127,7 +128,7 @@
         {/if}
         </svg>
       {/if}
-      {#if showLabel}<span>{labelOverride ?? command.label}</span>{/if}
+      {#if showLabel}<span>{labelOverride ?? t(command.label)}</span>{/if}
     </button>
   </Tooltip>
 {/if}

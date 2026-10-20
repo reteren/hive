@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { isSafeAttachmentName } from "../attachments/types";
 import { decodeFormatText, type FormatTextEncoding } from "./textEncoding";
+import { t } from "../i18n/i18n.svelte";
 
 export interface LoadedFormatText {
   text: string;
@@ -40,10 +41,10 @@ export async function loadFormatText(
   dependencies: FormatTextLoadDependencies = defaultDependencies,
 ): Promise<LoadedFormatText> {
   if (!isSafeAttachmentName(file)) {
-    throw new Error("Could not load file: invalid attachment name.");
+    throw new Error(t("Could not load file: invalid attachment name."));
   }
 
-  let assetFailure = "No asset URL available";
+  let assetFailure = t("No asset URL available");
   if (assetUrl) {
     try {
       const bytes = await dependencies.fetchBytes(assetUrl);
@@ -61,20 +62,20 @@ export async function loadFormatText(
     const bytes = new TextEncoder().encode(text);
     return { ...decodeFormatText(bytes), byteLength: bytes.byteLength };
   } catch (error) {
-    throw new Error(`Could not load file: ${reason(error)} (asset URL: ${assetFailure}).`);
+    throw new Error(t("Could not load file: {reason} (asset URL: {assetFailure}).", { reason: reason(error), assetFailure: assetFailure }));
   }
 }
 
 /** Read only a small prefix for an unselected Format node; CodeMirror owns the full edit path. */
 export async function loadFormatPreview(file: string, assetUrl: string, maxBytes = 8_192): Promise<LoadedFormatPreview> {
-  if (!isSafeAttachmentName(file)) throw new Error("Could not load file: invalid attachment name.");
-  if (!assetUrl) throw new Error("Could not load preview: attachment URL unavailable.");
+  if (!isSafeAttachmentName(file)) throw new Error(t("Could not load file: invalid attachment name."));
+  if (!assetUrl) throw new Error(t("Could not load preview: attachment URL unavailable."));
   const response = await fetch(assetUrl);
-  if (!response.ok) throw new Error(`Could not load preview: HTTP ${response.status}.`);
+  if (!response.ok) throw new Error(t("Could not load preview: HTTP {status}.", { status: response.status }));
   const reader = response.body?.getReader();
   if (!reader) {
     await response.body?.cancel();
-    throw new Error("Could not load preview: streaming is unavailable.");
+    throw new Error(t("Could not load preview: streaming is unavailable."));
   }
 
   const chunks: Uint8Array[] = [];

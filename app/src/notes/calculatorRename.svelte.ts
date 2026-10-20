@@ -3,6 +3,7 @@ import { board, updateNote } from "../model/board.svelte";
 import { calculatorKey, type CalculatorData } from "../model/nodeData";
 import { calculators, deleteCalculatorData, setCalculatorData } from "../calculator/calculators.svelte";
 import { calculatorRenameTarget } from "./naming";
+import { t } from "../i18n/i18n.svelte";
 
 export type CalculatorRenameResult =
   | { ok: true; name: string; changed: boolean }
@@ -11,7 +12,7 @@ export type CalculatorRenameResult =
 /** Rename a calculator and move or copy its shared history in the same Undo step. */
 export function renameCalculatorNode(noteId: string, proposed: string): CalculatorRenameResult {
   const note = board.notes[noteId];
-  if (!note || note.type !== "calculator") return { ok: false, message: "Calculator no longer exists." };
+  if (!note || note.type !== "calculator") return { ok: false, message: t("Calculator no longer exists.") };
 
   const target = calculatorRenameTarget(proposed, noteId, Object.values(board.notes));
   if (!target.ok) return target;
@@ -42,7 +43,7 @@ export function renameCalculatorNode(noteId: string, proposed: string): Calculat
       : cloneData(beforeTarget ?? beforeSource);
 
   execute({
-    label: "Rename",
+    label: t("Rename"),
     target: nextName,
     do: () => {
       updateNote(noteId, { name: nextName });

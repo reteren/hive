@@ -11,6 +11,7 @@
   import { prepareMessageSound } from "./sound";
   import { messageTextFieldState } from "./resolution";
   import { reactiveLinkRevisionFor } from "../scope/scopeRevision.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let settings = $derived(note.message ?? defaultMessageData());
@@ -43,21 +44,21 @@
   }
 </script>
 
-<div class="message-node-body" data-message-node={note.id} data-selection-ignore role="group" aria-label={`Message ${note.name}`}>
+<div class="message-node-body" data-message-node={note.id} data-selection-ignore role="group" aria-label={t("Message {name}", { name: note.name })}>
   <label class="message-field">
-    <span>Message text</span>
+    <span>{t("Message text")}</span>
     <textarea data-message-text data-message-linked-task={textField.linkedTaskId ?? undefined}
-      aria-label={textField.readOnly ? "Linked task message text" : "Message text"}
-      title={textField.readOnly ? "Text comes from the linked task" : undefined}
-      placeholder="What should the reminder say?" rows="3" bind:this={textArea}
+      aria-label={textField.readOnly ? t("Linked task message text") : t("Message text")}
+      title={textField.readOnly ? t("Text comes from the linked task") : undefined}
+      placeholder={t("What should the reminder say?")} rows="3" bind:this={textArea}
       value={textField.value} readonly={textField.readOnly}
       oninput={editText} onfocus={() => { editGroup = Symbol(); }} onblur={() => { editGroup = Symbol(); }} onkeydown={editKey}></textarea>
   </label>
   <label class="message-sound"><input type="checkbox" data-message-sound checked={settings.sound}
-    onchange={(event) => { const sound = event.currentTarget.checked; setMessageSettings(note.id, { sound }); if (sound) void prepareMessageSound(); }} /> Sound</label>
+    onchange={(event) => { const sound = event.currentTarget.checked; setMessageSettings(note.id, { sound }); if (sound) void prepareMessageSound(); }} /> {t("Sound")}</label>
   <label class="message-sound"><input type="checkbox" data-message-overhive checked={settings.overhive} disabled={!desktop}
-    onchange={(event) => setMessageSettings(note.id, { overhive: event.currentTarget.checked })} /> Overhive</label>
-  {#if !desktop}<p class="message-hint">Overhive is available in the desktop app.</p>{/if}
+    onchange={(event) => setMessageSettings(note.id, { overhive: event.currentTarget.checked })} /> {t("Overhive")}</label>
+  {#if !desktop}<p class="message-hint">{t("Overhive is available in the desktop app.")}</p>{/if}
 </div>
 
 <style>

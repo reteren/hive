@@ -5,6 +5,7 @@
   import { isMoodKind, MOOD_OPTIONS } from "../modules/moduleLogic";
   import { closeModulePicker, moduleDropPreview, moduleFeedback, toggleMood, toggleModulePicker } from "../modules/moduleActions.svelte";
   import { modulePicker } from "../modules/pickerState.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let moods = $derived(note.moods?.filter(isMoodKind) ?? []);
@@ -24,7 +25,7 @@
 
 <div class="module-node-body" data-module-drop-target={isDropTarget ? (moduleDropPreview.allowed ? "allowed" : "refused") : undefined}>
   {#if moods.length === 0}
-    <button type="button" class="module-node-label" data-module-trigger data-selection-ignore onclick={() => toggleModulePicker(note.id, "mood")}>Mood</button>
+    <button type="button" class="module-node-label" data-module-trigger data-selection-ignore onclick={() => toggleModulePicker(note.id, "mood")}>{t("Mood")}</button>
   {:else}
     {#each moods as mood (mood)}
       {@const option = MOOD_OPTIONS.find((item) => item.id === mood)}
@@ -32,13 +33,13 @@
         <ModuleChip label={option.label} color={option.color} onClick={() => clickMood(mood)} />
       {/if}
     {/each}
-    <button type="button" class="module-node-add" data-module-trigger data-selection-ignore aria-label="Add Mood" onclick={() => toggleModulePicker(note.id, "mood")}>
+    <button type="button" class="module-node-add" data-module-trigger data-selection-ignore aria-label={t("Add Mood")} onclick={() => toggleModulePicker(note.id, "mood")}>
       <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M6 2.5v7M2.5 6h7" /></svg>
     </button>
   {/if}
   {#if isOpen}
     <ModulePicker
-      title="Mood"
+      title={t("Mood")}
       mode="multiple"
       options={MOOD_OPTIONS}
       selected={moods}

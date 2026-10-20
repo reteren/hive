@@ -11,6 +11,7 @@ import { measuredHeights, noteBounds, type Bounds } from "../notes/layout.svelte
 import { registerSelectionInteractionListener, selection } from "../selection/selection.svelte";
 import { selectedLinkIds } from "./selection.svelte";
 import { anchorAlongRay, projectPointToAnchor, resolveLinkEndpoints, type SmoothLineAnchorSnapshot } from "./anchors";
+import { t, tp } from "../i18n/i18n.svelte";
 
 interface SmoothEndpoint {
   bounds: Bounds;
@@ -85,7 +86,7 @@ export function smoothLinesForObjects(objectIds: readonly string[]): boolean {
     if (isSmoothEnabledEndpoint(link.from)) ids.add(link.from);
     if (isSmoothEnabledEndpoint(link.to)) ids.add(link.to);
   }
-  return smoothLinks(affected, ids, objectIds.length === 1 ? objectName(objectIds[0]) : `${ids.size} objects`);
+  return smoothLinks(affected, ids, objectIds.length === 1 ? objectName(objectIds[0]) : tp(ids.size, "{count} object", "{count} objects"));
 }
 
 /** Toggle the persistent per-node smoothing state as one reversible history action. */
@@ -127,7 +128,7 @@ export function toggleSmoothLinesForNote(noteId: string): boolean {
   });
   const nextEnabled = !wasEnabled;
   execute({
-    label: nextEnabled ? "Smooth lines" : "Remove smooth",
+    label: nextEnabled ? t("Smooth lines") : t("Remove smooth"),
     target: note.name,
     do: () => {
       updateNote(noteId, {
@@ -273,7 +274,7 @@ export function smoothLinesForLinks(linkIds: readonly string[]): boolean {
     return link ? [link] : [];
   });
   const endpointIds = new Set(affected.flatMap((link) => [link.from, link.to]));
-  return smoothLinks(affected, endpointIds, affected.length === 1 ? `${objectName(affected[0].from)} → ${objectName(affected[0].to)}` : `${affected.length} lines`);
+  return smoothLinks(affected, endpointIds, affected.length === 1 ? `${objectName(affected[0].from)} → ${objectName(affected[0].to)}` : tp(affected.length, "{count} line", "{count} lines"));
 }
 
 function smoothLinks(affected: readonly Link[], targetIds: ReadonlySet<string>, target: string): boolean {
@@ -282,7 +283,7 @@ function smoothLinks(affected: readonly Link[], targetIds: ReadonlySet<string>, 
 
   const previousById = new Map(affected.map((link) => [link.id, copyAnchors(link)]));
   execute({
-    label: "Smooth lines",
+    label: t("Smooth lines"),
     target,
     do: () => changes.forEach(({ id, anchors }) => setAnchors(id, anchors)),
     undo: () => changes.forEach(({ id }) => {

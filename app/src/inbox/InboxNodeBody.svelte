@@ -6,6 +6,7 @@
   import { resolveInboxTwin } from "./inbox.svelte";
   import { formatInboxEntryTime } from "./inboxLogic";
   import { INBOX_ROW_HEIGHT } from "./inboxLayout";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let entries = $derived.by(() => {
@@ -21,7 +22,7 @@
 
   function openEntry(target: Note): void {
     resolveInboxTwin(target.id);
-    teleportToObject(target.id, { label: "Open Inbox entry" });
+    teleportToObject(target.id, { label: t("Open Inbox entry") });
   }
 
   function entryDateTime(createdAt: number | undefined): string | undefined {
@@ -31,9 +32,9 @@
   }
 </script>
 
-<section class="inbox-body" data-inbox-node={note.id} aria-label={`Inbox ${note.name}`} style:--inbox-row-height={`${INBOX_ROW_HEIGHT * 10}px`}>
+<section class="inbox-body" data-inbox-node={note.id} aria-label={t("Inbox {name}", { name: note.name })} style:--inbox-row-height={`${INBOX_ROW_HEIGHT * 10}px`}>
   <header class="inbox-heading">
-    <strong>Inbox</strong>
+    <strong>{t("Inbox")}</strong>
     <span data-inbox-entry-count>{entries.count} {entries.count === 1 ? "entry" : "entries"}</span>
   </header>
   {#if entries.entries.length > 0}

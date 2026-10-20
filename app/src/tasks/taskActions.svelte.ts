@@ -9,6 +9,7 @@ import { cloneTaskState, createReopenTaskCommand, createTaskCompletionCommand, c
 import { addTaskLogEntry, removeTaskLogEntry, taskLog, type TaskLogEntry } from "./taskLog.svelte";
 import { panelPopupState, togglePanelPopup } from "../ui/popups/panelPopupState.svelte";
 import { linkedTaskCompletionForTime, linkedTimeStatesForTask } from "../time/taskLink";
+import { t, tp } from "../i18n/i18n.svelte";
 
 /** Only ordinary notes and imported text files can be newly marked as tasks. */
 export function canBeTask(note: Note | undefined): boolean {
@@ -65,8 +66,8 @@ export function toggleTaskFlag(noteId: string): void {
 
   const firstChangedId = changed[0]!;
   execute({
-    label: mark ? "Mark as task" : "Unmark as task",
-    target: changed.length === 1 ? board.notes[firstChangedId]?.name : `${changed.length} nodes`,
+    label: mark ? t("Mark as task") : t("Unmark as task"),
+    target: changed.length === 1 ? board.notes[firstChangedId]?.name : tp(changed.length, "{count} node", "{count} nodes"),
     do: () => { for (const command of commands) command.do(); },
     undo: () => { for (let index = commands.length - 1; index >= 0; index -= 1) commands[index]?.undo(); },
   });
@@ -109,7 +110,7 @@ function nextCompletionTime(noteId: string, now: number): number {
 
 registerNoteMenuItem({
   id: "task.toggleFlag",
-  label: (noteId) => taskFlagTargets(noteId).some((id) => !board.notes[id]?.task) ? "Mark as task" : "Unmark task",
+  label: (noteId) => taskFlagTargets(noteId).some((id) => !board.notes[id]?.task) ? t("Mark as task") : t("Unmark task"),
   run: toggleTaskFlag,
   visible: (noteId) => Boolean(board.notes[noteId]?.task || canBeTask(board.notes[noteId])),
   order: 20,

@@ -6,6 +6,7 @@ import type { TrashEntry } from "../model/retention.svelte";
 import type { Zone } from "../model/zone";
 import { copyTimeForHost } from "../combo/data";
 import { copyAudioRecordings } from "../audio/recordingData";
+import { t } from "../i18n/i18n.svelte";
 
 export interface TrashRename {
   noteId: string;
@@ -94,9 +95,9 @@ export function trashEntrySummary(entry: Pick<TrashEntry, "notes" | "zones" | "m
     ...entry.zones.map((zone) => zone.name),
   ];
   if (names.length === 1) return names[0];
-  if (names.length === 0) return "Empty entry";
+  if (names.length === 0) return t("Empty entry");
   const firstNames = names.slice(0, 2).join(", ");
-  return names.length > 2 ? `${firstNames} + ${names.length - 2} more` : firstNames;
+  return names.length > 2 ? t("{names} + {count} more", { names: firstNames, count: names.length - 2 }) : firstNames;
 }
 
 export function copyTrashEntry(entry: TrashEntry): TrashEntry {

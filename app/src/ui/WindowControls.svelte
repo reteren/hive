@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { isTauri } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { t } from "../i18n/i18n.svelte";
 
   // hive draws its own title bar (the native one ignores the theme): minimise, maximise/restore and
   // close live at the right end of the top bar. Close keeps the app's usual behaviour (hide to tray).
@@ -33,14 +34,14 @@
 
 {#if desktop}
   <div class="window-controls" data-window-controls>
-    <button type="button" class="window-button" aria-label="Minimize" title="Minimize" onclick={minimize}>
+    <button type="button" class="window-button" aria-label={t("Minimize")} title={t("Minimize")} onclick={minimize}>
       <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M1.5 6h9" /></svg>
     </button>
     <button
       type="button"
       class="window-button"
-      aria-label={maximized ? "Restore" : "Maximize"}
-      title={maximized ? "Restore" : "Maximize"}
+      aria-label={maximized ? t("Restore") : t("Maximize")}
+      title={maximized ? t("Restore") : t("Maximize")}
       onclick={toggleMaximize}
     >
       {#if maximized}
@@ -49,7 +50,7 @@
         <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="1.5" width="9" height="9" rx="0.5" /></svg>
       {/if}
     </button>
-    <button type="button" class="window-button close" aria-label="Close" title="Close" onclick={close}>
+    <button type="button" class="window-button close" aria-label={t("Close")} title={t("Close")} onclick={close}>
       <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" /></svg>
     </button>
   </div>

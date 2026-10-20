@@ -6,6 +6,7 @@ import { links } from "../model/links.svelte";
 import { selectLinks, selectedLinkIds } from "../links/selection.svelte";
 import { beaconState, hasMeBeacon } from "./beaconState.svelte";
 import { beaconDescendants } from "./coverage";
+import { t } from "../i18n/i18n.svelte";
 
 export function isBeacon(id: string): boolean {
   return id === ME_OBJECT_ID ? hasMeBeacon() : board.notes[id]?.type === "beacon";
@@ -97,5 +98,5 @@ function releaseDimmedSelection(): void {
 }
 
 export function beaconName(id: string): string {
-  return id === ME_OBJECT_ID ? "ME" : board.notes[id]?.name ?? "Unknown beacon";
+  return id === ME_OBJECT_ID ? "ME" : board.notes[id]?.name ?? t("Unknown beacon");
 }

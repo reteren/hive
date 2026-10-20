@@ -2,6 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { board } from "../model/board.svelte";
 import { attachmentUrl } from "../attachments/service";
 import { showLinkStatus } from "../links-in-text/contextMenu.svelte";
+import { t } from "../i18n/i18n.svelte";
 
 /**
  * Copy an image or GIF node to the system clipboard. On Windows the clipboard gets the original file
@@ -22,11 +23,11 @@ export async function copyImageNoteToClipboard(noteId: string): Promise<boolean>
     } else {
       await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
     }
-    showLinkStatus(isGif ? "Gif copied." : "Image copied.");
+    showLinkStatus(isGif ? t("Gif copied.") : t("Image copied."));
     return true;
   } catch (error) {
     console.error("Could not copy the image", error);
-    showLinkStatus(isGif ? "Could not copy the gif." : "Could not copy the image.");
+    showLinkStatus(isGif ? t("Could not copy the gif.") : t("Could not copy the image."));
     return false;
   }
 }

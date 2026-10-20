@@ -20,6 +20,7 @@ import { createSourceNotes } from "../source/creation";
 import { importFormatPaths } from "./formatActions";
 import { importMarkdownPaths } from "./textDrop";
 import type { MediaRef } from "../attachments/types";
+import { t } from "../i18n/i18n.svelte";
 
 export const BOARD_DROP_ORDER: readonly BoardDropKind[] = [
   "image", "pdf", "audio", "video", "markdown", "format", "source",
@@ -41,18 +42,18 @@ export function groupBoardDropPaths(paths: readonly string[]): { kind: BoardDrop
 }
 
 async function importBoardDrop(paths: readonly string[], center: Point): Promise<void> {
-  await withImportProgress("Import files", paths.length, async (run) => {
+  await withImportProgress(t("Import files"), paths.length, async (run) => {
     let files = [...paths];
     if (isTauri()) {
-      setImportProgressDetails(run.id, "Scanning folders…", paths.length);
+      setImportProgressDetails(run.id, t("Scanning folders…"), paths.length);
       const expanded = await invoke<{ paths: string[]; skipped: number; truncated: boolean; cancelled: boolean }>(
         "attachment_expand_paths",
         { importId: run.id, paths, maxFiles: 100_000 },
       );
       files = expanded.paths;
-      setImportProgressDetails(run.id, "Import files", files.length);
-      if (expanded.skipped > 0) reportImportError(`${expanded.skipped} unsupported or inaccessible paths were skipped.`);
-      if (expanded.truncated) reportImportError("Import was limited to the first 100,000 files.");
+      setImportProgressDetails(run.id, t("Import files"), files.length);
+      if (expanded.skipped > 0) reportImportError(t("{skipped} unsupported or inaccessible paths were skipped.", { skipped: expanded.skipped }));
+      if (expanded.truncated) reportImportError(t("Import was limited to the first 100,000 files."));
       if (expanded.cancelled || importWasCancelled(run.id)) return;
     }
     for (const group of groupBoardDropPaths(files)) {
@@ -83,7 +84,7 @@ async function importVideoPathBatch(paths: readonly string[], center: Point, imp
     const results = await importMediaPathBatch(chunk, importId, "video");
     for (const result of results) {
       if (result.ok && result.media.kind === "video") media.push(result.media);
-      else errors.push(result.ok ? "Only supported MP4 and WebM videos can be imported here." : result.error);
+      else errors.push(result.ok ? t("Only supported MP4 and WebM videos can be imported here.") : result.error);
     }
     if (importWasCancelled(importId) || results.length < chunk.length) break;
     await new Promise<void>((resolve) => setTimeout(resolve, 0));

@@ -2,6 +2,7 @@ import { board, updateNote } from "../model/board.svelte";
 import { execute, type HistoryCommand } from "../history/history.svelte";
 import { defaultMessageData, parseMessageData } from "./data";
 import type { MessageNodeData } from "../time/types";
+import { t } from "../i18n/i18n.svelte";
 
 export function setMessageSettings(noteId: string, patch: Partial<MessageNodeData>): boolean {
   const note = board.notes[noteId];
@@ -11,7 +12,7 @@ export function setMessageSettings(noteId: string, patch: Partial<MessageNodeDat
   const previous = before ?? defaultMessageData();
   if (!after || previous.sound === after.sound && previous.overhive === after.overhive) return false;
   execute({
-    label: "Edit message settings", target: note.name,
+    label: t("Edit message settings"), target: note.name,
     do: () => updateNote(noteId, { message: { ...after } }),
     undo: () => {
       const current = board.notes[noteId];
@@ -35,7 +36,7 @@ export function setMessageText(noteId: string, text: string, group = Symbol()): 
   const apply = (value: string) => { if (board.notes[noteId]?.type === "message") updateNote(noteId, { text: value }); };
   const command: TextEditCommand = {
     [TEXT_EDIT]: true, noteId, group, before: note.text, after: text,
-    label: "Edit message text", target: note.name,
+    label: t("Edit message text"), target: note.name,
     do() { apply(command.after); },
     undo() { apply(command.before); },
     merge(next) {

@@ -65,6 +65,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
     type TierRowDropGeometry,
     type TierRect,
   } from "./logic";
+  import { t } from "../i18n/i18n.svelte";
 
   type PointerDrag =
     | {
@@ -817,7 +818,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
   data-selection-ignore
   data-tierlist-id={note.id}
   role="group"
-  aria-label={`Tierlist ${note.name}`}
+  aria-label={t("Tierlist {name}", { name: note.name })}
   bind:this={root}
   onpointermove={handlePointerDragMove} onpointerup={handlePointerDragUp}
   onpointerleave={() => { hoveredRowId = null; }}
@@ -830,7 +831,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
       style:--tier-color={row.color}
       style:--tier-label-text={tierLabelTextColor(row.color)}
       role="group"
-      aria-label={`${row.name} tier row`}
+      aria-label={t("{name} tier row", { name: row.name })}
       onpointerdown={dismissTierHints}
     >
       <div class="tier-label-wrap">
@@ -839,7 +840,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
             class="tier-label-edit"
             bind:this={rowInput}
             bind:value={rowDraft}
-            aria-label={`Rename tier ${row.name}`}
+            aria-label={t("Rename tier {name}", { name: row.name })}
             onkeydown={(event) => {
               if (event.key === "Enter") { event.preventDefault(); finishRenameRow(row.id, true); }
               else if (event.key === "Escape") { event.preventDefault(); finishRenameRow(row.id, false); }
@@ -854,7 +855,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
             data-own-context-menu
             role="button"
             tabindex="0"
-            aria-label={`${row.name} tier. Double-click to rename, right-click for options.`}
+            aria-label={t("{name} tier. Double-click to rename, right-click for options.", { name: row.name })}
             ondblclick={(event) => beginRenameRow(row, event)}
             oncontextmenu={(event) => openRowMenu(event, row)}
             onpointerdown={(event) => beginRowPointerDrag(row, event)}
@@ -867,20 +868,20 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
           </div>
         {/if}
         {#if contextRowId === row.id}
-          <div class="tier-context-menu" data-selection-ignore role="menu" aria-label={`${row.name} tier options`} bind:this={contextMenuElement}>
-            <span class="tier-menu-heading">Colour</span>
+          <div class="tier-context-menu" data-selection-ignore role="menu" aria-label={t("{name} tier options", { name: row.name })} bind:this={contextMenuElement}>
+            <span class="tier-menu-heading">{t("Colour")}</span>
             <div class="tier-picker">
               <HexColorPicker
                 value={row.color}
-                label={`${row.name} colour`}
+                label={t("{name} colour", { name: row.name })}
                 oninput={(color) => previewTierlistColor(row.id, color)}
                 onchange={(color) => previewTierlistColor(row.id, color)}
               />
             </div>
             <button class="tier-menu-add-image" data-tier-add-image type="button" role="menuitem" onclick={() => { void addImageFromPicker(row.id); }}>
-              Add image…
+              {t("Add image…")}
             </button>
-            <button class="tier-menu-delete" type="button" role="menuitem" onclick={() => requestDeleteRow(row)}>Delete row</button>
+            <button class="tier-menu-delete" type="button" role="menuitem" onclick={() => requestDeleteRow(row)}>{t("Delete row")}</button>
           </div>
         {/if}
       </div>
@@ -892,7 +893,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
         class:card-drop-target={dragDisplay?.kind === "card" && dragDisplay.targetNoteId === note.id && dragDisplay.target?.rowId === row.id}
         role="group"
         ondblclick={(event) => addTextCard(row.id, event)}
-        aria-label={`${row.name} tier cards`}
+        aria-label={t("{name} tier cards", { name: row.name })}
       >
         {#each row.displayCards as entry (entry.id)}
           <div class="tier-card-wrap" animate:flip={{ duration: preferences.reduceAnimations ? 0 : 140 }}
@@ -909,14 +910,14 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
             class="tier-card-content"
             data-tier-card-kind={card.kind}
             role="group"
-            aria-label={`Tier card in ${row.name}`}
+            aria-label={t("Tier card in {name}", { name: row.name })}
           >
             {#if editingCardId === card.id && card.kind === "text"}
               <textarea
                 class="tier-card-editor"
                 bind:this={cardInput}
                 bind:value={cardDraft}
-                aria-label="Edit tier card"
+                aria-label={t("Edit tier card")}
                 onfocus={() => { selectedCard = { rowId: row.id, cardId: card.id }; }}
                 onkeydown={handleCardEditorKeydown}
                 onblur={() => finishEditCard(true)}
@@ -928,7 +929,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
                   class="tier-card tier-audio-card"
                   class:selected={selectedCard?.cardId === card.id}
                   role="group"
-                  aria-label={`Audio card: ${preview.name}`}
+                  aria-label={t("Audio card: {name}", { name: preview.name })}
                   onpointerdown={(event) => {
                     selectedCard = { rowId: row.id, cardId: card.id };
                     beginCardPointerDrag(row, card, event);
@@ -939,7 +940,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
                     data-tier-audio-play
                     data-selection-ignore
                     type="button"
-                    aria-label={`${audioPlaying ? "Pause" : "Play"} audio: ${preview.name}`}
+                    aria-label={audioPlaying ? t("Pause audio: {name}", { name: preview.name }) : t("Play audio: {name}", { name: preview.name })}
                     aria-pressed={audioPlaying}
                     onfocus={() => { selectedCard = { rowId: row.id, cardId: card.id }; }}
                     onpointerdown={(event) => event.stopPropagation()}
@@ -958,7 +959,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
                   <div class="tier-audio-copy">
                     <strong>{preview.name}</strong>
                     {#if tierlistAudioPlayback.errorKey === audioKey}
-                      <small class="tier-audio-error" role="status" title={tierlistAudioPlayback.error}>Could not play audio</small>
+                      <small class="tier-audio-error" role="status" title={tierlistAudioPlayback.error}>{t("Could not play audio")}</small>
                     {/if}
                   </div>
                 </div>
@@ -970,7 +971,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
                   class:selected={selectedCard?.cardId === card.id}
                   class:missing={preview.kind === "note" && preview.missing}
                   type="button"
-                  aria-label={preview.kind === "text" ? `Text card: ${preview.text || "empty"}` : preview.kind === "image" ? `Image card: ${preview.name}` : preview.kind === "video" && mediaUrl ? `Video preview: ${preview.name}` : preview.kind === "youtube" && failedYouTubeCardId !== card.id ? `YouTube preview: ${preview.name}` : `Node preview: ${preview.name}`}
+                  aria-label={preview.kind === "text" ? t("Text card: {value}", { value: preview.text || "empty" }) : preview.kind === "image" ? t("Image card: {name}", { name: preview.name }) : preview.kind === "video" && mediaUrl ? t("Video preview: {name}", { name: preview.name }) : preview.kind === "youtube" && failedYouTubeCardId !== card.id ? t("YouTube preview: {name}", { name: preview.name }) : t("Node preview: {name}", { name: preview.name })}
                   aria-pressed={selectedCard?.cardId === card.id}
                   onfocus={() => { selectedCard = { rowId: row.id, cardId: card.id }; }}
                   onclick={() => activateCard(row.id, card, preview)}
@@ -979,7 +980,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
                   onkeydown={(event) => handleCardKeydown(row.id, card.id, event)}
                 >
                 {#if preview.kind === "text"}
-                  <span>{preview.text || "Double-click to edit"}</span>
+                  <span>{preview.text || t("Double-click to edit")}</span>
                 {:else if preview.kind === "image" && preview.image.mime === "image/gif"}
                   <GifView
                     image={preview.image}
@@ -1002,7 +1003,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
                 {:else}
                   <strong>{preview.name}</strong>
                   {#if preview.kind !== "note" || !preview.missing}
-                    <span>{"lines" in preview ? preview.lines.join("\n") || "No text" : "No text"}</span>
+                    <span>{"lines" in preview ? preview.lines.join("\n") || t("No text") : t("No text")}</span>
                   {/if}
                 {/if}
                 </button>
@@ -1012,8 +1013,8 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
               class="tier-card-delete"
               type="button"
               data-selection-ignore
-              aria-label="Delete tier card"
-              title="Delete card"
+              aria-label={t("Delete tier card")}
+              title={t("Delete card")}
               onclick={(event) => {
                 event.stopPropagation();
                 deleteTierlistCard(note.id, row.id, card.id);
@@ -1029,7 +1030,7 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
           </div>
         {/each}
         {#if row.displayCards.length === 0 && !hintsDismissed}
-          <span class="tier-empty-hint" data-tier-hint>Double-click to add a text card or drop a node here</span>
+          <span class="tier-empty-hint" data-tier-hint>{t("Double-click to add a text card or drop a node here")}</span>
         {/if}
       </div>
     </section>
@@ -1044,20 +1045,20 @@ import { IMAGE_MIME_TYPES, type ImageRef } from "../attachments/types";
     ></span>
   {/if}
 
-  <button class="tier-add-row" type="button" aria-label="Add row" title="Add row" onclick={() => { dismissTierHints(); addTierlistRow(note.id); }}>+</button>
+  <button class="tier-add-row" type="button" aria-label={t("Add row")} title={t("Add row")} onclick={() => { dismissTierHints(); addTierlistRow(note.id); }}>+</button>
 
   {#if deletingRowId}
     {@const deletingRow = rows.find((row) => row.id === deletingRowId)}
     {@const belowRow = rows[rowIndexFor(deletingRowId, rows) + 1]}
     <div class="tier-dialog-backdrop" data-selection-ignore>
-      <div class="tier-delete-dialog" role="dialog" aria-modal="true" aria-label="Delete non-empty tier">
-        <strong>Delete “{deletingRow?.name}”?</strong>
-        <p>This row has {deletingRow?.cards.length ?? 0} cards.</p>
+      <div class="tier-delete-dialog" role="dialog" aria-modal="true" aria-label={t("Delete non-empty tier")}>
+        <strong>{t("Delete “{name}”?", { name: deletingRow?.name })}</strong>
+        <p>{t("This row has {value} cards.", { value: deletingRow?.cards.length ?? 0 })}</p>
         {#if belowRow}
-          <button type="button" onclick={() => commitDeleteRow("move-below")}>Move cards to {belowRow.name}</button>
+          <button type="button" onclick={() => commitDeleteRow("move-below")}>{t("Move cards to {name}", { name: belowRow.name })}</button>
         {/if}
-        <button class="danger" type="button" onclick={() => commitDeleteRow("delete-cards")}>Delete row and cards</button>
-        <button bind:this={dialogCancelButton} type="button" onclick={() => commitDeleteRow("cancel")}>Cancel</button>
+        <button class="danger" type="button" onclick={() => commitDeleteRow("delete-cards")}>{t("Delete row and cards")}</button>
+        <button bind:this={dialogCancelButton} type="button" onclick={() => commitDeleteRow("cancel")}>{t("Cancel")}</button>
       </div>
     </div>
   {/if}

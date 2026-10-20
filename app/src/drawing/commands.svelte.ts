@@ -9,6 +9,7 @@ import "./eraser";
 import "./fill";
 import "./selection.svelte";
 import "./text.svelte";
+import { t } from "../i18n/i18n.svelte";
 
 export function toggleDrawMode(): void {
   if (tool.active === "draw") {
@@ -16,7 +17,7 @@ export function toggleDrawMode(): void {
     tool.active = "select";
   } else {
     if (typeof document !== "undefined" && !drawingGpu()) {
-      showLinkStatus("Drawing needs GPU acceleration (WebGL2), which is unavailable on this system.");
+      showLinkStatus(t("Drawing needs GPU acceleration (WebGL2), which is unavailable on this system."));
       return;
     }
     // Node selection handles would sit on top of the canvas and swallow strokes/selections.

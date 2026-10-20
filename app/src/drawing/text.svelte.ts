@@ -6,6 +6,7 @@ import { affectedTileKeys, applyAcrossLevels, pushDrawingHistory, rasterRectToWo
 import { registerDrawTool } from "./toolRegistry";
 import { currentDrawLevel, levelPxPerUnit, type DrawPointerEvent, type DrawToolHandler } from "./types";
 import { layoutTextRaster, textFontSizeAtLevel, textRasterOrigin, textRasterRectAtOrigin, textWorldSizeAtZoom } from "./textLayout";
+import { t } from "../i18n/i18n.svelte";
 
 const UI_FONT = "system-ui, sans-serif";
 
@@ -93,14 +94,14 @@ async function commitRasterText(commit: TextCommit): Promise<void> {
   const fontSize = textFontSizeAtLevel(commit.fontSizeWorld, level);
   const canvas = document.createElement("canvas");
   const measureContext = canvas.getContext("2d");
-  if (!measureContext) throw new Error("Could not create the text drawing canvas.");
+  if (!measureContext) throw new Error(t("Could not create the text drawing canvas."));
   measureContext.font = `${fontSize}px ${UI_FONT}`;
   const layout = layoutTextRaster(commit.text, fontSize, (line) => measureContext.measureText(line).width);
   canvas.width = layout.width;
   canvas.height = layout.height;
 
   const context = canvas.getContext("2d");
-  if (!context) throw new Error("Could not create the text drawing canvas.");
+  if (!context) throw new Error(t("Could not create the text drawing canvas."));
   context.font = `${layout.fontSize}px ${UI_FONT}`;
   context.textAlign = "left";
   context.textBaseline = "top";

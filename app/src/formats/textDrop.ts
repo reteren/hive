@@ -8,6 +8,7 @@ import { DEFAULT_NOTE_WIDTH, newId, type Note } from "../model/note";
 import { boardCreationNameAllocator, creationNameAllocator, estimatedCreationHeight, mapCreationBatch, placeCreationGrid, queryBoardCreationRightEdge, yieldCreationWork } from "../notes/creationPosition";
 import { captureSelectionSnapshot, clearSelection, restoreSelectionSnapshot, selection } from "../selection/selection.svelte";
 import { grid } from "../board/grid.svelte";
+import { t, tp } from "../i18n/i18n.svelte";
 
 /** A large imported note opens at most 800 CSS px high; its body can scroll thereafter. */
 export const MAX_IMPORTED_NOTE_HEIGHT = 80;
@@ -75,8 +76,8 @@ function commitMarkdownNotes(notes: readonly Note[], fileCount: number): string[
   const index = board.order.length;
   const previousSelection = captureSelectionSnapshot();
   execute({
-    label: fileCount === 1 ? "Import note" : "Import notes",
-    target: fileCount === 1 ? notes[0]?.name : `${notes.length} notes`,
+    label: fileCount === 1 ? t("Import note") : t("Import notes"),
+    target: fileCount === 1 ? notes[0]?.name : tp(notes.length, "{count} note", "{count} notes"),
     do: () => {
       addNotes(notes, index);
       clearSelection();
@@ -96,7 +97,7 @@ function commitMarkdownNotes(notes: readonly Note[], fileCount: number): string[
 export async function importMarkdownPaths(paths: readonly string[], center: Point): Promise<boolean> {
   if (paths.length === 0 || paths.some((path) => !isMarkdownPath(path))) return false;
   try {
-    return await withImportProgress("Import notes", paths.length, async (run) => {
+    return await withImportProgress(t("Import notes"), paths.length, async (run) => {
       let offset = 0;
       const files: DroppedMarkdown[] = [];
       const progressBase = importProgress.id === run.id ? importProgress.completed : 0;
@@ -122,7 +123,7 @@ export async function importMarkdownPaths(paths: readonly string[], center: Poin
         offset += batch.processed;
         if (batch.cancelled || importWasCancelled(run.id)) break;
         if (batch.processed === 0) {
-          firstError ??= "The text import batch made no progress.";
+          firstError ??= t("The text import batch made no progress.");
           break;
         }
       }

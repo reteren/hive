@@ -19,6 +19,7 @@ import {
 import { AUDIO_MIME_TYPES, IMAGE_MIME_TYPES, type MediaRef } from "../attachments/types";
 import { createAudioNotesAsync } from "../notes/noteCommands";
 import { createDictaphoneNote } from "./recording.svelte";
+import { t } from "../i18n/i18n.svelte";
 
 const AUDIO_EXTENSIONS = ["mp3", "wav", "ogg", "oga", "flac", "m4a", "m4b", "mka", "weba"];
 const AUDIO_EXTENSION_BY_MIME: Record<(typeof AUDIO_MIME_TYPES)[number], string> = {
@@ -32,12 +33,12 @@ const AUDIO_EXTENSION_BY_MIME: Record<(typeof AUDIO_MIME_TYPES)[number], string>
 
 export async function chooseAudioFile(center: Point): Promise<boolean> {
   if (!isTauri()) {
-    reportImportError("Choose an audio file from the desktop app.");
+    reportImportError(t("Choose an audio file from the desktop app."));
     return false;
   }
   try {
     const path = await open({
-      title: "Choose an audio file",
+      title: t("Choose an audio file"),
       multiple: false,
       filters: [{ name: "Audio", extensions: AUDIO_EXTENSIONS }],
     });
@@ -64,7 +65,7 @@ export function registerAudioDropHandler(): () => void {
     const bounds = boardElement.getBoundingClientRect();
     const point = screenToWorld(camera, viewport, { x: client.x - bounds.left, y: client.y - bounds.top });
     void importAudioPaths(audioPaths, point);
-    if (audioPaths.length !== paths.length) reportImportError("Non-audio files in this drop were skipped.");
+    if (audioPaths.length !== paths.length) reportImportError(t("Non-audio files in this drop were skipped."));
     return true;
   });
 }
@@ -112,7 +113,7 @@ export function handleBoardAudioPaste(event: ClipboardEvent): void {
 export async function importAudioPaths(paths: readonly string[], center: Point): Promise<boolean> {
   if (paths.length === 0) return false;
   try {
-    return await withImportProgress("Import audio", paths.length, async (run) => {
+    return await withImportProgress(t("Import audio"), paths.length, async (run) => {
       const media: MediaRef[] = [];
       const errors: string[] = [];
       for (let offset = 0; offset < paths.length; offset += 200) {
@@ -121,7 +122,7 @@ export async function importAudioPaths(paths: readonly string[], center: Point):
         const results = await importMediaPathBatch(chunk, run.id, "audio");
         for (const result of results) {
           if (result.ok && result.media.kind === "audio") media.push(result.media);
-          else errors.push(result.ok ? "The selected file is not audio." : result.error);
+          else errors.push(result.ok ? t("The selected file is not audio.") : result.error);
         }
         if (importWasCancelled(run.id) || results.length < chunk.length) break;
         await yieldToUi();
@@ -153,7 +154,7 @@ async function importResults(
 ): Promise<boolean> {
   if (importers.length === 0) return false;
   try {
-    return await withImportProgress("Import audio", importers.length, async (run) => {
+    return await withImportProgress(t("Import audio"), importers.length, async (run) => {
       const media: MediaRef[] = [];
       const errors: string[] = [];
       for (let offset = 0; offset < importers.length; offset += 200) {
@@ -167,7 +168,7 @@ async function importResults(
         addImportProgress(run.id, results.length, succeeded, results.length - succeeded);
         for (const result of results) {
           if (result.ok && result.media.kind === "audio") media.push(result.media);
-          else errors.push(result.ok ? "The selected file is not audio." : result.error);
+          else errors.push(result.ok ? t("The selected file is not audio.") : result.error);
         }
         await yieldToUi();
       }

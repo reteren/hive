@@ -25,6 +25,16 @@ export function tp(count: number, one: string, other: string, params?: Translati
   return translatePluralWith(i18n.locale, i18n.catalog, count, one, other, params);
 }
 
+/** Locale for dates: English keeps hive's day-month-year order, other languages use their own. */
+export function dateLocale(): string {
+  return i18n.locale === "en" ? "en-GB" : i18n.locale;
+}
+
+/** Marks a constant as translatable without translating it yet; the place that shows it calls t(). */
+export function msg(source: string): string {
+  return source;
+}
+
 let request = 0;
 
 /** Load the language's catalog, then switch every window that shares this storage. */

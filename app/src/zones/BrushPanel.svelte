@@ -6,13 +6,14 @@
   import { zoneMode, toggleZoneMoveMode } from "./zoneMode.svelte";
   import { BRUSH_MAX, BRUSH_MIN } from "./brush";
   import { brushState, setBrushSize, stepBrushSize } from "./brushState.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let editing = $state(false);
   let draftSize = $state<number | undefined>(undefined);
   let sizeInput = $state<HTMLInputElement>();
 
-  const increaseTitle = $derived(commandTitle("zone.increaseBrushSize", "Increase brush size"));
-  const decreaseTitle = $derived(commandTitle("zone.decreaseBrushSize", "Decrease brush size"));
+  const increaseTitle = $derived(commandTitle("zone.increaseBrushSize", t("Increase brush size")));
+  const decreaseTitle = $derived(commandTitle("zone.decreaseBrushSize", t("Decrease brush size")));
 
   async function beginEditing(): Promise<void> {
     draftSize = brushState.size;
@@ -67,7 +68,7 @@
 
   function commandTitle(id: string, label: string): string {
     const keys = getCommand(id)?.keys.map(formatKey).join(", ");
-    return keys ? `${label} (${keys})` : `${label} (no key binding)`;
+    return keys ? `${label} (${keys})` : t("{label} (no key binding)", { label: label });
   }
 
 </script>
@@ -77,20 +78,20 @@
     class="zone-brush-panel"
     data-selection-ignore
     role="group"
-    aria-label="Zone brush size"
+    aria-label={t("Zone brush size")}
   >
-    <span class="panel-label">Zone tool</span>
+    <span class="panel-label">{t("Zone tool")}</span>
     <button
       class:move-mode={zoneMode.active === "move"}
       class="mode-toggle"
       data-zone-mode-toggle
       type="button"
       aria-pressed={zoneMode.active === "move"}
-      title="Shift toggles between painting and moving zones"
+      title={t("Shift toggles between painting and moving zones")}
       onclick={toggleZoneMoveMode}
-    >{zoneMode.active === "move" ? "Move zones (Shift)" : "Brush (Shift)"}</button>
+    >{zoneMode.active === "move" ? t("Move zones (Shift)") : t("Brush (Shift)")}</button>
     {#if zoneMode.active === "brush"}
-      <span class="panel-label">Brush size</span>
+      <span class="panel-label">{t("Brush size")}</span>
       <div class="brush-controls">
       <div class="size-field" use:brushSizeWheel>
         {#if editing}
@@ -101,7 +102,7 @@
             min={BRUSH_MIN}
             max={BRUSH_MAX}
             step="1"
-            aria-label="Brush size"
+            aria-label={t("Brush size")}
             onkeydown={handleInputKeydown}
             onblur={commitEdit}
           />
@@ -118,7 +119,7 @@
       <button
         class="step-button"
         type="button"
-        aria-label="Decrease brush size"
+        aria-label={t("Decrease brush size")}
         title={decreaseTitle}
         disabled={brushState.size <= BRUSH_MIN}
         onpointerdown={keepInputFocused}
@@ -127,7 +128,7 @@
       <button
         class="step-button"
         type="button"
-        aria-label="Increase brush size"
+        aria-label={t("Increase brush size")}
         title={increaseTitle}
         disabled={brushState.size >= BRUSH_MAX}
         onpointerdown={keepInputFocused}

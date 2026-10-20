@@ -4,6 +4,7 @@ import { board, updateNote } from "../model/board.svelte";
 import { links } from "../model/links.svelte";
 import type { RandomPick } from "../model/nodeData";
 import { chooseRandomItem, choicesForRandom, linkedListForRandom } from "./logic";
+import { t } from "../i18n/i18n.svelte";
 
 export type PickResult = { ok: true; pick: RandomPick } | { ok: false; reason: "no-list" | "empty" | "invalid-rng" };
 
@@ -20,7 +21,7 @@ export function pickFromList(randomId: string, rng: () => number = Math.random, 
   const pick: RandomPick = { listId: list.id, itemId: chosen.id, pickedAt: now };
   let undoActivation = () => {};
   execute({
-    label: "Pick from List",
+    label: t("Pick from List"),
     target: random.name,
     do: () => {
       updateNote(randomId, { randomPick: { ...pick } });

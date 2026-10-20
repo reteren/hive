@@ -4,6 +4,7 @@
   import { ME_OBJECT_ID } from "../model/link";
   import { board } from "../model/board.svelte";
   import { summarizeTrashEntry } from "./trashListModel";
+  import { t } from "../i18n/i18n.svelte";
 
   let { compact = false }: { compact?: boolean } = $props();
   let entries = $derived(listTrashEntries());
@@ -93,7 +94,7 @@
   }
 
   function formatTime(value: number): string {
-    if (!Number.isFinite(value)) return "Unknown date";
+    if (!Number.isFinite(value)) return t("Unknown date");
     return new Date(value).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
   }
 
@@ -127,7 +128,7 @@
     if (noteId === ME_OBJECT_ID) return "ME";
     return entry.notes.find((note) => note.id === noteId)?.name
       ?? board.notes[noteId]?.name
-      ?? `Missing ${noteId.slice(0, 8)}`;
+      ?? t("Missing {id}", { id: noteId.slice(0, 8) });
   }
 
   function brokenLinkSummary(
@@ -138,15 +139,15 @@
     const ends = `${noteName(link.from, entry)} → ${noteName(link.to, entry)}`;
     if (item.missingEndpoints.length) {
       const missing = item.missingEndpoints.map((id) => noteName(id, entry)).join(", ");
-      return `${ends} · missing ${missing}`;
+      return t("{ends} · missing {missing}", { ends, missing });
     }
     return item.reason === "link-id-exists"
-      ? `${ends} · link already exists`
-      : `${ends} · connection already exists`;
+      ? t("{ends} · link already exists", { ends })
+      : t("{ends} · connection already exists", { ends });
   }
 </script>
 
-<section class:compact class="trash-list" data-trash-list data-selection-ignore aria-label="Trash entries">
+<section class:compact class="trash-list" data-trash-list data-selection-ignore aria-label={t("Trash entries")}>
   <div class="trash-entries">
     {#each entries as entry (entry.id)}
       {@const summary = summarizeTrashEntry(entry)}
@@ -158,18 +159,18 @@
             <time datetime={datetimeAttribute(entry.deletedAt)}>{formatTime(entry.deletedAt)}</time>
           </div>
           <div class="trash-entry-actions">
-            <button type="button" class="trash-action" onclick={() => requestRestore(entry)}>Restore</button>
-            <button type="button" class="trash-action danger" onclick={() => (pendingDelete = entry)}>Delete permanently</button>
+            <button type="button" class="trash-action" onclick={() => requestRestore(entry)}>{t("Restore")}</button>
+            <button type="button" class="trash-action danger" onclick={() => (pendingDelete = entry)}>{t("Delete permanently")}</button>
           </div>
 
           {#if restorePreview && restorePreview.entry.id === entry.id}
-            <div class="trash-confirm" role="alert" aria-label={`Preview restoring ${summary.label}`}>
-              <strong>Restore preview</strong>
+            <div class="trash-confirm" role="alert" aria-label={t("Preview restoring {label}", { label: summary.label })}>
+              <strong>{t("Restore preview")}</strong>
               {#if restorePreview.report.linksRestored.length > 0}
-                <p>{restorePreview.report.linksRestored.length} link{restorePreview.report.linksRestored.length === 1 ? "" : "s"} will be restored.</p>
+                <p>{t("{count} link{value} will be restored.", { count: restorePreview.report.linksRestored.length, value: restorePreview.report.linksRestored.length === 1 ? "" : "s" })}</p>
               {/if}
               {#if restorePreview.report.linksBroken.length > 0}
-                <p>These links will stay broken:</p>
+                <p>{t("These links will stay broken:")}</p>
                 <ul>
                   {#each restorePreview.report.linksBroken as link, index (`${link.link.id}:${index}`)}
                     <li>{brokenLinkSummary(link, entry)}</li>
@@ -177,7 +178,7 @@
                 </ul>
               {/if}
               {#if restorePreview.report.renamed.length > 0}
-                <p>Names will change to avoid conflicts:</p>
+                <p>{t("Names will change to avoid conflicts:")}</p>
                 <ul>
                   {#each restorePreview.report.renamed as rename (`${rename.from}:${rename.to}`)}
                     <li>{rename.from} → {rename.to}</li>
@@ -185,7 +186,7 @@
                 </ul>
               {/if}
               {#if restorePreview.report.idConflicts.length > 0}
-                <p>This entry cannot be restored because an object with the same identity already exists.</p>
+                <p>{t("This entry cannot be restored because an object with the same identity already exists.")}</p>
                 <ul>
                   {#each restorePreview.report.idConflicts as noteId (noteId)}
                     <li>{noteName(noteId, entry)}</li>
@@ -193,36 +194,36 @@
                 </ul>
               {/if}
               <div class="trash-confirm-actions">
-                <button type="button" class="trash-action" onclick={() => (restorePreview = null)}>Cancel</button>
+                <button type="button" class="trash-action" onclick={() => (restorePreview = null)}>{t("Cancel")}</button>
                 {#if restorePreview.report.idConflicts.length === 0}
-                  <button type="button" class="trash-action primary" onclick={confirmRestore}>Confirm restore</button>
+                  <button type="button" class="trash-action primary" onclick={confirmRestore}>{t("Confirm restore")}</button>
                 {/if}
               </div>
             </div>
           {/if}
 
           {#if pendingDelete?.id === entry.id}
-            <div class="trash-confirm" data-trash-delete-confirm role="dialog" aria-modal="false" aria-label={`Confirm permanent deletion of ${summary.label}`} tabindex="-1" onkeydown={handleDeleteConfirmKeydown}>
-              <p>Delete “<strong>{summary.label}</strong>” permanently? This cannot be undone.</p>
+            <div class="trash-confirm" data-trash-delete-confirm role="dialog" aria-modal="false" aria-label={t("Confirm permanent deletion of {label}", { label: summary.label })} tabindex="-1" onkeydown={handleDeleteConfirmKeydown}>
+              <p>{t("Delete “{name}” permanently? This cannot be undone.", { name: summary.label })}</p>
               <div class="trash-confirm-actions">
-                <button bind:this={deleteCancelButton} type="button" class="trash-action" data-trash-delete-cancel onclick={() => (pendingDelete = null)}>Cancel</button>
-                <button type="button" class="trash-action danger" data-trash-delete-confirm-action onclick={confirmDelete}>Delete</button>
+                <button bind:this={deleteCancelButton} type="button" class="trash-action" data-trash-delete-cancel onclick={() => (pendingDelete = null)}>{t("Cancel")}</button>
+                <button type="button" class="trash-action danger" data-trash-delete-confirm-action onclick={confirmDelete}>{t("Delete")}</button>
               </div>
             </div>
           {/if}
         </div>
       </article>
     {:else}
-      <p class="empty-state">Trash is empty.</p>
+      <p class="empty-state">{t("Trash is empty.")}</p>
     {/each}
   </div>
 
   {#if confirmingEmpty}
-    <div class="trash-empty-confirm" data-trash-empty-confirm role="dialog" aria-modal="false" aria-label="Confirm empty trash" tabindex="-1" onkeydown={handleEmptyConfirmKeydown}>
-      <span>Permanently delete all {entries.length} {entries.length === 1 ? "entry" : "entries"}? This cannot be undone.</span>
+    <div class="trash-empty-confirm" data-trash-empty-confirm role="dialog" aria-modal="false" aria-label={t("Confirm empty trash")} tabindex="-1" onkeydown={handleEmptyConfirmKeydown}>
+      <span>{t("Permanently delete all {count} {value}? This cannot be undone.", { count: entries.length, value: entries.length === 1 ? "entry" : "entries" })}</span>
       <div class="trash-confirm-actions">
-        <button bind:this={emptyCancelButton} type="button" class="trash-action" data-trash-empty-cancel onclick={() => (confirmingEmpty = false)}>Cancel</button>
-        <button type="button" class="trash-action danger" onclick={confirmEmpty}>Empty trash</button>
+        <button bind:this={emptyCancelButton} type="button" class="trash-action" data-trash-empty-cancel onclick={() => (confirmingEmpty = false)}>{t("Cancel")}</button>
+        <button type="button" class="trash-action danger" onclick={confirmEmpty}>{t("Empty trash")}</button>
       </div>
     </div>
   {/if}
@@ -230,7 +231,7 @@
   <footer class="trash-list-footer">
     <span>{entries.length} {entries.length === 1 ? "entry" : "entries"}</span>
     <button type="button" class="trash-action danger" disabled={entries.length === 0} onclick={() => (confirmingEmpty = true)}>
-      Empty trash
+      {t("Empty trash")}
     </button>
   </footer>
 </section>

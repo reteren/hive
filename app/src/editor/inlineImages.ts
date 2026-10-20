@@ -13,6 +13,7 @@ import {
 import type { ImageRef } from "../attachments/types";
 import { mountInlineGifDom, updateInlineGifDom } from "../attachments/gifDom";
 import { formatInlineImageToken, parseInlineImageToken } from "./markdownSyntax";
+import { t } from "../i18n/i18n.svelte";
 
 export type BreakHistoryGroup = () => void;
 type ParsedInlineImage = NonNullable<ReturnType<typeof parseInlineImageToken>>;
@@ -379,7 +380,7 @@ function syncWidgetAttributes(wrapper: HTMLElement, widget: InlineImageWidget): 
 function showMissingFile(wrapper: HTMLElement, alt: string, file: string): void {
   const missing = wrapper.ownerDocument.createElement("span");
   missing.className = "cm-inline-image-missing";
-  missing.textContent = `File missing: ${alt || file}`;
+  missing.textContent = t("File missing: {value}", { value: alt || file });
   const frame = wrapper.querySelector(".cm-inline-image-resize-frame");
   if (frame) wrapper.insertBefore(missing, frame);
   else wrapper.append(missing);

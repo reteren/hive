@@ -1,8 +1,9 @@
 <script lang="ts">
+  import { msg, t } from "../i18n/i18n.svelte";
   import { board } from "../model/board.svelte";
   import { lod, visible } from "../board/visibility.svelte";
 
-  const twinTooltip = "Twin of an Inbox entry — interact to keep this one";
+  const twinTooltip = msg("Twin of an Inbox entry — interact to keep this one");
 
   $effect(() => {
     // Cards mount and unmount as the camera moves (culling, far-zoom shells): re-mark them each time.
@@ -17,10 +18,10 @@
         const isTwin = twinIds.has(root.dataset.noteId ?? "");
         if (isTwin) {
           root.dataset.inboxTwin = "true";
-          root.title = twinTooltip;
+          root.title = t(twinTooltip);
         } else if (root.dataset.inboxTwin === "true") {
           delete root.dataset.inboxTwin;
-          if (root.title === twinTooltip) root.removeAttribute("title");
+          if (root.title === t(twinTooltip)) root.removeAttribute("title");
         }
       }
     });

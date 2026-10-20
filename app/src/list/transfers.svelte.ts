@@ -6,6 +6,7 @@ import type { HistoryCommand } from "../history/history.svelte";
 import { addTierCard, copyTierRows, deleteTierCard, effectiveTierRows, markTierHintsDismissed } from "../tierlist/logic";
 import { copyListItems, insertListItem, removeListItem } from "./logic";
 import type { ContentSource, ContentTarget } from "./itemDrag";
+import { t } from "../i18n/i18n.svelte";
 
 /** Cross-node content moves own both snapshots, so one Undo restores both sides. */
 export function createContentMoveCommand(source: ContentSource, target: ContentTarget): HistoryCommand | null {
@@ -27,7 +28,7 @@ export function createContentMoveCommand(source: ContentSource, target: ContentT
     const after = insertListItem(removeListItem(sourceItems, source.itemId), item!, target.index);
     if (JSON.stringify(after) === JSON.stringify(sourceItems)) return null;
     return {
-      label: "Reorder List rows", target: sourceNote.name,
+      label: t("Reorder List rows"), target: sourceNote.name,
       do: () => updateNote(sourceNote.id, { listItems: copyListItems(after) }),
       undo: () => updateNote(sourceNote.id, { listItems: copyListItems(sourceItems) }),
     };
@@ -43,8 +44,8 @@ export function createContentMoveCommand(source: ContentSource, target: ContentT
     const nextItem: ListItem = item ? { ...item } : card!.kind === "text"
       ? { id: newId(), targetId: null, label: card!.text }
       : card!.kind === "image"
-      ? { id: newId(), targetId: null, label: card!.image.name ?? "Image" }
-      : { id: newId(), targetId: card!.noteId, label: board.notes[card!.noteId]?.name ?? zones.byId[card!.noteId]?.name ?? "content missing" };
+      ? { id: newId(), targetId: null, label: card!.image.name ?? t("Image") }
+      : { id: newId(), targetId: card!.noteId, label: board.notes[card!.noteId]?.name ?? zones.byId[card!.noteId]?.name ?? t("content missing") };
     if (targetItems.some((row) => row.id === nextItem.id)) nextItem.id = newId();
     nextTargetItems = insertListItem(targetItems, nextItem, target.index);
   } else {
@@ -56,7 +57,7 @@ export function createContentMoveCommand(source: ContentSource, target: ContentT
   }
 
   return {
-    label: "Move list content", target: `${sourceNote.name} → ${targetNote.name}`,
+    label: t("Move list content"), target: `${sourceNote.name} → ${targetNote.name}`,
     do: () => {
       if (source.kind === "list") updateNote(sourceNote.id, { listItems: copyListItems(nextSourceItems) });
       else updateNote(sourceNote.id, { tiers: copyTierRows(nextSourceTiers) });

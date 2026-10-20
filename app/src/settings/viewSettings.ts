@@ -8,6 +8,7 @@ import type { BackupInterval } from "../backup/backupSettings.svelte";
 import { DEFAULT_QUICK_INPUT_SHORTCUT, normalizeQuickInputShortcut } from "../quickInput/shortcutModel";
 import { normalizeGifPlaybackMode, type GifPlaybackMode } from "../attachments/gifPlayback.svelte";
 import { normalizeCreateMenuPreferences, type CreateMenuPreferences } from "../notes/createMenuCatalog";
+import { DEFAULT_LOCALE, normalizeLocale, type Locale } from "../i18n/locales";
 import { DEFAULT_DRAWING_PREFERENCES, normalizeDrawingPreferences, type DrawingPreferences } from "../drawing/settings";
 import {
   DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB,
@@ -65,6 +66,8 @@ export interface ViewSettings {
   appearance: ThemeSettings;
   /** Q menu: starred items (shown next to Note) and recently created ones. */
   createMenu: CreateMenuPreferences;
+  /** Interface language. Machine-wide, not part of a settings profile. */
+  language: Locale;
 }
 
 /** App-wide Time totals. They belong to view settings, not to an individual project. */
@@ -100,6 +103,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
   videoExternalThresholdMb: DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB,
   appearance: normalizeThemeSettings(DEFAULT_THEME_SETTINGS),
   createMenu: { starred: [], recent: [] },
+  language: DEFAULT_LOCALE,
 };
 
 const MIN_ALLOWED_ZOOM_LIMIT = 0.001;
@@ -171,6 +175,7 @@ export function parseViewSettings(serialized: string | null | undefined, default
     ),
     appearance: normalizeThemeSettings(parsed.appearance, defaults.appearance),
     createMenu: parsed.createMenu === undefined ? normalizeCreateMenuPreferences(defaults.createMenu) : normalizeCreateMenuPreferences(parsed.createMenu),
+    language: normalizeLocale(parsed.language, defaults.language),
   };
 }
 
@@ -210,6 +215,7 @@ export function serializeViewSettings(settings: ViewSettings): string {
     ),
     appearance: normalizeThemeSettings(settings.appearance),
     createMenu: normalizeCreateMenuPreferences(settings.createMenu),
+    language: normalizeLocale(settings.language),
   });
 }
 
@@ -289,6 +295,7 @@ function cloneViewSettings(settings: ViewSettings): ViewSettings {
     ),
     appearance: normalizeThemeSettings(settings.appearance),
     createMenu: normalizeCreateMenuPreferences(settings.createMenu),
+    language: normalizeLocale(settings.language),
   };
 }
 

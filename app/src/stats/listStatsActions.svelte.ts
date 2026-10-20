@@ -10,6 +10,7 @@ import { creationObstacleForNote, estimatedCreationHeight, nearestFreeNoteCenter
 import { measuredHeights } from "../notes/layout.svelte";
 import { uniqueName } from "../notes/naming";
 import { widthWithListStatistics } from "./listStatsLayout";
+import { t } from "../i18n/i18n.svelte";
 
 /** Replace a Statistics node with the List's per-row extension as one Undo step. */
 export function insertStatisticsIntoList(statsId: string, listId: string): boolean {
@@ -24,7 +25,7 @@ export function insertStatisticsIntoList(statsId: string, listId: string): boole
   const priorEditing = editing.noteId;
 
   execute({
-    label: "Insert Statistics into List",
+    label: t("Insert Statistics into List"),
     target: list.name,
     do: () => {
       updateNote(listId, { listStats: true });
@@ -52,7 +53,7 @@ export function extractStatisticsFromList(listId: string, worldPoint: Point): bo
   const index = board.order.length;
 
   execute({
-    label: "Extract Statistics from List",
+    label: t("Extract Statistics from List"),
     target: list.name,
     do: () => {
       updateNote(listId, { listStats: false });

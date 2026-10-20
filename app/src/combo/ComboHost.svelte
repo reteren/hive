@@ -16,6 +16,7 @@
   import { isComboDropPlan } from "./dropLogic";
   import { noteBounds } from "../notes/layout.svelte";
   import { cachedClientRect } from "../board/boardRect";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let root: HTMLDivElement;
@@ -26,8 +27,8 @@
   let isDropTarget = $derived($activeDropTarget?.ownerId === dropOwnerId);
   let activePlan = $derived(isComboDropPlan($activeDropTarget?.payload) ? $activeDropTarget.payload : null);
   let dropHint = $derived(activePlan?.direction === "message-into-text-host"
-    ? "Drop Note or Task to combine"
-    : "Drop Time or Message to combine");
+    ? t("Drop Note or Task to combine")
+    : t("Drop Time or Message to combine"));
 
   onMount(() => {
     const unregister = registerDropTarget({
@@ -88,11 +89,11 @@
       use:comboPullout={{ noteId: note.id, section }}
     >
       <div class="combo-section-title">
-        <span>{section === "message" ? "Message" : "Time"}</span>
+        <span>{section === "message" ? t("Message") : t("Time")}</span>
         <button
           class="combo-section-toggle"
           type="button"
-          aria-label={`${sectionExpanded(note.embedSections, section) ? "Collapse" : "Expand"} ${section} section`}
+          aria-label={sectionExpanded(note.embedSections, section) ? t("Collapse {section} section", { section }) : t("Expand {section} section", { section })}
           aria-expanded={sectionExpanded(note.embedSections, section)}
           onclick={() => toggleEmbeddedSection(note.id, section)}
         >
@@ -106,10 +107,10 @@
           style:width={`${COMBO_SECTION_WIDTH_PX}px`}
         >
           {#if section === "message"}
-            <div class="combo-message-settings" role="group" aria-label="Message settings">
-              <label><input type="checkbox" checked={settings.sound} onchange={(event) => toggleSettings(event, "sound")} /> Sound</label>
-              <label><input type="checkbox" checked={settings.overhive} disabled={!desktop} onchange={(event) => toggleSettings(event, "overhive")} /> Overhive</label>
-              {#if !desktop}<span class="combo-message-hint">Overhive is available in the desktop app.</span>{/if}
+            <div class="combo-message-settings" role="group" aria-label={t("Message settings")}>
+              <label><input type="checkbox" checked={settings.sound} onchange={(event) => toggleSettings(event, "sound")} /> {t("Sound")}</label>
+              <label><input type="checkbox" checked={settings.overhive} disabled={!desktop} onchange={(event) => toggleSettings(event, "overhive")} /> {t("Overhive")}</label>
+              {#if !desktop}<span class="combo-message-hint">{t("Overhive is available in the desktop app.")}</span>{/if}
             </div>
           {:else}
             <TimeNodeBody {note} embedded />

@@ -7,6 +7,7 @@ import {
   mergeCustomMarks,
   validateCustomMark,
 } from "./markasLogic";
+import { t } from "../i18n/i18n.svelte";
 
 export type SaveCustomMarkResult = { ok: true } | { ok: false; error: string };
 
@@ -17,12 +18,12 @@ export function saveMarkAsTag(
   color: string,
 ): SaveCustomMarkResult {
   const note = board.notes[noteId];
-  if (note?.type !== "markas") return { ok: false, error: "Mark as node is unavailable." };
+  if (note?.type !== "markas") return { ok: false, error: t("Mark as node is unavailable.") };
   const validated = validateCustomMark(text, color);
   if (!validated.ok) return validated;
 
   const existingIndex = existingId ? (note.customMarks ?? []).findIndex((mark) => mark.id === existingId) : -1;
-  if (existingId && existingIndex < 0) return { ok: false, error: "That tag is no longer available." };
+  if (existingId && existingIndex < 0) return { ok: false, error: t("That tag is no longer available.") };
 
   const nextMark: CustomMark = {
     id: existingIndex >= 0 ? existingId! : newId(),
@@ -37,7 +38,7 @@ export function saveMarkAsTag(
     note,
     { customMarks: deduped },
     writeMarkAsPatch,
-    existingIndex >= 0 ? "Edit Mark as tag" : "Add Mark as tag",
+    existingIndex >= 0 ? t("Edit Mark as tag") : t("Add Mark as tag"),
   );
   if (command) execute(command);
   return { ok: true };
@@ -53,7 +54,7 @@ export function removeMarkAsTag(noteId: string, markId: string): void {
     note,
     { customMarks: remaining },
     writeMarkAsPatch,
-    "Remove Mark as tag",
+    t("Remove Mark as tag"),
   );
   if (command) execute(command);
 }
@@ -72,7 +73,7 @@ export function recolorMarkAsTag(noteId: string, markId: string, color: string):
     note,
     { customMarks: next },
     writeMarkAsPatch,
-    "Recolour Mark as tag",
+    t("Recolour Mark as tag"),
   );
   if (command) execute(command);
 }
@@ -84,7 +85,7 @@ export function setCustomMarkFrame(noteId: string, enabled: boolean): void {
     note,
     { customMarkFrame: enabled },
     writeMarkAsPatch,
-    enabled ? "Enable Mark as frame" : "Disable Mark as frame",
+    enabled ? t("Enable Mark as frame") : t("Disable Mark as frame"),
   );
   if (command) execute(command);
 }

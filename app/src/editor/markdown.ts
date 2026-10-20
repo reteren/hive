@@ -2,6 +2,7 @@ import { hiveMarkdownParser } from "./markdownSyntax";
 import { coloredHighlights, getContrastingTextColor } from "./highlight";
 import { parseTextLink, textLinkStyleClass } from "../links-in-text/format";
 import type { Point } from "../board/cameraMath";
+import { t } from "../i18n/i18n.svelte";
 
 const maxCachedEntries = 128;
 const maxCachedCharacters = 512_000;
@@ -390,21 +391,21 @@ function renderLink(
       event.preventDefault();
       event.stopPropagation();
       if (missingNote) {
-        options.linkActions?.onNotice?.("This note is missing.");
+        options.linkActions?.onNotice?.(t("This note is missing."));
         return;
       }
       try {
         if (target.kind === "external") {
           void Promise.resolve(options.linkActions?.openExternal?.(target.url)).catch(() => {
-            options.linkActions?.onNotice?.("Could not open this link.");
+            options.linkActions?.onNotice?.(t("Could not open this link."));
           });
         } else if (target.kind === "point") {
           options.linkActions?.teleportToPoint?.(target.point);
         } else if (options.linkActions?.teleportToNote?.(target.noteId) === false) {
-          options.linkActions?.onNotice?.("This note is missing.");
+          options.linkActions?.onNotice?.(t("This note is missing."));
         }
       } catch {
-        options.linkActions?.onNotice?.("Could not open this link.");
+        options.linkActions?.onNotice?.(t("Could not open this link."));
       }
     };
     label.addEventListener("click", activate);
@@ -414,9 +415,9 @@ function renderLink(
   }
 
   if (target?.kind === "note" && !hasLabel) {
-    appendText(label, doc, note?.name ?? "Missing note");
+    appendText(label, doc, note?.name ?? t("Missing note"));
   } else if (target?.kind === "point" && !hasLabel) {
-    appendText(label, doc, `Point (${target.point.x}, ${target.point.y})`);
+    appendText(label, doc, t("Point ({x}, {y})", { x: target.point.x, y: target.point.y }));
   } else if (node.name === "URL" || node.name === "Autolink") {
     appendText(label, doc, source.slice(urlNode?.from ?? node.from, urlNode?.to ?? node.to));
   } else {

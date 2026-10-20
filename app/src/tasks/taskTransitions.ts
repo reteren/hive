@@ -2,6 +2,7 @@ import type { HistoryCommand } from "../history/historyStack";
 import type { Note, TaskState } from "../model/note";
 import type { TaskLogEntry } from "./taskLog.svelte";
 import type { LinkedTimeState } from "../time/taskLink";
+import { t } from "../i18n/i18n.svelte";
 
 export interface TaskTransitionStore {
   getTask(noteId: string): TaskState | null;
@@ -28,7 +29,7 @@ export function createTaskFlagCommand(
   const after = before ? null : rememberedBefore ?? { done: false, doneAt: null };
 
   return {
-    label: before ? "Unmark as task" : "Mark as task",
+    label: before ? t("Unmark as task") : t("Mark as task"),
     target,
     do: () => {
       if (before) {
@@ -58,7 +59,7 @@ export function createTaskCompletionCommand(
   const entry: TaskLogEntry = { noteId, name: target, doneAt };
   const linkedTimes = store.getLinkedTimeStates?.(noteId) ?? [];
   return {
-    label: "Complete task",
+    label: t("Complete task"),
     target,
     do: () => {
       store.setTask(noteId, after);
@@ -82,7 +83,7 @@ export function createReopenTaskCommand(
   if (!before?.done) return null;
 
   return {
-    label: "Reopen task",
+    label: t("Reopen task"),
     target,
     do: () => store.setTask(noteId, { done: false, doneAt: null }),
     undo: () => store.setTask(noteId, before),

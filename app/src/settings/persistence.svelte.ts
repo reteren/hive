@@ -21,6 +21,7 @@ import { setTimeCounters, timeCounters } from "../time/runtime.svelte";
 import { timeEnablePreference } from "../time/enablePreference.svelte";
 import { gifPlayback, setGifPlaybackMode } from "../attachments/gifPlayback.svelte";
 import { createMenuPreferencesSnapshot, setCreateMenuPreferences } from "../notes/createMenuPreferences.svelte";
+import { i18n, setLanguage } from "../i18n/i18n.svelte";
 import { drawingPreferencesSnapshot, loadDrawingPreferences } from "../drawing/tools.svelte";
 import {
   cacheThemeBootstrap,
@@ -247,6 +248,7 @@ function currentSettings(): ViewSettings {
     videoExternalThresholdMb: preferences.videoExternalThresholdMb,
     appearance: getThemeSettingsSnapshot(),
     createMenu: createMenuPreferencesSnapshot(),
+    language: i18n.locale,
   };
 }
 
@@ -278,4 +280,5 @@ function applySettings(settings: ViewSettings): void {
   setVideoExternalThresholdMb(settings.videoExternalThresholdMb);
   setThemeSettings(settings.appearance);
   setCreateMenuPreferences(settings.createMenu);
+  if (settings.language !== i18n.locale) void setLanguage(settings.language);
 }

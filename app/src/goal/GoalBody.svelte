@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Note } from "../model/note";
   import { goalState, visibleGoalRows } from "./goal";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let state = $derived(goalState(note.id));
@@ -15,10 +16,10 @@
   aria-live="polite"
   aria-label={rows.length > 0
     ? rows.map((row) => `${row.done} of ${row.total} ${row.label}`).join("; ")
-    : "No connected tasks or goals"}
+    : t("No connected tasks or goals")}
 >
   {#if rows.length === 0}
-    <span>No connected tasks or goals</span>
+    <span>{t("No connected tasks or goals")}</span>
   {:else}
     {#each rows as row (row.kind)}
       <div class="goal-row" class:goal-secondary={row.kind !== "tasks"} data-goal-row={row.kind}>

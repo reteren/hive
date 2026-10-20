@@ -4,6 +4,7 @@ import { mount, unmount } from "svelte";
 import { createHighlightChange, DEFAULT_HIGHLIGHT_COLOR } from "./highlight";
 import HexColorPicker from "../color/HexColorPicker.svelte";
 import "./highlightPalette.css";
+import { t } from "../i18n/i18n.svelte";
 
 const paletteColors = [
   DEFAULT_HIGHLIGHT_COLOR,
@@ -79,7 +80,7 @@ export function openHighlightPalette(view: EditorView): boolean {
   palette.className = "hive-highlight-palette";
   palette.setAttribute("data-selection-ignore", "");
   palette.setAttribute("role", "toolbar");
-  palette.setAttribute("aria-label", "Highlight color palette");
+  palette.setAttribute("aria-label", t("Highlight color palette"));
   palette.addEventListener("mousedown", (event) => {
     // The HEX field needs focus; everything else keeps the editor selection.
     if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
@@ -114,7 +115,7 @@ export function openHighlightPalette(view: EditorView): boolean {
 
   const label = document.createElement("span");
   label.className = "hive-highlight-title";
-  label.textContent = "Highlight";
+  label.textContent = t("Highlight");
   palette.append(label);
 
   const colors = [lastColor, ...paletteColors.filter((color) => color !== lastColor)];
@@ -125,7 +126,7 @@ export function openHighlightPalette(view: EditorView): boolean {
     button.style.backgroundColor = color;
     button.setAttribute(
       "aria-label",
-      index === 0 ? `Use last highlight color ${color}` : `Highlight with ${color}`,
+      index === 0 ? t("Use last highlight color {color}", { color: color }) : t("Highlight with {color}", { color: color }),
     );
     if (index === 0) button.setAttribute("data-last-color", "true");
     button.addEventListener("click", () => {
@@ -142,7 +143,7 @@ export function openHighlightPalette(view: EditorView): boolean {
     target: pickerHost,
     props: {
       value: lastColor,
-      label: "Highlight colour",
+      label: t("Highlight colour"),
       oninput: (color: string) => {
         draftColor = color;
         dirty = true;

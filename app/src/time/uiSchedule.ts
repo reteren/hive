@@ -1,4 +1,5 @@
 import type { TimeSchedule } from "./types";
+import { t } from "../i18n/i18n.svelte";
 
 const HOUR_MS = 60 * 60 * 1_000;
 const FIVE_MINUTES_MS = 5 * 60 * 1_000;
@@ -26,12 +27,12 @@ export function timeCheckboxId(noteId: string, field: "repeat" | "enabled"): str
 
 /** A compact hours equivalent shown next to the canonical minutes field. */
 export function intervalHoursHint(minutes: number): string {
-  if (!Number.isFinite(minutes) || minutes < 1) return "Enter at least 1 minute.";
+  if (!Number.isFinite(minutes) || minutes < 1) return t("Enter at least 1 minute.");
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
   if (hours === 0) return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
   if (remainder === 0) return `${hours} ${hours === 1 ? "hour" : "hours"}`;
-  return `${hours} h ${remainder} min`;
+  return t("{hours} h {remainder} min", { hours: hours, remainder: remainder });
 }
 
 export function formatCountdown(milliseconds: number): string {

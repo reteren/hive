@@ -12,6 +12,7 @@
     type QuickInputResult,
     type QuickInputSubmissionState,
   } from "./submission";
+  import { t } from "../i18n/i18n.svelte";
 
   let textarea = $state<HTMLTextAreaElement | null>(null);
   let submission = $state<QuickInputSubmissionState>(initialSubmissionState());
@@ -101,25 +102,25 @@
 <main class="quick-input" data-quick-input-window data-selection-ignore>
   <header class="quick-input__header">
     <div>
-      <p class="quick-input__eyebrow">hive · Inbox</p>
-      <h1>Quick input</h1>
+      <p class="quick-input__eyebrow">{t("hive · Inbox")}</p>
+      <h1>{t("Quick input")}</h1>
     </div>
-    <button class="quick-input__close" type="button" aria-label="Hide quick input" title="Hide quick input" onclick={() => void getCurrentWindow().hide()}>×</button>
+    <button class="quick-input__close" type="button" aria-label={t("Hide quick input")} title={t("Hide quick input")} onclick={() => void getCurrentWindow().hide()}>×</button>
   </header>
 
   <textarea
     bind:this={textarea}
     bind:value={submission.text}
     class="quick-input__text"
-    placeholder="Capture a thought…"
-    aria-label="Text to add to the Inbox"
+    placeholder={t("Capture a thought…")}
+    aria-label={t("Text to add to the Inbox")}
     aria-describedby="quick-input-help"
   ></textarea>
 
   <footer class="quick-input__footer">
-    <p id="quick-input-help">Enter to add · Shift+Enter for a new line · Esc to hide</p>
+    <p id="quick-input-help">{t("Enter to add · Shift+Enter for a new line · Esc to hide")}</p>
     <button class="quick-input__submit" type="button" disabled={sending || submission.text.trim().length === 0} onclick={() => void submit()}>
-      {sending ? "Adding…" : "Add note"}
+      {sending ? t("Adding…") : t("Add note")}
     </button>
   </footer>
   {#if submission.error}

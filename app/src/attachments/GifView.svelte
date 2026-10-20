@@ -6,6 +6,7 @@
   import { attachmentUrl } from "./service";
   import { acquireDisplayBitmap, displayBitmapSize, peekAnyDisplayBitmap, type DisplayBitmapLease } from "./displayBitmap";
   import { gifPlayback, isGifStopped, shouldPlayGif, type GifPlaybackTarget } from "./gifPlayback.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   interface Props {
     image: ImageRef;
@@ -208,10 +209,10 @@
     <img class="gif-view-picture" src={url} {alt} draggable="false" onerror={handleError} style:object-fit={fit} style:height="100%" />
   {/if}
   {#if loading && !failed}
-    <div class="gif-view-state">Loading image…</div>
+    <div class="gif-view-state">{t("Loading image…")}</div>
   {:else if failed || !url}
-    <div class="gif-view-state gif-view-error" role="img" aria-label={`File missing: ${image.name ?? image.file}`}>
-      File missing: {image.name ?? image.file}
+    <div class="gif-view-state gif-view-error" role="img" aria-label={t("File missing: {value}", { value: image.name ?? image.file })}>
+      {t("File missing: {value}", { value: image.name ?? image.file })}
     </div>
   {/if}
 </div>

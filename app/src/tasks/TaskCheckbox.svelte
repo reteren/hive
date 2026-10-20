@@ -2,6 +2,7 @@
 <script lang="ts">
   import type { Note } from "../model/note";
   import { toggleTaskCompletion } from "./taskActions.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
 
@@ -29,8 +30,8 @@
       type="button"
       role="checkbox"
       aria-checked={note.task.done}
-      aria-label={`${note.task.done ? "Reopen" : "Complete"} ${note.name}`}
-      title={`${note.task.done ? "Reopen" : "Complete"} ${note.name}`}
+      aria-label={`${note.task.done ? t("Reopen") : t("Complete")} ${note.name}`}
+      title={`${note.task.done ? t("Reopen") : t("Complete")} ${note.name}`}
       onclick={toggle}
     >
       <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">

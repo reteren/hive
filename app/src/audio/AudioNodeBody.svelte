@@ -18,6 +18,7 @@
     renameAudioRecording,
     stopAudioRecording,
   } from "./recording.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let root = $state<HTMLDivElement | null>(null);
@@ -92,16 +93,16 @@
   }
 </script>
 
-<div class="audio-node" bind:this={root} data-audio-node={note.id} role="group" aria-label={`${note.name} audio node`} onpointermove={trackHoveredPlayer} onpointerleave={() => (hoveredPlayer = null)} ondblclick={(event) => event.stopPropagation()}>
+<div class="audio-node" bind:this={root} data-audio-node={note.id} role="group" aria-label={t("{name} audio node", { name: note.name })} onpointermove={trackHoveredPlayer} onpointerleave={() => (hoveredPlayer = null)} ondblclick={(event) => event.stopPropagation()}>
   {#if isDictaphone}
     <section
       class="dictaphone"
       class:drop-target={isAudioDropTarget}
       data-audio-dictaphone-drop-target={isAudioDropTarget ? note.id : undefined}
-      aria-label="Audio recorder"
+      aria-label={t("Audio recorder")}
     >
       <div class="recorder-display" class:is-recording={isRecording} data-audio-recording={note.id}>
-        <div class="level-wave" class:active={isRecording} role="meter" aria-label="Microphone level" aria-valuemin="0" aria-valuemax="100" aria-valuenow={isRecording ? Math.round(audioRecording.level * 100) : 0}>
+        <div class="level-wave" class:active={isRecording} role="meter" aria-label={t("Microphone level")} aria-valuemin="0" aria-valuemax="100" aria-valuenow={isRecording ? Math.round(audioRecording.level * 100) : 0}>
           {#each Array.from({ length: 36 }, (_, index) => index) as index (index)}
             {@const height = isRecording
               ? Math.max(6, Math.round((0.1 + audioRecording.level * (0.2 + Math.abs(Math.sin(index * 1.7)) * 0.8)) * 100))
@@ -111,11 +112,11 @@
         </div>
         <div class="recorder-status">
           <span class="status-label" class:recording-label={isRecording}>
-            {#if phase === "requesting"}Connecting to microphone
-            {:else if phase === "recording"}Recording
-            {:else if phase === "saving"}Saving recording
-            {:else if phase === "error" && isCurrentCapture}Recording stopped
-            {:else}Ready to record{/if}
+            {#if phase === "requesting"}{t("Connecting to microphone")}
+            {:else if phase === "recording"}{t("Recording")}
+            {:else if phase === "saving"}{t("Saving recording")}
+            {:else if phase === "error" && isCurrentCapture}{t("Recording stopped")}
+            {:else}{t("Ready to record")}{/if}
           </span>
           <MediaTime seconds={audioRecording.noteId === note.id ? audioRecording.elapsedSeconds : 0} />
         </div>
@@ -125,9 +126,9 @@
         class="record-button"
         class:stop={isRecording}
         type="button"
-        aria-label={isRecording ? "Stop and save recording" : "Start recording"}
+        aria-label={isRecording ? t("Stop and save recording") : t("Start recording")}
         aria-pressed={isRecording}
-        title={isRecording ? "Stop and save" : "Record"}
+        title={isRecording ? t("Stop and save") : t("Record")}
         disabled={isBusy || isActiveElsewhere}
         data-selection-ignore
         onclick={toggleRecording}
@@ -139,12 +140,12 @@
         <p class="recorder-error" role="alert">{audioRecording.error}</p>
       {/if}
       {#if isAudioDropTarget}
-        <div class="dictaphone-drop-hint" data-audio-dictaphone-drop-hint role="status">Drop to add recording</div>
+        <div class="dictaphone-drop-hint" data-audio-dictaphone-drop-hint role="status">{t("Drop to add recording")}</div>
       {/if}
     </section>
 
     {#if (note.recordings?.length ?? 0) > 0}
-      <section class="recording-list" aria-label="Recordings">
+      <section class="recording-list" aria-label={t("Recordings")}>
         {#each note.recordings ?? [] as recording (recording.id)}
           <AudioPlayerRow
             recordingId={recording.id}
@@ -158,12 +159,12 @@
         {/each}
       </section>
     {:else}
-      <p class="empty-recordings">Your recordings will appear here.</p>
+      <p class="empty-recordings">{t("Your recordings will appear here.")}</p>
     {/if}
   {:else if note.media?.kind === "audio"}
     <AudioPlayerRow media={note.media} name={note.name} sourceNoteId={note.id} />
   {:else}
-    <div class="audio-error" role="status">Audio file is missing or unavailable.</div>
+    <div class="audio-error" role="status">{t("Audio file is missing or unavailable.")}</div>
   {/if}
 
   {#if note.text.trim()}

@@ -15,6 +15,7 @@ import { copyTimeForHost, copyEmbedSections, type EmbedSectionState } from "./da
 import { nextSectionState, planComboInsertion, type ComboSection } from "./logic";
 import { comboDropPlan } from "./dropLogic";
 import { comboHostMinimumWidth } from "./layout";
+import { t } from "../i18n/i18n.svelte";
 
 export function comboInsertCommand(sourceId: string, hostId: string): HistoryCommand | null {
   const source = board.notes[sourceId];
@@ -87,7 +88,7 @@ export function updateEmbeddedMessageSettings(noteId: string, patch: Partial<Non
   const after = { ...(before ?? defaultMessageData()), ...patch };
   if (before?.sound === after.sound && before?.overhive === after.overhive) return false;
   execute({
-    label: "Edit message settings",
+    label: t("Edit message settings"),
     target: note.name,
     do: () => updateNote(noteId, { message: { ...after } }),
     undo: () => updateNote(noteId, { message: before ? { ...before } : undefined }),
@@ -158,7 +159,7 @@ export function extractComboPart(noteId: string, section: ComboSection, worldPoi
   const previousEditing = editing.noteId;
 
   execute({
-    label: `Extract ${section === "message" ? "Message" : "Time"}`,
+    label: t("Extract {value}", { value: section === "message" ? "Message" : "Time" }),
     target: host.name,
     do: () => {
       applyNote(host.id, hostAfter);
@@ -247,5 +248,5 @@ function comboInsertionLabel(source: Note): string {
     source.type === "message" || source.message ? "Message" : null,
     source.type === "time" || source.time ? "Time" : null,
   ].filter((part): part is string => part !== null);
-  return `Insert ${parts.join(" and ")}`;
+  return t("Insert {parts}", { parts: parts.join(" and ") });
 }

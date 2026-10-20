@@ -1,5 +1,6 @@
 import type { NoteKind } from "../model/note";
 import { inlineImageTextForFit } from "../editor/markdownSyntax";
+import { t } from "../i18n/i18n.svelte";
 
 export interface SearchNote {
   id: string;
@@ -256,13 +257,13 @@ function kindSearchText(note: SearchNote): string[] {
 }
 
 const OBJECT_KIND_TERMS: Partial<Record<NoteKind, Array<{ term: string; label: string }>>> = {
-  note: [{ term: "note", label: "Note" }],
-  pro: [{ term: "pro", label: "Plus" }, { term: "plus", label: "Plus" }],
-  con: [{ term: "con", label: "Minus" }, { term: "minus", label: "Minus" }],
-  importance: [{ term: "importance", label: "Importance" }],
-  purpose: [{ term: "purpose", label: "Purpose" }],
-  mood: [{ term: "mood", label: "Mood" }],
-  beacon: [{ term: "beacon", label: "Beacon" }],
+  note: [{ term: "note", get label() { return t("Note"); } }],
+  pro: [{ term: "pro", get label() { return t("Plus"); } }, { term: "plus", get label() { return t("Plus"); } }],
+  con: [{ term: "con", get label() { return t("Minus"); } }, { term: "minus", get label() { return t("Minus"); } }],
+  importance: [{ term: "importance", get label() { return t("Importance"); } }],
+  purpose: [{ term: "purpose", get label() { return t("Purpose"); } }],
+  mood: [{ term: "mood", get label() { return t("Mood"); } }],
+  beacon: [{ term: "beacon", get label() { return t("Beacon"); } }],
 };
 
 function findObjectKindMatch(
@@ -270,7 +271,7 @@ function findObjectKindMatch(
   foldedQuery: string,
 ): { term: string; label: string; start: number; end: number } | null {
   const terms = note.type ? [...(OBJECT_KIND_TERMS[note.type] ?? [])] : [];
-  if (note.task) terms.push({ term: "task", label: "Task" });
+  if (note.task) terms.push({ term: "task", label: t("Task") });
   for (const candidate of terms) {
     const range = findMatchRange(candidate.term, foldedQuery);
     if (range) return { ...range, ...candidate };

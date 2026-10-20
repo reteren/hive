@@ -1,6 +1,7 @@
+import { msg, t } from "../i18n/i18n.svelte";
 export const QUICK_INPUT_EVENT = "hive://quick-input";
 export const QUICK_INPUT_RESULT_EVENT = "hive://quick-input-result";
-export const NO_INBOX_ERROR = "No Inbox node in the open project — create one with Q → Inbox.";
+export const NO_INBOX_ERROR = msg("No Inbox node in the open project — create one with Q → Inbox.");
 
 export interface QuickInputRequest {
   text: string;
@@ -47,6 +48,6 @@ export function finishSubmission(
   return {
     ...state,
     requestId: null,
-    error: result.error === "no-inbox" ? NO_INBOX_ERROR : result.error || "Could not add the note. Try again.",
+    error: result.error === "no-inbox" ? t(NO_INBOX_ERROR) : result.error || t("Could not add the note. Try again."),
   };
 }

@@ -2,6 +2,7 @@ import { PX_PER_UNIT } from "../../board/cameraMath";
 import type { BrushSettings } from "../types";
 import { levelPxPerUnit } from "../types";
 import { localLineEnds, rotatedShapeBounds, shapeCenter, shapeSize, traceClosedShape, type ShapeDraft, type ShapeFillMode } from "./shapeGeometry";
+import { t } from "../../i18n/i18n.svelte";
 
 export interface RasterizedShape {
   canvas: HTMLCanvasElement;
@@ -37,14 +38,14 @@ export function rasterizeShape(draft: ShapeDraft, options: ShapeRasterOptions): 
   const width = Math.max(1, Math.ceil(bounds.right * ppu) - rasterX);
   const height = Math.max(1, Math.ceil(bounds.bottom * ppu) - rasterY);
   if (width > MAX_RASTER_SIDE || height > MAX_RASTER_SIDE || width * height > MAX_RASTER_PIXELS) {
-    throw new RangeError("This shape is too large to rasterize at the current zoom. Reduce its size and try again.");
+    throw new RangeError(t("This shape is too large to rasterize at the current zoom. Reduce its size and try again."));
   }
 
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d", { alpha: true });
-  if (!ctx) throw new Error("The browser could not create a shape raster canvas.");
+  if (!ctx) throw new Error(t("The browser could not create a shape raster canvas."));
 
   const center = shapeCenter(draft);
   const size = shapeSize(draft);

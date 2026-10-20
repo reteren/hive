@@ -3,6 +3,7 @@
   import type { Note } from "../model/note";
   import { deleteUserWord, mergeUserDictionary, refreshUserDictionary, userDictionary } from "./dictionary.svelte";
   import { getUserDictionary } from "./engine";
+  import { t, tp } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let search = $state("");
@@ -15,11 +16,11 @@
   onMount(() => { void refreshUserDictionary(); });
 
   async function removeWord(word: string): Promise<void> {
-    if (!window.confirm(`Remove “${word}” from the shared user dictionary?`)) return;
+    if (!window.confirm(t("Remove “{word}” from the shared user dictionary?", { word: word }))) return;
     busy = true;
     message = "";
     try { await deleteUserWord(word); }
-    catch { message = "Could not remove that word."; }
+    catch { message = t("Could not remove that word."); }
     finally { busy = false; }
   }
 
@@ -38,8 +39,8 @@
       link.download = `hive-user-dictionary.${format}`;
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      message = `Dictionary exported as ${format.toUpperCase()}.`;
-    } catch { message = "Could not export the dictionary."; }
+      message = t("Dictionary exported as {format}.", { format: format.toUpperCase() });
+    } catch { message = t("Could not export the dictionary."); }
     finally { busy = false; }
   }
 
@@ -53,32 +54,32 @@
     message = "";
     try {
       await mergeUserDictionary(await file.text());
-      message = `Merged words from ${file.name}.`;
-    } catch { message = "Could not import that dictionary file."; }
+      message = t("Merged words from {name}.", { name: file.name });
+    } catch { message = t("Could not import that dictionary file."); }
     finally { busy = false; input.value = ""; }
   }
 </script>
 
 <div class="dictionary-node" class:manual-height={note.height !== null} data-dictionary-node={note.id} data-note-id={note.id}>
   <div class="dictionary-toolbar">
-    <input bind:value={search} type="search" aria-label="Search dictionary" placeholder="Search words…" />
-    <button type="button" onclick={openImport} disabled={busy}>Import…</button>
+    <input bind:value={search} type="search" aria-label={t("Search dictionary")} placeholder={t("Search words…")} />
+    <button type="button" onclick={openImport} disabled={busy}>{t("Import…")}</button>
   </div>
   <input bind:this={fileInput} class="dictionary-file-input" type="file" accept=".txt,.json,text/plain,application/json" onchange={importFile} />
   <div class="dictionary-export">
-    <button type="button" onclick={() => void exportDictionary("txt")} disabled={busy}>Export .txt</button>
-    <button type="button" onclick={() => void exportDictionary("json")} disabled={busy}>Export .json</button>
-    <span>{userDictionary.loading ? "Loading…" : `${userDictionary.words.length} words`}</span>
+    <button type="button" onclick={() => void exportDictionary("txt")} disabled={busy}>{t("Export .txt")}</button>
+    <button type="button" onclick={() => void exportDictionary("json")} disabled={busy}>{t("Export .json")}</button>
+    <span>{userDictionary.loading ? t("Loading…") : tp(userDictionary.words.length, "{count} word", "{count} words")}</span>
   </div>
   {#if userDictionary.error || message}<div class="dictionary-status" role="status">{userDictionary.error || message}</div>{/if}
   <ul class="dictionary-words">
     {#each visibleWords as word (word)}
       <li data-dictionary-word>
         <span>{word}</span>
-        <button type="button" aria-label={`Remove ${word}`} title="Remove word" disabled={busy} onclick={() => void removeWord(word)}>×</button>
+        <button type="button" aria-label={t("Remove {word}", { word: word })} title={t("Remove word")} disabled={busy} onclick={() => void removeWord(word)}>×</button>
       </li>
     {:else}
-      <li class="dictionary-empty">{search ? "No matching words." : "No words added yet."}</li>
+      <li class="dictionary-empty">{search ? t("No matching words.") : t("No words added yet.")}</li>
     {/each}
   </ul>
 </div>

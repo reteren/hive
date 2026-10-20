@@ -3,6 +3,7 @@
   import { backupPanelState, closeBackupsPanel } from "./panel.svelte";
   import { checkProjectHealth, createBackup, deleteBackup, listBackups, restoreBackup, type BackupInfo } from "./api";
   import Select from "../ui/Select.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let backups = $state<BackupInfo[]>([]);
   let totalSizeBytes = $state(0);
@@ -58,7 +59,7 @@
   }
 
   async function restore(item: BackupInfo): Promise<void> {
-    if (!window.confirm(`Restore the project from ${formatDate(item.date)}? The current project will first be snapshotted, then board.json and notes will be replaced.`)) return;
+    if (!window.confirm(t("Restore the project from {date}? The current project will first be snapshotted, then board.json and notes will be replaced.", { date: formatDate(item.date) }))) return;
     busy = true;
     backupPanelState.error = "";
     try {
@@ -73,7 +74,7 @@
   }
 
   async function remove(item: BackupInfo): Promise<void> {
-    if (!window.confirm(`Delete the snapshot from ${formatDate(item.date)} permanently?`)) return;
+    if (!window.confirm(t("Delete the snapshot from {date} permanently?", { date: formatDate(item.date) }))) return;
     busy = true;
     backupPanelState.error = "";
     try {
@@ -110,27 +111,27 @@
 
 {#if backupPanelState.open}
   <div class="backup-overlay" data-selection-ignore>
-    <button class="backup-backdrop" type="button" aria-label="Close backups" onclick={closeBackupsPanel}></button>
+    <button class="backup-backdrop" type="button" aria-label={t("Close backups")} onclick={closeBackupsPanel}></button>
     <dialog open class="backup-dialog" data-backup-panel aria-modal="true" aria-labelledby="backup-title" onkeydown={(event) => event.key === "Escape" && closeBackupsPanel()}>
       <header class="backup-heading">
         <div>
-          <h2 id="backup-title">Project backups</h2>
-          <p>{backups.length} snapshots · {formatSize(totalSizeBytes)} total</p>
+          <h2 id="backup-title">{t("Project backups")}</h2>
+          <p>{t("{count} snapshots · {size} total", { count: backups.length, size: formatSize(totalSizeBytes) })}</p>
         </div>
-        <button class="icon-button" type="button" aria-label="Close backups" onclick={closeBackupsPanel}>×</button>
+        <button class="icon-button" type="button" aria-label={t("Close backups")} onclick={closeBackupsPanel}>×</button>
       </header>
 
       <div class="backup-actions">
-        <button type="button" disabled={busy} onclick={makeSnapshot}>Create snapshot</button>
-        <button type="button" disabled={busy} onclick={runHealthCheck}>Check project health</button>
+        <button type="button" disabled={busy} onclick={makeSnapshot}>{t("Create snapshot")}</button>
+        <button type="button" disabled={busy} onclick={runHealthCheck}>{t("Check project health")}</button>
         <label>
-          Automatic snapshots
+          {t("Automatic snapshots")}
           <span class="backup-interval-select">
-            <Select id="backup-panel-interval" ariaLabel="Automatic snapshot interval" value={String(backupSettings.interval)} options={[
-              { value: "0", label: "Off" },
-              { value: "15", label: "Every 15 minutes" },
-              { value: "30", label: "Every 30 minutes" },
-              { value: "60", label: "Every 60 minutes" },
+            <Select id="backup-panel-interval" ariaLabel={t("Automatic snapshot interval")} value={String(backupSettings.interval)} options={[
+              { value: "0", label: t("Off") },
+              { value: "15", label: t("Every 15 minutes") },
+              { value: "30", label: t("Every 30 minutes") },
+              { value: "60", label: t("Every 60 minutes") },
             ]} onchange={setInterval} />
           </span>
         </label>
@@ -141,10 +142,10 @@
       {/if}
 
       {#if backupPanelState.healthFindings !== null}
-        <section class="health-report" data-project-health aria-label="Project health report">
-          <h3>Project health</h3>
+        <section class="health-report" data-project-health aria-label={t("Project health report")}>
+          <h3>{t("Project health")}</h3>
           {#if backupPanelState.healthFindings.length === 0}
-            <p class="health-ok">No integrity issues found.</p>
+            <p class="health-ok">{t("No integrity issues found.")}</p>
           {:else}
             <ul>
               {#each backupPanelState.healthFindings as finding, index (`${index}-${finding}`)}
@@ -155,20 +156,20 @@
         </section>
       {/if}
 
-      <div class="backup-list" aria-label="Snapshots">
+      <div class="backup-list" aria-label={t("Snapshots")}>
         {#each backups as item (item.id)}
           <article class="backup-item" data-backup-id={item.id}>
             <div class="backup-copy">
               <strong>{formatDate(item.date)}</strong>
-              <span>{item.noteCount} notes · {formatSize(item.sizeBytes)}</span>
+              <span>{t("{noteCount} notes · {size}", { noteCount: item.noteCount, size: formatSize(item.sizeBytes) })}</span>
             </div>
             <div class="backup-item-actions">
-              <button type="button" disabled={busy} onclick={() => void restore(item)}>Restore</button>
-              <button class="danger" type="button" disabled={busy} onclick={() => void remove(item)}>Delete</button>
+              <button type="button" disabled={busy} onclick={() => void restore(item)}>{t("Restore")}</button>
+              <button class="danger" type="button" disabled={busy} onclick={() => void remove(item)}>{t("Delete")}</button>
             </div>
           </article>
         {:else}
-          <p class="backup-empty">No snapshots yet.</p>
+          <p class="backup-empty">{t("No snapshots yet.")}</p>
         {/each}
       </div>
     </dialog>

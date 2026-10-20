@@ -32,6 +32,7 @@
     recordCreatedItem,
     toggleStarredCreateItem,
   } from "./createMenuPreferences.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   const MENU_WIDTH = 200;
   const FLYOUT_WIDTH = 196;
@@ -213,7 +214,7 @@
   function createYouTubeFromMenu(): void {
     const parsed = parseYouTubeUrl(youtubeUrlDraft);
     if (parsed.kind !== "youtube") {
-      youtubeInputError = parsed.kind === "invalid" ? parsed.error : "Enter a YouTube video URL.";
+      youtubeInputError = parsed.kind === "invalid" ? parsed.error : t("Enter a YouTube video URL.");
       return;
     }
     createYouTubeNote(parsed.ref, creationMenu.origin);
@@ -402,8 +403,8 @@
         type="button"
         data-create-star={id}
         aria-pressed={starredNow}
-        aria-label={starredNow ? `Unstar ${CREATE_ITEMS[id].label}` : `Star ${CREATE_ITEMS[id].label} (show at the top)`}
-        title={starredNow ? "Remove from the top" : "Star: show at the top, next to Note"}
+        aria-label={starredNow ? t("Unstar {label}", { label: CREATE_ITEMS[id].label }) : t("Star {label} (show at the top)", { label: CREATE_ITEMS[id].label })}
+        title={starredNow ? t("Remove from the top") : t("Star: show at the top, next to Note")}
         onclick={(event) => toggleStar(event, id)}
       >
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m8 2.2 1.8 3.7 4 .6-2.9 2.8.7 4L8 11.4l-3.6 1.9.7-4-2.9-2.8 4-.6z" /></svg>
@@ -418,7 +419,7 @@
     class="create-menu"
     data-create-menu
     data-selection-ignore
-    aria-label="Create list"
+    aria-label={t("Create list")}
     style={menuStyle}
     use:dismissBoardPopup={{ close: closeCreationMenu, escape: false, shouldDismissOutside: () => !creationMenu.pinned }}
     onmouseleave={leaveMenu}
@@ -432,8 +433,8 @@
           bind:value={query}
           data-create-search
           type="text"
-          placeholder="Create…"
-          aria-label="Search what to create"
+          placeholder={t("Create…")}
+          aria-label={t("Search what to create")}
           spellcheck="false"
           autocomplete="off"
           oninput={() => { openCategory = null; active = null; }}
@@ -443,16 +444,16 @@
         <button
           class="menu-action pin-button"
           type="button"
-          aria-label={creationMenu.pinned ? "Unpin create list" : "Pin create list"}
+          aria-label={creationMenu.pinned ? t("Unpin create list") : t("Pin create list")}
           aria-pressed={creationMenu.pinned}
-          title={creationMenu.pinned ? "Unpin list" : "Keep list open after creating"}
+          title={creationMenu.pinned ? t("Unpin list") : t("Keep list open after creating")}
           onclick={toggleCreationMenuPin}
         >
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <path d="M5 2.5h6l-.8 3 2.3 2.2v1H3.5v-1l2.3-2.2zM8 8.7v4.8" />
           </svg>
         </button>
-        <button class="menu-action close-button" type="button" aria-label="Close create list" title="Close" onclick={closeCreationMenu}>
+        <button class="menu-action close-button" type="button" aria-label={t("Close create list")} title={t("Close")} onclick={closeCreationMenu}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" /></svg>
         </button>
       </div>
@@ -460,30 +461,30 @@
 
     {#if youtubeInputOpen}
       <div class="youtube-create-input" data-youtube-create>
-        <span class="youtube-create-title"><CreateItemIcon id="youtube" /> YouTube link</span>
+        <span class="youtube-create-title"><CreateItemIcon id="youtube" /> {t("YouTube link")}</span>
         <!-- svelte-ignore a11y_autofocus -->
         <input
           bind:value={youtubeUrlDraft}
           data-youtube-url-input
           type="url"
-          placeholder="Paste a YouTube URL"
-          aria-label="YouTube video URL"
+          placeholder={t("Paste a YouTube URL")}
+          aria-label={t("YouTube video URL")}
           aria-invalid={youtubeInputError ? "true" : undefined}
           autofocus
           onkeydown={handleYouTubeInputKeydown}
         />
         {#if youtubeInputError}<span class="youtube-create-error" role="alert">{youtubeInputError}</span>{/if}
         <div class="youtube-create-actions">
-          <button type="button" onclick={closeYouTubeInput}>Cancel</button>
-          <button type="button" class="primary" onclick={createYouTubeFromMenu}>Create</button>
+          <button type="button" onclick={closeYouTubeInput}>{t("Cancel")}</button>
+          <button type="button" class="primary" onclick={createYouTubeFromMenu}>{t("Create")}</button>
         </div>
       </div>
     {:else if searching}
-      <div class="create-section results" role="listbox" aria-label="Search results">
+      <div class="create-section results" role="listbox" aria-label={t("Search results")}>
         {#each results as id (id)}
           {@render itemRow(id, "main")}
         {:else}
-          <p class="empty">Nothing matches “{query.trim()}”</p>
+          <p class="empty">{t("Nothing matches “{query}”", { query: query.trim() })}</p>
         {/each}
       </div>
     {:else}
@@ -496,14 +497,14 @@
 
       {#if recent.length > 0}
         <div class="create-section recent">
-          <span class="section-label">Recent</span>
+          <span class="section-label">{t("Recent")}</span>
           {#each recent as id (id)}
             {@render itemRow(id, "main", "recent-row")}
           {/each}
         </div>
       {/if}
 
-      <nav class="create-section tabs" aria-label="Node categories">
+      <nav class="create-section tabs" aria-label={t("Node categories")}>
         {#each CREATE_CATEGORIES as category, index (category.id)}
           <button
             use:tabRef={category.id}
@@ -551,7 +552,7 @@
       accept="video/mp4,video/webm,.mp4,.webm"
       multiple
       tabindex="-1"
-      aria-label="Choose video files"
+      aria-label={t("Choose video files")}
       onchange={handleVideoFileInput}
     />
     <input
@@ -560,7 +561,7 @@
       type="file"
       accept="audio/mpeg,audio/wav,audio/ogg,audio/webm,audio/mp4,audio/flac,.mp3,.wav,.ogg,.oga,.webm,.weba,.m4a,.m4b,.mka,.flac"
       tabindex="-1"
-      aria-label="Choose an audio file"
+      aria-label={t("Choose an audio file")}
       onchange={handleAudioFileInput}
     />
   </aside>

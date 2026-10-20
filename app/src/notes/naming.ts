@@ -1,5 +1,6 @@
 import { noteFileKey, sanitizeNoteName } from "../project/fileNames";
 import type { Note } from "../model/note";
+import { t } from "../i18n/i18n.svelte";
 
 export type CalculatorRenameTarget =
   | { ok: true; name: string }
@@ -20,7 +21,7 @@ export function uniqueName(base: string, existing: readonly string[]): string {
     if (!occupied.has(noteFileKey(candidate))) return candidate;
   }
 
-  throw new Error("Could not find an unused note name.");
+  throw new Error(t("Could not find an unused note name."));
 }
 
 /**

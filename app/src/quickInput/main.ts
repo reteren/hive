@@ -1,6 +1,9 @@
 import { mount } from "svelte";
 import "../styles/theme.css";
 import QuickInput from "./QuickInput.svelte";
+import { bootLanguage } from "../i18n/i18n.svelte";
+
+await bootLanguage();
 
 const target = document.getElementById("app");
 

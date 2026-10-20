@@ -4,6 +4,7 @@
   import ScopePicker from "../scope/ScopePicker.svelte";
   import { scopeForNote } from "../scope/scope.svelte";
   import { progressSummaryForScope } from "./progressCache.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let summary = $derived.by(() => {
@@ -20,16 +21,16 @@
     <div
       class="progress-meter"
       role="progressbar"
-      aria-label="Task progress"
+      aria-label={t("Task progress")}
       aria-valuemin="0"
       aria-valuemax="100"
       aria-valuenow={summary.percent ?? 0}
-      aria-valuetext={`${summary.doneWeight} of ${summary.totalWeight} weighted points`}
+      aria-valuetext={t("{doneWeight} of {totalWeight} weighted points", { doneWeight: summary.doneWeight, totalWeight: summary.totalWeight })}
     >
       <div class="progress-fill" style:width={`${summary.percent ?? 0}%`}></div>
     </div>
     <div class="progress-summary" role="status" aria-live="polite">
-      <span>{summary.doneWeight} / {summary.totalWeight} weight</span>
+      <span>{t("{doneWeight} / {totalWeight} weight", { doneWeight: summary.doneWeight, totalWeight: summary.totalWeight })}</span>
       <strong>{summary.percent}%</strong>
     </div>
   {/if}

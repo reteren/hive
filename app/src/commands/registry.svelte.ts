@@ -4,6 +4,7 @@ import {
   sameBindings,
   type KeyBindingOverrides,
 } from "./keymap";
+import { t } from "../i18n/i18n.svelte";
 
 /** A command exposes both factory bindings and the user's effective bindings. */
 export interface Command {
@@ -29,7 +30,7 @@ let keyOverrides: KeyBindingOverrides = {};
 export function registerCommand(definition: CommandRegistration): void {
   const defaultKeys = [...definition.keys];
   if (defaultKeys.some((binding) => binding.split("+").at(-1)?.trim().toLowerCase() === "tab")) {
-    throw new Error("Tab is reserved for native focus navigation.");
+    throw new Error(t("Tab is reserved for native focus navigation."));
   }
 
   const command = $state<Command>({

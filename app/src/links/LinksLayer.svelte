@@ -31,6 +31,7 @@
   } from "./selection.svelte";
   import { isDimmed, visibleInFocus } from "../beacons/focus.svelte";
   import { linkRouteIndex } from "./routeIndex";
+  import { t } from "../i18n/i18n.svelte";
 
   const CUT_DRAG_THRESHOLD_PX = 5;
   const CUT_TOLERANCE_PX = 4;
@@ -502,13 +503,13 @@
       point: Point,
     ): boolean {
       if (toId === ME_OBJECT_ID) {
-        setLineError("Beacons can have outgoing links only", point);
+        setLineError(t("Beacons can have outgoing links only"), point);
         lineInteraction.sourceId = fromId;
         lineInteraction.sourceAnchor = fromAnchor ?? null;
         return false;
       }
       if (fromId === toId) {
-        setLineError("An object cannot link to itself", point);
+        setLineError(t("An object cannot link to itself"), point);
         lineInteraction.sourceId = fromId;
         lineInteraction.sourceAnchor = fromAnchor ?? null;
         return false;
@@ -516,7 +517,7 @@
       const kind = effectiveLinkKind(fromId, toId, tool.active === "line-weak" ? "weak" : "strong");
       const refusal = linkRefusalReason(fromId, toId, kind);
       if (refusal || !canLink(fromId, toId, kind)) {
-        setLineError(refusal ?? "Could not create link", point);
+        setLineError(refusal ?? t("Could not create link"), point);
         lineInteraction.sourceId = fromId;
         lineInteraction.sourceAnchor = fromAnchor ?? null;
         return false;
@@ -531,7 +532,7 @@
         ...(toAnchor ? { toAnchor } : {}),
       };
       if (!createBoardLink(link)) {
-        setLineError("Could not create link", point);
+        setLineError(t("Could not create link"), point);
         lineInteraction.sourceId = fromId;
         lineInteraction.sourceAnchor = fromAnchor ?? null;
         return false;

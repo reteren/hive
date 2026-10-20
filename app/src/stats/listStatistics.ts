@@ -1,3 +1,4 @@
+import { t } from "../i18n/i18n.svelte";
 import { ME_OBJECT_ID } from "../model/link";
 import type { Link } from "../model/link";
 import type { ListItem } from "../model/nodeData";
@@ -79,15 +80,23 @@ export function statisticsForListRow(
   return memoized(`${listId}:${item.id}`, `other:${target.type}`, () => ({ kind: "empty" }));
 }
 
+function noteCounts(statistics: { words: number; characters: number; lines: number }): string {
+  return t("words - {words} · characters - {characters} · lines - {lines}", statistics);
+}
+
+function textCounts(statistics: { words: number; characters: number }): string {
+  return t("words - {words} · characters - {characters}", statistics);
+}
+
 /** Format one row with its target label for the linked Statistics view. */
 export function formatLinkedListRow(statistics: ListRowStatistics): string {
   switch (statistics.kind) {
     case "note":
-      return `${statistics.name} · words - ${statistics.words} · characters - ${statistics.characters} · lines - ${statistics.lines}`;
+      return `${statistics.name} · ${noteCounts(statistics)}`;
     case "beacon":
-      return `${statistics.name} · connections - ${statistics.connections}`;
+      return `${statistics.name} · ${t("connections - {count}", { count: statistics.connections })}`;
     case "text":
-      return `${statistics.text} · words - ${statistics.words} · characters - ${statistics.characters}`;
+      return `${statistics.text} · ${textCounts(statistics)}`;
     case "empty":
       return "—";
   }
@@ -97,11 +106,11 @@ export function formatLinkedListRow(statistics: ListRowStatistics): string {
 export function formatListRowExtension(statistics: ListRowStatistics): string {
   switch (statistics.kind) {
     case "note":
-      return `words - ${statistics.words} · characters - ${statistics.characters} · lines - ${statistics.lines}`;
+      return noteCounts(statistics);
     case "beacon":
-      return `connections - ${statistics.connections}`;
+      return t("connections - {count}", { count: statistics.connections });
     case "text":
-      return `words - ${statistics.words} · characters - ${statistics.characters}`;
+      return textCounts(statistics);
     case "empty":
       return "—";
   }

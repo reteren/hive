@@ -1,6 +1,7 @@
 import type { Point } from "../board/cameraMath";
 import type { Zone, ZoneBounds } from "../model/zone";
 import { shapeAreaInRect, shapeContainsPoint, shapesOverlap } from "./shape";
+import { t } from "../i18n/i18n.svelte";
 
 const EPS = 1e-8;
 
@@ -93,7 +94,7 @@ export function zoneCreationPreview(
   if (!rectangleOverlapsZones(desired, zones)) return { rect: desired, blocked: false, reason: null };
 
   if (rectangleOverlapsZones(minimumRect, zones)) {
-    return { rect: null, blocked: true, reason: "Zones can touch but cannot overlap" };
+    return { rect: null, blocked: true, reason: t("Zones can touch but cannot overlap") };
   }
 
   let low = 0;
@@ -116,7 +117,7 @@ export function zoneCreationPreview(
   return {
     rect: rectangleOverlapsZones(rect, zones) ? null : rect,
     blocked: true,
-    reason: "Zones can touch but cannot overlap",
+    reason: t("Zones can touch but cannot overlap"),
   };
 }
 

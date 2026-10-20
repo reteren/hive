@@ -3,6 +3,7 @@
   import { hexToHsv, hsvToHex, normalizeHex, type Hsv } from "./hex";
   import { pushRecentColor, recentColors } from "./recentColors.svelte";
   import { pickScreenColor } from "./screenPicker.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let { value, oninput, onchange, label = "Colour" } = $props<{
     /** Current colour as #rrggbb. */
@@ -134,7 +135,7 @@
     class="sv-area"
     role="slider"
     tabindex="0"
-    aria-label={`${label}: saturation and brightness`}
+    aria-label={t("{label}: saturation and brightness", { label: label })}
     aria-valuetext={current}
     aria-valuenow={Math.round(hsv.s * 100)}
     style:--hue={hueColor}
@@ -147,7 +148,7 @@
     class="hue-bar"
     role="slider"
     tabindex="0"
-    aria-label={`${label}: hue`}
+    aria-label={t("{label}: hue", { label: label })}
     aria-valuemin={0}
     aria-valuemax={360}
     aria-valuenow={Math.round(hsv.h)}
@@ -165,7 +166,7 @@
         maxlength="7"
         spellcheck="false"
         autocomplete="off"
-        aria-label={`${label} HEX`}
+        aria-label={t("{label} HEX", { label })}
         bind:value={hexDraft}
         onfocus={() => { hexFocused = true; }}
         onblur={() => { hexFocused = false; commitHexDraft(); }}
@@ -186,8 +187,8 @@
       type="button"
       class="eyedropper-button"
       data-hex-eyedropper
-      title="Pick a colour from the screen · Esc cancels"
-      aria-label="Pick a colour from the screen"
+      title={t("Pick a colour from the screen · Esc cancels")}
+      aria-label={t("Pick a colour from the screen")}
       onclick={() => void pickFromScreen()}
     >
       <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -196,7 +197,7 @@
     </button>
   </div>
   {#if recentColors.list.length > 0}
-    <div class="recent" role="group" aria-label="Recent colours">
+    <div class="recent" role="group" aria-label={t("Recent colours")}>
       {#each recentColors.list as color (color)}
         <button
           type="button"
@@ -204,7 +205,7 @@
           class:selected={color === current}
           style:background={color}
           title={color}
-          aria-label={`Recent colour ${color}`}
+          aria-label={t("Recent colour {color}", { color: color })}
           aria-pressed={color === current}
           onpointerdown={(event) => event.preventDefault()}
           onclick={() => pickRecent(color)}

@@ -11,6 +11,7 @@
   } from "../history/history.svelte";
   import { formatKey } from "../commands/keys";
   import { getCommand } from "../commands/registry.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let { variant = "dock" } = $props<{ variant?: "dock" | "popup" }>();
 
@@ -56,11 +57,11 @@
   data-selection-ignore
   role={variant === "popup" ? "dialog" : undefined}
   aria-modal={variant === "popup" ? "true" : undefined}
-  aria-label="Undo history"
+  aria-label={t("Undo history")}
 >
   <header class="panel-heading">
     <div class="panel-title">
-      <h2>Undo log</h2>
+      <h2>{t("Undo log")}</h2>
       <span>{history.cursor}/{history.entries.length}</span>
     </div>
     <div class="panel-controls">
@@ -68,37 +69,37 @@
         class="panel-control"
         class:pinned={undoLogPanel.pinned}
         type="button"
-        aria-label={undoLogPanel.pinned ? "Unpin undo log" : "Pin undo log"}
+        aria-label={undoLogPanel.pinned ? t("Unpin undo log") : t("Pin undo log")}
         aria-pressed={undoLogPanel.pinned}
         title={undoLogPanel.pinned ? "Unpin; close after choosing an entry" : "Pin; keep open after choosing an entry"}
         onclick={toggleUndoLogPin}
       >
-        {undoLogPanel.pinned ? "Pinned" : "Pin"}
+        {undoLogPanel.pinned ? t("Pinned") : t("Pin")}
       </button>
-      <button class="panel-control close" type="button" aria-label="Close undo log" title="Close" onclick={closeCurrentPanel}>
+      <button class="panel-control close" type="button" aria-label={t("Close undo log")} title={t("Close")} onclick={closeCurrentPanel}>
         ×
       </button>
     </div>
   </header>
 
-  <p class="panel-hint">Choose a point in the command history.</p>
+  <p class="panel-hint">{t("Choose a point in the command history.")}</p>
 
-  <div class="history-actions" aria-label="Undo and redo">
+  <div class="history-actions" aria-label={t("Undo and redo")}>
     <button
       type="button"
-      aria-label={`Undo${undoBindings ? `; ${undoBindings}` : ""}`}
+      aria-label={t("Undo{value}", { value: undoBindings ? `; ${undoBindings}` : "" })}
       onclick={runUndo}
-      title={`Undo${undoBindings ? ` · ${undoBindings}` : ""}`}
-    >Undo {#if undoBindings}<kbd>{undoBindings}</kbd>{/if}</button>
+      title={t("Undo{value}", { value: undoBindings ? ` · ${undoBindings}` : "" })}
+    >{t("Undo")} {#if undoBindings}<kbd>{undoBindings}</kbd>{/if}</button>
     <button
       type="button"
-      aria-label={`Redo${redoBindings ? `; ${redoBindings}` : ""}`}
+      aria-label={t("Redo{value}", { value: redoBindings ? `; ${redoBindings}` : "" })}
       onclick={runRedo}
-      title={`Redo${redoBindings ? ` · ${redoBindings}` : ""}`}
-    >Redo {#if redoBindings}<kbd>{redoBindings}</kbd>{/if}</button>
+      title={t("Redo{value}", { value: redoBindings ? ` · ${redoBindings}` : "" })}
+    >{t("Redo")} {#if redoBindings}<kbd>{redoBindings}</kbd>{/if}</button>
   </div>
 
-  <ol class="history-list" aria-label="Recorded operations">
+  <ol class="history-list" aria-label={t("Recorded operations")}>
     <li class="history-row start" class:current={history.cursor === 0}>
       <button
         type="button"
@@ -106,10 +107,10 @@
         aria-current={history.cursor === 0 ? "step" : undefined}
         onclick={() => moveTo(0)}
       >
-        <span class="entry-state">{history.cursor === 0 ? "Here" : "Start"}</span>
+        <span class="entry-state">{history.cursor === 0 ? t("Here") : t("Start")}</span>
         <span class="entry-detail">
-          <span class="entry-label">Initial state</span>
-          <span class="entry-target">Board</span>
+          <span class="entry-label">{t("Initial state")}</span>
+          <span class="entry-target">{t("Board")}</span>
         </span>
       </button>
     </li>
@@ -123,15 +124,15 @@
           aria-current={isCurrent ? "step" : undefined}
           onclick={() => moveTo(index + 1)}
         >
-          <span class="entry-state">{isCurrent ? "Here" : isRedoable ? "Redo" : ""}</span>
+          <span class="entry-state">{isCurrent ? t("Here") : isRedoable ? t("Redo") : ""}</span>
           <span class="entry-detail">
-            <span class="entry-label">{entry.label}</span>
-            <span class="entry-target">{entry.target?.trim() || "Board"}</span>
+            <span class="entry-label">{t(entry.label)}</span>
+            <span class="entry-target">{entry.target?.trim() || t("Board")}</span>
           </span>
         </button>
       </li>
     {:else}
-      <li class="empty-state">No recorded operations yet.</li>
+      <li class="empty-state">{t("No recorded operations yet.")}</li>
     {/each}
   </ol>
 </aside>

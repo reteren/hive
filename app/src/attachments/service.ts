@@ -19,6 +19,7 @@ import {
   type MediaRef,
   type TextFormatExtension,
 } from "./types";
+import { t } from "../i18n/i18n.svelte";
 
 export type ImportResult = { ok: true; image: ImageRef } | { ok: false; error: string };
 export type MediaImportResult = { ok: true; media: MediaRef } | { ok: false; error: string };
@@ -226,11 +227,11 @@ export async function importAttachmentPathBatch(
   kindHints: readonly (MediaKind | null)[] = paths.map((path) => mediaKindForPath(path)),
 ): Promise<AttachmentPathBatch> {
   if (paths.length === 0) return { items: [], processed: 0, cancelled: importWasCancelled(importId) };
-  if (paths.length > MAX_IMPORT_BATCH_FILES) throw new RangeError(`Import batches are limited to ${MAX_IMPORT_BATCH_FILES} files.`);
-  if (paths.length !== kindHints.length) throw new RangeError("Import paths and kind hints must have matching lengths.");
+  if (paths.length > MAX_IMPORT_BATCH_FILES) throw new RangeError(t("Import batches are limited to {maxImportBatchFiles} files.", { maxImportBatchFiles: MAX_IMPORT_BATCH_FILES }));
+  if (paths.length !== kindHints.length) throw new RangeError(t("Import paths and kind hints must have matching lengths."));
   if (importWasCancelled(importId)) return { items: [], processed: 0, cancelled: true };
   if (!isTauri()) {
-    const items = paths.map((path) => ({ path, error: "Importing a file path is available in the desktop app." }));
+    const items = paths.map((path) => ({ path, error: t("Importing a file path is available in the desktop app.") }));
     addImportProgress(importId, items.length, 0, items.length, items.at(-1)?.path.split(/[\\/]/).at(-1) ?? "");
     return { items, processed: items.length, cancelled: false };
   }
@@ -263,7 +264,7 @@ export async function importImagePathBatch(paths: readonly string[], importId: s
   const batch = await importAttachmentPathBatch(paths, importId, paths.map(() => null));
   const directory = await invoke<string>("attachment_directory");
   return mapConcurrent(batch.items, 8, async (item): Promise<ImportResult> => {
-    if (item.error || !item.attachment) return { ok: false, error: item.error ?? "The image could not be imported." };
+    if (item.error || !item.attachment) return { ok: false, error: item.error ?? t("The image could not be imported.") };
     const stored = item.attachment;
     try {
       const source = convertFileSrc(joinPath(directory, stored.file));
@@ -280,10 +281,10 @@ export async function importImagePathBatch(paths: readonly string[], importId: s
 export async function importMediaPathBatch(paths: readonly string[], importId: string, expected?: MediaKind): Promise<MediaImportResult[]> {
   const batch = await importAttachmentPathBatch(paths, importId);
   return mapConcurrent(batch.items, 8, async (item): Promise<MediaImportResult> => {
-    if (item.error || !item.attachment) return { ok: false, error: item.error ?? "The file could not be imported." };
+    if (item.error || !item.attachment) return { ok: false, error: item.error ?? t("The file could not be imported.") };
     const kind = item.attachment.kind as MediaKind | undefined;
     if (!kind || expected && kind !== expected) {
-      return { ok: false, error: expected ? `The selected file is not ${expected}.` : "The selected file is not a supported media file." };
+      return { ok: false, error: expected ? t("The selected file is not {expected}.", { expected: expected }) : t("The selected file is not a supported media file.") };
     }
     try {
       return { ok: true, media: await makeMediaRef(item.attachment, kind) };
@@ -301,11 +302,11 @@ function makeImportId(): string {
 /** Store an image from clipboard or browser File input and read dimensions before exposing it. */
 export async function importImageFile(file: File): Promise<ImportResult> {
   try {
-    if (!file || typeof file.arrayBuffer !== "function") return { ok: false, error: "The image file could not be read." };
-    if (file.size > MAX_IMAGE_BYTES) return { ok: false, error: "Image exceeds the 200 MB limit." };
+    if (!file || typeof file.arrayBuffer !== "function") return { ok: false, error: t("The image file could not be read.") };
+    if (file.size > MAX_IMAGE_BYTES) return { ok: false, error: t("Image exceeds the 200 MB limit.") };
 
     const bytes = new Uint8Array(await file.arrayBuffer());
-    if (bytes.byteLength > MAX_IMAGE_BYTES) return { ok: false, error: "Image exceeds the 200 MB limit." };
+    if (bytes.byteLength > MAX_IMAGE_BYTES) return { ok: false, error: t("Image exceeds the 200 MB limit.") };
     const mime = detectImageMime(bytes) ?? null;
     if (!mime) return { ok: false, error: unsupportedType(file.name) };
 
@@ -349,7 +350,7 @@ export async function importImageFile(file: File): Promise<ImportResult> {
 
 /** Import a dropped or selected desktop path through Hive's validated project store. */
 export async function importImagePath(path: string): Promise<ImportResult> {
-  if (!isTauri()) return { ok: false, error: "Importing an image path is available in the desktop app." };
+  if (!isTauri()) return { ok: false, error: t("Importing an image path is available in the desktop app.") };
   try {
     const stored = await invoke<StoredAttachment>("attachment_import_path", {
       path,
@@ -375,7 +376,7 @@ export async function importImagePath(path: string): Promise<ImportResult> {
 
 /** Import PDF, supported text, audio, or video from a native file path. */
 export async function importMediaPath(path: string): Promise<MediaImportResult> {
-  if (!isTauri()) return { ok: false, error: "Importing a file path is available in the desktop app." };
+  if (!isTauri()) return { ok: false, error: t("Importing a file path is available in the desktop app.") };
   try {
     const kindHint = mediaKindForPath(path);
     const stored = await invoke<StoredAttachment>("attachment_import_path", {
@@ -384,7 +385,7 @@ export async function importMediaPath(path: string): Promise<MediaImportResult> 
       videoExternalThresholdBytes: videoExternalThresholdBytes(preferences.videoExternalThresholdMb),
     });
     const kind = stored.kind ?? kindHint;
-    if (!kind || kind === "image") return { ok: false, error: "The selected file is not a supported media file." };
+    if (!kind || kind === "image") return { ok: false, error: t("The selected file is not a supported media file.") };
     return { ok: true, media: await makeMediaRef(stored, kind) };
   } catch (error) {
     return { ok: false, error: errorMessage(error) };
@@ -393,7 +394,7 @@ export async function importMediaPath(path: string): Promise<MediaImportResult> 
 
 /** Copy an arbitrary OS-selected file into the project for a Source node. */
 export async function importSourceFilePath(path: string): Promise<{ file: string; name?: string }> {
-  if (!isTauri()) throw new Error("Importing a file path is available in the desktop app.");
+  if (!isTauri()) throw new Error(t("Importing a file path is available in the desktop app."));
   const stored = await invoke<StoredAttachment>("attachment_import_source_path", { path });
   return { file: stored.file, ...(stored.name ? { name: stored.name } : {}) };
 }
@@ -401,7 +402,7 @@ export async function importSourceFilePath(path: string): Promise<{ file: string
 /** Import supported non-image media from a browser File or clipboard file. */
 export async function importMediaFile(file: File): Promise<MediaImportResult> {
   try {
-    if (!file || typeof file.arrayBuffer !== "function") return { ok: false, error: "The file could not be read." };
+    if (!file || typeof file.arrayBuffer !== "function") return { ok: false, error: t("The file could not be read.") };
     const hintedKind = mediaKindForFile(file);
     if (hintedKind && file.size > MEDIA_LIMIT_BYTES[hintedKind]) {
       return { ok: false, error: mediaLimitError(hintedKind) };
@@ -423,12 +424,12 @@ export async function importRecording(bytes: Uint8Array, mime: string, name: str
 
 /** Save a Format node's edited text as a new immutable project attachment. */
 export async function saveTextAttachment(text: string, previous: MediaRef): Promise<MediaImportResult> {
-  if (previous.kind !== "text") return { ok: false, error: "Only text attachments can be saved as text." };
+  if (previous.kind !== "text") return { ok: false, error: t("Only text attachments can be saved as text.") };
   const extension = textExtension(previous.file) ?? textExtension(previous.name ?? "");
-  if (!extension) return { ok: false, error: "The text file extension is not supported." };
+  if (!extension) return { ok: false, error: t("The text file extension is not supported.") };
 
   const bytes = new TextEncoder().encode(text);
-  if (bytes.byteLength > MEDIA_LIMIT_BYTES.text) return { ok: false, error: "Text file exceeds the 200 MB limit." };
+  if (bytes.byteLength > MEDIA_LIMIT_BYTES.text) return { ok: false, error: t("Text file exceeds the 200 MB limit.") };
 
   try {
     const name = previous.name ?? `Copy.${extension}`;
@@ -450,14 +451,14 @@ export async function saveTextAttachment(text: string, previous: MediaRef): Prom
 /** Export an immutable attachment through the system save dialog. */
 export async function exportAttachmentAs(ref: AttachmentRef, suggestedName: string): Promise<boolean> {
   if (!isSafeAttachmentName(ref.file)) {
-    reportImportError("The attachment reference is invalid.");
+    reportImportError(t("The attachment reference is invalid."));
     return false;
   }
   try {
     if (!isTauri()) {
       const url = attachmentUrl(ref.file);
       if (!url || typeof document === "undefined") {
-        reportImportError("This attachment is not available in the browser preview.");
+        reportImportError(t("This attachment is not available in the browser preview."));
         return false;
       }
       const anchor = document.createElement("a");
@@ -470,7 +471,7 @@ export async function exportAttachmentAs(ref: AttachmentRef, suggestedName: stri
     const filename = safeSuggestedName(suggestedName, ref.file);
     const extension = filename.split(".").at(-1) ?? "";
     const destination = await save({
-      title: "Export attachment",
+      title: t("Export attachment"),
       defaultPath: filename,
       filters: extension ? [{ name: "Attachment", extensions: [extension] }] : undefined,
     });
@@ -514,7 +515,7 @@ export async function pickImageFiles(): Promise<string[]> {
   if (!isTauri()) return [];
   try {
     const selected = await open({
-      title: "Choose image files",
+      title: t("Choose image files"),
       multiple: true,
       filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"] }],
     });
@@ -583,7 +584,7 @@ function detectImageMime(bytes: Uint8Array): (typeof IMAGE_MIME_TYPES)[number] |
 
 function unsupportedType(name: string): string {
   const extension = name.split(/[./\\]/).at(-1)?.toLowerCase() || "unknown";
-  return `Unsupported file type: ${extension}. Supported: ${FORMATS.join(", ")}`;
+  return t("Unsupported file type: {extension}. Supported: {fORMATS}", { extension: extension, fORMATS: FORMATS.join(", ") });
 }
 
 function matches(bytes: Uint8Array, signature: number[]): boolean {
@@ -595,10 +596,10 @@ function ascii(bytes: Uint8Array, start: number, length: number): string {
 }
 
 async function readNaturalSize(blob: Blob): Promise<{ naturalWidth: number; naturalHeight: number }> {
-  if (typeof createImageBitmap !== "function") throw new Error("This image could not be decoded in this browser.");
+  if (typeof createImageBitmap !== "function") throw new Error(t("This image could not be decoded in this browser."));
   const bitmap = await createImageBitmap(blob);
   try {
-    if (bitmap.width < 1 || bitmap.height < 1) throw new Error("This image has invalid dimensions.");
+    if (bitmap.width < 1 || bitmap.height < 1) throw new Error(t("This image has invalid dimensions."));
     return { naturalWidth: bitmap.width, naturalHeight: bitmap.height };
   } finally {
     bitmap.close();
@@ -609,10 +610,10 @@ function readNaturalSizeFromUrl(url: string): Promise<{ naturalWidth: number; na
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => {
-      if (!image.naturalWidth || !image.naturalHeight) reject(new Error("This image has invalid dimensions."));
+      if (!image.naturalWidth || !image.naturalHeight) reject(new Error(t("This image has invalid dimensions.")));
       else resolve({ naturalWidth: image.naturalWidth, naturalHeight: image.naturalHeight });
     };
-    image.onerror = () => reject(new Error("This image could not be decoded."));
+    image.onerror = () => reject(new Error(t("This image could not be decoded.")));
     image.src = url;
   });
 }
@@ -634,13 +635,13 @@ async function importMediaBytes(
     return { ok: false, error: unsupportedMediaType(name) };
   }
   if (bytes.byteLength > MEDIA_LIMIT_BYTES[descriptor.kind]) {
-    return { ok: false, error: `${descriptor.kind === "audio" || descriptor.kind === "video" ? "Media" : "File"} exceeds the ${descriptor.kind === "audio" || descriptor.kind === "video" ? "2 GB" : "200 MB"} limit.` };
+    return { ok: false, error: t("{value} exceeds the {value2} limit.", { value: descriptor.kind === "audio" || descriptor.kind === "video" ? "Media" : "File", value2: descriptor.kind === "audio" || descriptor.kind === "video" ? "2 GB" : "200 MB" }) };
   }
   if (descriptor.kind === "video" && videoExceedsExternalThreshold(bytes.byteLength, preferences.videoExternalThresholdMb)) {
     return { ok: false, error: videoThresholdPathRequiredMessage() };
   }
   if (descriptor.kind === "text" && !isValidUtf8(bytes)) {
-    return { ok: false, error: "Text files must be valid UTF-8." };
+    return { ok: false, error: t("Text files must be valid UTF-8.") };
   }
 
   try {
@@ -669,8 +670,8 @@ async function importMediaBytes(
 function videoThresholdPathRequiredMessage(): string {
   const threshold = preferences.videoExternalThresholdMb;
   return threshold === null
-    ? "This video must be imported from its file path."
-    : `Videos larger than ${threshold} MB must be imported from their file path in the desktop app.`;
+    ? t("This video must be imported from its file path.")
+    : t("Videos larger than {threshold} MB must be imported from their file path in the desktop app.", { threshold: threshold });
 }
 
 function detectMediaDescriptor(
@@ -788,7 +789,7 @@ function nextBrowserAttachmentName(name: string, extension: string): string {
     const file = `${collisionStem}${marker}${suffix}`;
     if (!Array.from(browserAttachments.keys()).some((key) => key.toLocaleLowerCase() === file.toLocaleLowerCase())) return file;
   }
-  throw new Error("Could not choose a unique attachment file name.");
+  throw new Error(t("Could not choose a unique attachment file name."));
 }
 
 function truncateNameUtf16(value: string, maxUnits: number): string {
@@ -895,11 +896,11 @@ function isMp3FrameSync(bytes: Uint8Array): boolean {
 
 function unsupportedMediaType(name: string): string {
   const extension = extensionFromName(name) || "unknown";
-  return `Unsupported file type: ${extension}. Supported: PDF, text formats, MP3, WAV, OGG, FLAC, M4A, MP4, WebM`;
+  return t("Unsupported file type: {extension}. Supported: PDF, text formats, MP3, WAV, OGG, FLAC, M4A, MP4, WebM", { extension: extension });
 }
 
 function mediaLimitError(kind: MediaKind): string {
-  return `${kind === "audio" || kind === "video" ? "Media" : "File"} exceeds the ${kind === "audio" || kind === "video" ? "2 GB" : "200 MB"} limit.`;
+  return t("{value} exceeds the {value2} limit.", { value: kind === "audio" || kind === "video" ? "Media" : "File", value2: kind === "audio" || kind === "video" ? "2 GB" : "200 MB" });
 }
 
 function safeSuggestedName(name: string, fallback: string): string {

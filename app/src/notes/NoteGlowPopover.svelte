@@ -12,6 +12,7 @@
     setGlowColorAsMain,
   } from "./noteGlow.svelte";
   import { MAX_GLOW_SIZE, MIN_GLOW_SIZE } from "./noteGlowLogic";
+  import { t } from "../i18n/i18n.svelte";
 
   let active = $derived(noteGlowPopover.current);
   let opacitySlider = $derived(active ? Math.round((active.opacity - 0.05) / 0.95 * 100) : 0);
@@ -56,47 +57,47 @@
     data-glow-popover
     data-selection-ignore
     role="dialog"
-    aria-label="Node glow"
+    aria-label={t("Node glow")}
     tabindex="-1"
     style={boardPopupStyle(camera, viewport, { x: active.x, y: active.y }, active.zoomAtOpen)}
     use:dismissBoardPopup={{ close: () => closeNoteGlowPopover(true), escape: false }}
     onkeydown={onKeyDown}
   >
-    <span class="note-glow-title">{active.before[active.ids[0] ?? ""] ? "Edit glow" : "Add glow"}{active.ids.length > 1 ? ` · ${active.ids.length} nodes` : ""}</span>
+    <span class="note-glow-title">{active.before[active.ids[0] ?? ""] ? t("Edit glow") : t("Add glow")}{active.ids.length > 1 ? t(" · {count} nodes", { count: active.ids.length }) : ""}</span>
     <HexColorPicker
       value={active.color}
-      label="Glow color"
+      label={t("Glow color")}
       oninput={previewNoteGlowColor}
       onchange={previewNoteGlowColor}
     />
-    <button class="color-as-main" type="button" onclick={setGlowColorAsMain}>Color as main</button>
+    <button class="color-as-main" type="button" onclick={setGlowColorAsMain}>{t("Color as main")}</button>
     <label class="field slider-field">
-      <span>Opacity <strong>{Math.round(active.opacity * 100)}%</strong></span>
+      <span>{t("Opacity")} <strong>{Math.round(active.opacity * 100)}%</strong></span>
       <MediaSlider
         value={opacitySlider}
         max={100}
         step={1}
-        label="Opacity"
+        label={t("Opacity")}
         oninput={updateOpacity}
         onchange={updateOpacity}
         tooltip={(value) => `${Math.round((0.05 + value / 100 * 0.95) * 100)}%`}
       />
     </label>
     <label class="field slider-field">
-      <span>Size <strong>{active.size.toFixed(1)} u</strong></span>
+      <span>{t("Size")} <strong>{active.size.toFixed(1)} u</strong></span>
       <MediaSlider
         value={sizeSlider}
         max={(MAX_GLOW_SIZE - MIN_GLOW_SIZE) * 10}
         step={1}
-        label="Size"
+        label={t("Size")}
         oninput={updateSize}
         onchange={updateSize}
         tooltip={(value) => `${(MIN_GLOW_SIZE + value / 10).toFixed(1)} u`}
       />
     </label>
     <div class="note-glow-actions">
-      <button type="button" onclick={() => closeNoteGlowPopover(false)}>Cancel</button>
-      <button type="button" onclick={() => closeNoteGlowPopover(true)}>Done</button>
+      <button type="button" onclick={() => closeNoteGlowPopover(false)}>{t("Cancel")}</button>
+      <button type="button" onclick={() => closeNoteGlowPopover(true)}>{t("Done")}</button>
     </div>
   </div>
 {/if}

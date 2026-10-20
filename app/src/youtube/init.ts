@@ -3,10 +3,11 @@ import { registerNoteMenuItem } from "../notes/noteMenu";
 import { board, updateNote } from "../model/board.svelte";
 import { execute } from "../history/history.svelte";
 import { showLinkStatus } from "../links-in-text/contextMenu.svelte";
+import { t } from "../i18n/i18n.svelte";
 
 registerNoteMenuItem({
   id: "youtube.toggleLoop",
-  label: (noteId) => board.notes[noteId]?.type === "youtube" && board.notes[noteId]?.youtube?.loop ? "Stop looping" : "Loop video",
+  label: (noteId) => board.notes[noteId]?.type === "youtube" && board.notes[noteId]?.youtube?.loop ? t("Stop looping") : t("Loop video"),
   visible: (noteId) => board.notes[noteId]?.type === "youtube" && Boolean(board.notes[noteId]?.youtube),
   run: (noteId) => {
     const note = board.notes[noteId];
@@ -14,7 +15,7 @@ registerNoteMenuItem({
     const beforeLoop = note.youtube.loop;
     const nextLoop = beforeLoop ? undefined : true;
     execute({
-      label: beforeLoop ? "Stop looping YouTube video" : "Loop YouTube video",
+      label: beforeLoop ? t("Stop looping YouTube video") : t("Loop YouTube video"),
       target: note.name,
       do: () => setYouTubeLoop(noteId, nextLoop),
       undo: () => setYouTubeLoop(noteId, beforeLoop),
@@ -25,7 +26,7 @@ registerNoteMenuItem({
 
 registerNoteMenuItem({
   id: "youtube.toggleFrame",
-  label: (noteId) => board.notes[noteId]?.frameHidden ? "Show node frame" : "Hide node frame",
+  label: (noteId) => board.notes[noteId]?.frameHidden ? t("Show node frame") : t("Hide node frame"),
   visible: (noteId) => board.notes[noteId]?.type === "youtube",
   run: (noteId) => {
     const note = board.notes[noteId];
@@ -33,7 +34,7 @@ registerNoteMenuItem({
     const before = note.frameHidden;
     const frameHidden = before === true ? undefined : true;
     execute({
-      label: frameHidden ? "Hide YouTube node frame" : "Show YouTube node frame",
+      label: frameHidden ? t("Hide YouTube node frame") : t("Show YouTube node frame"),
       target: note.name,
       do: () => updateNote(noteId, { frameHidden }),
       undo: () => updateNote(noteId, { frameHidden: before }),
@@ -44,13 +45,13 @@ registerNoteMenuItem({
 
 registerNoteMenuItem({
   id: "youtube.open",
-  label: () => "Open on YouTube",
+  label: () => t("Open on YouTube"),
   visible: (noteId) => board.notes[noteId]?.type === "youtube" && Boolean(board.notes[noteId]?.youtube),
   run: (noteId) => {
     const note = board.notes[noteId];
     const url = note?.type === "youtube" ? note.youtube?.url : undefined;
     if (!url) return;
-    void openUrl(url).catch(() => showLinkStatus("Could not open this YouTube link."));
+    void openUrl(url).catch(() => showLinkStatus(t("Could not open this YouTube link.")));
   },
   order: 80,
 });

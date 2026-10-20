@@ -8,6 +8,7 @@ import type { Point } from "../board/cameraMath";
 import { formatNodeKind, isFormatMediaKind } from "./formatLogic";
 import { grid } from "../board/grid.svelte";
 import { boardCreationNameAllocator, creationNameAllocator, mapCreationBatch, placeCreationGrid, queryBoardCreationRightEdge, yieldCreationWork } from "../notes/creationPosition";
+import { t, tp } from "../i18n/i18n.svelte";
 
 /** A Format file has no decoded text yet; keep the first viewport compact and scrollable. */
 export const FORMAT_INITIAL_HEIGHT = 40;
@@ -58,8 +59,8 @@ function commitFormatNotes(notes: readonly Note[]): string[] {
   const previousSelection = captureSelectionSnapshot();
 
   execute({
-    label: notes.length === 1 ? "Import file" : "Import files",
-    target: notes.length === 1 ? notes[0]?.name : `${notes.length} files`,
+    label: notes.length === 1 ? t("Import file") : t("Import files"),
+    target: notes.length === 1 ? notes[0]?.name : tp(notes.length, "{count} file", "{count} files"),
     do: () => {
       addNotes(notes, startIndex);
       clearSelection();

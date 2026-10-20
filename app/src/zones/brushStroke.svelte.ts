@@ -15,6 +15,7 @@ import {
   ZONE_MIN_THICKNESS,
 } from "./brush";
 import { ZONE_COLORS } from "./commands";
+import { t } from "../i18n/i18n.svelte";
 
 export type BrushMode = "paint" | "erase";
 
@@ -154,7 +155,7 @@ function createPaintCommand(
     const before = cloneShape({ parts: zone.parts, holes: zone.holes });
     const after = cloneShape(result.shape);
     return {
-      label: "Paint zone",
+      label: t("Paint zone"),
       target: zone.name,
       do: () => updateZone(zone.id, { parts: cloneRings(after.parts), holes: cloneRings(after.holes) }),
       undo: () => updateZone(zone.id, { parts: cloneRings(before.parts), holes: cloneRings(before.holes) }),
@@ -171,7 +172,7 @@ function createPaintCommand(
     createdAt: Date.now(),
   };
   return {
-    label: "Paint zone",
+    label: t("Paint zone"),
     target: zone.name,
     do: () => addZone(zone),
     undo: () => { removeZone(zone.id); },
@@ -200,7 +201,7 @@ function createEraseCommand(
   })) return null;
 
   return {
-    label: "Erase zone",
+    label: t("Erase zone"),
     target: beforeChanged[0]?.name ?? removed[0]?.zone.name,
     do: () => {
       for (const { id, shape } of afterChanged) updateZone(id, { parts: cloneRings(shape.parts), holes: cloneRings(shape.holes) });

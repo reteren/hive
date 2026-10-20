@@ -5,6 +5,7 @@
   import { drawingTools } from "./tools.svelte";
   import { cancelTextEditor, commitTextEditor, textEditor, updateTextEditor } from "./text.svelte";
   import { textScreenSizeAtZoom } from "./textLayout";
+  import { t } from "../i18n/i18n.svelte";
 
   let editor = $state<HTMLTextAreaElement | null>(null);
   let focusedSessionId = 0;
@@ -87,7 +88,7 @@
       bind:this={editor}
       class="text-editor"
       data-draw-overlay-control
-      aria-label="Text to draw"
+      aria-label={t("Text to draw")}
       spellcheck="false"
       wrap="off"
       rows={lineCount}

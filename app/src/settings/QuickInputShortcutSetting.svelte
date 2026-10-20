@@ -7,6 +7,7 @@
     updateQuickInputShortcut,
   } from "../quickInput/shortcutRegistration";
   import { installQuickInputShortcutCapture } from "../quickInput/keyCapture";
+  import { t } from "../i18n/i18n.svelte";
 
   onMount(() => installQuickInputShortcutCapture(window, {
     isCapturing: () => quickInputShortcut.capturing,
@@ -18,7 +19,7 @@
       quickInputShortcut.capturing = false;
       void restoreQuickInputShortcutAfterCapture();
     },
-    onUnsupportedKey: () => setQuickInputShortcutError("Use a supported key with Ctrl, Alt, or the Windows key."),
+    onUnsupportedKey: () => setQuickInputShortcutError(t("Use a supported key with Ctrl, Alt, or the Windows key.")),
   }));
 
   async function toggleCapture(): Promise<void> {
@@ -42,18 +43,18 @@
 
 <div class="setting-row" data-quick-input-shortcut-setting>
   <span class="setting-copy">
-    <span class="setting-title">Quick input shortcut</span>
-    <span class="setting-description">Open quick input while hive is running in the tray.</span>
+    <span class="setting-title">{t("Quick input shortcut")}</span>
+    <span class="setting-description">{t("Open quick input while hive is running in the tray.")}</span>
   </span>
   <button
     class="settings-button is-mono"
     class:is-primary={quickInputShortcut.capturing}
     type="button"
-    aria-label={quickInputShortcut.capturing ? "Press a new quick input shortcut" : `Current shortcut: ${quickInputShortcut.value}. Change shortcut`}
-    title={quickInputShortcut.capturing ? "Press a supported shortcut or Esc to cancel" : "Change global quick input shortcut"}
+    aria-label={quickInputShortcut.capturing ? t("Press a new quick input shortcut") : t("Current shortcut: {value}. Change shortcut", { value: quickInputShortcut.value })}
+    title={quickInputShortcut.capturing ? t("Press a supported shortcut or Esc to cancel") : t("Change global quick input shortcut")}
     onclick={() => void toggleCapture()}
   >
-    {quickInputShortcut.capturing ? "Press keys…" : quickInputShortcut.value}
+    {quickInputShortcut.capturing ? t("Press keys…") : quickInputShortcut.value}
   </button>
 </div>
 {#if quickInputShortcut.error}

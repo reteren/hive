@@ -31,6 +31,7 @@ import {
   textEditKind,
   type TextEditRecord,
 } from "./textEditHistory";
+import { t } from "../i18n/i18n.svelte";
 
 let selectionGroup = 0;
 let observedHistoryEntries = history.entries;
@@ -141,7 +142,7 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
       highlight: openHighlightPalette,
     }),
     EditorView.contentAttributes.of({
-      "aria-label": `Text for ${note.name}`,
+      "aria-label": t("Text for {name}", { name: note.name }),
       spellcheck: "false",
       autocapitalize: "off",
     }),
@@ -246,7 +247,7 @@ export function createNoteEditor(parent: HTMLElement, note: Note): EditorView {
         },
         ".cm-hive-link.is-note-link": {
           textDecorationColor: "#83b8e8",
-          textDecorationLine: "overline underline",
+          textDecorationLine: t("overline underline"),
         },
         ".cm-hive-link.is-point-link": { textDecorationStyle: "dotted" },
         ".cm-hive-link.is-missing": {
@@ -270,14 +271,14 @@ export function followTextLink(value: string): void {
 
   try {
     if (target.kind === "external") {
-      void Promise.resolve(openUrl(target.url)).catch(() => showLinkStatus("Could not open this link."));
+      void Promise.resolve(openUrl(target.url)).catch(() => showLinkStatus(t("Could not open this link.")));
     } else if (target.kind === "point") {
-      teleportToPoint(target.point, { label: "Text link" });
-    } else if (!board.notes[target.noteId] || !teleportToObject(target.noteId, { label: "Text link" })) {
-      showLinkStatus("This note is missing.");
+      teleportToPoint(target.point, { label: t("Text link") });
+    } else if (!board.notes[target.noteId] || !teleportToObject(target.noteId, { label: t("Text link") })) {
+      showLinkStatus(t("This note is missing."));
     }
   } catch {
-    showLinkStatus("Could not open this link.");
+    showLinkStatus(t("Could not open this link."));
   }
 }
 
@@ -298,7 +299,7 @@ function highlightDecorations(view: EditorView): DecorationSet {
 
 function createHistoryCommand(edit: TextEditRecord): HistoryCommand & { edit: TextEditRecord } {
   return {
-    label: "Edit text",
+    label: t("Edit text"),
     target: edit.target,
     edit,
     do() {

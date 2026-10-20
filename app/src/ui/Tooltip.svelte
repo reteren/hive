@@ -3,6 +3,7 @@
 </script>
 
 <script lang="ts">
+  import { t } from "../i18n/i18n.svelte";
   import { onDestroy, onMount, tick, type Snippet } from "svelte";
   import { formatKey } from "../commands/keys";
 
@@ -81,7 +82,7 @@
   class="tooltip-trigger"
   bind:this={trigger}
   role="group"
-  aria-label={`${label} command`}
+  aria-label={t("{label} command", { label })}
   onmouseenter={showLater}
   onmouseleave={hide}
   onfocusin={showLater}

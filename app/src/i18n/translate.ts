@@ -10,7 +10,8 @@ export type TranslationParams = Readonly<Record<string, string | number | null |
 
 export function translateWith(locale: string, catalog: Catalog, source: string, params?: TranslationParams): string {
   const entry = catalog[source];
-  const text = entry === undefined ? source : typeof entry === "string" ? entry : pickPlural(locale, entry, params, source);
+  const count = typeof params?.count === "number" ? params.count : 0;
+  const text = entry === undefined ? source : typeof entry === "string" ? entry : pickPlural(locale, entry, count, source);
   return params ? interpolate(text, params) : text;
 }
 
@@ -26,19 +27,19 @@ export function translatePluralWith(
   other: string,
   params?: TranslationParams,
 ): string {
-  const values = { ...params, count };
+  // A caller may pass a formatted `count` ("1,494") for display; the plural form uses the number.
+  const values = { count, ...params };
   const entry = catalog[other];
   if (entry === undefined) return interpolate(englishPlural(count) === "one" ? one : other, values);
   if (typeof entry === "string") return interpolate(entry, values);
-  return interpolate(pickPlural(locale, entry, values, other), values);
+  return interpolate(pickPlural(locale, entry, count, other), values);
 }
 
 function englishPlural(count: number): PluralCategory {
   return new Intl.PluralRules("en").select(count) as PluralCategory;
 }
 
-function pickPlural(locale: string, entry: Partial<Record<PluralCategory, string>>, params: TranslationParams | undefined, source: string): string {
-  const count = typeof params?.count === "number" ? params.count : 0;
+function pickPlural(locale: string, entry: Partial<Record<PluralCategory, string>>, count: number, source: string): string {
   const category = new Intl.PluralRules(locale).select(count) as PluralCategory;
   return entry[category] ?? entry.other ?? Object.values(entry)[0] ?? source;
 }

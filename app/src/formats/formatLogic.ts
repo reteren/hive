@@ -7,6 +7,7 @@ import {
   VIDEO_MIME_TYPES,
   type MediaRef,
 } from "../attachments/types";
+import { t } from "../i18n/i18n.svelte";
 
 export type FormatNodeKind = "pdf" | "format";
 
@@ -55,7 +56,7 @@ export function normalizePdfZoom(value: unknown): number | undefined {
 
 export function pdfZoomLabel(value: unknown): string {
   const normalized = normalizePdfZoom(value);
-  return normalized === undefined ? "Fit" : `${normalized}%`;
+  return normalized === undefined ? t("Fit") : `${normalized}%`;
 }
 
 export function stepPdfZoom(value: unknown, direction: -1 | 1): number {

@@ -2,6 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { flushPendingSave, openProjectAt } from "../project/persistence.svelte";
 import { project } from "../project/project.svelte";
 import type { BackupFingerprintStatus } from "./scheduler";
+import { t } from "../i18n/i18n.svelte";
 
 export interface BackupInfo {
   id: string;
@@ -20,7 +21,7 @@ export interface HealthReport {
 }
 
 function requireDesktop(): void {
-  if (!isTauri()) throw new Error("Backups are available in the desktop app.");
+  if (!isTauri()) throw new Error(t("Backups are available in the desktop app."));
 }
 
 export async function listBackups(): Promise<BackupListing> {
@@ -55,7 +56,7 @@ export async function deleteBackup(id: string): Promise<void> {
 export async function restoreBackup(id: string): Promise<void> {
   requireDesktop();
   const path = project.path;
-  if (!path) throw new Error("No project is open.");
+  if (!path) throw new Error(t("No project is open."));
   await flushPendingSave();
   await invoke("restore_backup", { id });
   await openProjectAt(path);

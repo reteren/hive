@@ -2,6 +2,7 @@ import type { HistoryCommand } from "../history/historyStack";
 import { newId, R5_BASE_WIDTHS, type Note } from "../model/note";
 import { uniqueName } from "../notes/naming";
 import { copyAudioRecordings, type AudioRecording } from "./recordingData";
+import { t } from "../i18n/i18n.svelte";
 
 export type RecordingPhase = "idle" | "requesting" | "recording" | "saving" | "error";
 
@@ -149,7 +150,7 @@ export function dictaphoneDropCommand(
   const previous = copyAudioRecordings([...before]) ?? [];
   const next = appendRecording(previous, recording);
   return {
-    label: copy ? "Copy audio into dictaphone" : "Move audio into dictaphone",
+    label: copy ? t("Copy audio into dictaphone") : t("Move audio into dictaphone"),
     target: source.name,
     do: () => {
       effects.applyRecordings(copyAudioRecordings(next) ?? []);
@@ -209,7 +210,7 @@ export function droppedAudioNoteCommand(
   remove: (id: string) => void,
 ): HistoryCommand {
   return {
-    label: "Create audio node",
+    label: t("Create audio node"),
     target: note.name,
     do: () => add(note),
     undo: () => remove(note.id),
@@ -232,7 +233,7 @@ export function pulledOutRecordingCommand(
   const previous = copyAudioRecordings([...before]) ?? [];
   const next = copyAudioRecordings([...after]) ?? [];
   return {
-    label: "Move recording to board",
+    label: t("Move recording to board"),
     target: note.name,
     do: () => {
       effects.addNote(note);

@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import MapView from "./MapView.svelte";
   import { mapOverlayState, closeMapOverlay } from "./commands.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   onMount(() => {
     function closeOnEscape(event: KeyboardEvent): void {
@@ -25,15 +26,15 @@
     role="presentation"
     onclick={(event) => { if (event.target === event.currentTarget) closeMapOverlay(); }}
   >
-    <dialog open class="map-dialog" aria-modal="true" aria-label="Board map" data-selection-ignore>
+    <dialog open class="map-dialog" aria-modal="true" aria-label={t("Board map")} data-selection-ignore>
       <header class="map-heading">
-        <h2>Map</h2>
-        <button type="button" class="map-close" aria-label="Close map" data-map-close onclick={closeMapOverlay}>×</button>
+        <h2>{t("Map")}</h2>
+        <button type="button" class="map-close" aria-label={t("Close map")} data-map-close onclick={closeMapOverlay}>×</button>
       </header>
       <div class="map-canvas">
         <MapView variant="overlay" />
       </div>
-      <p class="map-help">Click or drag to move · Scroll to zoom · Esc to close</p>
+      <p class="map-help">{t("Click or drag to move · Scroll to zoom · Esc to close")}</p>
     </dialog>
   </div>
 {/if}

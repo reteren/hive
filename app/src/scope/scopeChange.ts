@@ -2,6 +2,7 @@ import type { HistoryCommand } from "../history/historyStack";
 import type { NodeScope } from "../model/nodeData";
 import type { Note } from "../model/note";
 import { sameScope } from "./scopeLogic";
+import { t } from "../i18n/i18n.svelte";
 
 /** Construct the single Undo step for an explicit ScopePicker choice. */
 export function createScopeChangeCommand(
@@ -13,7 +14,7 @@ export function createScopeChangeCommand(
   if (sameScope(previousScope, nextScope)) return null;
 
   return {
-    label: "Change scope",
+    label: t("Change scope"),
     target: note.name,
     do: () => setScope(note.id, nextScope),
     undo: () => setScope(note.id, previousScope),

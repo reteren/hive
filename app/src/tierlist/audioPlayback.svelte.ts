@@ -1,4 +1,5 @@
 import { pinNote } from "../board/visibility.svelte";
+import { t } from "../i18n/i18n.svelte";
 
 export const tierlistAudioPlayback = $state({
   key: null as string | null,
@@ -44,7 +45,7 @@ export async function toggleTierlistAudio(key: string, url: string, noteId?: str
     if (tierlistAudioPlayback.audio === audio) {
       tierlistAudioPlayback.playing = true;
       releasePinnedNote?.();
-      if (noteId) releasePinnedNote = pinNote(noteId, "tierlist audio playback");
+      if (noteId) releasePinnedNote = pinNote(noteId, t("tierlist audio playback"));
     }
   };
   audio.onpause = () => {
@@ -61,7 +62,7 @@ export async function toggleTierlistAudio(key: string, url: string, noteId?: str
       releasePinnedNote = null;
     }
   };
-  audio.onerror = () => reportPlaybackError(key, audio, audio.error?.message || "The audio file could not be loaded.");
+  audio.onerror = () => reportPlaybackError(key, audio, audio.error?.message || t("The audio file could not be loaded."));
   try {
     await audio.play();
   } catch (error) {

@@ -7,8 +7,9 @@ import { goToMessage } from "./navigation";
 import { board } from "../model/board.svelte";
 import { registerNoteMenuItem } from "../notes/noteMenu";
 import { toggleModulePicker } from "../modules/moduleActions.svelte";
+import { t } from "../i18n/i18n.svelte";
 
-registerNoteMenuItem({ id: "messages.importance", label: () => "Change Importance", order: 40,
+registerNoteMenuItem({ id: "messages.importance", label: () => t("Change Importance"), order: 40,
   visible: (id) => board.notes[id]?.type === "message", run: (id) => toggleModulePicker(id, "importance") });
 
 registerNodeBody("message", MessageNodeBody);

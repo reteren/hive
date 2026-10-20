@@ -2,6 +2,7 @@
   import { drawingTools, setBrushSettings } from "../tools.svelte";
   import MediaSlider from "../../media-ui/MediaSlider.svelte";
   import { BRUSH_TIPS } from "./tips";
+  import { t } from "../../i18n/i18n.svelte";
 
   let brush = $derived(drawingTools.brush);
   let angle = $derived(Math.round(brush.calligraphyAngle ?? 45));
@@ -26,8 +27,8 @@
 <section class="brush-options" data-brush-tip-options>
   {#if drawingTools.active === "brush"}
     <div class="field" data-brush-tip>
-      <span>Brush tip</span>
-      <div class="tip-picker" role="group" aria-label="Brush tip">
+      <span>{t("Brush tip")}</span>
+      <div class="tip-picker" role="group" aria-label={t("Brush tip")}>
         {#each BRUSH_TIPS as tip (tip.id)}
           <button
             type="button"
@@ -63,12 +64,12 @@
     </div>
     {#if brush.tip === "calligraphy"}
       <label class="field" data-calligraphy-angle>
-        <span>Nib angle <strong>{angle}°</strong></span>
+        <span>{t("Nib angle")} <strong>{angle}°</strong></span>
         <MediaSlider
           value={angle}
           max={180}
           step={1}
-          label="Calligraphy nib angle"
+          label={t("Calligraphy nib angle")}
           oninput={updateAngle}
           onchange={updateAngle}
         />
@@ -76,23 +77,23 @@
     {/if}
     {#if brush.tip === "spray"}
       <label class="field" data-spray-options data-spray-density>
-        <span title="Dots per second at 24 px diameter; rate scales with brush area and pen pressure">Density <strong>{density} dots/s</strong></span>
+        <span title="Dots per second at 24 px diameter; rate scales with brush area and pen pressure">{t("Density")} <strong>{density} dots/s</strong></span>
         <MediaSlider
           value={densitySlider}
           max={199}
           step={1}
-          label="Spray density"
+          label={t("Spray density")}
           oninput={updateDensity}
           onchange={updateDensity}
         />
       </label>
       <label class="field" data-spray-dot-size>
-        <span>Dot size <strong>{dotSize}px</strong></span>
+        <span>{t("Dot size")} <strong>{dotSize}px</strong></span>
         <MediaSlider
           value={dotSizeSlider}
           max={31}
           step={1}
-          label="Spray dot size"
+          label={t("Spray dot size")}
           oninput={updateDotSize}
           onchange={updateDotSize}
         />

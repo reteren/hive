@@ -1,3 +1,4 @@
+import { t } from "../i18n/i18n.svelte";
 /**
  * What one Git version changed in a node, said in words: sentences for the node itself ("Moved
  * card “X” from S to A", "Completed the task") and a word-level diff of its text — not Git's patch.
@@ -34,13 +35,13 @@ const IGNORED = new Set([
 
 const FIELD_LABELS: Record<string, string> = {
   customMarks: "marks",
-  customMarkFrame: "mark frame",
-  listStats: "list statistics",
-  smoothLines: "smooth lines",
-  inboxGroup: "inbox group",
-  randomPick: "random pick",
+  get customMarkFrame() { return t("mark frame"); },
+  get listStats() { return t("list statistics"); },
+  get smoothLines() { return t("smooth lines"); },
+  get inboxGroup() { return t("inbox group"); },
+  get randomPick() { return t("random pick"); },
   source: "source",
-  message: "message settings",
+  get message() { return t("message settings"); },
   recordings: "recordings",
   scope: "scope",
   frameHidden: "frame",
@@ -50,25 +51,25 @@ export function describeVersion(version: NodeVersionData, names: NameLookup): Ve
   const before = parse(version.beforeNode);
   const after = parse(version.afterNode);
   const lines: string[] = [];
-  if (!before && after) lines.push(version.beforeLegacy ? "Project moved to the Git-friendly format" : "Created the node");
-  else if (before && !after) lines.push("Deleted the node");
+  if (!before && after) lines.push(version.beforeLegacy ? t("Project moved to the Git-friendly format") : t("Created the node"));
+  else if (before && !after) lines.push(t("Deleted the node"));
   else if (before && after) lines.push(...describeNode(before, after, names));
   // Before the split format a node lived in board.json; its note file appearing means it was created.
-  else if (!before && !after && version.beforeText === null && version.afterText !== null) lines.push("Created the node");
+  else if (!before && !after && version.beforeText === null && version.afterText !== null) lines.push(t("Created the node"));
 
   const beforeText = normalizeText(version.beforeText);
   const afterText = normalizeText(version.afterText);
   let text: TextPiece[] | null = null;
   if (beforeText !== afterText) {
     if (beforeText.replace(/\s+/g, " ").trim() === afterText.replace(/\s+/g, " ").trim()) {
-      lines.push("Only spacing or line breaks changed in the text");
+      lines.push(t("Only spacing or line breaks changed in the text"));
     } else {
       text = compactPieces(diffText(beforeText, afterText));
     }
   } else if (version.beforeText !== version.afterText && version.beforeText !== null && version.afterText !== null) {
-    lines.push("Only line endings changed in the text");
+    lines.push(t("Only line endings changed in the text"));
   }
-  if (lines.length === 0 && !text) lines.push("No visible changes (internal data only)");
+  if (lines.length === 0 && !text) lines.push(t("No visible changes (internal data only)"));
   return { lines, text };
 }
 
@@ -78,30 +79,30 @@ function describeNode(before: Json, after: Json, names: NameLookup): string[] {
   const take = (...keys: string[]) => keys.forEach((key) => handled.add(key));
 
   if (before.type !== after.type) {
-    lines.push(`Turned from ${String(before.type)} into ${String(after.type)}`);
+    lines.push(t("Turned from {type} into {type2}", { type: String(before.type), type2: String(after.type) }));
   }
   take("type");
-  if (before.name !== after.name) lines.push(`Renamed “${String(before.name)}” → “${String(after.name)}”`);
+  if (before.name !== after.name) lines.push(t("Renamed “{name}” → “{name2}”", { name: String(before.name), name2: String(after.name) }));
   take("name");
 
   const dx = num(after.x) - num(before.x);
   const dy = num(after.y) - num(before.y);
-  if (Math.abs(dx) + Math.abs(dy) > 0.5) lines.push("Moved on the board");
+  if (Math.abs(dx) + Math.abs(dy) > 0.5) lines.push(t("Moved on the board"));
   take("x", "y");
 
   if (!same(before.width, after.width) || !same(before.height, after.height)) {
-    lines.push(`Resized ${size(before)} → ${size(after)}`);
+    lines.push(t("Resized {size} → {size2}", { size: size(before), size2: size(after) }));
   }
   take("width", "height");
 
   if (!same(before.scale ?? 1, after.scale ?? 1)) {
-    lines.push(`Scale ${Math.round(num(before.scale ?? 1) * 100)}% → ${Math.round(num(after.scale ?? 1) * 100)}%`);
+    lines.push(t("Scale {num}% → {num2}%", { num: Math.round(num(before.scale ?? 1) * 100), num2: Math.round(num(after.scale ?? 1) * 100) }));
   }
   take("scale");
 
   if (!same(before.zoneId ?? null, after.zoneId ?? null)) {
     const zone = typeof after.zoneId === "string" ? names.zoneName(after.zoneId) : undefined;
-    lines.push(after.zoneId ? `Moved into zone${zone ? ` “${zone}”` : ""}` : "Taken out of its zone");
+    lines.push(after.zoneId ? t("Moved into zone{value}", { value: zone ? ` “${zone}”` : "" }) : t("Taken out of its zone"));
   }
   take("zoneId");
 
@@ -109,21 +110,21 @@ function describeNode(before: Json, after: Json, names: NameLookup): string[] {
   take("task", "taskMemory");
 
   if (!same(before.importance ?? null, after.importance ?? null)) {
-    lines.push(`Importance: ${String(before.importance ?? "none")} → ${String(after.importance ?? "none")}`);
+    lines.push(t("Importance: {value} → {value2}", { value: String(before.importance ?? "none"), value2: String(after.importance ?? "none") }));
   }
   take("importance");
   for (const key of ["purposes", "moods"] as const) {
     if (!same(before[key] ?? [], after[key] ?? [])) {
-      lines.push(`${key === "purposes" ? "Purposes" : "Moods"}: ${listOf(before[key])} → ${listOf(after[key])}`);
+      lines.push(t("{field}: {before} → {after}", { field: key === "purposes" ? t("Purposes") : t("Moods"), before: listOf(before[key]), after: listOf(after[key]) }));
     }
     take(key);
   }
 
-  if (!same(before.color ?? null, after.color ?? null)) lines.push(after.color ? "Changed the colour" : "Removed the colour");
-  if (!same(before.accentColor ?? null, after.accentColor ?? null)) lines.push("Changed the accent colour");
-  if (!same(before.glow ?? null, after.glow ?? null)) lines.push(!before.glow ? "Added a glow" : !after.glow ? "Removed the glow" : "Changed the glow");
-  if (Boolean(before.headerHidden) !== Boolean(after.headerHidden)) lines.push(after.headerHidden ? "Hid the header" : "Showed the header");
-  if (Boolean(before.textHidden) !== Boolean(after.textHidden)) lines.push(after.textHidden ? "Removed the text box" : "Showed the text box");
+  if (!same(before.color ?? null, after.color ?? null)) lines.push(after.color ? t("Changed the colour") : t("Removed the colour"));
+  if (!same(before.accentColor ?? null, after.accentColor ?? null)) lines.push(t("Changed the accent colour"));
+  if (!same(before.glow ?? null, after.glow ?? null)) lines.push(!before.glow ? t("Added a glow") : !after.glow ? t("Removed the glow") : t("Changed the glow"));
+  if (Boolean(before.headerHidden) !== Boolean(after.headerHidden)) lines.push(after.headerHidden ? t("Hid the header") : t("Showed the header"));
+  if (Boolean(before.textHidden) !== Boolean(after.textHidden)) lines.push(after.textHidden ? t("Removed the text box") : t("Showed the text box"));
   take("color", "accentColor", "glow", "headerHidden", "textHidden");
 
   lines.push(...describeTiers(arrayOf(before.tiers), arrayOf(after.tiers), names));
@@ -132,39 +133,39 @@ function describeNode(before: Json, after: Json, names: NameLookup): string[] {
 
   const beforeImage = asRecord(before.image);
   const afterImage = asRecord(after.image);
-  if (beforeImage?.file !== afterImage?.file) lines.push(afterImage ? "Replaced the picture" : "Removed the picture");
-  if (!same(before.opacity ?? 1, after.opacity ?? 1)) lines.push(`Opacity ${Math.round(num(before.opacity ?? 1) * 100)}% → ${Math.round(num(after.opacity ?? 1) * 100)}%`);
-  if (Boolean(before.flipX) !== Boolean(after.flipX) || Boolean(before.flipY) !== Boolean(after.flipY)) lines.push("Flipped the picture");
-  if (asRecord(before.media)?.file !== asRecord(after.media)?.file) lines.push(after.media ? "Replaced the file" : "Removed the file");
+  if (beforeImage?.file !== afterImage?.file) lines.push(afterImage ? t("Replaced the picture") : t("Removed the picture"));
+  if (!same(before.opacity ?? 1, after.opacity ?? 1)) lines.push(t("Opacity {num}% → {num2}%", { num: Math.round(num(before.opacity ?? 1) * 100), num2: Math.round(num(after.opacity ?? 1) * 100) }));
+  if (Boolean(before.flipX) !== Boolean(after.flipX) || Boolean(before.flipY) !== Boolean(after.flipY)) lines.push(t("Flipped the picture"));
+  if (asRecord(before.media)?.file !== asRecord(after.media)?.file) lines.push(after.media ? t("Replaced the file") : t("Removed the file"));
   take("image", "opacity", "flipX", "flipY", "media");
 
   if (!same(before.youtube ?? null, after.youtube ?? null)) {
     const a = asRecord(before.youtube);
     const b = asRecord(after.youtube);
-    lines.push(a?.videoId !== b?.videoId ? "Changed the video" : "Changed the video start or loop");
+    lines.push(a?.videoId !== b?.videoId ? t("Changed the video") : t("Changed the video start or loop"));
   }
   take("youtube");
 
   const beforeTime = asRecord(before.time);
   const afterTime = asRecord(after.time);
   if (beforeTime || afterTime) {
-    if (Boolean(beforeTime?.enabled) !== Boolean(afterTime?.enabled)) lines.push(afterTime?.enabled ? "Turned the timer on" : "Turned the timer off");
-    if (!same(beforeTime?.schedule ?? null, afterTime?.schedule ?? null)) lines.push("Changed the schedule");
-    if (!same(asRecord(beforeTime?.stopwatch)?.mode ?? null, asRecord(afterTime?.stopwatch)?.mode ?? null)) lines.push("Changed the stopwatch mode");
+    if (Boolean(beforeTime?.enabled) !== Boolean(afterTime?.enabled)) lines.push(afterTime?.enabled ? t("Turned the timer on") : t("Turned the timer off"));
+    if (!same(beforeTime?.schedule ?? null, afterTime?.schedule ?? null)) lines.push(t("Changed the schedule"));
+    if (!same(asRecord(beforeTime?.stopwatch)?.mode ?? null, asRecord(afterTime?.stopwatch)?.mode ?? null)) lines.push(t("Changed the stopwatch mode"));
   }
   take("time");
 
   for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
     if (handled.has(key) || IGNORED.has(key)) continue;
-    if (!same(before[key] ?? null, after[key] ?? null)) lines.push(`Changed the ${FIELD_LABELS[key] ?? humanize(key)}`);
+    if (!same(before[key] ?? null, after[key] ?? null)) lines.push(t("Changed the {value}", { value: FIELD_LABELS[key] ?? humanize(key) }));
   }
   return lines;
 }
 
 function describeTask(before: Json | null, after: Json | null): string[] {
-  if (!before && after) return [after.done ? "Made it a task and completed it" : "Made it a task"];
-  if (before && !after) return ["No longer a task"];
-  if (before && after && Boolean(before.done) !== Boolean(after.done)) return [after.done ? "Completed the task" : "Reopened the task"];
+  if (!before && after) return [after.done ? t("Made it a task and completed it") : t("Made it a task")];
+  if (before && !after) return [t("No longer a task")];
+  if (before && after && Boolean(before.done) !== Boolean(after.done)) return [after.done ? t("Completed the task") : t("Reopened the task")];
   return [];
 }
 
@@ -176,10 +177,10 @@ function describeTiers(before: Json[], after: Json[], names: NameLookup): string
   const afterRows = new Map(after.map((row) => [String(row.id), row]));
   for (const [id, row] of afterRows) {
     const old = beforeRows.get(id);
-    if (!old) lines.push(`Added row ${rowName(row)}`);
-    else if (old.name !== row.name) lines.push(`Renamed row ${rowName(old)} → ${rowName(row)}`);
+    if (!old) lines.push(t("Added row {rowName}", { rowName: rowName(row) }));
+    else if (old.name !== row.name) lines.push(t("Renamed row {rowName} → {rowName2}", { rowName: rowName(old), rowName2: rowName(row) }));
   }
-  for (const [id, row] of beforeRows) if (!afterRows.has(id)) lines.push(`Removed row ${rowName(row)}`);
+  for (const [id, row] of beforeRows) if (!afterRows.has(id)) lines.push(t("Removed row {rowName}", { rowName: rowName(row) }));
 
   const where = (rows: Json[]) => {
     const map = new Map<string, { row: Json; index: number; card: Json }>();
@@ -191,26 +192,26 @@ function describeTiers(before: Json[], after: Json[], names: NameLookup): string
   const reordered = new Set<string>();
   for (const [id, { row, card }] of now) {
     const old = was.get(id);
-    if (!old) lines.push(`Added ${cardLabel(card, names)} to ${rowName(row)}`);
-    else if (old.row.id !== row.id) lines.push(`Moved ${cardLabel(card, names)} from ${rowName(old.row)} to ${rowName(row)}`);
+    if (!old) lines.push(t("Added {cardLabel} to {rowName}", { cardLabel: cardLabel(card, names), rowName: rowName(row) }));
+    else if (old.row.id !== row.id) lines.push(t("Moved {cardLabel} from {rowName} to {rowName2}", { cardLabel: cardLabel(card, names), rowName: rowName(old.row), rowName2: rowName(row) }));
   }
-  for (const [id, { row, card }] of was) if (!now.has(id)) lines.push(`Removed ${cardLabel(card, names)} from ${rowName(row)}`);
+  for (const [id, { row, card }] of was) if (!now.has(id)) lines.push(t("Removed {cardLabel} from {rowName}", { cardLabel: cardLabel(card, names), rowName: rowName(row) }));
   for (const row of after) {
     const old = beforeRows.get(String(row.id));
     if (!old) continue;
     const stayed = (cards: Json[]) => cards.map((card) => String(card.id)).filter((id) => was.get(id)?.row.id === row.id && now.get(id)?.row.id === row.id);
     if (!same(stayed(arrayOf(old.cards)), stayed(arrayOf(row.cards)))) reordered.add(rowName(row));
   }
-  for (const row of reordered) lines.push(`Reordered cards in ${row}`);
-  if (lines.length === 0) lines.push("Changed the tierlist");
+  for (const row of reordered) lines.push(t("Reordered cards in {row}", { row: row }));
+  if (lines.length === 0) lines.push(t("Changed the tierlist"));
   return lines;
 }
 
 function cardLabel(card: Json, names: NameLookup): string {
   if (card.kind === "text") return `“${shorten(String(card.text ?? ""), 40)}”`;
-  if (card.kind === "note") return `“${shorten(names.noteName(String(card.noteId)) ?? "a node", 40)}”`;
+  if (card.kind === "note") return `“${shorten(names.noteName(String(card.noteId)) ?? t("a node"), 40)}”`;
   const image = asRecord(card.image);
-  return image?.name ? `picture “${shorten(String(image.name), 40)}”` : "a picture";
+  return image?.name ? t("picture “{shorten}”", { shorten: shorten(String(image.name), 40) }) : t("a picture");
 }
 
 function describeList(before: Json[], after: Json[], names: NameLookup): string[] {
@@ -219,16 +220,16 @@ function describeList(before: Json[], after: Json[], names: NameLookup): string[
   const beforeIds = new Set(before.map((item) => String(item.id)));
   const afterIds = new Set(after.map((item) => String(item.id)));
   const lines: string[] = [];
-  for (const item of after) if (!beforeIds.has(String(item.id))) lines.push(`Added ${label(item)} to the list`);
-  for (const item of before) if (!afterIds.has(String(item.id))) lines.push(`Removed ${label(item)} from the list`);
+  for (const item of after) if (!beforeIds.has(String(item.id))) lines.push(t("Added {label} to the list", { label: label(item) }));
+  for (const item of before) if (!afterIds.has(String(item.id))) lines.push(t("Removed {label} from the list", { label: label(item) }));
   const kept = (items: Json[]) => items.map((item) => String(item.id)).filter((id) => beforeIds.has(id) && afterIds.has(id));
-  if (!same(kept(before), kept(after))) lines.push("Reordered the list");
+  if (!same(kept(before), kept(after))) lines.push(t("Reordered the list"));
   const beforeById = new Map(before.map((item) => [String(item.id), item]));
   for (const item of after) {
     const old = beforeById.get(String(item.id));
-    if (old && old.label !== item.label && old.label && item.label) lines.push(`Renamed list item ${label(old)} → ${label(item)}`);
+    if (old && old.label !== item.label && old.label && item.label) lines.push(t("Renamed list item {label} → {label2}", { label: label(old), label2: label(item) }));
   }
-  if (lines.length === 0) lines.push("Changed the list");
+  if (lines.length === 0) lines.push(t("Changed the list"));
   return lines;
 }
 

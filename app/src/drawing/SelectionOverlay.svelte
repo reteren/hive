@@ -12,6 +12,7 @@
     type DrawingSelectionArea,
     type RasterPoint,
   } from "./selection.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   // Loading the overlay also registers SELECT's DrawToolHandler implementations.
   let floatingCanvas = $state<HTMLCanvasElement | null>(null);
@@ -239,8 +240,8 @@
       type="button"
       data-draw-overlay-control
       data-selection-clear
-      aria-label="Clear selection (Esc)"
-      title="Clear selection (Esc)"
+      aria-label={t("Clear selection (Esc)")}
+      title={t("Clear selection (Esc)")}
       style:left={`${clearButtonPosition.left}px`}
       style:top={`${clearButtonPosition.top}px`}
       style:width={`${clearButtonSize}px`}

@@ -2,6 +2,7 @@ import { camera, refreshPointerWorld } from "../board/camera.svelte";
 import { record } from "../history/history.svelte";
 import { pointNavigationAt, pushNavigation } from "../navigation/navigationHistory.svelte";
 import { setMapInternalZoom } from "./mapViewState.svelte";
+import { t } from "../i18n/i18n.svelte";
 
 export interface CameraSnapshot {
   x: number;
@@ -43,7 +44,7 @@ export function recordMapCameraChange(before: CameraSnapshot, label: string): vo
 export function recordMapInternalZoomChange(before: number, after: number): void {
   if (before === after) return;
   record({
-    label: "Zoom map view",
+    label: t("Zoom map view"),
     target: "Map",
     do: () => setMapInternalZoom(after),
     undo: () => setMapInternalZoom(before),

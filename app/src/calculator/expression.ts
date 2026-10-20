@@ -1,4 +1,5 @@
 import type { CalcEntry } from "../model/nodeData";
+import { t } from "../i18n/i18n.svelte";
 
 export type ExpressionResult =
   | { ok: true; value: number }
@@ -21,14 +22,14 @@ type Token =
 export function evaluateExpression(expression: string): ExpressionResult {
   try {
     const tokens = tokenize(expression);
-    if (tokens.length === 1) throw new Error("Enter an expression.");
+    if (tokens.length === 1) throw new Error(t("Enter an expression."));
     const value = new Parser(tokens).parse();
-    if (!Number.isFinite(value)) throw new Error("The result is outside the numeric range.");
+    if (!Number.isFinite(value)) throw new Error(t("The result is outside the numeric range."));
     return { ok: true, value: Object.is(value, -0) ? 0 : value };
   } catch (error) {
     return {
       ok: false,
-      error: error instanceof Error ? error.message : "Invalid expression.",
+      error: error instanceof Error ? error.message : t("Invalid expression."),
     };
   }
 }
@@ -75,9 +76,9 @@ function tokenize(source: string): Token[] {
           index += 1;
         }
       }
-      if (!sawDigit) throw new Error("A decimal separator must be next to a digit.");
+      if (!sawDigit) throw new Error(t("A decimal separator must be next to a digit."));
       const value = Number(source.slice(start, index).replace(",", "."));
-      if (!Number.isFinite(value)) throw new Error("That number is too large.");
+      if (!Number.isFinite(value)) throw new Error(t("That number is too large."));
       tokens.push({ kind: "number", value });
       continue;
     }
@@ -99,7 +100,7 @@ function tokenize(source: string): Token[] {
     } else if (char === "%") {
       tokens.push({ kind: "operator", value: "%" });
     } else {
-      throw new Error(`Unexpected character “${char}”.`);
+      throw new Error(t("Unexpected character “{char}”.", { char: char }));
     }
     index += 1;
   }
@@ -120,8 +121,8 @@ class Parser {
   parse(): number {
     const value = this.parseAdditive();
     if (this.current.kind !== "end") {
-      if (this.current.kind === "right-paren") throw new Error("There is an extra closing parenthesis.");
-      throw new Error("Unexpected value or operator.");
+      if (this.current.kind === "right-paren") throw new Error(t("There is an extra closing parenthesis."));
+      throw new Error(t("Unexpected value or operator."));
     }
     return value;
   }
@@ -155,7 +156,7 @@ class Parser {
       if (operator.kind !== "operator" || (operator.value !== "*" && operator.value !== "/")) break;
       this.advance();
       const right = this.parseUnary();
-      if (operator.value === "/" && right === 0) throw new Error("Cannot divide by zero.");
+      if (operator.value === "/" && right === 0) throw new Error(t("Cannot divide by zero."));
       value = checked(operator.value === "*" ? value * right : value / right);
     }
     return value;
@@ -198,17 +199,17 @@ class Parser {
       this.advance();
       const value = this.parseAdditive();
       const closing = this.current;
-      if (closing.kind !== "right-paren") throw new Error("Missing a closing parenthesis.");
+      if (closing.kind !== "right-paren") throw new Error(t("Missing a closing parenthesis."));
       this.advance();
       return value;
     }
-    if (current.kind === "end") throw new Error("The expression is incomplete.");
-    if (current.kind === "right-paren") throw new Error("There is an unexpected closing parenthesis.");
-    throw new Error("Expected a number or an opening parenthesis.");
+    if (current.kind === "end") throw new Error(t("The expression is incomplete."));
+    if (current.kind === "right-paren") throw new Error(t("There is an unexpected closing parenthesis."));
+    throw new Error(t("Expected a number or an opening parenthesis."));
   }
 }
 
 function checked(value: number): number {
-  if (!Number.isFinite(value)) throw new Error("The result is outside the numeric range.");
+  if (!Number.isFinite(value)) throw new Error(t("The result is outside the numeric range."));
   return Object.is(value, -0) ? 0 : value;
 }

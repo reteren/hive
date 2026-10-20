@@ -17,6 +17,7 @@ import {
 } from "./logic";
 import { registerTextEditParticipant } from "./textEditHooks";
 import { TransferHintTimers } from "./hints";
+import { t } from "../i18n/i18n.svelte";
 
 /**
  * A04 choices: the last accepted connection (link insertion order) owns a task's live copy;
@@ -155,7 +156,7 @@ function runTransferChoice(linkId: string, choice: "replace" | "keep"): void {
 
   if (choice === "keep") {
     execute({
-      label: "Keep task text",
+      label: t("Keep task text"),
       target: target.name,
       do: () => updateLink(linkId, { transferDeclined: true }),
       undo: () => updateLink(linkId, { transferDeclined: previousChoice }),
@@ -175,7 +176,7 @@ function runTransferChoice(linkId: string, choice: "replace" | "keep"): void {
   const supersededChoices = acceptedSourcesToDeactivate(link, Object.values(links.byId), board.notes)
     .map((superseded) => ({ id: superseded.id, transferDeclined: superseded.transferDeclined }));
   execute({
-    label: "Transfer text",
+    label: t("Transfer text"),
     target: target.name,
     do: () => {
       for (const superseded of supersededChoices) updateLink(superseded.id, { transferDeclined: true });

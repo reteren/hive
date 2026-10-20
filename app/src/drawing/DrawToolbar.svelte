@@ -9,6 +9,7 @@
   import DrawCursor from "./DrawCursor.svelte";
   import TextEditorOverlay from "./TextEditorOverlay.svelte";
   import { drawingTools, setBrushSettings } from "./tools.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
 
   let isDrawing = $derived(tool.active === "draw");
@@ -30,30 +31,30 @@
 </script>
 
 {#if isDrawing}
-  <aside class="draw-toolbar" data-draw-toolbar data-draw-overlay-control aria-label="Drawing tools">
+  <aside class="draw-toolbar" data-draw-toolbar data-draw-overlay-control aria-label={t("Drawing tools")}>
     <header>
-      <strong>Drawing</strong>
-      <button type="button" class="close-button" aria-label="Exit drawing mode" onclick={() => { tool.active = "select"; }}><CloseGlyph /></button>
+      <strong>{t("Drawing")}</strong>
+      <button type="button" class="close-button" aria-label={t("Exit drawing mode")} onclick={() => { tool.active = "select"; }}><CloseGlyph /></button>
     </header>
 
 
     <div class="field">
-      <span>Color</span>
+      <span>{t("Color")}</span>
       <HexColorPicker
         value={drawingTools.brush.color}
-        label="Brush colour"
+        label={t("Brush colour")}
         oninput={(color) => setBrushSettings({ color })}
       />
     </div>
 
     <label class="field slider-field">
-      <span>Size <strong>{drawingTools.brush.size}px</strong></span>
+      <span>{t("Size")} <strong>{drawingTools.brush.size}px</strong></span>
       <div class="size-control">
         <MediaSlider
           value={drawingTools.brush.size - 1}
           max={399}
           step={1}
-          label="Brush size"
+          label={t("Brush size")}
           oninput={updateSize}
           onchange={updateSize}
           tooltip={(value) => `${Math.round(value + 1)} px`}
@@ -64,7 +65,7 @@
           min="1"
           max="400"
           step="1"
-          aria-label="Brush size in screen pixels"
+          aria-label={t("Brush size in screen pixels")}
           value={drawingTools.brush.size}
           oninput={(event) => setBrushSettings({ size: event.currentTarget.valueAsNumber })}
         />
@@ -73,12 +74,12 @@
 
     {#if drawingTools.active !== "eraser"}
       <label class="field slider-field">
-        <span>Opacity <strong>{Math.round(drawingTools.brush.opacity * 100)}%</strong></span>
+        <span>{t("Opacity")} <strong>{Math.round(drawingTools.brush.opacity * 100)}%</strong></span>
         <MediaSlider
           value={opacitySlider}
           max={100}
           step={1}
-          label="Brush opacity"
+          label={t("Brush opacity")}
           oninput={updateOpacity}
           onchange={updateOpacity}
           tooltip={(value) => `${Math.round((0.05 + value / 100 * 0.95) * 100)}%`}
@@ -89,12 +90,12 @@
     <!-- Text has no soft edge: hardness does not apply to it. -->
     {#if drawingTools.active !== "text"}
       <label class="field slider-field">
-        <span>Hardness <strong>{Math.round(drawingTools.brush.hardness * 100)}%</strong></span>
+        <span>{t("Hardness")} <strong>{Math.round(drawingTools.brush.hardness * 100)}%</strong></span>
         <MediaSlider
           value={hardnessSlider}
           max={100}
           step={1}
-          label="Brush hardness"
+          label={t("Brush hardness")}
           oninput={updateHardness}
           onchange={updateHardness}
           tooltip={(value) => `${Math.round(value)}%`}

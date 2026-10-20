@@ -18,6 +18,7 @@
   import MediaSettings from "../settings/pages/MediaSettings.svelte";
   import AiToolsSettings from "../settings/pages/AiToolsSettings.svelte";
   import StorageSettings from "../settings/pages/StorageSettings.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   interface PageInfo {
     id: SettingsPage;
@@ -31,43 +32,43 @@
   const pages: readonly PageInfo[] = [
     {
       id: "general",
-      label: "General",
-      description: "Profile, motion and shortcuts.",
+      get label() { return t("General"); },
+      get description() { return t("Profile, motion and shortcuts."); },
       icon: "M2.5 4.5h6M11.5 4.5h2M2.5 8h2M7.5 8h6M2.5 11.5h7.5M13 11.5h.5M10 3v3M6 6.5v3M11.5 10v3",
       body: GeneralSettings,
     },
     {
       id: "appearance",
-      label: "Appearance",
-      description: "Themes and the five colours they are made of.",
+      get label() { return t("Appearance"); },
+      get description() { return t("Themes and the five colours they are made of."); },
       icon: "M8 2.2a5.8 5.8 0 1 0 0 11.6c.9 0 1.4-.6 1.4-1.3 0-.9-.7-1.1-.7-1.9 0-.6.5-1.1 1.2-1.1h1.6a2.3 2.3 0 0 0 2.3-2.3C13.8 4.4 11.2 2.2 8 2.2zM5 7.2h.01M7 4.8h.01M10.2 5h.01",
       body: AppearanceSettings,
     },
     {
       id: "editing",
-      label: "Editing",
-      description: "Notes, spellcheck and undo.",
+      get label() { return t("Editing"); },
+      get description() { return t("Notes, spellcheck and undo."); },
       icon: "M10.4 2.6l3 3L6 13H3v-3zM8.9 4.1l3 3",
       body: EditingSettings,
     },
     {
       id: "media",
-      label: "Media",
-      description: "GIFs, audio recording and video files.",
+      get label() { return t("Media"); },
+      get description() { return t("GIFs, audio recording and video files."); },
       icon: "M3.5 3h9A1.5 1.5 0 0 1 14 4.5v7a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5v-7A1.5 1.5 0 0 1 3.5 3zM6.8 6v4l3.2-2z",
       body: MediaSettings,
     },
     {
       id: "ai",
-      label: "AI tools",
-      description: "Let local AI clients work with the open project.",
+      get label() { return t("AI tools"); },
+      get description() { return t("Let local AI clients work with the open project."); },
       icon: "M8 2l1.3 3.5L12.8 7 9.3 8.3 8 12l-1.3-3.7L3.2 7l3.5-1.5zM12.5 11l.5 1.4 1.4.6-1.4.5-.5 1.5-.5-1.5-1.5-.5 1.5-.6z",
       body: AiToolsSettings,
     },
     {
       id: "storage",
-      label: "Storage",
-      description: "Disk use, backups, trash and moving projects.",
+      get label() { return t("Storage"); },
+      get description() { return t("Disk use, backups, trash and moving projects."); },
       icon: "M3 4c0-1.1 2.2-2 5-2s5 .9 5 2-2.2 2-5 2-5-.9-5-2zM3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2",
       body: StorageSettings,
     },
@@ -122,11 +123,11 @@
 
 {#if settingsPanel.open}
   <div class="settings-overlay" data-selection-ignore>
-    <button class="settings-backdrop" type="button" aria-label="Close settings" onclick={closeSettingsPanel}></button>
+    <button class="settings-backdrop" type="button" aria-label={t("Close settings")} onclick={closeSettingsPanel}></button>
     <div class="settings-window" role="dialog" aria-modal="true" aria-labelledby="settings-title" tabindex="-1" onkeydown={handleKeydown}>
       <aside class="settings-sidebar">
-        <h1 id="settings-title">Settings</h1>
-        <nav bind:this={navList} class="settings-nav" aria-label="Settings sections">
+        <h1 id="settings-title">{t("Settings")}</h1>
+        <nav bind:this={navList} class="settings-nav" aria-label={t("Settings sections")}>
           {#each pages as page (page.id)}
             <button
               class="settings-nav-item"
@@ -143,7 +144,7 @@
           {/each}
         </nav>
         <footer class="settings-sidebar-footer">
-          {#if activeProfileName}<span class="sidebar-profile" title="Settings profile">{activeProfileName}</span>{/if}
+          {#if activeProfileName}<span class="sidebar-profile" title={t("Settings profile")}>{activeProfileName}</span>{/if}
           <span class="app-version" data-app-version>hive {packageMetadata.version}</span>
         </footer>
       </aside>
@@ -154,7 +155,7 @@
             <h2>{current.label}</h2>
             <p>{current.description}</p>
           </div>
-          <button bind:this={closeButton} class="close-button settings-close" type="button" aria-label="Close settings" title="Close settings" onclick={closeSettingsPanel}><CloseGlyph /></button>
+          <button bind:this={closeButton} class="close-button settings-close" type="button" aria-label={t("Close settings")} title={t("Close settings")} onclick={closeSettingsPanel}><CloseGlyph /></button>
         </header>
         <div bind:this={content} class="settings-content">
           {#key current.id}

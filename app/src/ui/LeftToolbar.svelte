@@ -9,6 +9,7 @@
   import { drawingTools } from "../drawing/tools.svelte";
   import { selectDrawingSubtool } from "../drawing/drawInput";
   import "../zones/commands";
+  import { t } from "../i18n/i18n.svelte";
 
   /* The active tool's highlight is one shared plate that slides between tools (and follows them
      when sub-tools unfold), instead of each button snapping its own background on and off. */
@@ -52,21 +53,21 @@
   let shapeCommand = $derived(getCommand("line.cycleShape"));
   let shapeLabel = $derived(tool.lineShape[0].toUpperCase() + tool.lineShape.slice(1));
   let selectHint = $derived(moveCommand?.keys.length
-    ? `${moveCommand.keys.map(formatKey).join(", ")} — Move selection`
-    : "Move selection");
+    ? t("{keys} — Move selection", { keys: moveCommand.keys.map(formatKey).join(", ") })
+    : t("Move selection"));
   let lineSubtools = $derived<{ id: LineToolId; label: string; keys: string[] }[]>([
-    { id: "line-strong", label: "Strong line", keys: getCommand("tool.lineStrong")?.keys ?? [] },
-    { id: "line-weak", label: "Weak line", keys: getCommand("tool.lineWeak")?.keys ?? [] },
+    { id: "line-strong", get label() { return t("Strong line"); }, keys: getCommand("tool.lineStrong")?.keys ?? [] },
+    { id: "line-weak", get label() { return t("Weak line"); }, keys: getCommand("tool.lineWeak")?.keys ?? [] },
   ]);
 </script>
 
 <!-- Left vertical panel of working tools (R0.4). Line and Draw unfold their sub-tools while active. -->
-<nav class="left-toolbar" aria-label="Navigation tools" bind:this={toolbar}>
+<nav class="left-toolbar" aria-label={t("Navigation tools")} bind:this={toolbar}>
   <span
     class="tool-indicator"
     class:visible={indicator.visible}
     class:placed={indicator.placed}
-    style:translate={`0 ${indicator.y}px`}
+    style:translate={t("0 {y}px", { y: indicator.y })}
     style:height={`${indicator.height}px`}
     aria-hidden="true"
   ></span>
@@ -76,9 +77,9 @@
   <CommandButton
     commandId="tool.line"
     className="tool-button"
-    tooltipLabel={`Line · ${shapeLabel}`}
+    tooltipLabel={t("Line · {shape}", { shape: t(shapeLabel) })}
     tooltipBindings={shapeCommand?.keys ?? []}
-    secondaryHint="Change line shape"
+    secondaryHint={t("Change line shape")}
   >
     {#snippet icon()}
       {#if tool.lineShape === "base"}
@@ -93,7 +94,7 @@
     {/snippet}
   </CommandButton>
   {#if isLineTool()}
-    <div class="subtools" role="group" aria-label="Line kind">
+    <div class="subtools" role="group" aria-label={t("Line kind")}>
       <span class="divider" aria-hidden="true"></span>
       {#each lineSubtools as option, index (option.id)}
         <SubtoolButton
@@ -116,7 +117,7 @@
   <CommandButton commandId="tool.zone" className="tool-button" />
   <CommandButton commandId="tool.draw" className="tool-button" />
   {#if tool.active === "draw"}
-    <div class="subtools" role="group" aria-label="Drawing tool">
+    <div class="subtools" role="group" aria-label={t("Drawing tool")}>
       <span class="divider" aria-hidden="true"></span>
       {#each DRAW_SUBTOOLS as option, index (option.id)}
         <SubtoolButton

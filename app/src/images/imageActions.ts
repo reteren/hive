@@ -16,6 +16,7 @@ import {
 import { dispatchImagePaste, registerImagePasteHandler } from "../attachments/pasteDispatch";
 import { screenToWorld, type Point } from "../board/cameraMath";
 import { createImageNotesAsync } from "../notes/noteCommands";
+import { t } from "../i18n/i18n.svelte";
 
 const IMAGE_EXTENSION: Record<(typeof IMAGE_MIME_TYPES)[number], string> = {
   "image/bmp": "bmp",
@@ -28,7 +29,7 @@ const IMAGE_EXTENSION: Record<(typeof IMAGE_MIME_TYPES)[number], string> = {
 export async function importImagePaths(paths: readonly string[], center: Point): Promise<boolean> {
   if (paths.length === 0) return false;
   try {
-    return await withImportProgress("Import images", paths.length, async (run) => {
+    return await withImportProgress(t("Import images"), paths.length, async (run) => {
       const images: ImageRef[] = [];
       const errors: string[] = [];
       for (let offset = 0; offset < paths.length; offset += 200) {
@@ -73,7 +74,7 @@ export async function runImageImportBatch<T>(
 ): Promise<boolean> {
   if (inputs.length === 0) return false;
   try {
-    return await withImportProgress("Import images", inputs.length, async (run) => {
+    return await withImportProgress(t("Import images"), inputs.length, async (run) => {
       const images: ImageRef[] = [];
       const errors: string[] = [];
       for (let offset = 0; offset < inputs.length; offset += 200) {

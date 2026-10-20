@@ -26,6 +26,7 @@
   import { runZoneMenuAction, selectZoneForMenuAction } from "../commands/objectMenu";
   import { lineInteraction } from "../links/interaction.svelte";
   import OverviewLayer from "../overview/OverviewLayer.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   type Menu = { id: string; x: number; y: number; zoomAtOpen: number; rename: boolean; color?: boolean };
   let layer: HTMLDivElement;
@@ -217,7 +218,7 @@
 
 <div class="zones-layer" bind:this={layer}>
   <OverviewLayer />
-  <svg class="zone-svg" width="100%" height="100%" aria-label="Zones">
+  <svg class="zone-svg" width="100%" height="100%" aria-label={t("Zones")}>
     <g transform={transform}>
       {#each visibleZoneIds as id (id)}
         {@const zone = zones.byId[id]}
@@ -247,7 +248,7 @@
                 class="zone-name"
                 role="button"
                 tabindex="0"
-                aria-label={`Rename ${zone.name}`}
+                aria-label={t("Rename {name}", { name: zone.name })}
                 style:pointer-events={tool.active === "select" ? "visiblePainted" : "none"}
                 onkeydown={(event) => { if (event.code === "Enter") {
                   event.preventDefault();
@@ -264,39 +265,39 @@
     </g>
   </svg>
   {#if menu && zones.byId[menu.id]}
-    <div class="zone-menu" data-zone-menu data-selection-ignore role="menu" aria-label="Zone actions"
+    <div class="zone-menu" data-zone-menu data-selection-ignore role="menu" aria-label={t("Zone actions")}
       style={boardPopupStyle(camera, viewport, { x: menu.x, y: menu.y }, menu.zoomAtOpen)}
       use:dismissBoardPopup={{ close: () => { menu = null; }, escape: false }}>
       {#if menu.color}
-        <div class="zone-color-popup" role="dialog" aria-label="Zone colour" tabindex="-1" onkeydown={(event) => {
+        <div class="zone-color-popup" role="dialog" aria-label={t("Zone colour")} tabindex="-1" onkeydown={(event) => {
           if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); cancelRecolor(); }
           else if (event.key === "Enter" && !(event.target instanceof HTMLInputElement)) { event.preventDefault(); menu = null; }
         }}>
           <span class="zone-color-title">{zones.byId[menu.id].name}</span>
           <HexColorPicker
             value={zones.byId[menu.id].color}
-            label="Zone colour"
+            label={t("Zone colour")}
             oninput={(color) => colorSession?.preview(color)}
             onchange={(color) => colorSession?.preview(color)}
           />
         </div>
       {:else if menu.rename}
-        <input bind:this={renameInput} bind:value={draftName} aria-label="Zone name" onkeydown={(event) => {
+        <input bind:this={renameInput} bind:value={draftName} aria-label={t("Zone name")} onkeydown={(event) => {
           if (event.code === "Enter") { event.preventDefault(); commitRename(); }
           else if (event.code === "Escape") { event.preventDefault(); menu = null; }
         }} onblur={commitRename} />
       {:else}
-        <button type="button" role="menuitem" onclick={startRename}>Rename</button>
-        <button type="button" role="menuitem" onclick={startRecolor}>Change color</button>
+        <button type="button" role="menuitem" onclick={startRename}>{t("Rename")}</button>
+        <button type="button" role="menuitem" onclick={startRecolor}>{t("Change color")}</button>
         <div class="zone-menu-divider" role="separator"></div>
         <button class="zone-menu-command" type="button" role="menuitem" onclick={() => startUniversalZoneAction("scale")}>
-          <span>Scale</span><span class="zone-menu-shortcut">{menuShortcutLabel("select.scale")}</span>
+          <span>{t("Scale")}</span><span class="zone-menu-shortcut">{menuShortcutLabel("select.scale")}</span>
         </button>
         <button class="zone-menu-command" type="button" role="menuitem" onclick={(event) => startUniversalZoneAction("grab", event)}>
-          <span>Grab</span><span class="zone-menu-shortcut">{menuShortcutLabel("select.move")}</span>
+          <span>{t("Grab")}</span><span class="zone-menu-shortcut">{menuShortcutLabel("select.move")}</span>
         </button>
         <button class="zone-menu-command" type="button" role="menuitem" onclick={() => startUniversalZoneAction("delete")}>
-          <span>Delete</span><span class="zone-menu-shortcut">{menuShortcutLabel("edit.delete")}</span>
+          <span>{t("Delete")}</span><span class="zone-menu-shortcut">{menuShortcutLabel("edit.delete")}</span>
         </button>
       {/if}
     </div>

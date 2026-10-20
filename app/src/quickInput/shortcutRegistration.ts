@@ -2,6 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import { quickInputShortcut, setQuickInputShortcutError } from "../settings/quickInputShortcut.svelte";
 import { normalizeQuickInputShortcut } from "./shortcutModel";
+import { t } from "../i18n/i18n.svelte";
 
 type ShortcutEvent = { state: "Pressed" | "Released" };
 type ShortcutBackend = "hook" | "plugin";
@@ -21,7 +22,7 @@ export async function initializeQuickInputShortcut(onActivate: () => void): Prom
 export async function updateQuickInputShortcut(value: string): Promise<boolean> {
   const normalized = normalizeQuickInputShortcut(value);
   if (!normalized) {
-    setQuickInputShortcutError("Use a supported key with Ctrl, Alt, or the Windows key.");
+    setQuickInputShortcutError(t("Use a supported key with Ctrl, Alt, or the Windows key."));
     return false;
   }
   if (normalized === activeShortcut && activeBackend) {
@@ -31,7 +32,7 @@ export async function updateQuickInputShortcut(value: string): Promise<boolean> 
   }
   if (!isTauri()) {
     quickInputShortcut.value = normalized;
-    setQuickInputShortcutError("Global shortcuts are available in the desktop app.");
+    setQuickInputShortcutError(t("Global shortcuts are available in the desktop app."));
     return false;
   }
 
@@ -55,7 +56,7 @@ export async function suspendQuickInputShortcutForCapture(): Promise<void> {
 
   if (activeBackend === "hook") {
     const paused = await configureWindowsHook(null);
-    if (!paused) throw new Error("Could not pause the quick input shortcut for capture.");
+    if (!paused) throw new Error(t("Could not pause the quick input shortcut for capture."));
   } else {
     await unregister(shortcut);
   }
@@ -77,7 +78,7 @@ export async function restoreQuickInputShortcutAfterCapture(): Promise<void> {
 async function registerConfiguredShortcut(value: string): Promise<void> {
   const normalized = normalizeQuickInputShortcut(value);
   if (!normalized) {
-    setQuickInputShortcutError("The saved shortcut is invalid. Choose a new key combination.");
+    setQuickInputShortcutError(t("The saved shortcut is invalid. Choose a new key combination."));
     return;
   }
 
@@ -145,5 +146,5 @@ function handleShortcut(event: ShortcutEvent): void {
 
 function formatRegistrationError(error: unknown): string {
   const detail = error instanceof Error ? error.message : String(error);
-  return `Could not register this shortcut. Another app may already use it. Choose a different combination. ${detail}`;
+  return t("Could not register this shortcut. Another app may already use it. Choose a different combination. {detail}", { detail: detail });
 }

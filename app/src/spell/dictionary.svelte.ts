@@ -1,5 +1,6 @@
 import { getUserWords, importUserDictionary, removeUserWord } from "./engine";
 import { clearSpellcheckCache, refreshAllSpellcheckEditors } from "./spellcheck";
+import { t } from "../i18n/i18n.svelte";
 
 export const userDictionary = $state({
   words: [] as string[],
@@ -13,7 +14,7 @@ export async function refreshUserDictionary(): Promise<void> {
   try {
     userDictionary.words = await getUserWords();
   } catch (error) {
-    userDictionary.error = error instanceof Error ? error.message : "Could not load the dictionary.";
+    userDictionary.error = error instanceof Error ? error.message : t("Could not load the dictionary.");
   } finally {
     userDictionary.loading = false;
   }

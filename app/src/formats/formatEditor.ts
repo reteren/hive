@@ -8,6 +8,7 @@ import { EditorState } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { formatLanguageForExtension } from "./formatLogic";
 import { formatWrapsExtension } from "./formatWrapping";
+import { t } from "../i18n/i18n.svelte";
 
 /** Toggle this to force wrapping in code formats as well. */
 export const FORMAT_WRAP_LINES = false;
@@ -41,7 +42,7 @@ export function createFormatEditor(
     EditorView.updateListener.of((update) => {
       if (update.docChanged) onChange(update.state.doc.toString());
     }),
-    EditorView.contentAttributes.of({ "aria-label": "File contents" }),
+    EditorView.contentAttributes.of({ "aria-label": t("File contents") }),
     EditorView.theme({
       "&": { height: "100%", minHeight: "0", color: "var(--text)", backgroundColor: "transparent" },
       ".cm-scroller": {

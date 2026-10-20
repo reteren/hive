@@ -7,6 +7,7 @@ import { drawingGpu } from "./gpu/glEngine";
 import { registerDrawTool } from "./toolRegistry";
 import { drawingTools } from "./tools.svelte";
 import { PX_PER_UNIT, screenToWorld } from "../board/cameraMath";
+import { t } from "../i18n/i18n.svelte";
 
 export type SelectionTool = Extract<DrawTool, "select-rect" | "select-lasso" | "select-polygon">;
 export type SelectionHandle = "nw" | "ne" | "sw" | "se";
@@ -367,7 +368,7 @@ export function clearDrawingSelection(): void {
   if (gesture?.kind === "move" && !gesture.cancelled) void cancelMove(gesture);
   else if (gesture) activeGesture = null;
   clearSelection();
-  recordSelectionChange("Clear selection", previousArea, null);
+  recordSelectionChange(t("Clear selection"), previousArea, null);
 }
 
 /** Resize the selection geometry only. The drawing pixels remain at their original coordinates. */
@@ -669,7 +670,7 @@ function cutMask(area: DrawingSelectionArea): TileKey[] {
   canvas.width = area.width;
   canvas.height = area.height;
   const context = canvas.getContext("2d");
-  if (!context) throw new Error("Could not create a drawing selection mask.");
+  if (!context) throw new Error(t("Could not create a drawing selection mask."));
   const image = context.createImageData(area.width, area.height);
   for (let pixel = 0; pixel < area.mask.length; pixel += 1) image.data[pixel * 4 + 3] = area.mask[pixel]!;
   context.putImageData(image, 0, 0);
@@ -701,7 +702,7 @@ function canvasFromPixels(pixels: RasterPixels): HTMLCanvasElement {
   canvas.width = pixels.width;
   canvas.height = pixels.height;
   const context = canvas.getContext("2d");
-  if (!context) throw new Error("Could not create a drawing selection canvas.");
+  if (!context) throw new Error(t("Could not create a drawing selection canvas."));
   context.putImageData(imageDataFromPixels(pixels), 0, 0);
   return canvas;
 }
@@ -779,7 +780,7 @@ function selectPixels(
   drawingSelection.floatingAt = null;
   drawingSelection.fastPreview = null;
   drawingSelection.transformPreview = null;
-  recordSelectionChange(beforeArea ? "Replace selection" : "Create selection", beforeArea, area);
+  recordSelectionChange(beforeArea ? t("Replace selection") : t("Create selection"), beforeArea, area);
   updateState();
 }
 
@@ -1045,7 +1046,7 @@ async function finishMove(gesture: SelectionGesture): Promise<void> {
       y: destination.y,
       outline: prepared.area.outline.map((point) => ({ x: point.x + deltaX, y: point.y + deltaY })),
     };
-    const label = gesture.copy ? "Copy selection" : gesture.transformMode === "scale" ? "Scale selection" : "Move selection";
+    const label = gesture.copy ? t("Copy selection") : gesture.transformMode === "scale" ? t("Scale selection") : t("Move selection");
     pushDrawingHistory(label, rollback, after, {
       undo: () => restoreSelectionArea(selectionBefore),
       redo: () => restoreSelectionArea(selectionAfter),
@@ -1116,7 +1117,7 @@ async function deleteCurrentSelection(): Promise<void> {
     mutationStarted = true;
     cutMask(area);
     const after = await drawingStore.snapshot(keys);
-    pushDrawingHistory("Delete selection", before, after);
+    pushDrawingHistory(t("Delete selection"), before, after);
   } catch (error) {
     if (mutationStarted && before) {
       await drawingStore.restore(before).catch((restoreError: unknown) => {
@@ -1173,7 +1174,7 @@ async function pasteClipboard(world: RasterPoint | null): Promise<void> {
         { x: targetX, y: targetY + pixels.height },
       ],
     };
-    pushDrawingHistory("Paste selection", before, after, {
+    pushDrawingHistory(t("Paste selection"), before, after, {
       undo: () => restoreSelectionArea(selectionBefore),
       redo: () => restoreSelectionArea(selectionAfter),
     });

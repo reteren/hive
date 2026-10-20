@@ -7,6 +7,7 @@ import { resizeEdgeAxes, type ResizeEdge } from "../selection/resize";
 import { MIN_ZONE_SIZE } from "./geometry";
 import { roundCoordinate } from "./shapeGrid";
 import { shapesOverlap, translateShape } from "./shape";
+import { t } from "../i18n/i18n.svelte";
 
 export interface MemberPosition {
   id: string;
@@ -219,7 +220,7 @@ export function zoneMoveHistoryCommand(
 ): HistoryCommand | null {
   if (!zoneGestureChanged(gesture.beforeZone, gesture.afterZone)) return null;
   return {
-    label: "Move zone",
+    label: t("Move zone"),
     target: gesture.beforeZone.name,
     do: () => apply(gesture.afterZone, gesture.afterMembers),
     undo: () => apply(gesture.beforeZone, gesture.beforeMembers),
@@ -235,7 +236,7 @@ export function zoneResizeHistoryCommand(
   if (!zoneGestureChanged(gesture.beforeZone, gesture.afterZone)) return null;
   const zoneId = gesture.beforeZone.id;
   return {
-    label: "Resize zone",
+    label: t("Resize zone"),
     target: gesture.beforeZone.name,
     do: () => {
       apply(gesture.afterZone);

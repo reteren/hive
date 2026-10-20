@@ -1,6 +1,7 @@
 <script lang="ts">
   import { quickInputPrompt, closeQuickInputPrompt } from "./quickInputState.svelte";
   import { submitQuickInput } from "./inbox.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let inputElement = $state<HTMLTextAreaElement>();
 
@@ -14,7 +15,7 @@
     event?.preventDefault();
     const result = submitQuickInput(quickInputPrompt.text);
     if (!result.ok) {
-      quickInputPrompt.error = "No Inbox node found. Create an Inbox node, then submit this text again.";
+      quickInputPrompt.error = t("No Inbox node found. Create an Inbox node, then submit this text again.");
       inputElement?.focus();
       return;
     }
@@ -47,25 +48,25 @@
       onkeydown={handleKeydown}
     >
       <header>
-        <h2 id="inbox-quick-input-title">Quick input to Inbox</h2>
-        <button type="button" class="inbox-prompt-close" aria-label="Close quick input" onclick={closeQuickInputPrompt}>×</button>
+        <h2 id="inbox-quick-input-title">{t("Quick input to Inbox")}</h2>
+        <button type="button" class="inbox-prompt-close" aria-label={t("Close quick input")} onclick={closeQuickInputPrompt}>×</button>
       </header>
       <form onsubmit={submit}>
-        <label for="inbox-quick-input-text">Text</label>
+        <label for="inbox-quick-input-text">{t("Text")}</label>
         <textarea
           id="inbox-quick-input-text"
           bind:this={inputElement}
           bind:value={quickInputPrompt.text}
           data-inbox-quick-input-text
           rows="5"
-          placeholder="Write an idea or reminder…"
+          placeholder={t("Write an idea or reminder…")}
         ></textarea>
         {#if quickInputPrompt.error}
           <p class="inbox-prompt-error" data-inbox-quick-input-error role="alert">{quickInputPrompt.error}</p>
         {/if}
         <footer>
-          <button type="button" class="inbox-prompt-cancel" onclick={closeQuickInputPrompt}>Cancel</button>
-          <button type="submit" class="inbox-prompt-submit" data-inbox-quick-input-submit>Add to Inbox</button>
+          <button type="button" class="inbox-prompt-cancel" onclick={closeQuickInputPrompt}>{t("Cancel")}</button>
+          <button type="submit" class="inbox-prompt-submit" data-inbox-quick-input-submit>{t("Add to Inbox")}</button>
         </footer>
       </form>
     </div>

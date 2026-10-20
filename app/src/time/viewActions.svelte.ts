@@ -2,6 +2,7 @@ import { execute } from "../history/history.svelte";
 import { board, updateNote } from "../model/board.svelte";
 import { copyTimeNodeData } from "./data";
 import type { TimeNodeData } from "./types";
+import { t } from "../i18n/i18n.svelte";
 
 export function setTimeNodeView(noteId: string, view: "time" | "stopwatch"): void {
   const note = board.notes[noteId];
@@ -15,7 +16,7 @@ export function setTimeNodeView(noteId: string, view: "time" | "stopwatch"): voi
   else next.view = view;
 
   execute({
-    label: view === "stopwatch" ? "Show stopwatch" : "Show Time schedule",
+    label: view === "stopwatch" ? t("Show stopwatch") : t("Show Time schedule"),
     target: note.name,
     do: () => updateNote(noteId, { time: copyTimeNodeData(next) }),
     undo: () => updateNote(noteId, { time: copyTimeNodeData(previous) }),

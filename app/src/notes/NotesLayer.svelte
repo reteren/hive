@@ -31,6 +31,7 @@
     gifTargetFromElement,
     openGifContextMenu,
   } from "../attachments/gifPlayback.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let activeNoteMenuItems = $derived.by(() => {
     const menu = linkContext.menu;
@@ -336,7 +337,7 @@
       data-link-context-menu
       role="menu"
       tabindex="-1"
-      aria-label={linkContext.menu.kind === "board" ? "Board actions" : "Note actions"}
+      aria-label={linkContext.menu.kind === "board" ? t("Board actions") : t("Note actions")}
       style={boardPopupStyle(camera, viewport, { x: linkContext.menu.x, y: linkContext.menu.y }, contextMenuZoomAtOpen)}
       use:dismissBoardPopup={{ close: closeAllContextMenus }}
       oncontextmenu={(event) => event.preventDefault()}
@@ -351,7 +352,7 @@
             void copyCursorCoordinates(point);
             closeLinkContextMenu();
           }}
-        >Copy coordinates ({coordinateLabel(point)})</button>
+        >{t("Copy coordinates ({coordinateLabel})", { coordinateLabel: coordinateLabel(point) })}</button>
       {:else}
         {@const noteId = linkContext.menu.noteId}
         {#each activeNoteMenuItems as item (item.id)}

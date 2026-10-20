@@ -1,3 +1,4 @@
+import { t } from "../i18n/i18n.svelte";
 import type { Action } from "svelte/action";
 import { camera } from "../board/camera.svelte";
 import { PX_PER_UNIT, type Point } from "../board/cameraMath";
@@ -52,7 +53,7 @@ export const pullOutListStatistics: Action<HTMLElement, string> = (element, list
         boxSizing: "border-box", width: `${R5_BASE_WIDTHS.stats * PX_PER_UNIT}px`, padding: "7px", border: "1px solid #53565e",
         borderRadius: "5px", background: "var(--note-body, #24262b)", color: "var(--text, #dedfe2)", fontSize: "10px", transformOrigin: "top left" });
       const header = document.createElement("strong");
-      header.textContent = "Statistics";
+      header.textContent = t("Statistics");
       Object.assign(header.style, { display: "block", marginBottom: "7px", fontSize: "11px" });
       ghost.append(header);
       for (const item of board.notes[listId]?.listItems ?? []) {

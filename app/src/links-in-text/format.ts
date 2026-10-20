@@ -1,4 +1,5 @@
 import type { Point } from "../board/cameraMath";
+import { t } from "../i18n/i18n.svelte";
 
 export type TextLinkTarget =
   | { kind: "external"; url: string }
@@ -55,13 +56,13 @@ export function parseTextLink(value: string): TextLinkTarget | null {
 /** Format cursor coordinates as `hive://point/x,y` with at most 3 fractional digits. */
 export function formatPointAddress(point: Point): string {
   if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
-    throw new RangeError("Point coordinates must be finite.");
+    throw new RangeError(t("Point coordinates must be finite."));
   }
   return `hive://point/${formatCoordinate(point.x)},${formatCoordinate(point.y)}`;
 }
 
 export function formatNoteAddress(noteId: string): string {
-  if (!noteId.trim()) throw new RangeError("A note id is required.");
+  if (!noteId.trim()) throw new RangeError(t("A note id is required."));
   return `hive://note/${encodeURIComponent(noteId)}`;
 }
 

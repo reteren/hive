@@ -8,6 +8,7 @@
   import { teleportToObject } from "../navigation/navigate";
   import TaskCheckbox from "./TaskCheckbox.svelte";
   import { closePanelPopup, panelPopupState } from "../ui/popups/panelPopupState.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let { variant = "dock" } = $props<{ variant?: "dock" | "popup" }>();
 
@@ -18,7 +19,7 @@
   let toggleKeys = $derived(toggleCommand?.keys.map(formatKey).join(", ") ?? "");
 
   function jumpToTask(noteId: string): void {
-    teleportToObject(noteId, { label: "Tasks panel" });
+    teleportToObject(noteId, { label: t("Tasks panel") });
   }
 
   function formatTime(value: number): string {
@@ -45,57 +46,57 @@
     class="tasks-panel"
     class:popup-panel={variant === "popup"}
     data-selection-ignore
-    aria-label="Tasks"
+    aria-label={t("Tasks")}
     aria-modal={variant === "popup"}
     onkeydown={handleKeydown}
   >
     <header class="panel-heading">
       <div class="panel-title">
-        <h2>Tasks</h2>
+        <h2>{t("Tasks")}</h2>
         <span>{openItems.length}</span>
       </div>
       <button
         class="panel-control close"
         type="button"
-        aria-label="Close tasks panel"
-        title={`Close${toggleKeys ? ` · ${toggleKeys}` : ""}`}
+        aria-label={t("Close tasks panel")}
+        title={t("Close{value}", { value: toggleKeys ? ` · ${toggleKeys}` : "" })}
         onclick={closeCurrentPanel}
       >×</button>
     </header>
 
     <div class="panel-content">
-      <ul class="task-list" aria-label="Open tasks">
+      <ul class="task-list" aria-label={t("Open tasks")}>
         {#each openItems as note (note.id)}
           <li class="task-row">
             <TaskCheckbox {note} />
             <button
               class="task-name"
               type="button"
-              title={`Go to ${note.name}`}
+              title={t("Go to {name}", { name: note.name })}
               onclick={() => jumpToTask(note.id)}
             >{note.name}</button>
           </li>
         {:else}
-          <li class="empty-state">No open tasks.</li>
+          <li class="empty-state">{t("No open tasks.")}</li>
         {/each}
       </ul>
 
       {#if tasksPanel.historyOpen}
-        <section class="task-history" aria-label="Completed task history">
+        <section class="task-history" aria-label={t("Completed task history")}>
           {#each historyItems as entry, index (`${entry.noteId}:${entry.doneAt}:${index}`)}
             {@const currentNote = board.notes[entry.noteId]}
             <div class="history-row">
               {#if currentNote}
-                <button class="history-name" type="button" title={`Go to ${currentNote.name}`} onclick={() => jumpToTask(entry.noteId)}>
+                <button class="history-name" type="button" title={t("Go to {name}", { name: currentNote.name })} onclick={() => jumpToTask(entry.noteId)}>
                   {entry.name}
                 </button>
               {:else}
-                <span class="history-name deleted">{entry.name} <span>(deleted)</span></span>
+                <span class="history-name deleted">{entry.name} <span>{t("(deleted)")}</span></span>
               {/if}
               <time datetime={new Date(entry.doneAt).toISOString()}>{formatTime(entry.doneAt)}</time>
             </div>
           {:else}
-            <p class="empty-state">No completed tasks yet.</p>
+            <p class="empty-state">{t("No completed tasks yet.")}</p>
           {/each}
         </section>
       {/if}
@@ -107,7 +108,7 @@
         type="button"
         aria-expanded={tasksPanel.historyOpen}
         onclick={() => (tasksPanel.historyOpen = !tasksPanel.historyOpen)}
-      >{tasksPanel.historyOpen ? "Hide history" : "History"}</button>
+      >{tasksPanel.historyOpen ? t("Hide history") : t("History")}</button>
     </footer>
   </dialog>
 {:else}
@@ -117,10 +118,10 @@
     type="button"
     aria-controls="tasks-panel"
     aria-expanded={isOpen}
-    aria-label={`Open tasks panel${toggleKeys ? `; ${toggleKeys}` : ""}`}
-    title={`Tasks${toggleKeys ? ` · ${toggleKeys}` : ""}`}
+    aria-label={t("Open tasks panel{value}", { value: toggleKeys ? `; ${toggleKeys}` : "" })}
+    title={t("Tasks{value}", { value: toggleKeys ? ` · ${toggleKeys}` : "" })}
     onclick={toggleTasksPanel}
-  >Tasks</button>
+  >{t("Tasks")}</button>
 {/if}
 
 <style>

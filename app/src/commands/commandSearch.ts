@@ -1,3 +1,5 @@
+import { t } from "../i18n/i18n.svelte";
+
 export interface SearchableCommand {
   id: string;
   label: string;
@@ -39,13 +41,15 @@ export function fuzzyMatchScore(query: string, candidate: string): number | null
 /** Search command labels and stable ids, preferring close label matches. */
 export function searchCommands<T extends SearchableCommand>(commands: readonly T[], query: string): T[] {
   const trimmed = query.trim();
-  if (!trimmed) return [...commands].sort((left, right) => left.label.localeCompare(right.label));
+  if (!trimmed) return [...commands].sort((left, right) => t(left.label).localeCompare(t(right.label)));
 
   return commands
     .map((command, index) => {
-      const labelScore = fuzzyMatchScore(trimmed, command.label);
+      // The shown (translated) label and the English one both match, so English muscle memory keeps working.
+      const shown = t(command.label);
+      const labelScore = Math.max(fuzzyMatchScore(trimmed, shown) ?? Number.NEGATIVE_INFINITY, shown === command.label ? Number.NEGATIVE_INFINITY : (fuzzyMatchScore(trimmed, command.label) ?? Number.NEGATIVE_INFINITY) - 6);
       const idScore = fuzzyMatchScore(trimmed, command.id);
-      const score = Math.max(labelScore ?? Number.NEGATIVE_INFINITY, (idScore ?? Number.NEGATIVE_INFINITY) - 18);
+      const score = Math.max(labelScore, (idScore ?? Number.NEGATIVE_INFINITY) - 18);
       return { command, index, score };
     })
     .filter((item) => Number.isFinite(item.score))
@@ -59,6 +63,6 @@ function normalizeSearchText(value: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, " ")
     .trim();
 }

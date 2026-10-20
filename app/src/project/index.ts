@@ -43,6 +43,7 @@ import { normalizePdfZoom, parseMediaRef } from "../formats/formatLogic";
 import { copyAudioRecordings, parseAudioRecordings } from "../audio/recordingData";
 import { parseYouTubeRef } from "../youtube/logic";
 import { copyNoteGlow, parseNoteGlow } from "../notes/noteGlowLogic";
+import { t } from "../i18n/i18n.svelte";
 
 export interface IndexedNote {
   id: string;
@@ -138,15 +139,15 @@ export function parseProjectIndexWithWarnings(contents: string, now = Date.now()
   try {
     parsed = JSON.parse(contents);
   } catch (error) {
-    throw new Error(`Project index is not valid JSON: ${errorMessage(error)}`);
+    throw new Error(t("Project index is not valid JSON: {errorMessage}", { errorMessage: errorMessage(error) }));
   }
 
-  if (!isRecord(parsed)) throw new Error("Project index must be an object.");
+  if (!isRecord(parsed)) throw new Error(t("Project index must be an object."));
   const version = parsed.version;
   if (version !== undefined && version !== 0 && version !== 1 && version !== 2 && version !== 3) {
-    throw new Error(`Unsupported project index version: ${String(version)}.`);
+    throw new Error(t("Unsupported project index version: {version}.", { version: String(version) }));
   }
-  if (!Array.isArray(parsed.notes)) throw new Error("Project index must contain a notes array.");
+  if (!Array.isArray(parsed.notes)) throw new Error(t("Project index must contain a notes array."));
 
   const zonesResult = sanitizeZones(parsed.zones, version === 3);
   const noteWarnings: string[] = [];
@@ -159,7 +160,7 @@ export function parseProjectIndexWithWarnings(contents: string, now = Date.now()
   validateUniqueNotes(notes);
   const noteIds = new Set(notes.map((note) => note.id));
   const uniqueZones = zonesResult.zones.filter((zone) => !noteIds.has(zone.id));
-  if (uniqueZones.length !== zonesResult.zones.length) zonesResult.warnings.push("Zones with ids colliding with notes were discarded.");
+  if (uniqueZones.length !== zonesResult.zones.length) zonesResult.warnings.push(t("Zones with ids colliding with notes were discarded."));
   const validZoneIds = new Set(uniqueZones.map((zone) => zone.id));
   for (const note of notes) {
     if (note.zoneId && !validZoneIds.has(note.zoneId)) {
@@ -213,7 +214,7 @@ export function parseProjectIndexWithWarnings(contents: string, now = Date.now()
       ...(parsed.createdAt !== undefined && !finiteNonnegative(parsed.createdAt)
         ? ["Invalid project creation time in board.json; it was restored from note dates."]
         : []),
-      ...(projectCounters.invalid ? ["Invalid project stopwatch counters in board.json were reset to zero."] : []),
+      ...(projectCounters.invalid ? [t("Invalid project stopwatch counters in board.json were reset to zero.")] : []),
       ...(parsed.meDeleted !== undefined && typeof parsed.meDeleted !== "boolean"
         ? ["Invalid ME beacon state in board.json; the default beacon was restored."]
         : []),
@@ -369,10 +370,10 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
   const loadedById = new Map(loaded.map((note) => [note.id, note]));
   return index.notes.map((entry) => {
     const note = loadedById.get(entry.id);
-    if (!note) throw new Error(`Project did not load note ${entry.id}.`);
+    if (!note) throw new Error(t("Project did not load note {id}.", { id: entry.id }));
     if (note.name !== entry.name || note.file !== entry.file || note.x !== entry.x || note.y !== entry.y
       || note.width !== entry.width || note.height !== entry.height) {
-      throw new Error(`Loaded note ${entry.id} does not match board.json.`);
+      throw new Error(t("Loaded note {id} does not match board.json.", { id: entry.id }));
     }
     const fixedDimensions = fixedNodeDimensions(entry.type, entry.headerHidden === true);
     return {
@@ -550,14 +551,14 @@ export interface LoadedProjectNote {
 
 function parseNote(value: unknown, index: number, requireV2Fields: boolean, requireV3Fields: boolean,
   validZoneIds: ReadonlySet<string>): { note: IndexedNote; warnings: string[] } {
-  if (!isRecord(value)) throw new Error(`Project note ${index + 1} must be an object.`);
+  if (!isRecord(value)) throw new Error(t("Project note {index} must be an object.", { index: index + 1 }));
   const id = value.id;
   const name = value.name;
   if (typeof id !== "string" || id.trim() === "" || id === ME_OBJECT_ID || id.length > 200 || id.includes("/") || id.includes("\\")) {
-    throw new Error(`Project note ${index + 1} has an invalid id.`);
+    throw new Error(t("Project note {index} has an invalid id.", { index: index + 1 }));
   }
   if (typeof name !== "string" || name.trim() === "" || name.length > 500) {
-    throw new Error(`Project note ${id} has an invalid name.`);
+    throw new Error(t("Project note {id} has an invalid name.", { id: id }));
   }
 
   const type = parseNoteKind(value.type);
@@ -579,12 +580,12 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
   const x = finiteNumber(value.x, `note ${id} x`);
   const y = finiteNumber(value.y, `note ${id} y`);
   const width = finiteNumber(value.width, `note ${id} width`);
-  if (width <= 0) throw new Error(`Project note ${id} has an invalid width.`);
+  if (width <= 0) throw new Error(t("Project note {id} has an invalid width.", { id: id }));
   const widthLocked = value.widthLocked === true ? true : undefined;
   let height: number | null = null;
   if (value.height !== undefined && value.height !== null) {
     height = finiteNumber(value.height, `note ${id} height`);
-    if (height <= 0) throw new Error(`Project note ${id} has an invalid height.`);
+    if (height <= 0) throw new Error(t("Project note {id} has an invalid height.", { id: id }));
   }
 
   const warnings: string[] = [];
@@ -743,10 +744,10 @@ function validateUniqueNotes(notes: readonly IndexedNote[]): void {
   const ids = new Set<string>();
   const files = new Set<string>();
   for (const note of notes) {
-    if (ids.has(note.id)) throw new Error(`Project contains duplicate note id ${note.id}.`);
+    if (ids.has(note.id)) throw new Error(t("Project contains duplicate note id {id}.", { id: note.id }));
     ids.add(note.id);
     const key = noteFileKey(note.file.slice(0, -3));
-    if (files.has(key)) throw new Error(`Project contains colliding note file ${note.file}.`);
+    if (files.has(key)) throw new Error(t("Project contains colliding note file {file}.", { file: note.file }));
     files.add(key);
   }
 }
@@ -773,7 +774,7 @@ function sanitizeZones(value: unknown, requireV3Field: boolean): { zones: Zone[]
       warnings: requireV3Field ? ["Missing zones in board.json; defaulted to none."] : [],
     };
   }
-  if (!Array.isArray(value)) return { zones: [], warnings: ["Invalid zones in board.json were discarded."] };
+  if (!Array.isArray(value)) return { zones: [], warnings: [t("Invalid zones in board.json were discarded.")] };
   if (value.length > MAX_ZONES) return { zones: [], warnings: ["Too many zones in board.json; all zones were discarded."] };
 
   const zones: Zone[] = [];
@@ -825,9 +826,9 @@ function sanitizeZones(value: unknown, requireV3Field: boolean): { zones: Zone[]
     ids.add(id);
   }
   const warnings: string[] = [];
-  if (dropped) warnings.push("Invalid zones or polygons in board.json were discarded.");
-  if (invalidColour) warnings.push("Invalid zone colours were replaced with the default colour.");
-  if (invalidMetadata) warnings.push("Invalid zone creation times were cleared.");
+  if (dropped) warnings.push(t("Invalid zones or polygons in board.json were discarded."));
+  if (invalidColour) warnings.push(t("Invalid zone colours were replaced with the default colour."));
+  if (invalidMetadata) warnings.push(t("Invalid zone creation times were cleared."));
   return { zones, warnings };
 }
 
@@ -898,7 +899,7 @@ function crossProduct(a: Point, b: Point, c: Point): number {
 
 function sanitizeBeaconMarks(value: unknown, notes: readonly IndexedNote[], mePresent = true): { values: string[]; warnings: string[] } {
   if (value === undefined) return { values: [], warnings: [] };
-  if (!Array.isArray(value)) return { values: [], warnings: ["Invalid beacon marks were discarded."] };
+  if (!Array.isArray(value)) return { values: [], warnings: [t("Invalid beacon marks were discarded.")] };
   const validIds = new Set(notes.filter((note) => note.type === "beacon").map((note) => note.id));
   if (mePresent) validIds.add(ME_OBJECT_ID);
   const values: string[] = [];
@@ -910,7 +911,7 @@ function sanitizeBeaconMarks(value: unknown, notes: readonly IndexedNote[], mePr
     }
     values.push(candidate);
   }
-  return { values, warnings: invalid ? ["Invalid beacon marks were discarded."] : [] };
+  return { values, warnings: invalid ? [t("Invalid beacon marks were discarded.")] : [] };
 }
 
 function copyZone(zone: Zone): Zone {
@@ -1079,7 +1080,7 @@ function parseMoods(value: unknown): { values: MoodKind[]; valid: boolean } {
 function sanitizeTaskLog(value: unknown): { entries: TaskLogEntry[]; warnings: string[] } {
   if (value === undefined) return { entries: [], warnings: [] };
   if (!Array.isArray(value)) {
-    return { entries: [], warnings: ["Invalid task log in board.json was discarded."] };
+    return { entries: [], warnings: [t("Invalid task log in board.json was discarded.")] };
   }
   let dropped = false;
   const entries = value.flatMap((candidate): TaskLogEntry[] => {
@@ -1093,13 +1094,13 @@ function sanitizeTaskLog(value: unknown): { entries: TaskLogEntry[]; warnings: s
   });
   return {
     entries,
-    warnings: dropped ? ["Invalid task log entries in board.json were discarded."] : [],
+    warnings: dropped ? [t("Invalid task log entries in board.json were discarded.")] : [],
   };
 }
 
 function sanitizeProjectLinks(value: unknown, noteIds: ReadonlySet<string>, mePresent = true): { links: Link[]; warnings: string[] } {
   if (value === undefined) return { links: [], warnings: [] };
-  if (!Array.isArray(value)) return { links: [], warnings: ["Invalid links in board.json were discarded."] };
+  if (!Array.isArray(value)) return { links: [], warnings: [t("Invalid links in board.json were discarded.")] };
 
   const links: Link[] = [];
   const ids = new Set<string>();
@@ -1151,7 +1152,7 @@ function sanitizeProjectLinks(value: unknown, noteIds: ReadonlySet<string>, mePr
 
   return {
     links,
-    warnings: dropped ? ["Invalid or dangling links in board.json were discarded."] : [],
+    warnings: dropped ? [t("Invalid or dangling links in board.json were discarded.")] : [],
   };
 }
 
@@ -1166,12 +1167,12 @@ function validateNoteFile(file: string, id: string): void {
   if (!file.toLowerCase().endsWith(".md") || baseName.length === 0 || baseName.length > 120
     || file.includes("/") || file.includes("\\") || /[<>:"|?*\u0000-\u001f]/.test(file)
     || /[. ]$/.test(baseName) || /^(?:CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[1-9¹²³]|LPT[1-9¹²³])(?:\..*)?$/i.test(baseName)) {
-    throw new Error(`Project note ${id} has an unsafe file name.`);
+    throw new Error(t("Project note {id} has an unsafe file name.", { id: id }));
   }
 }
 
 function finiteNumber(value: unknown, label: string): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`Project ${label} must be a finite number.`);
+  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(t("Project {label} must be a finite number.", { label: label }));
   return value;
 }
 

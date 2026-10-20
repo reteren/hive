@@ -1,3 +1,4 @@
+import { t } from "../i18n/i18n.svelte";
 export interface ThemeColors {
   base: string;
   accent: string;
@@ -111,7 +112,7 @@ function rgbString(hex: string): string {
 
 function parseHex(hex: string): [number, number, number] {
   const normalized = normalizeHex(hex);
-  if (!normalized) throw new Error(`Invalid theme colour: ${hex}`);
+  if (!normalized) throw new Error(t("Invalid theme colour: {hex}", { hex: hex }));
   return [
     Number.parseInt(normalized.slice(1, 3), 16),
     Number.parseInt(normalized.slice(3, 5), 16),

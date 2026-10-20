@@ -42,6 +42,7 @@ import type { ImageRef, MediaRef } from "../attachments/types";
 import { imageNodeName, initialImageSize } from "../images/imageLogic";
 import { openPdfExternally, registerFormatDropHandler } from "../formats/formatActions";
 import { fitVideoSize } from "../video/logic";
+import { t, tp } from "../i18n/i18n.svelte";
 
 export const DEFAULT_MINI_NOTE_WIDTH = 18;
 
@@ -97,7 +98,7 @@ export function createNoteKind(kind: NoteKind, task = false): string {
   const previousSelection = captureSelectionSnapshot();
 
   execute({
-    label: `Create ${kindLabel(kind).toLowerCase()}`,
+    label: t("Create {kindLabel}", { kindLabel: kindLabel(kind).toLowerCase() }),
     target: note.name,
     do: () => {
       addNote(note, index);
@@ -121,7 +122,7 @@ export function createNoteKind(kind: NoteKind, task = false): string {
 export function createImageNotes(images: readonly ImageRef[], center: Point): string[] {
   if (images.length === 0) return [];
   const createName = creationNameAllocator(Object.values(board.notes).map((note) => note.name));
-  return commitImportedNotes(placeImportedNotesInGrid(images.map((image) => imageNote(image, createName)), center), "Import images");
+  return commitImportedNotes(placeImportedNotesInGrid(images.map((image) => imageNote(image, createName)), center), t("Import images"));
 }
 
 export async function createImageNotesAsync(images: readonly ImageRef[], center: Point): Promise<string[]> {
@@ -130,7 +131,7 @@ export async function createImageNotesAsync(images: readonly ImageRef[], center:
   const unplaced = await mapCreationBatch(images, (image) => imageNote(image, createName));
   const notes = placeImportedNotesInGrid(unplaced, center);
   await yieldCreationWork();
-  return commitImportedNotes(notes, "Import images");
+  return commitImportedNotes(notes, t("Import images"));
 }
 
 /** Add imported audio files as independent nodes in one undoable import action. */
@@ -139,7 +140,7 @@ export function createAudioNotes(files: readonly MediaRef[], center: Point): str
   if (audioFiles.length === 0) return [];
   const createName = creationNameAllocator(Object.values(board.notes).map((note) => note.name));
   const width = R5_BASE_WIDTHS.audio;
-  return commitImportedNotes(placeImportedNotesInGrid(audioFiles.map((media) => audioNote(media, createName, center, width)), center), "Import audio");
+  return commitImportedNotes(placeImportedNotesInGrid(audioFiles.map((media) => audioNote(media, createName, center, width)), center), t("Import audio"));
 }
 
 export async function createAudioNotesAsync(files: readonly MediaRef[], center: Point): Promise<string[]> {
@@ -150,7 +151,7 @@ export async function createAudioNotesAsync(files: readonly MediaRef[], center: 
   const unplaced = await mapCreationBatch(audioFiles, (media) => audioNote(media, createName, center, width));
   const notes = placeImportedNotesInGrid(unplaced, center);
   await yieldCreationWork();
-  return commitImportedNotes(notes, "Import audio");
+  return commitImportedNotes(notes, t("Import audio"));
 }
 
 /** Bulk import videos through the same indexed placement and batched history path. */
@@ -159,7 +160,7 @@ export function createVideoNotesForImport(files: readonly MediaRef[], center: Po
   if (videos.length === 0) return [];
   const createName = creationNameAllocator(Object.values(board.notes).map((note) => note.name));
   const notes = placeImportedNotesInGrid(videos.map((media) => videoNote(media, createName, center)), center);
-  return commitImportedNotes(notes, videos.length === 1 ? "Import video" : "Import videos");
+  return commitImportedNotes(notes, videos.length === 1 ? t("Import video") : t("Import videos"));
 }
 
 export async function createVideoNotesForImportAsync(files: readonly MediaRef[], center: Point): Promise<string[]> {
@@ -169,7 +170,7 @@ export async function createVideoNotesForImportAsync(files: readonly MediaRef[],
   const unplaced = await mapCreationBatch(videos, (media) => videoNote(media, createName, center));
   const notes = placeImportedNotesInGrid(unplaced, center);
   await yieldCreationWork();
-  return commitImportedNotes(notes, videos.length === 1 ? "Import video" : "Import videos");
+  return commitImportedNotes(notes, videos.length === 1 ? t("Import video") : t("Import videos"));
 }
 
 function placeImportedNotesInGrid(notes: readonly Note[], center: Point): Note[] {
@@ -211,11 +212,11 @@ function commitImportedNotes(notes: readonly Note[], label: string): string[] {
   const previousSelection = captureSelectionSnapshot();
   execute({
     label,
-    target: `${notes.length} ${label === "Import audio"
-      ? notes.length === 1 ? "audio file" : "audio files"
-      : label === "Import images"
-        ? notes.length === 1 ? "image" : "images"
-        : notes.length === 1 ? "video" : "videos"}`,
+    target: notes[0]?.type === "audio"
+      ? tp(notes.length, "{count} audio file", "{count} audio files")
+      : notes[0]?.type === "image"
+        ? tp(notes.length, "{count} image", "{count} images")
+        : tp(notes.length, "{count} video", "{count} videos"),
     do: () => {
       addNotes(notes, startIndex);
       clearSelection();
@@ -262,30 +263,30 @@ export function makeNote(kind: NoteKind, id: string, position: Point, createdAt:
 }
 
 function kindLabel(kind: NoteKind): string {
-  if (kind === "pro") return "Plus";
-  if (kind === "con") return "Minus";
-  if (kind === "importance") return "Importance";
-  if (kind === "purpose") return "Purpose";
-  if (kind === "mood") return "Mood";
-  if (kind === "beacon") return "Beacon";
-  if (kind === "goal") return "Goal";
-  if (kind === "progress") return "Progress";
-  if (kind === "calculator") return "Calculator";
-  if (kind === "tierlist") return "Tierlist";
-  if (kind === "stats") return "Statistics";
-  if (kind === "archive") return "Archive";
-  if (kind === "trash") return "Trash";
-  if (kind === "inbox") return "Inbox";
-  if (kind === "list") return "List";
-  if (kind === "source") return "Source";
-  if (kind === "glossary") return "Dictionary";
-  if (kind === "map") return "Map";
-  if (kind === "random") return "Random Choice";
-  if (kind === "markas") return "Mark as";
-  if (kind === "time") return "Time";
-  if (kind === "message") return "Message";
-  if (kind === "calendar") return "Calendar";
-  return "Note";
+  if (kind === "pro") return t("Plus");
+  if (kind === "con") return t("Minus");
+  if (kind === "importance") return t("Importance");
+  if (kind === "purpose") return t("Purpose");
+  if (kind === "mood") return t("Mood");
+  if (kind === "beacon") return t("Beacon");
+  if (kind === "goal") return t("Goal");
+  if (kind === "progress") return t("Progress");
+  if (kind === "calculator") return t("Calculator");
+  if (kind === "tierlist") return t("Tierlist");
+  if (kind === "stats") return t("Statistics");
+  if (kind === "archive") return t("Archive");
+  if (kind === "trash") return t("Trash");
+  if (kind === "inbox") return t("Inbox");
+  if (kind === "list") return t("List");
+  if (kind === "source") return t("Source");
+  if (kind === "glossary") return t("Dictionary");
+  if (kind === "map") return t("Map");
+  if (kind === "random") return t("Random Choice");
+  if (kind === "markas") return t("Mark as");
+  if (kind === "time") return t("Time");
+  if (kind === "message") return t("Message");
+  if (kind === "calendar") return t("Calendar");
+  return t("Note");
 }
 
 export async function copyCursorCoordinates(point?: Point): Promise<boolean> {
@@ -296,10 +297,10 @@ export async function copyCursorCoordinates(point?: Point): Promise<boolean> {
   linkContext.commandNoteId = null;
   closeLinkContextMenu();
   if (!cursorPoint) {
-    showLinkStatus("Move the cursor over the board first.");
+    showLinkStatus(t("Move the cursor over the board first."));
     return false;
   }
-  return copyText(formatPointAddress(cursorPoint), "Coordinates copied.");
+  return copyText(formatPointAddress(cursorPoint), t("Coordinates copied."));
 }
 
 export async function copyNoteLink(noteId?: string | null): Promise<boolean> {
@@ -311,10 +312,10 @@ export async function copyNoteLink(noteId?: string | null): Promise<boolean> {
   closeLinkContextMenu();
   const note = id ? board.notes[id] : undefined;
   if (!note) {
-    showLinkStatus("Select a note first.");
+    showLinkStatus(t("Select a note first."));
     return false;
   }
-  return copyText(formatNoteMarkdownLink(note.name, note.id), "Note link copied.");
+  return copyText(formatNoteMarkdownLink(note.name, note.id), t("Note link copied."));
 }
 
 async function copyText(value: string, successMessage: string): Promise<boolean> {
@@ -323,7 +324,7 @@ async function copyText(value: string, successMessage: string): Promise<boolean>
     showLinkStatus(successMessage);
     return true;
   } catch {
-    showLinkStatus("Clipboard access is unavailable.");
+    showLinkStatus(t("Clipboard access is unavailable."));
     return false;
   }
 }
@@ -354,8 +355,8 @@ registerNoteMenuItem({
   id: "notes.copyLink",
   label: (noteId) => {
     const note = board.notes[noteId];
-    if (note?.type === "image") return note.image?.mime === "image/gif" ? "Copy link to gif" : "Copy link to image";
-    return "Copy link to note";
+    if (note?.type === "image") return note.image?.mime === "image/gif" ? t("Copy link to gif") : t("Copy link to image");
+    return t("Copy link to note");
   },
   run: (noteId) => { void copyNoteLink(noteId); },
   visible: (noteId) => Boolean(board.notes[noteId]),
@@ -364,7 +365,7 @@ registerNoteMenuItem({
 
 registerNoteMenuItem({
   id: "formats.openExternally",
-  label: () => "Open externally",
+  label: () => t("Open externally"),
   run: (noteId) => { void openPdfExternally(noteId); },
   visible: (noteId) => board.notes[noteId]?.type === "pdf",
   order: 30,

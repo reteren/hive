@@ -7,6 +7,7 @@ import {
   HistoryStack,
   type HistoryCommand,
 } from "./historyStack";
+import { t } from "../i18n/i18n.svelte";
 
 export type { HistoryCommand } from "./historyStack";
 export { DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT, MIN_HISTORY_LIMIT } from "./historyStack";
@@ -52,7 +53,9 @@ function showFeedback(message: string, tone: HistoryFeedback["tone"]): void {
 
 function actionCaption(verb: "Undo" | "Redo", command: HistoryCommand): string {
   const target = command.target?.trim();
-  return `${verb}: ${command.label}${target ? ` — ${target}` : ""}`;
+  const label = t(command.label);
+  if (verb === "Undo") return target ? t("Undo: {label} — {target}", { label, target }) : t("Undo: {label}", { label });
+  return target ? t("Redo: {label} — {target}", { label, target }) : t("Redo: {label}", { label });
 }
 
 /** Run a command and record it. A thrown `do` leaves the stack untouched. */
@@ -96,11 +99,11 @@ export function undo(): HistoryCommand | undefined {
     command = stack.undo();
   } catch (error) {
     syncState();
-    showFeedback("Undo failed", "muted");
+    showFeedback(t("Undo failed"), "muted");
     throw error;
   }
   syncState();
-  showFeedback(command ? actionCaption("Undo", command) : "Nothing to undo", command ? "action" : "muted");
+  showFeedback(command ? actionCaption("Undo", command) : t("Nothing to undo"), command ? "action" : "muted");
   return command;
 }
 
@@ -110,11 +113,11 @@ export function redo(): HistoryCommand | undefined {
     command = stack.redo();
   } catch (error) {
     syncState();
-    showFeedback("Redo failed", "muted");
+    showFeedback(t("Redo failed"), "muted");
     throw error;
   }
   syncState();
-  showFeedback(command ? actionCaption("Redo", command) : "Nothing to redo", command ? "action" : "muted");
+  showFeedback(command ? actionCaption("Redo", command) : t("Nothing to redo"), command ? "action" : "muted");
   return command;
 }
 
@@ -125,7 +128,7 @@ export function jumpTo(index: number): number {
     stack.jumpTo(index);
   } catch (error) {
     syncState();
-    showFeedback("History change failed", "muted");
+    showFeedback(t("History change failed"), "muted");
     throw error;
   }
 

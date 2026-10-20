@@ -6,6 +6,7 @@ import {
   normalizeDrawingPreferences,
   type DrawingPreferences,
 } from "./settings";
+import { t } from "../i18n/i18n.svelte";
 
 export const drawingTools = $state({
   active: "brush" as DrawTool,
@@ -60,12 +61,12 @@ export const brushHint = $state({ text: "", revision: 0 });
 export function showBrushHint(setting: BrushWheelSetting): void {
   const brush = drawingTools.brush;
   if (setting === "opacity" && drawingTools.active === "eraser") {
-    brushHint.text = "Eraser opacity is always 100%";
+    brushHint.text = t("Eraser opacity is always 100%");
     brushHint.revision += 1;
     return;
   }
-  brushHint.text = setting === "size" ? `Size ${brush.size} px`
-    : setting === "opacity" ? `Opacity ${Math.round(brush.opacity * 100)}%`
-      : `Hardness ${Math.round(brush.hardness * 100)}%`;
+  brushHint.text = setting === "size" ? t("Size {size} px", { size: brush.size })
+    : setting === "opacity" ? t("Opacity {opacity}%", { opacity: Math.round(brush.opacity * 100) })
+      : t("Hardness {hardness}%", { hardness: Math.round(brush.hardness * 100) });
   brushHint.revision += 1;
 }

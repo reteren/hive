@@ -11,6 +11,7 @@
     resetCommandKeyOverride,
     setCommandKeyOverrides,
   } from "../commands/registry.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let closeButton = $state<HTMLButtonElement>();
   let commands = $derived(getCommands());
@@ -51,7 +52,7 @@
         event.preventDefault();
         event.stopPropagation();
         capturing = null;
-        status = "Capture cancelled.";
+        status = t("Capture cancelled.");
         return;
       }
 
@@ -77,12 +78,12 @@
       }
       if (result.conflicts.length > 0) {
         pending = { ...target, binding, conflicts: result.conflicts };
-        status = "This binding is already assigned.";
+        status = t("This binding is already assigned.");
         return;
       }
       if (result.overrides) setCommandKeyOverrides(result.overrides);
       capturing = null;
-      status = `Assigned ${formatKey(binding)}.`;
+      status = t("Assigned {key}.", { key: formatKey(binding) });
       return;
     }
 
@@ -108,7 +109,7 @@
       if (result.overrides) setCommandKeyOverrides(result.overrides);
       status = `Assigned ${formatKey(conflict.binding)}; removed it from the previous command.`;
     } else {
-      status = "Binding change cancelled.";
+      status = t("Binding change cancelled.");
     }
     pending = null;
     capturing = null;
@@ -116,61 +117,61 @@
 
   function resetOne(commandId: string): void {
     resetCommandKeyOverride(commandId);
-    status = "Command bindings reset to defaults.";
+    status = t("Command bindings reset to defaults.");
   }
 </script>
 
 {#if keymapPanelState.open}
   <div class="keymap-overlay">
-    <button class="keymap-backdrop" type="button" aria-label="Close keymap editor" onclick={() => void close()}></button>
+    <button class="keymap-backdrop" type="button" aria-label={t("Close keymap editor")} onclick={() => void close()}></button>
     <dialog open class="keymap-panel" aria-modal="true" aria-labelledby="keymap-title" onkeydown={handleKeydown}>
       <header class="keymap-heading">
         <div>
-          <h2 id="keymap-title">Key bindings</h2>
-          <span>Click a binding, then press a key combination.</span>
+          <h2 id="keymap-title">{t("Key bindings")}</h2>
+          <span>{t("Click a binding, then press a key combination.")}</span>
         </div>
         <div class="heading-actions">
-          <button type="button" class="reset-all" onclick={() => { resetAllCommandKeyOverrides(); status = "All commands reset to defaults."; }}>Reset all</button>
-          <button bind:this={closeButton} type="button" class="close-button" aria-label="Close keymap editor" onclick={() => void close()}><CloseGlyph /></button>
+          <button type="button" class="reset-all" onclick={() => { resetAllCommandKeyOverrides(); status = t("All commands reset to defaults."); }}>{t("Reset all")}</button>
+          <button bind:this={closeButton} type="button" class="close-button" aria-label={t("Close keymap editor")} onclick={() => void close()}><CloseGlyph /></button>
         </div>
       </header>
 
       {#if pending}
-        <div class="conflict-dialog" role="alertdialog" aria-label="Resolve binding conflict">
+        <div class="conflict-dialog" role="alertdialog" aria-label={t("Resolve binding conflict")}>
           <div>
-            <strong>{formatKey(pending.binding)} is already assigned</strong>
-            <p>{pending.conflicts.map((conflict) => conflict.label).join(", ")}</p>
+            <strong>{t("{key} is already assigned", { key: formatKey(pending.binding) })}</strong>
+            <p>{pending.conflicts.map((conflict) => t(conflict.label)).join(", ")}</p>
           </div>
           <div class="conflict-actions">
-            <button type="button" onclick={() => resolveConflict(false)}>Cancel</button>
-            <button type="button" class="replace-button" onclick={() => resolveConflict(true)}>Replace</button>
+            <button type="button" onclick={() => resolveConflict(false)}>{t("Cancel")}</button>
+            <button type="button" class="replace-button" onclick={() => resolveConflict(true)}>{t("Replace")}</button>
           </div>
         </div>
       {/if}
 
-      <div class="keymap-list" aria-label="Registered commands">
+      <div class="keymap-list" aria-label={t("Registered commands")}>
         {#each commands as command (command.id)}
           <article class="keymap-row">
             <div class="command-copy">
-              <span class="command-label">{command.label}</span>
+              <span class="command-label">{t(command.label)}</span>
               <code>{command.id}</code>
             </div>
-            <div class="binding-list" aria-label={`${command.label} bindings`}>
+            <div class="binding-list" aria-label={t("{label} bindings", { label: t(command.label) })}>
               {#each command.keys as key, index (`${command.id}:${index}`)}
                 <button
                   type="button"
                   class="binding-button"
                   class:capturing={capturing?.commandId === command.id && capturing.bindingIndex === index}
-                  aria-label={`Change ${command.label} binding ${formatKey(key)}`}
+                  aria-label={t("Change {label} binding {key}", { label: command.label, key: formatKey(key) })}
                   onclick={() => startCapture(command.id, index)}
-                >{capturing?.commandId === command.id && capturing.bindingIndex === index ? "Press key…" : formatKey(key)}</button>
+                >{capturing?.commandId === command.id && capturing.bindingIndex === index ? t("Press key…") : formatKey(key)}</button>
               {/each}
-              {#if command.keys.length === 0}<span class="unbound">Unbound</span>{/if}
+              {#if command.keys.length === 0}<span class="unbound">{t("Unbound")}</span>{/if}
               <button
                 type="button"
                 class="add-binding"
-                aria-label={`Add binding to ${command.label}`}
-                title="Add binding"
+                aria-label={t("Add binding to {label}", { label: command.label })}
+                title={t("Add binding")}
                 onclick={() => startCapture(command.id, null)}
               >+</button>
             </div>
@@ -179,12 +180,12 @@
               class="reset-one"
               disabled={overrides[command.id] === undefined}
               onclick={() => resetOne(command.id)}
-            >Reset</button>
+            >{t("Reset")}</button>
           </article>
         {/each}
       </div>
       <footer class="keymap-status" role="status" aria-live="polite">
-        <span>{status || `${Object.keys(overrides).length} customized commands`}</span>
+        <span>{status || t("{count} customized commands", { count: Object.keys(overrides).length })}</span>
         <kbd>Esc</kbd>
       </footer>
     </dialog>

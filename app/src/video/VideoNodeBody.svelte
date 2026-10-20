@@ -10,6 +10,7 @@
   import VideoControls from "./VideoControls.svelte";
   import { createControlsAutoHide } from "./controlsAutoHide";
   import { beginMediaCaptureGesture } from "./mediaCaptureGesture";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let nodeElement = $state<HTMLElement | null>(null);
@@ -58,7 +59,7 @@
 
   $effect(() => {
     if (!playing) return;
-    return pinNote(note.id, "video playback");
+    return pinNote(note.id, t("video playback"));
   });
 
   onMount(() => {
@@ -165,19 +166,19 @@
 >
   {#if media?.externalPath && externalStatus !== "available"}
     <div class="video-error video-missing" data-video-error data-video-external-missing={externalStatus === "missing" ? "true" : "checking"} role="status">
-      <strong>{externalStatus === "missing" ? "File not found" : "Checking file…"}</strong>
+      <strong>{externalStatus === "missing" ? t("File not found") : t("Checking file…")}</strong>
       <span>{media.name ?? note.name} · {formatSize(media.size)}</span>
       <small>{media.externalPath}</small>
     </div>
   {:else if !source || failed}
-    <div class="video-error" data-video-error role="status">{failed ? "Video could not be played." : `File missing: ${media?.name ?? note.name}`}</div>
+    <div class="video-error" data-video-error role="status">{failed ? t("Video could not be played.") : t("File missing: {value}", { value: media?.name ?? note.name })}</div>
   {:else}
     <div
       class="video-frame"
       bind:this={frameElement}
       data-video-frame
       role="group"
-      aria-label="Video player"
+      aria-label={t("Video player")}
       style={`aspect-ratio: ${aspectWidth} / ${aspectHeight};`}
       onpointermove={onPointerActivity}
       onpointerleave={controlsAutoHide.pointerLeave}
@@ -192,7 +193,7 @@
         src={source}
         preload="none"
         playsinline
-        aria-label={`Video player for ${media?.name ?? note.name}`}
+        aria-label={t("Video player for {value}", { value: media?.name ?? note.name })}
         data-selection-ignore
         onloadedmetadata={updateTime}
         ondurationchange={updateTime}
@@ -212,7 +213,7 @@
           data-note-header
           role="button"
           tabindex="0"
-          aria-label={`Play or pause ${media?.name ?? note.name}`}
+          aria-label={t("Play or pause {value}", { value: media?.name ?? note.name })}
           onpointerdown={onVideoCapturePointerDown}
           onkeydown={onVideoCaptureKeydown}
         ></div>

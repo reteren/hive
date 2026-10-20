@@ -7,6 +7,7 @@ import { clearSelectedLink, selectedLinkIds, selectLink, selectLinks } from "./s
 import { nextLineShape } from "./lineGeometry";
 import { effectiveLinkKind } from "./rules";
 import { detachBankRowForLink, removeCreatedBankRowForLink } from "../calculator/bankActions.svelte";
+import { t, tp } from "../i18n/i18n.svelte";
 
 export function createBoardLink(link: Link): boolean {
   const actualKind = effectiveLinkKind(link.from, link.to, link.kind);
@@ -16,7 +17,7 @@ export function createBoardLink(link: Link): boolean {
   if (!canLink(link.from, link.to, actualKind) || !source || !target) return false;
 
   execute({
-    label: "Link",
+    label: t("Link"),
     target: `${source} → ${target}`,
     do: () => {
       addLink(createdLink);
@@ -38,7 +39,7 @@ export function unlink(id: string): boolean {
   const target = `${objectName(link.from)} → ${objectName(link.to)}`;
 
   execute({
-    label: "Unlink",
+    label: t("Unlink"),
     target,
     do: () => {
       removeLink(id);
@@ -85,9 +86,9 @@ function applyLineShapeChanges(
   if (changed.length === 0) return false;
   const target = changed.length === 1
     ? `${objectName(changed[0].link.from)} → ${objectName(changed[0].link.to)}`
-    : `${changed.length} lines`;
+    : tp(changed.length, "{count} line", "{count} lines");
   execute({
-    label: "Line shape",
+    label: t("Line shape"),
     target,
     do: () => {
       for (const { link, nextShape } of changed) updateLink(link.id, { shape: nextShape });
@@ -113,11 +114,11 @@ export function cutLinks(ids: readonly string[]): boolean {
   const selectedBeforeCut = selectedLinkIds();
   const target = cut.length === 1
     ? `${objectName(cut[0].from)} → ${objectName(cut[0].to)}`
-    : `${cut.length} lines`;
+    : tp(cut.length, "{count} line", "{count} lines");
   const cutIds = new Set(cut.map((link) => link.id));
 
   execute({
-    label: "Cut lines",
+    label: t("Cut lines"),
     target,
     do: () => {
       for (const link of cut) { removeLink(link.id); detachBankRowForLink(link); }
@@ -142,11 +143,11 @@ function unlinkLinks(ids: readonly string[]): boolean {
   if (unlinked.length === 0) return false;
   const target = unlinked.length === 1
     ? `${objectName(unlinked[0].from)} → ${objectName(unlinked[0].to)}`
-    : `${unlinked.length} lines`;
+    : tp(unlinked.length, "{count} line", "{count} lines");
   const unlinkedIds = new Set(unlinked.map((link) => link.id));
 
   execute({
-    label: "Unlink lines",
+    label: t("Unlink lines"),
     target,
     do: () => {
       for (const link of unlinked) { removeLink(link.id); detachBankRowForLink(link); }

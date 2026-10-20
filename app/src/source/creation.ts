@@ -7,6 +7,7 @@ import { newId, R5_BASE_WIDTHS, type Note } from "../model/note";
 import { uniqueName } from "../notes/naming";
 import { captureSelectionSnapshot, clearSelection, includeSelected, restoreSelectionSnapshot, selectOnly } from "../selection/selection.svelte";
 import { sourceFileLabel } from "./logic";
+import { t, tp } from "../i18n/i18n.svelte";
 
 /** Unsupported OS files are copied into attachments and linked by a project-relative basename. */
 export async function createSourceNotes(paths: readonly string[], center: Point): Promise<string[]> {
@@ -46,8 +47,8 @@ export function createSourceNotesFromAttachments(
   const index = board.order.length;
   const previousSelection = captureSelectionSnapshot();
   execute({
-    label: imported.length === 1 ? "Link source file" : "Link source files",
-    target: imported.length === 1 ? notes[0]?.name : `${imported.length} files`,
+    label: imported.length === 1 ? t("Link source file") : t("Link source files"),
+    target: imported.length === 1 ? notes[0]?.name : tp(imported.length, "{count} file", "{count} files"),
     do: () => {
       notes.forEach((note, offset) => addNote(note, index + offset));
       clearSelection();

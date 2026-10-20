@@ -12,6 +12,7 @@
     moveRecordingDrag,
     type RecordingDragGesture,
   } from "./recordingLogic";
+  import { t } from "../i18n/i18n.svelte";
 
   interface Props {
     media: MediaRef;
@@ -43,7 +44,7 @@
   $effect(() => {
     const noteId = sourceNoteId;
     if (!playing || !noteId) return;
-    return pinNote(noteId, "audio playback");
+    return pinNote(noteId, t("audio playback"));
   });
 
   async function togglePlayback(): Promise<void> {
@@ -219,7 +220,7 @@
   data-recording-drag-source={draggable ? recordingId : undefined}
   data-selection-ignore
   role="group"
-  aria-label={`${name} audio controls`}
+  aria-label={t("{name} audio controls", { name: name })}
   onpointerdown={handlePointerDown}
 >
   <div class="file-heading">
@@ -228,21 +229,21 @@
         bind:this={renameInput}
         class="recording-name-input"
         bind:value={draftName}
-        aria-label="Recording name"
+        aria-label={t("Recording name")}
         onkeydown={handleRenameKeydown}
         onblur={commitRename}
       />
     {:else if onrename}
-      <button class="file-name editable" type="button" title="Double-click to rename" ondblclick={startRename}>{name}</button>
+      <button class="file-name editable" type="button" title={t("Double-click to rename")} ondblclick={startRename}>{name}</button>
     {:else}
       <span class="file-name" title={name}>{name}</span>
     {/if}
     <div class="file-actions">
-      <button class="icon-button" type="button" aria-label={`Export ${name}`} title="Export" onclick={exportFile}>
+      <button class="icon-button" type="button" aria-label={t("Export {name}", { name: name })} title={t("Export")} onclick={exportFile}>
         <MediaIcon name="export" size={14} />
       </button>
       {#if ondelete}
-        <button class="icon-button delete-button" type="button" aria-label={`Delete ${name}`} title="Delete" onclick={deleteRow}>
+        <button class="icon-button delete-button" type="button" aria-label={t("Delete {name}", { name: name })} title={t("Delete")} onclick={deleteRow}>
           <MediaIcon name="delete" size={14} />
         </button>
       {/if}
@@ -260,11 +261,11 @@
     onplay={() => (playing = true)}
     onpause={() => (playing = false)}
     onended={() => (playing = false)}
-    aria-label={`Audio player for ${name}`}
+    aria-label={t("Audio player for {name}", { name: name })}
   ></audio>
 
   <div class="transport">
-    <button class="play-button" type="button" aria-label={playing ? "Pause audio" : "Play audio"} title={playing ? "Pause" : "Play"} onclick={() => void togglePlayback()}>
+    <button class="play-button" type="button" aria-label={playing ? t("Pause audio") : t("Play audio")} title={playing ? t("Pause") : t("Play")} onclick={() => void togglePlayback()}>
       <MediaIcon name={playing ? "pause" : "play"} size={15} />
     </button>
     <MediaTime seconds={currentTime} />
@@ -273,18 +274,18 @@
       max={safeDuration}
       {buffered}
       step={0.1}
-      label={`Seek ${name}`}
+      label={t("Seek {name}", { name: name })}
       tooltip={formatMediaTime}
       oninput={seek}
       onchange={seek}
     />
     <MediaTime seconds={safeDuration} />
     <div class="volume-wrap">
-      <button class="icon-button volume-button" type="button" aria-label={muted || volume === 0 ? "Unmute audio" : "Mute audio"} title="Volume" onclick={toggleMute}>
+      <button class="icon-button volume-button" type="button" aria-label={muted || volume === 0 ? t("Unmute audio") : t("Mute audio")} title={t("Volume")} onclick={toggleMute}>
         <MediaIcon name={muted || volume === 0 ? "mute" : "volume"} size={15} />
       </button>
       <div class="volume-popover" data-selection-ignore>
-        <MediaSlider value={volume} max={1} step={0.01} label={`Volume ${name}`} oninput={changeVolume} onchange={changeVolume} />
+        <MediaSlider value={volume} max={1} step={0.01} label={t("Volume {name}", { name: name })} oninput={changeVolume} onchange={changeVolume} />
       </div>
     </div>
   </div>

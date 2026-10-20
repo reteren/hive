@@ -46,6 +46,7 @@ import { activeDropTarget } from "../selection/dropTargets";
 import { highlightsComboTextHost, isComboDropPlan } from "../combo/dropLogic";
 import { comboHostMinimumWidth, emptyComboBodyMinimumHeight } from "../combo/layout";
 import { takeFreshNote } from "./freshNotes";
+  import { t } from "../i18n/i18n.svelte";
 
   let { note, measureHeight }: { note: Note; measureHeight: Action<HTMLElement, string> } = $props();
   let renaming = $state(false);
@@ -135,7 +136,7 @@ import { takeFreshNote } from "./freshNotes";
     if (nextName === previousName) return;
 
     execute({
-      label: "Rename",
+      label: t("Rename"),
       target: nextName,
       do: () => updateNote(note.id, { name: nextName }),
       undo: () => updateNote(note.id, { name: previousName }),
@@ -187,7 +188,7 @@ import { takeFreshNote } from "./freshNotes";
   style:--text={paint["--text"]}
   style:--text-dim={paint["--text-dim"]}
   style:--note-header-height={`${NOTE_HEADER_HEIGHT_UNITS * PX_PER_UNIT}px`}
-  style:transform={`translate(${note.x * PX_PER_UNIT}px, ${note.y * PX_PER_UNIT}px)${scale === 1 ? "" : ` scale(${scale})`}`}
+  style:transform={t("translate({x}px, {y}px){value}", { x: note.x * PX_PER_UNIT, y: note.y * PX_PER_UNIT, value: scale === 1 ? "" : ` scale(${scale})` })}
   style:left="0px"
   style:top="0px"
   style:width={`${widthWithListStatistics(note) * PX_PER_UNIT}px`}
@@ -199,7 +200,7 @@ import { takeFreshNote } from "./freshNotes";
   ondblclick={beginEditingFromDoubleClick}
 >
   {#if memberZone}
-    <div class="zone-marker" data-zone-marker title={memberZone.name} aria-label={`Zone: ${memberZone.name}`} style:--zone-color={memberZone.color}></div>
+    <div class="zone-marker" data-zone-marker title={memberZone.name} aria-label={t("Zone: {name}", { name: memberZone.name })} style:--zone-color={memberZone.color}></div>
   {/if}
   {#if note.type !== "image" && !note.headerHidden}
     <header
@@ -216,7 +217,7 @@ import { takeFreshNote } from "./freshNotes";
           bind:this={renameInput}
           bind:value={draftName}
           class="rename-input"
-          aria-label="Note name"
+          aria-label={t("Note name")}
           oninput={() => { renameError = ""; }}
           onkeydown={handleRenameKeydown}
           onblur={commitRename}
@@ -225,21 +226,21 @@ import { takeFreshNote } from "./freshNotes";
         <span class="note-name">{note.name}</span>
       {/if}
       {#if note.type === "time"}
-        <span class="time-view-switch" role="group" aria-label="Time node view" data-selection-ignore>
+        <span class="time-view-switch" role="group" aria-label={t("Time node view")} data-selection-ignore>
           <button
             type="button"
             class:active={note.time?.view !== "stopwatch"}
             aria-pressed={note.time?.view !== "stopwatch"}
             data-selection-ignore
             onclick={() => setTimeNodeView(note.id, "time")}
-          >Time</button>
+          >{t("Time")}</button>
           <button
             type="button"
             class:active={note.time?.view === "stopwatch"}
             aria-pressed={note.time?.view === "stopwatch"}
             data-selection-ignore
             onclick={() => setTimeNodeView(note.id, "stopwatch")}
-          >Stopwatch</button>
+          >{t("Stopwatch")}</button>
         </span>
       {/if}
     </header>
@@ -248,21 +249,21 @@ import { takeFreshNote } from "./freshNotes";
       <TaskCheckbox {note} />
       <span class="note-name">{note.name}</span>
       {#if note.type === "time"}
-        <span class="time-view-switch" role="group" aria-label="Time node view" data-selection-ignore>
+        <span class="time-view-switch" role="group" aria-label={t("Time node view")} data-selection-ignore>
           <button
             type="button"
             class:active={note.time?.view !== "stopwatch"}
             aria-pressed={note.time?.view !== "stopwatch"}
             data-selection-ignore
             onclick={() => setTimeNodeView(note.id, "time")}
-          >Time</button>
+          >{t("Time")}</button>
           <button
             type="button"
             class:active={note.time?.view === "stopwatch"}
             aria-pressed={note.time?.view === "stopwatch"}
             data-selection-ignore
             onclick={() => setTimeNodeView(note.id, "stopwatch")}
-          >Stopwatch</button>
+          >{t("Stopwatch")}</button>
         </span>
       {/if}
     </header>

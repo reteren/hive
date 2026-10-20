@@ -5,6 +5,7 @@
   import ReminderCard from "./ReminderCard.svelte";
   import { VISIBLE_MESSAGE_LIMIT } from "./presentation";
   import { clippedCardRects, type OverhiveSnapshot } from "./overhiveProtocol";
+  import { t } from "../i18n/i18n.svelte";
 
   let snapshot: OverhiveSnapshot = $state({ cards: [], reduceMotion: false });
   let expanded = $state(false);
@@ -26,7 +27,7 @@
     pending = true;
     let synced = false;
     try { await invoke("set_overhive_regions", { rects }); if (revision === regionRevision) lastRegion = key; failure = ""; synced = true; }
-    catch (error) { failure = "Could not update desktop reminders."; console.warn(failure, error); }
+    catch (error) { failure = t("Could not update desktop reminders."); console.warn(failure, error); }
     finally { pending = false; if (synced && !disposed) void updateRegion(); }
   }
   function trackAnimation(): void {
@@ -53,7 +54,7 @@
   }
   async function action(id: string, action: "dismiss" | "go-to"): Promise<void> {
     try { await invoke("overhive_action", { id, action }); }
-    catch (error) { failure = "Could not open hive. Try again."; console.warn(failure, error); }
+    catch (error) { failure = t("Could not open hive. Try again."); console.warn(failure, error); }
   }
   onMount(() => {
     let unlisten: (() => void) | undefined;
@@ -77,7 +78,7 @@
       onClose={() => { void action(card.id, "dismiss"); }} onGoTo={() => { void action(card.id, "go-to"); }} />
   {/each}
   {#if hidden > 0}<button type="button" data-overhive-more onclick={async () => { expanded = !expanded; await tick(); trackAnimation(); }}>
-    {expanded ? "Show fewer" : `+${hidden} more`}
+    {expanded ? t("Show fewer") : t("+{hidden} more", { hidden: hidden })}
   </button>{/if}
   {#if failure}<p class="error" role="alert">{failure}</p>{/if}
 </main>

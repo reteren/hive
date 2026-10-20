@@ -1,4 +1,5 @@
 import type { RecordingPhase } from "./recordingLogic";
+import { t } from "../i18n/i18n.svelte";
 
 const PINNED_PHASES: ReadonlySet<RecordingPhase> = new Set(["requesting", "recording", "saving"]);
 
@@ -27,7 +28,7 @@ export function createRecordingPinController(
       if (pinnedNoteId === noteId) return;
       release();
       pinnedNoteId = noteId;
-      releasePin = pinNote(noteId, "dictaphone recording");
+      releasePin = pinNote(noteId, t("dictaphone recording"));
     },
     release,
   };

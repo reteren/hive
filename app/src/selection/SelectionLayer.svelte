@@ -119,6 +119,7 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
   import { clearDropTargetPreview, dropOnTarget, previewDropTarget } from "./dropTargets";
   import { MovingVisuals } from "./movingVisuals";
   import { lod, queryPoint, queryRect, visible } from "../board/visibility.svelte";
+  import { t, tp } from "../i18n/i18n.svelte";
 
   interface Outline {
     id: string;
@@ -1749,7 +1750,7 @@ type PendingBoardMove =
       applyFrames(cancelGroupScaleGesture(gesture.gesture));
     } else if (gesture.started) {
       const change = groupScaleGestureChange(gesture.gesture);
-      if (change) recordGeometryChange("Scale", `${change.before.length} notes`, change);
+      if (change) recordGeometryChange("Scale", tp(change.before.length, "{count} note", "{count} notes"), change);
     }
 
     clearModuleDropPreview();
@@ -1861,7 +1862,7 @@ type PendingBoardMove =
     const after = normalizeScaleModeAtCommit(gesture);
     applyFrames(after);
     const change = scaleModeGestureChange({ ...gesture, after });
-    if (change) recordGeometryChange("Scale", `${change.before.length} notes`, change);
+    if (change) recordGeometryChange("Scale", tp(change.before.length, "{count} note", "{count} notes"), change);
     if (suppressClick) suppressBodyClickUntil = performance.now() + 500;
     endMovingStacking();
     clearModuleDropPreview();
@@ -2147,7 +2148,7 @@ type PendingBoardMove =
   }
 
   function targetForMove(frames: readonly NoteFrame[], anchorId: string): string {
-    if (frames.length !== 1) return `${frames.length} notes`;
+    if (frames.length !== 1) return tp(frames.length, "{count} note", "{count} notes");
     return boardState.notes[anchorId]?.name ?? boardState.notes[frames[0]?.id ?? ""]?.name ?? "";
   }
 
@@ -2159,7 +2160,7 @@ type PendingBoardMove =
     const geometry = geometryCommand("Resize", target, change.before, change.after);
     updateNote(noteId, { widthLocked: true });
     record({
-      label: "Resize",
+      label: t("Resize"),
       target,
       do() {
         geometry.do();
@@ -2203,13 +2204,13 @@ type PendingBoardMove =
     if (standaloneModule) {
       return `Resize height from ${edge.startsWith("top") ? "top" : "bottom"}; hold Shift to scale uniformly`;
     }
-    const base = `Resize from ${handleLabel(edge)}`;
+    const base = t("Resize from {handleLabel}", { handleLabel: handleLabel(edge) });
     const detail = edge === "top" || edge === "bottom" ? "; double-click for auto height" : "";
     return `${base}${detail}; hold Shift to scale uniformly`;
   }
 
   function groupHandleTitle(edge: ResizeEdge): string {
-    const base = `Scale selection from ${handleLabel(edge)}`;
+    const base = t("Scale selection from {handleLabel}", { handleLabel: handleLabel(edge) });
     return isCornerHandle(edge) ? `${base}; hold Shift to preserve aspect ratio` : base;
   }
 </script>
@@ -2237,7 +2238,7 @@ type PendingBoardMove =
       style:height="{outline.height}px"
       style:outline-color={outline.color}
       style={`--zone-handle-color: ${outline.color}`}
-      aria-label="Selected zone {outline.name}"
+      aria-label={t("Selected zone {name}", { name: outline.name })}
     >
       {#if !outline.resizable}
         <svg class="selection-zone-shape" width={outline.width} height={outline.height} aria-hidden="true">
@@ -2255,8 +2256,8 @@ type PendingBoardMove =
             data-zone-id={outline.id}
             aria-disabled={lineToolActive ? "true" : undefined}
             tabindex={lineToolActive ? -1 : undefined}
-            aria-label="Resize zone {outline.name} from {handleLabel(edge)}"
-            title="Resize zone from {handleLabel(edge)}"
+            aria-label={t("Resize zone {name} from {handleLabel}", { name: outline.name, handleLabel: handleLabel(edge) })}
+            title={t("Resize zone from {handleLabel}", { handleLabel: handleLabel(edge) })}
           ></button>
         {/each}
       {/if}
@@ -2275,7 +2276,7 @@ type PendingBoardMove =
       style:width="{outline.width}px"
       style:height="{outline.height}px"
       style:border-radius={outline.kind === "beacon" ? undefined : noteOutlineCornerRadius}
-      aria-label="Selected {outline.name}"
+      aria-label={t("Selected {name}", { name: outline.name })}
     >
       {#if selection.ids.length === 1 && selection.zoneIds.length === 0 && outline.primary}
         {@const canShrink = canResizeBottom(outline.id)}
@@ -2295,10 +2296,10 @@ type PendingBoardMove =
               aria-disabled={lineToolActive ? "true" : undefined}
               tabindex={lineToolActive ? -1 : undefined}
               aria-label={`${shiftHeld || !normalResize
-                ? `Scale ${outline.name} from ${handleLabel(edge)}`
+                ? t("Scale {name} from {handleLabel}", { name: outline.name, handleLabel: handleLabel(edge) })
                 : isStandaloneModuleKind(outline.kind)
-                  ? `Resize ${outline.name} height from ${edge.startsWith("top") ? "top" : "bottom"}`
-                  : `Resize ${outline.name} from ${handleLabel(edge)}`}; hold ${outline.kind === "image" ? "Ctrl to keep proportions" : "Shift to scale uniformly"}`}
+                  ? t("Resize {name} height from {value}", { name: outline.name, value: edge.startsWith("top") ? "top" : "bottom" })
+                  : t("Resize {name} from {handleLabel}", { name: outline.name, handleLabel: handleLabel(edge) })}; hold ${outline.kind === "image" ? t("Ctrl to keep proportions") : t("Shift to scale uniformly")}`}
               title={resizeHandleTitle(edge, isStandaloneModuleKind(outline.kind), !normalResize, outline.kind)}
             ></button>
           {/if}
@@ -2318,7 +2319,7 @@ type PendingBoardMove =
       style:height="{groupOutline.height}px"
       style:border-radius="5px"
       role="group"
-      aria-label="Selection bounds for {selection.ids.length} notes"
+      aria-label={t("Selection bounds for {count} notes", { count: selection.ids.length })}
     >
       {#each RESIZE_EDGES as edge (edge)}
         <button
@@ -2329,7 +2330,7 @@ type PendingBoardMove =
           data-group-scale-handle={edge}
           aria-disabled={lineToolActive ? "true" : undefined}
           tabindex={lineToolActive ? -1 : undefined}
-          aria-label="Scale selected notes from {handleLabel(edge)}"
+          aria-label={t("Scale selected notes from {handleLabel}", { handleLabel: handleLabel(edge) })}
           title={groupHandleTitle(edge)}
         ></button>
       {/each}
@@ -2348,18 +2349,18 @@ type PendingBoardMove =
   {/if}
 
   {#if zoneCollisionHint}
-    <div class="zone-collision-hint" role="status">Zone stopped by another zone</div>
+    <div class="zone-collision-hint" role="status">{t("Zone stopped by another zone")}</div>
   {/if}
 
   {#if imageResizeHintVisible}
-    <div class="image-resize-hint" role="status">Ctrl: keep proportions</div>
+    <div class="image-resize-hint" role="status">{t("Ctrl: keep proportions")}</div>
   {/if}
 
   {#if selection.contextPick}
     <div
       class="selection-context-pick"
       role="listbox"
-      aria-label="Choose overlapping note"
+      aria-label={t("Choose overlapping note")}
       style={boardPopupStyle(camera, viewport, { x: selection.contextPick.x, y: selection.contextPick.y }, selection.contextPick.zoomAtOpen)}
       use:dismissBoardPopup={{ close: closeContextPick, escape: false }}
     >

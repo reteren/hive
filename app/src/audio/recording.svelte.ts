@@ -27,6 +27,7 @@ import {
   transitionRecording,
   type RecordingPhase,
 } from "./recordingLogic";
+import { t } from "../i18n/i18n.svelte";
 
 export const audioRecording = $state({
   noteId: null as string | null,
@@ -74,7 +75,7 @@ export function createDictaphoneNote(center: Point): string {
   const index = board.order.length;
   const previousSelection = captureSelectionSnapshot();
   execute({
-    label: "Create dictaphone",
+    label: t("Create dictaphone"),
     target: note.name,
     do: () => {
       addNote(note, index);
@@ -93,7 +94,7 @@ export function createDictaphoneNote(center: Point): string {
 /** Called only by the visible record button; creating a dictaphone never requests a microphone. */
 export function beginAudioRecording(noteId: string): boolean {
   if (capture) {
-    reportImportError("An audio recording is already in progress.");
+    reportImportError(t("An audio recording is already in progress."));
     return false;
   }
   const note = board.notes[noteId];
@@ -118,7 +119,7 @@ export function beginAudioRecording(noteId: string): boolean {
 async function requestMicrophone(session: Capture): Promise<void> {
   try {
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      throw new Error("This webview does not support audio recording.");
+      throw new Error(t("This webview does not support audio recording."));
     }
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     if (capture !== session) {
@@ -127,14 +128,14 @@ async function requestMicrophone(session: Capture): Promise<void> {
     }
     session.stream = stream;
     const mime = "audio/webm;codecs=opus";
-    if (!MediaRecorder.isTypeSupported(mime)) throw new Error("This webview does not support WebM audio recording.");
+    if (!MediaRecorder.isTypeSupported(mime)) throw new Error(t("This webview does not support WebM audio recording."));
     const recorder = new MediaRecorder(stream, { mimeType: mime });
     session.recorder = recorder;
     recorder.addEventListener("dataavailable", (event) => {
       if (event.data.size > 0) session.chunks.push(event.data);
     });
     recorder.addEventListener("stop", () => void finishRecording(session, mime));
-    recorder.addEventListener("error", () => failRecording(session, "The audio recording failed."));
+    recorder.addEventListener("error", () => failRecording(session, t("The audio recording failed.")));
     recorder.start(250);
     session.startedAt = performance.now();
     setRecordingPhase(transitionRecording(audioRecording.phase, { type: "started" }), session);
@@ -143,9 +144,9 @@ async function requestMicrophone(session: Capture): Promise<void> {
   } catch (error) {
     const name = error instanceof DOMException ? error.name : "";
     const message = name === "NotFoundError" || name === "DevicesNotFoundError"
-      ? "No microphone was found."
+      ? t("No microphone was found.")
       : name === "NotAllowedError" || name === "SecurityError"
-        ? "Microphone access was blocked."
+        ? t("Microphone access was blocked.")
         : error instanceof Error ? error.message : String(error);
     failRecording(session, message);
   }
@@ -169,7 +170,7 @@ export function renameAudioRecording(noteId: string, recordingId: string, name: 
   if (previousName === nextName) return false;
   execute(recordingListCommand(before, after, (recordings) => {
     updateNote(noteId, { recordings: copyAudioRecordings(recordings) ?? [] });
-  }, "Rename recording", nextName ?? "Recording"));
+  }, t("Rename recording"), nextName ?? "Recording"));
   return true;
 }
 
@@ -181,7 +182,7 @@ export function deleteAudioRecording(noteId: string, recordingId: string): boole
   if (!deleted) return false;
   execute(recordingListCommand(before, deleted.recordings, (recordings) => {
     updateNote(noteId, { recordings: copyAudioRecordings(recordings) ?? [] });
-  }, "Delete recording", deleted.deleted.name));
+  }, t("Delete recording"), deleted.deleted.name));
   return true;
 }
 
@@ -306,16 +307,16 @@ async function finishRecording(session: Capture, mime: string): Promise<void> {
     // MediaRecorder webm carries no duration header (the player reads Infinity), so keep the measured length.
     const recordedSeconds = Math.max(0, (performance.now() - (session.startedAt ?? performance.now())) / 1000);
     const blob = new Blob(session.chunks, { type: mime });
-    if (blob.size === 0) throw new Error("No audio was recorded.");
+    if (blob.size === 0) throw new Error(t("No audio was recorded."));
     const bytes = new Uint8Array(await blob.arrayBuffer());
     const result = await importRecording(bytes, mime, `${session.noteName}.webm`);
     if (capture !== session) return;
     if (!result.ok) throw new Error(result.error);
-    if (result.media.kind !== "audio") throw new Error("The recorded file was not recognized as audio.");
+    if (result.media.kind !== "audio") throw new Error(t("The recorded file was not recognized as audio."));
 
     const note = board.notes[session.noteId];
     if (!note || note.type !== "audio" || !Array.isArray(note.recordings)) {
-      throw new Error("The dictaphone was removed before this recording could be saved.");
+      throw new Error(t("The dictaphone was removed before this recording could be saved."));
     }
     const before = copyAudioRecordings(note.recordings) ?? [];
     const recording = {
@@ -328,7 +329,7 @@ async function finishRecording(session: Capture, mime: string): Promise<void> {
     const after = appendRecording(before, recording);
     execute(recordingListCommand(before, after, (recordings) => {
       updateNote(session.noteId, { recordings: copyAudioRecordings(recordings) ?? [] });
-    }, "Record audio", recording.name));
+    }, t("Record audio"), recording.name));
     setRecordingPhase(transitionRecording(audioRecording.phase, { type: "saved" }), session);
     audioRecording.noteId = null;
     audioRecording.level = 0;

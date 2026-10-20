@@ -4,6 +4,7 @@ import { newId } from "../model/note";
 import type { ListItem } from "../model/nodeData";
 import { zones } from "../model/zones.svelte";
 import { copyListItems, insertListItem, removeListItem as withoutItem, reorderListItem as reordered } from "./logic";
+import { t } from "../i18n/i18n.svelte";
 
 export function itemsForList(listId: string): ListItem[] {
   const note = board.notes[listId];
@@ -29,7 +30,7 @@ export function addListTargetCommand(listId: string, targetId: string, index?: n
   const target = board.notes[targetId] ?? zones.byId[targetId];
   if (list?.type !== "list" || !target || listId === targetId) return null;
   const item: ListItem = { id: newId(), targetId, label: target.name };
-  return createListChangeCommand(listId, "Add List link", insertListItem(itemsForList(listId), item, index));
+  return createListChangeCommand(listId, t("Add List link"), insertListItem(itemsForList(listId), item, index));
 }
 
 export function addListTarget(listId: string, targetId: string): boolean {
@@ -43,21 +44,21 @@ export function addListText(listId: string, label: string): boolean {
   const clean = label.trim();
   if (!clean) return false;
   const item: ListItem = { id: newId(), targetId: null, label: clean };
-  const command = createListChangeCommand(listId, "Add List text", insertListItem(itemsForList(listId), item));
+  const command = createListChangeCommand(listId, t("Add List text"), insertListItem(itemsForList(listId), item));
   if (!command) return false;
   execute(command);
   return true;
 }
 
 export function removeListRow(listId: string, itemId: string): boolean {
-  const command = createListChangeCommand(listId, "Remove List row", withoutItem(itemsForList(listId), itemId));
+  const command = createListChangeCommand(listId, t("Remove List row"), withoutItem(itemsForList(listId), itemId));
   if (!command) return false;
   execute(command);
   return true;
 }
 
 export function reorderListRow(listId: string, itemId: string, targetIndex: number): boolean {
-  const command = createListChangeCommand(listId, "Reorder List rows", reordered(itemsForList(listId), itemId, targetIndex));
+  const command = createListChangeCommand(listId, t("Reorder List rows"), reordered(itemsForList(listId), itemId, targetIndex));
   if (!command) return false;
   execute(command);
   return true;

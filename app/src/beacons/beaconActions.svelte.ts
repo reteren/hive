@@ -6,6 +6,7 @@ import { registerCommand } from "../commands/registry.svelte";
 import { selection } from "../selection/selection.svelte";
 import { showLinkStatus } from "../links-in-text/contextMenu.svelte";
 import { normalizeBeaconColor } from "./beaconPalette";
+import { t } from "../i18n/i18n.svelte";
 
 export type BeaconEditMode = "rename" | "color";
 
@@ -28,7 +29,7 @@ export function renameBeacon(noteId: string, draft: string): boolean {
   if (nextName === note.name) return false;
   const previousName = note.name;
   execute({
-    label: "Rename beacon",
+    label: t("Rename beacon"),
     target: nextName,
     do: () => updateNote(noteId, { name: nextName }),
     undo: () => updateNote(noteId, { name: previousName }),
@@ -42,7 +43,7 @@ export function recolorBeacon(noteId: string, draft: string): boolean {
   if (note?.type !== "beacon" || !nextColor || nextColor === note.color) return false;
   const previousColor = note.color;
   execute({
-    label: "Beacon colour",
+    label: t("Beacon colour"),
     target: note.name,
     do: () => updateNote(noteId, { color: nextColor }),
     undo: () => updateNote(noteId, { color: previousColor }),
@@ -53,7 +54,7 @@ export function recolorBeacon(noteId: string, draft: string): boolean {
 function editSelectedBeacon(mode: BeaconEditMode): void {
   const id = selection.primaryId;
   if (!id || board.notes[id]?.type !== "beacon") {
-    showLinkStatus("Select a beacon first.");
+    showLinkStatus(t("Select a beacon first."));
     return;
   }
   openBeaconEditor(id, mode);
@@ -61,7 +62,7 @@ function editSelectedBeacon(mode: BeaconEditMode): void {
 
 registerNoteMenuItem({
   id: "beacons.rename",
-  label: () => "Rename beacon",
+  label: () => t("Rename beacon"),
   order: 20,
   visible: (noteId) => board.notes[noteId]?.type === "beacon",
   run: (noteId) => openBeaconEditor(noteId, "rename"),
@@ -69,7 +70,7 @@ registerNoteMenuItem({
 
 registerNoteMenuItem({
   id: "beacons.color",
-  label: () => "Change color",
+  label: () => t("Change color"),
   order: 21,
   visible: (noteId) => board.notes[noteId]?.type === "beacon",
   run: (noteId) => openBeaconEditor(noteId, "color"),

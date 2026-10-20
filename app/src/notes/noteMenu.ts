@@ -18,6 +18,7 @@ import {
   setGifStopped,
   type GifPlaybackTarget,
 } from "../attachments/gifPlayback.svelte";
+import { t, tp } from "../i18n/i18n.svelte";
 
 /**
  * Items of the note right-click menu. Features register their entries here instead of editing
@@ -80,7 +81,7 @@ registerNoteMenuItem({
   id: "attachments.toggleGif",
   label: (noteId) => {
     const target = gifPlayback.contextMenu?.target;
-    return target?.noteId === noteId && isGifStopped(target) ? "Play gif" : "Stop gif";
+    return target?.noteId === noteId && isGifStopped(target) ? t("Play gif") : t("Stop gif");
   },
   run: (noteId) => {
     const target = gifPlayback.contextMenu?.target;
@@ -94,7 +95,7 @@ registerNoteMenuItem({
 
 registerNoteMenuItem({
   id: "image.copyToClipboard",
-  label: () => "Copy to clipboard",
+  label: () => t("Copy to clipboard"),
   run: (noteId) => { void copyImageNoteToClipboard(noteId); },
   visible: (noteId) => board.notes[noteId]?.type === "image" && Boolean(board.notes[noteId]?.image),
   order: 9,
@@ -102,7 +103,7 @@ registerNoteMenuItem({
 
 registerNoteMenuItem({
   id: "image.opacity",
-  label: () => "Opacity…",
+  label: () => t("Opacity…"),
   run: (noteId) => {
     const menu = linkContext.menu;
     if (menu?.kind === "note" && menu.noteId === noteId) {
@@ -115,7 +116,7 @@ registerNoteMenuItem({
 
 registerNoteMenuItem({
   id: "links.smoothLines",
-  label: (noteId) => board.notes[noteId]?.smoothLines ? "Remove smooth" : "Smooth lines",
+  label: (noteId) => board.notes[noteId]?.smoothLines ? t("Remove smooth") : t("Smooth lines"),
   run: toggleSmoothLinesForNote,
   visible: (noteId) => board.notes[noteId]?.type !== "beacon" &&
     (board.notes[noteId]?.smoothLines === true || linksOf(noteId).length > 0),
@@ -127,8 +128,8 @@ registerNoteMenuItem({
   label: (noteId) => {
     const targets = noteHeaderTargets(noteId);
     return targets.length > 0 && targets.every((id) => board.notes[id]?.headerHidden === true)
-      ? "Show header"
-      : "Hide header";
+      ? t("Show header")
+      : t("Hide header");
   },
   run: toggleNoteHeader,
   // A node without its text box is only its header; hiding that too would leave nothing to see.
@@ -142,8 +143,8 @@ registerNoteMenuItem({
   label: (noteId) => {
     const targets = noteTextBoxTargets(noteId);
     return targets.length > 0 && targets.every((id) => board.notes[id]?.textHidden === true)
-      ? "Show text box"
-      : "Remove text box";
+      ? t("Show text box")
+      : t("Remove text box");
   },
   run: toggleNoteTextBox,
   visible: (noteId) => noteTextBoxTargets(noteId).includes(noteId),
@@ -152,7 +153,7 @@ registerNoteMenuItem({
 
 registerNoteMenuItem({
   id: "object.scale",
-  label: () => "Scale",
+  label: () => t("Scale"),
   shortcut: () => menuShortcutLabel("select.scale"),
   run: (noteId) => runNoteMenuCommand(noteId, "select.scale"),
   dividerBefore: true,
@@ -161,7 +162,7 @@ registerNoteMenuItem({
 
 registerNoteMenuItem({
   id: "object.grab",
-  label: () => "Grab",
+  label: () => t("Grab"),
   shortcut: () => menuShortcutLabel("select.move"),
   run: (noteId) => runNoteMenuCommand(noteId, "select.move"),
   order: 1001,
@@ -169,7 +170,7 @@ registerNoteMenuItem({
 
 registerNoteMenuItem({
   id: "object.delete",
-  label: () => "Delete",
+  label: () => t("Delete"),
   shortcut: () => menuShortcutLabel("edit.delete"),
   run: (noteId) => runNoteMenuCommand(noteId, "edit.delete"),
   order: 1002,
@@ -210,8 +211,8 @@ function toggleNoteHeader(noteId: string): void {
 
   const firstChangedId = changes.keys().next().value as string;
   execute({
-    label: hide ? "Hide header" : "Show header",
-    target: changes.size === 1 ? board.notes[firstChangedId]?.name ?? "node" : `${changes.size} nodes`,
+    label: hide ? t("Hide header") : t("Show header"),
+    target: changes.size === 1 ? board.notes[firstChangedId]?.name ?? t("node") : tp(changes.size, "{count} node", "{count} nodes"),
     do: () => {
       for (const [id, change] of changes) {
         updateNote(id, change.after);
@@ -263,8 +264,8 @@ function toggleNoteTextBox(noteId: string): void {
 
   const firstChangedId = changes.keys().next().value as string;
   execute({
-    label: hide ? "Remove text box" : "Show text box",
-    target: changes.size === 1 ? board.notes[firstChangedId]?.name ?? "node" : `${changes.size} nodes`,
+    label: hide ? t("Remove text box") : t("Show text box"),
+    target: changes.size === 1 ? board.notes[firstChangedId]?.name ?? t("node") : tp(changes.size, "{count} node", "{count} nodes"),
     do: () => {
       for (const [id, change] of changes) {
         updateNote(id, change.after);
