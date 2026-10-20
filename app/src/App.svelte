@@ -312,11 +312,20 @@
     pointer-events: none;
   }
 
-  :global(html[data-reduce-motion="true"] *) {
+  /*
+   * Reduce animations: transitions are switched off, not shortened. A duration forced onto every
+   * element would turn each style change into a transition (transition-property defaults to all),
+   * so the board layers would trail the camera by a frame on every zoom and pan. Animations only run
+   * where a keyframe animation is declared, so shortening them ends each one at its final frame.
+   */
+  :global(html[data-reduce-motion="true"] *),
+  :global(html[data-reduce-motion="true"] *::before),
+  :global(html[data-reduce-motion="true"] *::after) {
+    animation-delay: 0s !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
+    transition: none !important;
   }
 
   @media (max-width: 520px) {

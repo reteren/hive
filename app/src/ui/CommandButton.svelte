@@ -188,6 +188,10 @@
     rotate: 30deg;
   }
 
+  :global(html[data-reduce-motion="true"]) .command-button[data-icon="settings"]:hover .raster-icon {
+    rotate: none;
+  }
+
   .command-button:hover {
     background: var(--bg-hover);
   }

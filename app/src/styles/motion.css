@@ -9,8 +9,8 @@
  * Everything animates the individual `scale` / `translate` / `rotate` properties so it composes with
  * the inline `transform` that board-anchored popups already use for their zoom compensation.
  * Selectors sit in :where() so a component's own styles always win.
- * html[data-reduce-motion="true"] (Settings → Reduce animations, or the OS setting) shortens every
- * animation to nothing via App.svelte; the media query below covers the OS setting before load.
+ * html[data-reduce-motion="true"] (Settings → Reduce animations, or the OS setting) switches transitions
+ * off and ends keyframe animations at once via App.svelte.
  */
 
 /* ---------- Press feedback ---------- */
@@ -52,6 +52,22 @@
 ):active:not(:disabled) {
   scale: 0.9;
   transition-duration: var(--motion-press);
+}
+
+/* Without the spring back a press would only jump, so Reduce animations drops it. */
+html[data-reduce-motion="true"] :where(
+  .command-button,
+  .subtool-button,
+  .dock-button,
+  .grid-control-button,
+  .menubar > button,
+  .close-button,
+  .settings-window button:not(.preset-card):not(.app-select-option),
+  .update-actions button,
+  .panel-popup-frame button,
+  .task-checkbox
+):active:not(:disabled) {
+  scale: none;
 }
 
 /* Wide rows (menu items) would look like they shrink away; they only darken a touch. */

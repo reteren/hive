@@ -22,4 +22,9 @@
   :global(:focus-visible) > .close-glyph {
     rotate: 90deg;
   }
+
+  :global(html[data-reduce-motion="true"] :hover) > .close-glyph,
+  :global(html[data-reduce-motion="true"] :focus-visible) > .close-glyph {
+    rotate: none;
+  }
 </style>
