@@ -23,7 +23,6 @@
   .grid-control-button,
   .menubar > button,
   .close-button,
-  .settings-window button:not(.preset-card):not(.app-select-option),
   .update-actions button,
   .panel-popup-frame button,
   .task-checkbox,
@@ -45,7 +44,6 @@
   .grid-control-button,
   .menubar > button,
   .close-button,
-  .settings-window button:not(.preset-card):not(.app-select-option),
   .update-actions button,
   .panel-popup-frame button,
   .task-checkbox
@@ -62,7 +60,6 @@ html[data-reduce-motion="true"] :where(
   .grid-control-button,
   .menubar > button,
   .close-button,
-  .settings-window button:not(.preset-card):not(.app-select-option),
   .update-actions button,
   .panel-popup-frame button,
   .task-checkbox

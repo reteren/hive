@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick } from "svelte";
   import HexColorPicker from "../color/HexColorPicker.svelte";
+  import ThemePreviewCard from "./ThemePreviewCard.svelte";
   import {
     appearance,
     applyThemePreset,
@@ -29,26 +30,32 @@
   let presetEditor = $state<PresetEditor | null>(null);
   let presetNameDraft = $state("");
   let presetNameInput = $state<HTMLInputElement | null>(null);
-  let presets = $derived([...BUILTIN_THEME_PRESETS, ...appearance.settings.userPresets]);
-  let activeUserPreset = $derived(appearance.settings.userPresets.find((preset) => preset.id === appearance.settings.activePresetId));
+  let confirmingDeleteId = $state<string | null>(null);
+  const userPresets = $derived(appearance.settings.userPresets);
+  const activeId = $derived(appearance.settings.activePresetId);
+  const confirmingDeletePreset = $derived(userPresets.find((preset) => preset.id === confirmingDeleteId));
 
   function toggleColorPicker(key: ColorKey): void {
     openColorPicker = openColorPicker === key ? null : key;
   }
 
   function beginPresetEdit(editor: PresetEditor, initialName = ""): void {
+    confirmingDeleteId = null;
     presetEditor = editor;
     presetNameDraft = initialName;
-    void tick().then(() => presetNameInput?.focus());
+    void tick().then(() => {
+      presetNameInput?.focus();
+      presetNameInput?.select();
+    });
   }
 
   function beginRename(id: string): void {
-    const preset = appearance.settings.userPresets.find((item) => item.id === id);
+    const preset = userPresets.find((item) => item.id === id);
     if (preset) beginPresetEdit({ kind: "rename", id }, preset.name);
   }
 
   function beginDuplicate(id: string): void {
-    const preset = appearance.settings.userPresets.find((item) => item.id === id);
+    const preset = userPresets.find((item) => item.id === id);
     if (preset) beginPresetEdit({ kind: "duplicate", id }, `${preset.name} copy`);
   }
 
@@ -66,72 +73,121 @@
     presetEditor = null;
     presetNameDraft = "";
   }
+
+  function confirmDelete(): void {
+    if (confirmingDeleteId) deleteThemePreset(confirmingDeleteId);
+    confirmingDeleteId = null;
+  }
 </script>
 
-<section class="settings-section appearance-settings" aria-labelledby="appearance-settings-title" data-appearance-settings>
-  <h2 id="appearance-settings-title">Appearance</h2>
-
-  <div class="preset-gallery" role="list" aria-label="Appearance presets">
-    {#each presets as preset (preset.id)}
-      <article class="preset-tile" role="listitem" class:active={appearance.settings.activePresetId === preset.id} data-theme-preset={preset.id}>
-        <button
-          class="preset-card"
-          type="button"
-          aria-label={`Apply ${preset.name} theme`}
-          aria-pressed={appearance.settings.activePresetId === preset.id}
+<section class="settings-block" aria-labelledby="appearance-themes-title" data-appearance-settings>
+  <div class="settings-block-header">
+    <h3 id="appearance-themes-title" class="settings-block-title">Themes</h3>
+    <button class="settings-button" type="button" data-reset-theme disabled={activeId === "hive"} onclick={resetThemeToHive}>Reset to Hive</button>
+  </div>
+  <div class="theme-gallery" role="list" aria-label="Appearance presets">
+    {#each BUILTIN_THEME_PRESETS as preset (preset.id)}
+      <div class="theme-tile" role="listitem" data-theme-preset={preset.id}>
+        <ThemePreviewCard
+          name={preset.name}
+          colors={preset.colors}
+          active={activeId === preset.id}
+          label={`Apply ${preset.name} theme`}
           onclick={() => applyThemePreset(preset.id)}
-        >
-          <span class="preset-swatches" aria-hidden="true">
-            <span style:background={preset.colors.base}></span>
-            <span style:background={preset.colors.accent}></span>
-            <span style:background={preset.colors.icon}></span>
-            <span style:background={preset.colors.board}></span>
-            <span style:background={preset.colors.grid}></span>
-          </span>
-          <span class="preset-name">{preset.name}</span>
-          {#if appearance.settings.activePresetId === preset.id}<span class="preset-active">Active</span>{/if}
-        </button>
-        {#if activeUserPreset?.id === preset.id}
-          <div class="preset-actions" aria-label={`${preset.name} preset actions`}>
-            <button type="button" onclick={() => beginRename(preset.id)}>Rename</button>
-            <button type="button" onclick={() => beginDuplicate(preset.id)}>Duplicate</button>
-            <button type="button" class="delete-preset" onclick={() => deleteThemePreset(preset.id)}>Delete</button>
-          </div>
-        {/if}
-      </article>
+        />
+      </div>
     {/each}
   </div>
+</section>
 
-  {#if presetEditor}
-    <form class="preset-editor" data-preset-editor onsubmit={savePresetName}>
-      <label for="appearance-preset-name">
-        {presetEditor.kind === "create" ? "Save current colours as a preset" : presetEditor.kind === "rename" ? "Rename preset" : "Duplicate preset"}
-      </label>
-      <div class="preset-editor-controls">
-        <input
-          id="appearance-preset-name"
-          bind:this={presetNameInput}
-          bind:value={presetNameDraft}
-          maxlength="36"
-          autocomplete="off"
-          required
-          aria-label="Preset name"
-          onkeydown={(event) => { if (event.key === "Escape") { event.preventDefault(); cancelPresetEdit(); } }}
-        />
-        <button type="submit">Save</button>
-        <button type="button" onclick={cancelPresetEdit}>Cancel</button>
-      </div>
-    </form>
-  {/if}
-
-  <div class="appearance-actions">
-    <button type="button" data-save-theme-preset onclick={() => beginPresetEdit({ kind: "create" })}>Save as preset…</button>
-    <button type="button" data-reset-theme onclick={resetThemeToHive}>Reset to Hive</button>
+<section class="settings-block" aria-labelledby="appearance-user-title">
+  <div class="settings-block-header">
+    <h3 id="appearance-user-title" class="settings-block-title">Your themes</h3>
+    <button class="settings-button" class:is-primary={activeId === null} type="button" data-save-theme-preset onclick={() => beginPresetEdit({ kind: "create" })}>Save current as theme…</button>
   </div>
 
-  <div class="theme-colors" aria-label="Theme colours">
+  {#if presetEditor || confirmingDeletePreset}
+    <div class="settings-group">
+      {#if presetEditor}
+        <form class="settings-inline-panel" data-preset-editor onsubmit={savePresetName}>
+          <label for="appearance-preset-name">
+            {presetEditor.kind === "create" ? "Save the current colours as a theme" : presetEditor.kind === "rename" ? "Rename theme" : "Duplicate theme"}
+          </label>
+          <input
+            id="appearance-preset-name"
+            class="settings-input is-text"
+            bind:this={presetNameInput}
+            bind:value={presetNameDraft}
+            maxlength="36"
+            autocomplete="off"
+            required
+            aria-label="Theme name"
+            onkeydown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); cancelPresetEdit(); } }}
+          />
+          <span class="setting-control">
+            <button class="settings-button" type="button" onclick={cancelPresetEdit}>Cancel</button>
+            <button class="settings-button is-primary" type="submit">Save</button>
+          </span>
+        </form>
+      {:else if confirmingDeletePreset}
+        <div class="settings-inline-panel is-danger" role="alertdialog" aria-label="Delete theme">
+          <p>Delete the theme “{confirmingDeletePreset.name}”?</p>
+          <span class="setting-control">
+            <button class="settings-button" type="button" onclick={() => (confirmingDeleteId = null)}>Cancel</button>
+            <button class="settings-button is-danger is-solid" type="button" onclick={confirmDelete}>Delete</button>
+          </span>
+        </div>
+      {/if}
+    </div>
+  {/if}
+
+  {#if userPresets.length > 0 || activeId === null}
+    <div class="theme-gallery" role="list" aria-label="Your themes">
+      {#if activeId === null}
+        <div class="theme-tile" role="listitem" data-theme-preset="custom">
+          <ThemePreviewCard
+            name="Current colours"
+            badge="unsaved"
+            colors={appearance.settings.colors}
+            active
+            label="Current colours, not saved as a theme. Save it"
+            onclick={() => beginPresetEdit({ kind: "create" })}
+          />
+        </div>
+      {/if}
+      {#each userPresets as preset (preset.id)}
+        <div class="theme-tile has-tools" role="listitem" data-theme-preset={preset.id}>
+          <ThemePreviewCard
+            name={preset.name}
+            colors={preset.colors}
+            active={activeId === preset.id}
+            label={`Apply ${preset.name} theme`}
+            onclick={() => applyThemePreset(preset.id)}
+          />
+          <span class="theme-tools" aria-label={`${preset.name} theme actions`}>
+            <button class="settings-icon-button" type="button" title="Rename" aria-label={`Rename ${preset.name}`} onclick={() => beginRename(preset.id)}>
+              <svg viewBox="0 0 16 16"><path d="M10.5 2.8l2.7 2.7-7.6 7.6H2.9v-2.7z" /></svg>
+            </button>
+            <button class="settings-icon-button" type="button" title="Duplicate" aria-label={`Duplicate ${preset.name}`} onclick={() => beginDuplicate(preset.id)}>
+              <svg viewBox="0 0 16 16"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" /><path d="M10.5 3.5v-.5a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h.5" /></svg>
+            </button>
+            <button class="settings-icon-button is-danger" type="button" title="Delete" aria-label={`Delete ${preset.name}`} onclick={() => { presetEditor = null; confirmingDeleteId = preset.id; }}>
+              <svg viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" /></svg>
+            </button>
+          </span>
+        </div>
+      {/each}
+    </div>
+  {:else}
+    <p class="setting-hint">Change any colour below, then save it here as your own theme.</p>
+  {/if}
+</section>
+
+<section class="settings-block" aria-labelledby="appearance-colors-title">
+  <div class="settings-block-header"><h3 id="appearance-colors-title" class="settings-block-title">Colours</h3></div>
+  <div class="settings-group" aria-label="Theme colours">
     {#each colorRows as row (row.key)}
-      <div class="theme-color-row" data-theme-color={row.key}>
+      <div class="theme-color-row" class:open={openColorPicker === row.key} data-theme-color={row.key}>
         <button
           type="button"
           class="theme-color-trigger"
@@ -140,8 +196,12 @@
           onclick={() => toggleColorPicker(row.key)}
         >
           <span class="color-chip" style:background={appearance.settings.colors[row.key]} aria-hidden="true"></span>
-          <span class="color-copy"><span>{row.label}</span><span class="color-description">{row.description}</span></span>
+          <span class="setting-copy">
+            <span class="setting-title">{row.label}</span>
+            <span class="setting-description">{row.description}</span>
+          </span>
           <span class="color-hex">{appearance.settings.colors[row.key]}</span>
+          <span class="color-chevron" aria-hidden="true"></span>
         </button>
         {#if openColorPicker === row.key}
           <div class="color-picker-panel" id={`appearance-picker-${row.key}`}>
@@ -156,154 +216,95 @@
       </div>
     {/each}
   </div>
+  <p class="setting-hint">Applies to both windows immediately. Editing a colour turns the theme into your own, unsaved one.</p>
 </section>
 
 <style>
-  .appearance-settings {
-    --appearance-gap: 5px;
-    padding: 9px 0 3px;
-  }
-
-  h2 { margin: 0 0 7px; color: var(--text-dim); font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
-
-  .preset-gallery {
+  .theme-gallery {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--appearance-gap);
+    grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+    gap: 14px;
   }
 
-  .preset-tile {
+  .theme-tile {
+    position: relative;
     min-width: 0;
-    overflow: hidden;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg-panel-raised);
   }
 
-  .preset-tile.active {
-    border-color: var(--accent);
-    box-shadow: inset 0 0 0 1px var(--accent);
-  }
-
-  .preset-card {
-    display: grid;
-    width: 100%;
-    min-height: 48px;
-    grid-template-columns: 1fr auto;
-    align-items: center;
-    gap: 4px 6px;
-    padding: 6px;
-    border: 0;
-    color: var(--text);
-    background: transparent;
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .preset-swatches {
+  .theme-tools {
+    position: absolute;
+    top: 7px;
+    right: 7px;
     display: flex;
-    height: 12px;
-    grid-column: 1 / -1;
-    overflow: hidden;
-    border: 1px solid var(--border);
-    border-radius: 2px;
-  }
-
-  .preset-swatches span { flex: 1 1 20%; }
-  .preset-name { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-  .preset-active { color: var(--accent); font-size: 8px; font-weight: 600; }
-  .preset-card:hover { background: var(--bg-hover); }
-
-  .preset-actions,
-  .appearance-actions,
-  .preset-editor-controls {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-
-  .preset-actions { padding: 0 5px 5px; }
-
-  .preset-actions button,
-  .appearance-actions button,
-  .preset-editor button {
-    min-height: 24px;
-    padding: 3px 7px;
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    color: var(--text);
-    background: var(--bg-panel-raised);
-    font-size: 9px;
-    cursor: pointer;
-  }
-
-  .preset-actions button:hover,
-  .appearance-actions button:hover,
-  .preset-editor button:hover { background: var(--bg-hover); }
-  .preset-actions .delete-preset { color: #ffb0a6; }
-
-  .appearance-actions { margin-top: 6px; }
-  .appearance-actions button:first-child { border-color: var(--accent); }
-
-  .preset-editor {
-    display: grid;
-    gap: 5px;
-    margin-top: 6px;
-    padding: 7px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg-panel-raised);
-    font-size: 10px;
-  }
-
-  .preset-editor-controls input {
-    min-width: 0;
-    flex: 1;
-    height: 24px;
-    padding: 3px 6px;
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    color: var(--text);
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid var(--settings-line-strong);
+    border-radius: 8px;
     background: var(--bg-panel);
-    font: inherit;
+    box-shadow: 0 3px 10px rgb(0 0 0 / 30%);
+    opacity: 0;
+    transition: opacity var(--motion-quick) ease-out;
   }
 
-  .theme-colors { display: grid; gap: 2px; margin-top: 8px; }
-
-  .theme-color-row {
-    overflow: hidden;
-    border: 1px solid transparent;
-    border-radius: 3px;
+  .theme-tile:hover .theme-tools,
+  .theme-tile:focus-within .theme-tools {
+    opacity: 1;
   }
 
-  .theme-color-row:has(.color-picker-panel) {
-    border-color: var(--border);
-    background: var(--bg-panel-raised);
+  .theme-tools svg {
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.4;
   }
 
   .theme-color-trigger {
     display: flex;
     width: 100%;
-    min-height: 34px;
+    min-height: 58px;
     align-items: center;
-    gap: 8px;
-    padding: 3px 5px;
+    gap: 14px;
+    padding: 10px 16px;
     border: 0;
-    color: var(--text);
     background: transparent;
+    color: var(--text);
+    font: inherit;
     text-align: left;
     cursor: pointer;
   }
 
-  .theme-color-trigger:hover { background: var(--bg-hover); }
-  .color-chip { width: 22px; height: 22px; flex: 0 0 auto; border: 1px solid var(--border); border-radius: 3px; }
-  .color-copy { display: grid; min-width: 0; flex: 1; gap: 1px; font-size: 10px; }
-  .color-description { overflow: hidden; color: var(--text-dim); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
-  .color-hex { color: var(--text-dim); font-family: var(--mono-font); font-size: 9px; text-transform: uppercase; }
-  .color-picker-panel { padding: 5px 7px 8px 35px; }
+  .theme-color-trigger:hover { background: var(--settings-fill); }
+  .theme-color-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .theme-color-trigger .setting-copy { flex: 1; }
 
-  @media (max-width: 360px) {
-    .preset-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .color-description { display: none; }
+  .color-chip {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 auto;
+    border-radius: 8px;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 20%, transparent);
   }
+
+  .color-hex {
+    color: var(--text-dim);
+    font-family: var(--mono-font);
+    font-size: 11.5px;
+    text-transform: uppercase;
+  }
+
+  .color-chevron {
+    width: 7px;
+    height: 7px;
+    flex: 0 0 auto;
+    margin: 0 2px 0 4px;
+    border-right: 1.5px solid var(--text-dim);
+    border-bottom: 1.5px solid var(--text-dim);
+    rotate: -45deg;
+    transition: rotate var(--motion-quick) ease-out;
+  }
+
+  .theme-color-row.open .color-chevron { rotate: 45deg; }
+  .theme-color-row.open { background: var(--settings-fill); }
+  .color-picker-panel { padding: 4px 16px 16px 60px; }
 </style>

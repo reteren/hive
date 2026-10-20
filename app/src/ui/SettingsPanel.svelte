@@ -1,51 +1,84 @@
 <script module lang="ts">
   import "../export/commands";
+  import "../settings/settings.css";
 </script>
 
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { untrack, type Component } from "svelte";
   import CloseGlyph from "./CloseGlyph.svelte";
   import packageMetadata from "../../package.json";
-  import { backupSettings, setBackupInterval } from "../backup/backupSettings.svelte";
-  import { openBackupsPanel } from "../backup/panel.svelte";
-  import { emptyTrash } from "../trash/trashActions.svelte";
-  import { history, MAX_HISTORY_LIMIT, MIN_HISTORY_LIMIT, setHistoryLimit } from "../history/history.svelte";
   import { project } from "../project/project.svelte";
-  import { trash } from "../model/retention.svelte";
-  import { estimateJsonSize, formatStorageSize } from "../export/storage";
-  import { exportCurrentProject, importProjectFromZip, refreshStorageStats } from "../export/actions";
-  import { exportState } from "../export/exportState.svelte";
-  import {
-    preferences,
-    setFitWidthToText,
-    setAllowAiToolsMcp,
-    setRecordInBackground,
-    setReduceAnimations,
-    setVideoExternalThresholdMb,
-  } from "../settings/preferences.svelte";
-  import { DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB } from "../settings/videoThreshold";
-  import { gifPlayback, setGifPlaybackMode } from "../attachments/gifPlayback.svelte";
-  import { closeSettingsPanel, settingsPanel } from "../settings/settingsPanel.svelte";
-  import QuickInputShortcutSetting from "../settings/QuickInputShortcutSetting.svelte";
+  import { refreshStorageStats } from "../export/actions";
+  import { closeSettingsPanel, settingsPanel, type SettingsPage } from "../settings/settingsPanel.svelte";
+  import { settingsProfiles } from "../settings/profileState.svelte";
   import ExportStatus from "../export/ExportStatus.svelte";
-  import SpellcheckSettings from "../spell/SpellcheckSettings.svelte";
   import AppearanceSettings from "../theme/AppearanceSettings.svelte";
-  import ProfileSettings from "../settings/ProfileSettings.svelte";
-  import Select from "./Select.svelte";
-  import { setMcpBridgeEnabled } from "../mcp/bridge";
-  import { mcpBridge } from "../mcp/bridge.svelte";
+  import GeneralSettings from "../settings/pages/GeneralSettings.svelte";
+  import EditingSettings from "../settings/pages/EditingSettings.svelte";
+  import MediaSettings from "../settings/pages/MediaSettings.svelte";
+  import AiToolsSettings from "../settings/pages/AiToolsSettings.svelte";
+  import StorageSettings from "../settings/pages/StorageSettings.svelte";
 
-  let historyLimitDraft = $state(String(history.limit));
-  let videoThresholdDraft = $state(String(preferences.videoExternalThresholdMb ?? DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB));
+  interface PageInfo {
+    id: SettingsPage;
+    label: string;
+    description: string;
+    /** 16×16 stroke icon paths. */
+    icon: string;
+    body: Component;
+  }
+
+  const pages: readonly PageInfo[] = [
+    {
+      id: "general",
+      label: "General",
+      description: "Profile, motion and shortcuts.",
+      icon: "M2.5 4.5h6M11.5 4.5h2M2.5 8h2M7.5 8h6M2.5 11.5h7.5M13 11.5h.5M10 3v3M6 6.5v3M11.5 10v3",
+      body: GeneralSettings,
+    },
+    {
+      id: "appearance",
+      label: "Appearance",
+      description: "Themes and the five colours they are made of.",
+      icon: "M8 2.2a5.8 5.8 0 1 0 0 11.6c.9 0 1.4-.6 1.4-1.3 0-.9-.7-1.1-.7-1.9 0-.6.5-1.1 1.2-1.1h1.6a2.3 2.3 0 0 0 2.3-2.3C13.8 4.4 11.2 2.2 8 2.2zM5 7.2h.01M7 4.8h.01M10.2 5h.01",
+      body: AppearanceSettings,
+    },
+    {
+      id: "editing",
+      label: "Editing",
+      description: "Notes, spellcheck and undo.",
+      icon: "M10.4 2.6l3 3L6 13H3v-3zM8.9 4.1l3 3",
+      body: EditingSettings,
+    },
+    {
+      id: "media",
+      label: "Media",
+      description: "GIFs, audio recording and video files.",
+      icon: "M3.5 3h9A1.5 1.5 0 0 1 14 4.5v7a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5v-7A1.5 1.5 0 0 1 3.5 3zM6.8 6v4l3.2-2z",
+      body: MediaSettings,
+    },
+    {
+      id: "ai",
+      label: "AI tools",
+      description: "Let local AI clients work with the open project.",
+      icon: "M8 2l1.3 3.5L12.8 7 9.3 8.3 8 12l-1.3-3.7L3.2 7l3.5-1.5zM12.5 11l.5 1.4 1.4.6-1.4.5-.5 1.5-.5-1.5-1.5-.5 1.5-.6z",
+      body: AiToolsSettings,
+    },
+    {
+      id: "storage",
+      label: "Storage",
+      description: "Disk use, backups, trash and moving projects.",
+      icon: "M3 4c0-1.1 2.2-2 5-2s5 .9 5 2-2.2 2-5 2-5-.9-5-2zM3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2",
+      body: StorageSettings,
+    },
+  ];
+
   let closeButton = $state<HTMLButtonElement | null>(null);
-  let confirmingEmptyTrash = $state(false);
-  let emptyTrashCancelButton = $state<HTMLButtonElement | null>(null);
-  let mcpSettingBusy = $state(false);
-  let mcpSettingError = $state("");
+  let navList = $state<HTMLElement | null>(null);
+  let content = $state<HTMLElement | null>(null);
 
-  $effect(() => {
-    historyLimitDraft = String(history.limit);
-  });
+  const current = $derived(pages.find((page) => page.id === settingsPanel.page) ?? pages[0]);
+  const activeProfileName = $derived(settingsProfiles.list.find((profile) => profile.id === settingsProfiles.active)?.name);
 
   $effect(() => {
     if (!settingsPanel.open) return;
@@ -53,15 +86,18 @@
     // effect and started the next one — a full walk of the project folder every ~0.3 s while the
     // settings were open, on the app's main thread (wheel input stalled behind it).
     if (project.path) untrack(() => void refreshStorageStats());
-    const frame = requestAnimationFrame(() => closeButton?.focus());
+    const frame = requestAnimationFrame(() => {
+      const active = navList?.querySelector<HTMLButtonElement>("[aria-current='page']");
+      (active ?? closeButton)?.focus();
+    });
     return () => cancelAnimationFrame(frame);
   });
 
-  $effect(() => {
-    if (!settingsPanel.open || !confirmingEmptyTrash || !emptyTrashCancelButton) return;
-    const frame = requestAnimationFrame(() => emptyTrashCancelButton?.focus());
-    return () => cancelAnimationFrame(frame);
-  });
+  function showPage(id: SettingsPage): void {
+    if (settingsPanel.page === id) return;
+    settingsPanel.page = id;
+    content?.scrollTo({ top: 0 });
+  }
 
   function handleKeydown(event: KeyboardEvent): void {
     if (event.key !== "Escape" || event.defaultPrevented) return;
@@ -70,100 +106,15 @@
     closeSettingsPanel();
   }
 
-  function changeHistoryLimit(event: Event): void {
-    if (!(event.currentTarget instanceof HTMLInputElement)) return;
-    setHistoryLimit(event.currentTarget.valueAsNumber);
-    historyLimitDraft = String(history.limit);
-  }
-
-  function handleHistoryLimitKeydown(event: KeyboardEvent): void {
-    const input = event.currentTarget;
-    if (!(input instanceof HTMLInputElement)) return;
-    if (event.key === "Enter") {
-      input.blur();
-    } else if (event.key === "Escape") {
-      event.stopPropagation();
-      historyLimitDraft = String(history.limit);
-      input.blur();
-    }
-  }
-
-  function changeVideoThreshold(event: Event): void {
-    if (!(event.currentTarget instanceof HTMLInputElement)) return;
-    setVideoExternalThresholdMb(event.currentTarget.valueAsNumber);
-    videoThresholdDraft = String(preferences.videoExternalThresholdMb ?? DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB);
-  }
-
-  async function changeMcpSetting(event: Event): Promise<void> {
-    if (!(event.currentTarget instanceof HTMLInputElement)) return;
-    const enabled = event.currentTarget.checked;
-    mcpSettingBusy = true;
-    mcpSettingError = "";
-    try {
-      await setMcpBridgeEnabled(enabled);
-      setAllowAiToolsMcp(enabled);
-    } catch (error) {
-      mcpSettingError = "Could not update the MCP bridge. Check the hive log and try again.";
-      console.error("Could not update the MCP bridge setting.", error);
-    } finally {
-      mcpSettingBusy = false;
-    }
-  }
-
-  function handleVideoThresholdKeydown(event: KeyboardEvent): void {
-    const input = event.currentTarget;
-    if (!(input instanceof HTMLInputElement)) return;
-    if (event.key === "Enter") {
-      input.blur();
-    } else if (event.key === "Escape") {
-      event.stopPropagation();
-      videoThresholdDraft = String(preferences.videoExternalThresholdMb ?? DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB);
-      input.blur();
-    }
-  }
-
-  function toggleUnlimitedVideoThreshold(event: Event): void {
-    if (!(event.currentTarget instanceof HTMLInputElement)) return;
-    if (event.currentTarget.checked) {
-      setVideoExternalThresholdMb(null);
-      return;
-    }
-    setVideoExternalThresholdMb(Number(videoThresholdDraft));
-    videoThresholdDraft = String(preferences.videoExternalThresholdMb ?? DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB);
-  }
-
-  function changeBackupInterval(value: string): void {
-    switch (Number(value)) {
-      case 0: setBackupInterval(0); break;
-      case 15: setBackupInterval(15); break;
-      case 30: setBackupInterval(30); break;
-      case 60: setBackupInterval(60); break;
-    }
-  }
-
-  function requestEmptyTrash(): void {
-    if (trash.entries.length > 0) confirmingEmptyTrash = true;
-  }
-
-  function confirmEmptyTrash(): void {
-    if (trash.entries.length === 0) return;
-    emptyTrash();
-    confirmingEmptyTrash = false;
-    exportState.message = "Trash emptied.";
-    exportState.error = "";
-    void refreshStorageStats();
-  }
-
-  function handleTrashConfirmKeydown(event: KeyboardEvent): void {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      confirmingEmptyTrash = false;
-    } else if (event.key === "Enter") {
-      event.preventDefault();
-      event.stopPropagation();
-      confirmEmptyTrash();
-    }
+  function handleNavKeydown(event: KeyboardEvent): void {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") return;
+    event.preventDefault();
+    const index = pages.findIndex((page) => page.id === settingsPanel.page);
+    const next = event.key === "Home" ? 0
+      : event.key === "End" ? pages.length - 1
+      : (index + (event.key === "ArrowDown" ? 1 : -1) + pages.length) % pages.length;
+    showPage(pages[next].id);
+    navList?.querySelectorAll<HTMLButtonElement>(".settings-nav-item")[next]?.focus();
   }
 </script>
 
@@ -173,206 +124,46 @@
   <div class="settings-overlay" data-selection-ignore>
     <button class="settings-backdrop" type="button" aria-label="Close settings" onclick={closeSettingsPanel}></button>
     <div class="settings-window" role="dialog" aria-modal="true" aria-labelledby="settings-title" tabindex="-1" onkeydown={handleKeydown}>
-      <header class="settings-heading">
+      <aside class="settings-sidebar">
         <h1 id="settings-title">Settings</h1>
-        <button bind:this={closeButton} class="close-button" type="button" aria-label="Close settings" title="Close settings" onclick={closeSettingsPanel}><CloseGlyph /></button>
-      </header>
+        <nav bind:this={navList} class="settings-nav" aria-label="Settings sections">
+          {#each pages as page (page.id)}
+            <button
+              class="settings-nav-item"
+              type="button"
+              aria-current={settingsPanel.page === page.id ? "page" : undefined}
+              data-settings-page={page.id}
+              aria-label={page.label}
+              onclick={() => showPage(page.id)}
+              onkeydown={handleNavKeydown}
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d={page.icon} /></svg>
+              <span>{page.label}</span>
+            </button>
+          {/each}
+        </nav>
+        <footer class="settings-sidebar-footer">
+          {#if activeProfileName}<span class="sidebar-profile" title="Settings profile">{activeProfileName}</span>{/if}
+          <span class="app-version" data-app-version>hive {packageMetadata.version}</span>
+        </footer>
+      </aside>
 
-      <div class="settings-content">
-        <ProfileSettings />
-
-        <section class="settings-section" aria-labelledby="general-settings-title">
-          <h2 id="general-settings-title">General</h2>
-          <label class="setting-row">
-            <span class="setting-copy">
-              <span>Reduce animations</span>
-              <span class="setting-description">Use less motion throughout the interface.</span>
-            </span>
-            <input
-              type="checkbox"
-              checked={preferences.reduceAnimations}
-              onchange={(event) => setReduceAnimations(event.currentTarget.checked)}
-            />
-          </label>
-          <label class="setting-row">
-            <span class="setting-copy">
-              <span>GIF playback</span>
-              <span class="setting-description">Stopped GIFs stay still until you choose Play gif.</span>
-            </span>
-            <span class="gif-playback-select">
-              <Select id="settings-gif-playback" ariaLabel="GIF playback" value={gifPlayback.mode} options={[
-                { value: "always", label: "Always" },
-                { value: "hover", label: "On hover" },
-                { value: "selected", label: "When selected" },
-              ]} onchange={setGifPlaybackMode} />
-            </span>
-          </label>
-          <label class="setting-row">
-            <span class="setting-copy">
-              <span>Record in background</span>
-              <span class="setting-description">Keep an active audio recording when the window loses focus.</span>
-            </span>
-            <input
-              type="checkbox"
-              checked={preferences.recordInBackground}
-              onchange={(event) => setRecordInBackground(event.currentTarget.checked)}
-            />
-          </label>
-          <label class="setting-row">
-            <span class="setting-copy">
-              <span>Fit note width to text (beta)</span>
-              <span class="setting-description">Grow while typing to keep each line unwrapped.</span>
-            </span>
-            <input
-              type="checkbox"
-              checked={preferences.fitWidthToText}
-              onchange={(event) => setFitWidthToText(event.currentTarget.checked)}
-            />
-          </label>
-          <QuickInputShortcutSetting />
-        </section>
-
-        <AppearanceSettings />
-
-        <section class="settings-section" aria-labelledby="ai-tools-settings-title" data-ai-tools-settings>
-          <h2 id="ai-tools-settings-title">AI tools</h2>
-          <label class="setting-row">
-            <span class="setting-copy">
-              <span>Allow AI tools (MCP)</span>
-              <span class="setting-description">Let local AI clients read and edit the open hive project.</span>
-            </span>
-            <input
-              type="checkbox"
-              checked={preferences.allowAiToolsMcp}
-              disabled={mcpSettingBusy}
-              data-allow-ai-tools-mcp
-              onchange={changeMcpSetting}
-            />
-          </label>
-          <p class="mcp-bridge-status" data-mcp-bridge-status aria-live="polite">
-            {mcpBridge.enabled && mcpBridge.port !== null ? `Listening on 127.0.0.1:${mcpBridge.port}` : "Off"}
-          </p>
-          {#if mcpSettingError}<p class="storage-error" role="alert">{mcpSettingError}</p>{/if}
-        </section>
-
-        <SpellcheckSettings />
-
-        <section class="settings-section" aria-labelledby="history-settings-title">
-          <h2 id="history-settings-title">History</h2>
-          <label class="setting-row">
-            <span class="setting-copy">
-              <span>Undo history limit</span>
-              <span class="setting-description">Retain between {MIN_HISTORY_LIMIT} and {MAX_HISTORY_LIMIT} steps.</span>
-            </span>
-            <input
-              class="history-limit"
-              type="number"
-              min={MIN_HISTORY_LIMIT}
-              max={MAX_HISTORY_LIMIT}
-              step="1"
-              value={historyLimitDraft}
-              aria-label={`Undo history limit, from ${MIN_HISTORY_LIMIT} to ${MAX_HISTORY_LIMIT}`}
-              oninput={(event) => (historyLimitDraft = event.currentTarget.value)}
-              onchange={changeHistoryLimit}
-              onkeydown={handleHistoryLimitKeydown}
-            />
-          </label>
-        </section>
-
-        <section class="settings-section" aria-labelledby="storage-settings-title" data-storage-settings>
-          <h2 id="storage-settings-title">Storage</h2>
-          <div class="storage-row">
-            <span>Trash</span>
-            <span class="storage-value">{trash.entries.length} entr{trash.entries.length === 1 ? "y" : "ies"} · approx. {formatStorageSize(estimateJsonSize(trash.entries))}</span>
+      <main class="settings-main">
+        <header class="settings-page-header">
+          <div>
+            <h2>{current.label}</h2>
+            <p>{current.description}</p>
           </div>
-          <div class="storage-row">
-            <span>Snapshots</span>
-            <span class="storage-value">{exportState.storageStats?.snapshotCount ?? "—"} snapshots · {formatStorageSize(exportState.storageStats?.snapshotBytes ?? 0)}</span>
-          </div>
-          <div class="storage-row">
-            <span>Undo history</span>
-            <span class="storage-value">{history.entries.length} entries in memory</span>
-          </div>
-          <div class="storage-row">
-            <span>Project folder</span>
-            <span class="storage-value">{formatStorageSize(exportState.storageStats?.projectBytes ?? 0)}</span>
-          </div>
-          <div class="video-threshold-setting" data-video-threshold-setting>
-            <label for="settings-video-threshold">Keep videos outside the project when larger than</label>
-            <div class="video-threshold-controls">
-              <input
-                id="settings-video-threshold"
-                class="history-limit video-threshold-input"
-                type="number"
-                min="1"
-                step="1"
-                value={videoThresholdDraft}
-                disabled={preferences.videoExternalThresholdMb === null}
-                data-video-threshold-input
-                aria-label="Video external storage threshold in megabytes"
-                oninput={(event) => (videoThresholdDraft = event.currentTarget.value)}
-                onchange={changeVideoThreshold}
-                onkeydown={handleVideoThresholdKeydown}
-              />
-              <span>MB</span>
-              <label class="video-threshold-unlimited">
-                <input
-                  type="checkbox"
-                  checked={preferences.videoExternalThresholdMb === null}
-                  data-video-threshold-unlimited
-                  aria-label="Unlimited video threshold (always copy videos)"
-                  onchange={toggleUnlimitedVideoThreshold}
-                />
-                Unlimited
-              </label>
+          <button bind:this={closeButton} class="close-button settings-close" type="button" aria-label="Close settings" title="Close settings" onclick={closeSettingsPanel}><CloseGlyph /></button>
+        </header>
+        <div bind:this={content} class="settings-content">
+          {#key current.id}
+            <div class="settings-page" data-settings-current={current.id}>
+              <current.body />
             </div>
-            <p class="video-threshold-hint">
-              {preferences.videoExternalThresholdMb === null
-                ? "Unlimited copies every video into the project."
-                : "Larger videos are linked, not copied, so the project folder stays small."}
-            </p>
-          </div>
-          {#if exportState.storageError}
-            <p class="storage-error" role="alert">{exportState.storageError}</p>
-          {/if}
-          <div class="storage-actions">
-            <label class="interval-control">
-              <span>Backup interval</span>
-              <span class="interval-select">
-                <Select id="settings-backup-interval" ariaLabel="Automatic snapshot interval" value={String(backupSettings.interval)} options={[
-                  { value: "0", label: "Off" },
-                  { value: "15", label: "15 min" },
-                  { value: "30", label: "30 min" },
-                  { value: "60", label: "60 min" },
-                ]} onchange={changeBackupInterval} />
-              </span>
-            </label>
-            <button type="button" data-settings-empty-trash onclick={requestEmptyTrash} disabled={trash.entries.length === 0}>Empty trash…</button>
-            <button type="button" onclick={openBackupsPanel}>Open backups</button>
-            <button type="button" onclick={() => void refreshStorageStats()} disabled={exportState.refreshingStorage}>
-              {exportState.refreshingStorage ? "Refreshing…" : "Refresh storage"}
-            </button>
-          </div>
-          {#if confirmingEmptyTrash}
-            <div class="storage-trash-confirm" data-settings-trash-confirm role="dialog" aria-modal="false" aria-label="Confirm empty trash" tabindex="-1" onkeydown={handleTrashConfirmKeydown}>
-              <p>Permanently delete all <strong>{trash.entries.length}</strong> {trash.entries.length === 1 ? "entry" : "entries"}? This cannot be undone.</p>
-              <div class="storage-trash-confirm-actions">
-                <button bind:this={emptyTrashCancelButton} type="button" data-settings-trash-cancel onclick={() => (confirmingEmptyTrash = false)}>Cancel</button>
-                <button type="button" data-settings-trash-confirm-action onclick={confirmEmptyTrash}>Empty trash</button>
-              </div>
-            </div>
-          {/if}
-          <div class="storage-actions transfer-actions">
-            <button type="button" onclick={() => void exportCurrentProject()} disabled={!project.path || exportState.busy}>
-              {exportState.busy ? "Working…" : "Export project…"}
-            </button>
-            <button type="button" onclick={() => void importProjectFromZip()} disabled={exportState.busy}>
-              Import project from .zip…
-            </button>
-          </div>
-        </section>
-        <p class="app-version" data-app-version>hive {packageMetadata.version}</p>
-      </div>
+          {/key}
+        </div>
+      </main>
     </div>
   </div>
 {/if}
@@ -384,52 +175,164 @@
     inset: 0;
     display: grid;
     place-items: center;
-    padding: 12px;
+    padding: 24px;
   }
 
   .settings-backdrop {
     position: absolute;
     inset: 0;
     border: 0;
-    background: rgb(0 0 0 / 48%);
+    background: rgb(0 0 0 / 52%);
     cursor: default;
   }
 
   .settings-window {
     position: relative;
-    display: flex;
-    width: min(420px, 100%);
-    max-height: min(520px, 100%);
-    flex-direction: column;
+    display: grid;
+    width: min(960px, 100%);
+    height: min(700px, 100%);
+    grid-template-columns: 216px minmax(0, 1fr);
     overflow: hidden;
-    border: 1px solid #4b4b4b;
-    border-radius: 5px;
+    border: 1px solid var(--settings-line-strong);
+    border-radius: 14px;
     background: var(--bg-panel);
-    box-shadow: 0 12px 36px rgb(0 0 0 / 58%);
+    box-shadow: 0 24px 70px rgb(0 0 0 / 55%), 0 2px 8px rgb(0 0 0 / 30%);
     color: var(--text);
   }
 
-  .settings-heading {
+  .settings-sidebar {
     display: flex;
-    min-height: 38px;
-    align-items: center;
-    justify-content: space-between;
-    padding: 4px 7px 4px 12px;
-    border-bottom: 1px solid #3b3b3b;
+    min-height: 0;
+    flex-direction: column;
+    gap: 14px;
+    padding: 20px 12px 14px;
+    border-right: 1px solid var(--settings-line);
+    background: color-mix(in srgb, var(--bg-panel) 82%, #000);
   }
 
   h1 {
     margin: 0;
-    font-size: 13px;
+    padding: 0 10px;
+    font-size: 15px;
     font-weight: 600;
   }
 
-  .close-button {
-    width: 26px;
-    height: 26px;
+  .settings-nav {
+    display: grid;
+    gap: 2px;
+  }
+
+  .settings-nav-item {
+    display: flex;
+    height: 36px;
+    align-items: center;
+    gap: 11px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-dim);
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--motion-quick) ease-out, color var(--motion-quick) ease-out;
+  }
+
+  .settings-nav-item svg {
+    width: 17px;
+    height: 17px;
+    flex: 0 0 auto;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.35;
+  }
+
+  .settings-nav-item:hover {
+    background: var(--settings-fill);
+    color: var(--text);
+  }
+
+  /* Mixed with the text colour, so a pale accent (Light, Sky Blue) still reads on a light sidebar. */
+  .settings-nav-item[aria-current="page"] {
+    background: color-mix(in srgb, var(--accent) 18%, var(--settings-fill-hover));
+    color: var(--text);
+  }
+
+  .settings-nav-item[aria-current="page"] svg {
+    color: color-mix(in srgb, var(--accent) 72%, var(--text));
+  }
+
+  .settings-nav-item:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+
+  .settings-sidebar-footer {
+    display: grid;
+    gap: 3px;
+    margin-top: auto;
+    padding: 0 10px;
+  }
+
+  .sidebar-profile {
+    overflow: hidden;
+    color: var(--text-dim);
+    font-size: 11.5px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sidebar-profile::before {
+    content: "Profile: ";
+    opacity: 0.7;
+  }
+
+  .app-version {
+    color: var(--text-dim);
+    font-family: var(--mono-font);
+    font-size: 11px;
+    opacity: 0.75;
+    user-select: text;
+  }
+
+  .settings-main {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .settings-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 26px 24px 18px 36px;
+    border-bottom: 1px solid var(--settings-line);
+  }
+
+  .settings-content {
+    min-height: 0;
+    flex: 1;
+    overflow: auto;
+    padding: 24px 36px 40px;
+    scrollbar-color: color-mix(in srgb, var(--text) 22%, transparent) transparent;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+  }
+
+  .settings-close {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 auto;
+    place-items: center;
     padding: 0;
     border: 1px solid transparent;
-    border-radius: 3px;
+    border-radius: 8px;
     background: transparent;
     color: var(--text-dim);
     font: inherit;
@@ -438,285 +341,19 @@
     cursor: pointer;
   }
 
-  .close-button:hover,
-  .close-button:focus-visible {
-    border-color: #555;
-    background: #333;
+  .settings-close:hover,
+  .settings-close:focus-visible {
+    border-color: var(--settings-line-strong);
+    background: var(--bg-panel-raised);
     color: var(--text);
   }
 
-  .settings-content {
-    min-height: 0;
-    overflow: auto;
-    padding: 4px 12px 12px;
-  }
-
-  .settings-section {
-    padding: 9px 0 3px;
-  }
-
-  .settings-section + .settings-section {
-    margin-top: 6px;
-    border-top: 1px solid #3b3b3b;
-  }
-
-  h2 {
-    margin: 0 0 7px;
-    color: var(--text-dim);
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-
-  .setting-row {
-    display: flex;
-    min-height: 38px;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 4px 2px;
-    font-size: 11px;
-  }
-
-  .setting-copy {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-    gap: 3px;
-  }
-
-  .setting-description {
-    color: var(--text-dim);
-    font-size: 9px;
-    line-height: 1.35;
-  }
-
-  /* On/off settings are switches: the knob slides over and the track fills with the accent. */
-  .settings-window :global(input[type="checkbox"]) {
-    width: 28px;
-    height: 16px;
-    flex: 0 0 auto;
-    margin: 0;
-    appearance: none;
-    border: 1px solid #555;
-    border-radius: 999px;
-    background:
-      radial-gradient(circle at center, #d4d4d4 0 5px, transparent 5.5px) 0 50% / 14px 14px no-repeat,
-      #1b1b1b;
-    cursor: pointer;
-    transition:
-      background-position 240ms var(--ease-spring),
-      background-color var(--motion-quick) ease-out,
-      border-color var(--motion-quick) ease-out;
-  }
-
-  .settings-window :global(input[type="checkbox"]:hover) {
-    border-color: #6a6a6a;
-  }
-
-  .settings-window :global(input[type="checkbox"]:checked) {
-    border-color: var(--accent);
-    background:
-      radial-gradient(circle at center, #f4f4f4 0 5px, transparent 5.5px) 100% 50% / 14px 14px no-repeat,
-      var(--accent);
-  }
-
-  .settings-window :global(input[type="checkbox"]:active) {
-    background-size: 16px 14px, auto;
-  }
-
-  .settings-window :global(input[type="checkbox"]:disabled) {
-    opacity: 0.45;
-    cursor: default;
-  }
-
-  .history-limit {
-    width: 64px;
-    height: 24px;
-    flex: 0 0 auto;
-    padding: 2px 5px;
-    border: 1px solid #484848;
-    border-radius: 3px;
-    background: #181818;
-    color: var(--text);
-    font: inherit;
-    font-family: var(--mono-font);
-    font-variant-numeric: tabular-nums;
-    text-align: right;
-  }
-
-  .history-limit:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
-  }
-
-  .storage-row {
-    display: flex;
-    min-height: 25px;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 3px 2px;
-    font-size: 10px;
-  }
-
-  .storage-value {
-    color: var(--text-dim);
-    font-family: var(--mono-font);
-    font-size: 9px;
-    text-align: right;
-  }
-
-  .mcp-bridge-status {
-    margin: 0 2px 5px;
-    color: var(--text-dim);
-    font-family: var(--mono-font);
-    font-size: 9px;
-  }
-
-  .video-threshold-setting {
-    display: grid;
-    gap: 5px;
-    margin: 7px 2px 9px;
-    color: var(--text-dim);
-    font-size: 10px;
-  }
-
-  .video-threshold-controls {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .video-threshold-input {
-    width: 76px;
-  }
-
-  .video-threshold-unlimited {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    margin-left: 6px;
-  }
-
-  .video-threshold-unlimited input {
-    accent-color: var(--accent);
-  }
-
-  .video-threshold-hint {
-    margin: 0;
-    color: var(--text-dim);
-    font-size: 9px;
-  }
-
-  .storage-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-    margin-top: 8px;
-  }
-
-  .storage-actions button {
-    min-height: 25px;
-    padding: 3px 7px;
-    border: 1px solid #484848;
-    border-radius: 3px;
-    background: #252525;
-    color: var(--text);
-    font: inherit;
-    font-size: 10px;
-    cursor: pointer;
-  }
-
-  .storage-actions button:hover:not(:disabled),
-  .storage-actions button:focus-visible {
-    border-color: #806b2d;
-    background: #343019;
-  }
-
-  .storage-actions button:disabled {
-    color: #777;
-    cursor: default;
-  }
-
-  .storage-trash-confirm {
-    margin-top: 7px;
-    padding: 8px;
-    border: 1px solid #6c5144;
-    border-radius: 3px;
-    background: #302723;
-    color: var(--text);
-    font-size: 10px;
-    line-height: 1.4;
-  }
-
-  .storage-trash-confirm p {
-    margin: 0 0 6px;
-  }
-
-  .storage-trash-confirm-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 5px;
-  }
-
-  .storage-trash-confirm-actions button {
-    min-height: 24px;
-    padding: 3px 7px;
-    border: 1px solid #484848;
-    border-radius: 3px;
-    background: #252525;
-    color: var(--text);
-    font: inherit;
-    font-size: 10px;
-    cursor: pointer;
-  }
-
-  .storage-trash-confirm-actions button:last-child {
-    border-color: #985b55;
-    color: #e2a19a;
-  }
-
-  .interval-control {
-    display: flex;
-    min-height: 25px;
-    align-items: center;
-    gap: 6px;
-    margin-right: auto;
-    color: var(--text-dim);
-    font-size: 10px;
-  }
-
-  .interval-select {
-    display: block;
-    width: 75px;
-    flex: 0 0 75px;
-  }
-
-  .gif-playback-select {
-    display: block;
-    width: 126px;
-    flex: 0 0 126px;
-  }
-
-  .storage-error {
-    margin: 5px 2px;
-    color: #ffb0a6;
-    font-size: 9px;
-    overflow-wrap: anywhere;
-  }
-
-  .transfer-actions {
-    padding-top: 7px;
-    border-top: 1px solid #3b3b3b;
-  }
-
-  .app-version {
-    margin: 4px 0 2px;
-    color: var(--text-dim);
-    font-size: 11px;
-    text-align: center;
-    user-select: text;
+  @media (max-width: 720px) {
+    .settings-window { grid-template-columns: 60px minmax(0, 1fr); }
+    .settings-sidebar { padding-inline: 8px; }
+    h1, .settings-nav-item span, .settings-sidebar-footer { display: none; }
+    .settings-nav-item { justify-content: center; padding: 0; }
+    .settings-content { padding: 20px 20px 32px; }
+    .settings-page-header { padding: 22px 16px 14px 20px; }
   }
 </style>

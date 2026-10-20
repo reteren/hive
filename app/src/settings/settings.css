@@ -1,0 +1,394 @@
+/* One look for every settings page: groups of rows, one button style, one switch, one input.
+   Page components only lay out their content; they bring no button or row styles of their own. */
+
+.settings-window {
+  --settings-line: color-mix(in srgb, var(--text) 9%, transparent);
+  --settings-line-strong: color-mix(in srgb, var(--text) 17%, transparent);
+  --settings-fill: color-mix(in srgb, var(--text) 5%, transparent);
+  --settings-fill-hover: color-mix(in srgb, var(--text) 10%, transparent);
+  --settings-danger: color-mix(in srgb, #ff6b5e 82%, var(--text));
+  --settings-radius: 10px;
+  --settings-control-height: 30px;
+}
+
+/* ---------- Page ---------- */
+
+.settings-page {
+  display: grid;
+  gap: 26px;
+  animation: hive-fade-in 160ms ease-out;
+}
+
+.settings-page-header h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.settings-page-header p {
+  margin: 4px 0 0;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.settings-block {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-block-header {
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px;
+}
+
+.settings-block-title {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* ---------- Groups and rows ---------- */
+
+.settings-group {
+  overflow: hidden;
+  border: 1px solid var(--settings-line);
+  border-radius: var(--settings-radius);
+  background: var(--bg-panel-raised);
+}
+
+.settings-group > * + * {
+  border-top: 1px solid var(--settings-line);
+}
+
+.setting-row {
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 10px 16px;
+}
+
+label.setting-row {
+  cursor: pointer;
+}
+
+.setting-row.is-compact {
+  min-height: 44px;
+}
+
+.setting-row.is-nested {
+  padding-left: 32px;
+}
+
+.setting-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.setting-title {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.setting-description {
+  color: var(--text-dim);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.setting-control {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.setting-unit {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.setting-hint {
+  margin: 0;
+  padding: 0 2px;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.settings-error {
+  margin: 0;
+  color: var(--settings-danger);
+  font-size: 11.5px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.settings-group > .settings-error {
+  padding: 10px 16px;
+}
+
+/* An inline question or name field that opens inside a group, under the row that asked. */
+.settings-inline-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 12px 16px;
+  background: var(--settings-fill);
+  font-size: 12px;
+}
+
+.settings-inline-panel.is-danger {
+  background: color-mix(in srgb, #ff6b5e 9%, transparent);
+}
+
+.settings-inline-panel > label,
+.settings-inline-panel > p {
+  margin: 0;
+  color: var(--text);
+}
+
+.settings-inline-panel .settings-input.is-text {
+  flex: 1 1 200px;
+}
+
+/* ---------- Controls ---------- */
+
+.settings-button {
+  display: inline-flex;
+  height: var(--settings-control-height);
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 13px;
+  border: 1px solid var(--settings-line-strong);
+  border-radius: 7px;
+  background: var(--settings-fill);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.settings-button:hover:not(:disabled) {
+  background: var(--settings-fill-hover);
+}
+
+.settings-button.is-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.settings-button.is-primary:hover:not(:disabled) {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
+}
+
+.settings-button.is-danger {
+  color: var(--settings-danger);
+}
+
+.settings-button.is-danger:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--settings-danger) 55%, transparent);
+  background: color-mix(in srgb, var(--settings-danger) 12%, transparent);
+}
+
+.settings-button.is-danger.is-solid {
+  border-color: transparent;
+  background: color-mix(in srgb, #e5484d 88%, #000);
+  color: #fff;
+}
+
+.settings-button.is-danger.is-solid:hover:not(:disabled) {
+  background: #e5484d;
+}
+
+.settings-button.is-mono {
+  min-width: 132px;
+  font-family: var(--mono-font);
+  font-size: 11.5px;
+}
+
+.settings-button:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.settings-icon-button {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.settings-icon-button:hover:not(:disabled) {
+  background: var(--settings-fill-hover);
+  color: var(--text);
+}
+
+.settings-icon-button.is-danger:hover:not(:disabled) {
+  color: var(--settings-danger);
+}
+
+.settings-icon-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.settings-window :where(.settings-button, .settings-icon-button) {
+  transition:
+    scale 260ms var(--ease-spring),
+    background-color var(--motion-quick) ease-out,
+    border-color var(--motion-quick) ease-out,
+    color var(--motion-quick) ease-out;
+}
+
+.settings-window :where(.settings-button, .settings-icon-button):active:not(:disabled) {
+  scale: 0.96;
+  transition-duration: var(--motion-press);
+}
+
+html[data-reduce-motion="true"] .settings-window :where(.settings-button, .settings-icon-button):active:not(:disabled) {
+  scale: none;
+}
+
+.settings-input {
+  width: 84px;
+  height: var(--settings-control-height);
+  flex: 0 0 auto;
+  padding: 0 10px;
+  border: 1px solid var(--settings-line-strong);
+  border-radius: 7px;
+  background: var(--bg-panel);
+  color: var(--text);
+  font: inherit;
+  font-family: var(--mono-font);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.settings-input.is-text {
+  width: auto;
+  min-width: 0;
+  font-family: inherit;
+  text-align: left;
+}
+
+.settings-input:disabled {
+  opacity: 0.45;
+}
+
+.settings-window :where(.settings-button, .settings-icon-button, .settings-input, input[type="checkbox"]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The shared dropdown, sized like the other controls. */
+.settings-select {
+  display: block;
+  width: 170px;
+  flex: 0 0 auto;
+}
+
+.settings-window .settings-select .app-select-trigger {
+  height: var(--settings-control-height);
+  padding: 0 10px;
+  border-color: var(--settings-line-strong);
+  border-radius: 7px;
+  font-size: 12px;
+}
+
+/* On/off settings are switches: the knob slides over and the track fills with the accent. */
+.settings-window input[type="checkbox"] {
+  width: 36px;
+  height: 20px;
+  flex: 0 0 auto;
+  margin: 0;
+  appearance: none;
+  border: 1px solid var(--settings-line-strong);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at center, var(--text-dim) 0 6px, transparent 6.5px) 2px 50% / 14px 14px no-repeat,
+    var(--bg-panel);
+  cursor: pointer;
+  transition:
+    background-position 240ms var(--ease-spring),
+    background-color var(--motion-quick) ease-out,
+    border-color var(--motion-quick) ease-out;
+}
+
+.settings-window input[type="checkbox"]:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--text) 30%, transparent);
+}
+
+.settings-window input[type="checkbox"]:checked {
+  border-color: var(--accent);
+  background:
+    radial-gradient(circle at center, var(--on-accent) 0 6px, transparent 6.5px) calc(100% - 2px) 50% / 14px 14px no-repeat,
+    var(--accent);
+}
+
+.settings-window input[type="checkbox"]:active:not(:disabled) {
+  background-size: 17px 14px, auto;
+}
+
+.settings-window input[type="checkbox"]:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* A small status capsule: a dot and a word. */
+.settings-pill {
+  display: inline-flex;
+  height: 24px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid var(--settings-line);
+  border-radius: 999px;
+  background: var(--settings-fill);
+  color: var(--text-dim);
+  font-family: var(--mono-font);
+  font-size: 11px;
+}
+
+.settings-pill::before {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--text) 30%, transparent);
+  content: "";
+}
+
+.settings-pill.is-on {
+  color: var(--text);
+}
+
+.settings-pill.is-on::before {
+  background: #3fcf7a;
+  box-shadow: 0 0 0 3px rgb(63 207 122 / 18%);
+}

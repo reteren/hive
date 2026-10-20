@@ -21,7 +21,14 @@ function loadBootstrapSettings(): ThemeSettings {
   }
 }
 
-const state = $state.raw({ settings: loadBootstrapSettings() });
+// A $state.raw object literal is not reactive to its own property writes: `state.settings = …` changed the
+// theme but left the settings gallery's "Active" mark on the old preset until it remounted.
+// A raw class field is a signal of its own, so every replacement of `settings` is seen.
+class AppearanceState {
+  settings = $state.raw<ThemeSettings>(loadBootstrapSettings());
+}
+
+const state = new AppearanceState();
 export const appearance = state;
 
 export function getThemeSettingsSnapshot(): ThemeSettings {
