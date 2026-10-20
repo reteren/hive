@@ -67,7 +67,7 @@
     class="tool-indicator"
     class:visible={indicator.visible}
     class:placed={indicator.placed}
-    style:translate={t("0 {y}px", { y: indicator.y })}
+    style:translate={`0 ${indicator.y}px`}
     style:height={`${indicator.height}px`}
     aria-hidden="true"
   ></span>

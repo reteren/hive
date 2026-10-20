@@ -44,7 +44,7 @@
   $effect(() => {
     const noteId = sourceNoteId;
     if (!playing || !noteId) return;
-    return pinNote(noteId, t("audio playback"));
+    return pinNote(noteId, "audio playback");
   });
 
   async function togglePlayback(): Promise<void> {

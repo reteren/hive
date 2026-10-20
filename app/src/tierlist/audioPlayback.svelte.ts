@@ -45,7 +45,7 @@ export async function toggleTierlistAudio(key: string, url: string, noteId?: str
     if (tierlistAudioPlayback.audio === audio) {
       tierlistAudioPlayback.playing = true;
       releasePinnedNote?.();
-      if (noteId) releasePinnedNote = pinNote(noteId, t("tierlist audio playback"));
+      if (noteId) releasePinnedNote = pinNote(noteId, "tierlist audio playback");
     }
   };
   audio.onpause = () => {

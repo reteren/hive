@@ -59,7 +59,7 @@
 
   $effect(() => {
     if (!playing) return;
-    return pinNote(note.id, t("video playback"));
+    return pinNote(note.id, "video playback");
   });
 
   onMount(() => {

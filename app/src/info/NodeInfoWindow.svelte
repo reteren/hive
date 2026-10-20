@@ -217,7 +217,7 @@
     class:placed={position !== null}
     style:left={position ? `${position.x}px` : undefined}
     style:top={position ? `${position.y}px` : undefined}
-    style:max-height={position ? t("min(620px, calc(100vh - {y}px))", { y: Math.round(position.y) + 8 }) : undefined}
+    style:max-height={position ? `min(620px, calc(100vh - ${Math.round(position.y) + 8}px))` : undefined}
     data-selection-ignore
     data-node-info
     role="dialog"

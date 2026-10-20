@@ -131,7 +131,7 @@
   style:transform-origin="0 0"
   style:position={floating ? undefined : "absolute"}
   style:left={floating ? undefined : "0px"}
-  style:top={floating ? undefined : t("calc(100% + 4px)")}
+  style:top={floating ? undefined : "calc(100% + 4px)"}
   use:dismissBoardPopup={{ close: onClose, ignoreSelector: "[data-module-trigger]", escape: false }}
 >
   <div class="module-picker-heading">

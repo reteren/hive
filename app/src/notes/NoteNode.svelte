@@ -188,7 +188,7 @@ import { takeFreshNote } from "./freshNotes";
   style:--text={paint["--text"]}
   style:--text-dim={paint["--text-dim"]}
   style:--note-header-height={`${NOTE_HEADER_HEIGHT_UNITS * PX_PER_UNIT}px`}
-  style:transform={t("translate({x}px, {y}px){value}", { x: note.x * PX_PER_UNIT, y: note.y * PX_PER_UNIT, value: scale === 1 ? "" : ` scale(${scale})` })}
+  style:transform={`translate(${note.x * PX_PER_UNIT}px, ${note.y * PX_PER_UNIT}px)${scale === 1 ? "" : ` scale(${scale})`}`}
   style:left="0px"
   style:top="0px"
   style:width={`${widthWithListStatistics(note) * PX_PER_UNIT}px`}

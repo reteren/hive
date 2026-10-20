@@ -49,17 +49,17 @@
     /** Why the overview may not start right now, or null when the board is idle. */
     function idleBlocker(): string | null {
       // Draw mode keeps Alt for the brush (Alt + wheel = opacity); the overview is not available there.
-      if (tool.active === "draw") return t("draw mode");
-      if (editing.noteId !== null) return t("editing a note");
-      if (beaconEditor.noteId !== null) return t("beacon editor");
-      if (creationMenu.open) return t("create menu open");
-      if (linkContext.menu !== null) return t("link menu open");
+      if (tool.active === "draw") return "draw mode";
+      if (editing.noteId !== null) return "editing a note";
+      if (beaconEditor.noteId !== null) return "beacon editor";
+      if (creationMenu.open) return "create menu open";
+      if (linkContext.menu !== null) return "link menu open";
       if (selection.marquee !== null) return "marquee";
-      if (selection.contextPick !== null) return t("context pick");
+      if (selection.contextPick !== null) return "context pick";
       if (selection.grabActive) return "grab";
-      if (zoneMode.active === "move") return t("zone move");
-      if (zoneMode.resizeZoneId !== null) return t("zone resize");
-      if (isTextEditingTarget(document.activeElement)) return t("text field focused");
+      if (zoneMode.active === "move") return "zone move";
+      if (zoneMode.resizeZoneId !== null) return "zone resize";
+      if (isTextEditingTarget(document.activeElement)) return "text field focused";
       // Only real pop-up menus block. (The Mark as tag editor used to be listed here: it is part
       // of every Mark as node and open by default, so one Mark as on the board disabled Alt forever.)
       const open = document.querySelector(
@@ -78,7 +78,7 @@
 
     /** Lone Alt reported by the OS keyboard hook (the webview may never see a lone Alt). */
     function activateFromHook(): void {
-      const blocker = pressedPointers.size !== 0 ? t("mouse button held") : idleBlocker();
+      const blocker = pressedPointers.size !== 0 ? "mouse button held" : idleBlocker();
       if (blocker) {
         diagnose(`hook Alt down → blocked: ${blocker}`);
         return;

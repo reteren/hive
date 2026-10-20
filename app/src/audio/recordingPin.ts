@@ -28,7 +28,7 @@ export function createRecordingPinController(
       if (pinnedNoteId === noteId) return;
       release();
       pinnedNoteId = noteId;
-      releasePin = pinNote(noteId, t("dictaphone recording"));
+      releasePin = pinNote(noteId, "dictaphone recording");
     },
     release,
   };

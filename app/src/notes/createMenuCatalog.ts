@@ -26,37 +26,37 @@ export interface CreateItem {
 
 export const CREATE_ITEMS: Record<CreateItemId, CreateItem> = {
   note: { id: "note", get label() { return t("Note"); }, keywords: "text" },
-  task: { id: "task", get label() { return t("Task"); }, get keywords() { return t("todo check"); } },
-  list: { id: "list", get label() { return t("List"); }, get keywords() { return t("checklist items"); } },
+  task: { id: "task", get label() { return t("Task"); }, keywords: "todo check" },
+  list: { id: "list", get label() { return t("List"); }, keywords: "checklist items" },
   inbox: { id: "inbox", get label() { return t("Inbox"); } },
   goal: { id: "goal", get label() { return t("Goal"); }, keywords: "target" },
-  progress: { id: "progress", get label() { return t("Progress"); }, get keywords() { return t("bar percent"); } },
+  progress: { id: "progress", get label() { return t("Progress"); }, keywords: "bar percent" },
   pro: { id: "pro", get label() { return t("Plus"); }, keywords: "pro +" },
   con: { id: "con", get label() { return t("Minus"); }, keywords: "con -" },
   importance: { id: "importance", get label() { return t("Importance"); }, keywords: "priority" },
   purpose: { id: "purpose", get label() { return t("Purpose"); } },
   mood: { id: "mood", get label() { return t("Mood"); }, keywords: "emotion" },
-  markas: { id: "markas", get label() { return t("Mark as"); }, get keywords() { return t("tag label"); } },
-  time: { id: "time", get label() { return t("Time"); }, get keywords() { return t("timer clock stopwatch reminder"); } },
-  calendar: { id: "calendar", get label() { return t("Calendar"); }, get keywords() { return t("date day"); } },
-  message: { id: "message", get label() { return t("Message"); }, get keywords() { return t("reminder notify"); } },
-  image: { id: "image", get label() { return t("Image…"); }, get keywords() { return t("picture photo gif"); } },
+  markas: { id: "markas", get label() { return t("Mark as"); }, keywords: "tag label" },
+  time: { id: "time", get label() { return t("Time"); }, keywords: "timer clock stopwatch reminder" },
+  calendar: { id: "calendar", get label() { return t("Calendar"); }, keywords: "date day" },
+  message: { id: "message", get label() { return t("Message"); }, keywords: "reminder notify" },
+  image: { id: "image", get label() { return t("Image…"); }, keywords: "picture photo gif" },
   pdf: { id: "pdf", get label() { return t("PDF…"); }, keywords: "document" },
-  format: { id: "format", get label() { return t("File…"); }, get keywords() { return t("text code markdown document"); } },
+  format: { id: "format", get label() { return t("File…"); }, keywords: "text code markdown document" },
   audio: { id: "audio", get label() { return t("Audio file…"); }, keywords: "sound music mp3" },
-  "record-audio": { id: "record-audio", get label() { return t("Record audio"); }, get keywords() { return t("dictaphone voice microphone"); } },
+  "record-audio": { id: "record-audio", get label() { return t("Record audio"); }, keywords: "dictaphone voice microphone" },
   video: { id: "video", get label() { return t("Video file…"); }, keywords: "mp4 movie" },
-  youtube: { id: "youtube", get label() { return t("YouTube link…"); }, get keywords() { return t("video url"); } },
-  calculator: { id: "calculator", get label() { return t("Calculator"); }, get keywords() { return t("math sum"); } },
-  tierlist: { id: "tierlist", get label() { return t("Tierlist"); }, get keywords() { return t("rank tier"); } },
-  stats: { id: "stats", get label() { return t("Statistics"); }, get keywords() { return t("stats chart"); } },
-  random: { id: "random", get label() { return t("Random Choice"); }, get keywords() { return t("dice pick"); } },
-  glossary: { id: "glossary", get label() { return t("Dictionary"); }, get keywords() { return t("glossary words terms"); } },
-  source: { id: "source", get label() { return t("Source"); }, get keywords() { return t("link reference"); } },
+  youtube: { id: "youtube", get label() { return t("YouTube link…"); }, keywords: "video url" },
+  calculator: { id: "calculator", get label() { return t("Calculator"); }, keywords: "math sum" },
+  tierlist: { id: "tierlist", get label() { return t("Tierlist"); }, keywords: "rank tier" },
+  stats: { id: "stats", get label() { return t("Statistics"); }, keywords: "stats chart" },
+  random: { id: "random", get label() { return t("Random Choice"); }, keywords: "dice pick" },
+  glossary: { id: "glossary", get label() { return t("Dictionary"); }, keywords: "glossary words terms" },
+  source: { id: "source", get label() { return t("Source"); }, keywords: "link reference" },
   beacon: { id: "beacon", get label() { return t("Beacon"); }, keywords: "marker" },
-  map: { id: "map", get label() { return t("Map"); }, get keywords() { return t("minimap overview"); } },
+  map: { id: "map", get label() { return t("Map"); }, keywords: "minimap overview" },
   archive: { id: "archive", get label() { return t("Archive"); } },
-  trash: { id: "trash", get label() { return t("Trash"); }, get keywords() { return t("bin deleted"); } },
+  trash: { id: "trash", get label() { return t("Trash"); }, keywords: "bin deleted" },
 };
 
 export type CreateCategoryId = "tasks" | "marks" | "time" | "media" | "tools" | "board";
@@ -98,7 +98,8 @@ export function searchCreateItems(query: string): CreateItemId[] {
     if (label.startsWith(needle)) score = 0;
     else if (words.some((word) => word.startsWith(needle))) score = 1;
     else if (label.includes(needle) || id.includes(needle)) score = 2;
-    else if (item.keywords?.split(/\s+/).some((word) => word.startsWith(needle))) score = 3;
+    // English keywords keep working in every language; the translated ones are searched too.
+    else if (item.keywords && `${item.keywords} ${t(item.keywords)}`.toLowerCase().split(/\s+/).some((word) => word.startsWith(needle))) score = 3;
     if (score >= 0) scored.push({ id, score, order });
   });
   return scored.sort((a, b) => a.score - b.score || a.order - b.order).map((entry) => entry.id);

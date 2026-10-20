@@ -100,12 +100,36 @@ fn request_tray_quit(app: &tauri::AppHandle) {
     });
 }
 
+/// Tray menu items, kept so the interface can relabel them in its language.
+struct TrayItems {
+    open: MenuItem<tauri::Wry>,
+    quick_input: MenuItem<tauri::Wry>,
+    quit: MenuItem<tauri::Wry>,
+}
+
+#[tauri::command]
+fn tray_set_labels(
+    items: tauri::State<'_, TrayItems>,
+    open: String,
+    quick_input: String,
+    quit: String,
+) -> Result<(), String> {
+    items.open.set_text(open).map_err(|error| error.to_string())?;
+    items.quick_input.set_text(quick_input).map_err(|error| error.to_string())?;
+    items.quit.set_text(quit).map_err(|error| error.to_string())
+}
+
 fn build_tray(app: &mut tauri::App) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open-hive", "Open hive", true, None::<&str>)?;
     let quick_input = MenuItem::with_id(app, "quick-input", "Quick input", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &quick_input, &separator, &quit])?;
+    app.manage(TrayItems {
+        open: open.clone(),
+        quick_input: quick_input.clone(),
+        quit: quit.clone(),
+    });
 
     TrayIconBuilder::new()
         .icon(app.default_window_icon().expect("bundled app icon").clone())
@@ -224,6 +248,7 @@ pub fn run() {
             attachments::attachment_directory,
             attachments::attachment_write_text,
             attachments::attachment_export,
+            tray_set_labels,
             image_clipboard::image_copy_to_clipboard,
             set_quit_requested,
             app_quit,

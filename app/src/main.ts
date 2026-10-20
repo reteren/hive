@@ -14,6 +14,7 @@ import "./scope/init";
 import { initializeViewSettingsPersistence } from "./settings/persistence.svelte";
 import { applyTheme } from "./theme/appearance.svelte";
 import { bootLanguage } from "./i18n/i18n.svelte";
+import { syncTrayLabels } from "./i18n/trayLabels.svelte";
 import { preferences } from "./settings/preferences.svelte";
 import { initializeProjectPersistence } from "./project/persistence.svelte";
 import { initializeMcpBridge } from "./mcp/bridge";
@@ -38,6 +39,7 @@ import "./drawing/init";
 
 applyTheme();
 await bootLanguage();
+syncTrayLabels();
 await initializeViewSettingsPersistence();
 await initializeProjectPersistence();
 await initializeMcpBridge(preferences.allowAiToolsMcp);
