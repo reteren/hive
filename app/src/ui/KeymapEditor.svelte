@@ -162,7 +162,7 @@
                   type="button"
                   class="binding-button"
                   class:capturing={capturing?.commandId === command.id && capturing.bindingIndex === index}
-                  aria-label={t("Change {label} binding {key}", { label: command.label, key: formatKey(key) })}
+                  aria-label={t("Change {label} binding {key}", { label: t(command.label), key: formatKey(key) })}
                   onclick={() => startCapture(command.id, index)}
                 >{capturing?.commandId === command.id && capturing.bindingIndex === index ? t("Press key…") : formatKey(key)}</button>
               {/each}
@@ -170,7 +170,7 @@
               <button
                 type="button"
                 class="add-binding"
-                aria-label={t("Add binding to {label}", { label: command.label })}
+                aria-label={t("Add binding to {label}", { label: t(command.label) })}
                 title={t("Add binding")}
                 onclick={() => startCapture(command.id, null)}
               >+</button>
