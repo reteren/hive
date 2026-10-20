@@ -507,6 +507,10 @@ pub fn initialize_project(
         }
     }
 
+    // Test runs point hive at a scratch project; if that fails they must stop, not open the real one.
+    if std::env::var_os("HIVE_NO_DEFAULT_PROJECT").is_some() {
+        return Err(startup_warning.unwrap_or_else(|| "No last project to open.".to_string()));
+    }
     let documents = app
         .path()
         .document_dir()
