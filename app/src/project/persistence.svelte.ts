@@ -65,6 +65,8 @@ import {
   parseProjectIndexWithWarnings,
   projectNoteFiles,
   serializeProjectIndex,
+  persistedLink,
+  smoothEndpoints,
   serializeProjectNoteEntry,
   type CachedIndexedNote,
   type IndexedNote,
@@ -604,7 +606,8 @@ function makeDeltaSnapshot(): DeltaSnapshot {
   const archiveCapture = captureJournal(archiveJournal, () => archive.entries.map((entry) => entry.id), () => baseline.archive.map((entry) => entry.id));
   const taskLogCapture = captureJournal(taskLogJournal, () => taskLog.entries.map(taskLogRecordId), () => baseline.taskLog.map(taskLogRecordId));
   const calculatorCapture = captureJournal(calculatorJournal, () => Object.keys(calculators.byKey), () => Object.keys(baseline.calculators ?? {}));
-  const linksDelta = materializeCollectionDelta(linkCapture, (id) => links.byId[id] ? cloneJson(links.byId[id]) : undefined);
+  const smoothEnd = smoothEndpoints(Object.values(board.notes), !beaconState.meDeleted);
+  const linksDelta = materializeCollectionDelta(linkCapture, (id) => links.byId[id] ? cloneJson(persistedLink(links.byId[id], smoothEnd)) : undefined);
   const zonesDelta = materializeCollectionDelta(zoneCapture, (id) => {
     const zone = zones.byId[id];
     return zone ? copyZone(zone) : undefined;

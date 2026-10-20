@@ -253,6 +253,7 @@ export function serializeProjectIndex(
   validateUniqueNotes(indexedNotes);
   const serializedTrash = (nextTrash ?? previous?.trash ?? []).map(copyTrashEntry);
   const meDeleted = nextMeDeleted ?? previous?.meDeleted ?? false;
+  const smoothEnd = smoothEndpoints(notes, !meDeleted);
   const calculatorData = Object.assign(
     Object.create(null) as Record<string, CalculatorData>,
     ...serializedTrash.map((entry) => entry.calculators ?? {}),
@@ -264,7 +265,7 @@ export function serializeProjectIndex(
     createdAt: nextProjectMetadata?.createdAt ?? previous?.createdAt ?? fallbackProjectCreatedAt(notes),
     projectCounters: { ...(nextProjectMetadata?.projectCounters ?? previous?.projectCounters ?? { appMs: 0, activeMs: 0 }) },
     notes: indexedNotes,
-    links: [...(nextLinks ?? previous?.links ?? [])],
+    links: (nextLinks ?? previous?.links ?? []).map((link) => persistedLink(link, smoothEnd)),
     taskLog: [...(nextTaskLog ?? previous?.taskLog ?? [])].map((entry) => ({ ...entry })),
     zones: serializedZones,
     beaconMarks: sanitizeBeaconMarks(nextBeaconMarks ?? previous?.beaconMarks ?? [], indexedNotes, !meDeleted).values,
@@ -279,6 +280,33 @@ export function serializeProjectIndex(
 }
 
 /** Serialize one note index record so persistence can reuse unchanged records by revision. */
+/** Whether an object's link ends follow Smooth lines: beacons, the Me beacon, nodes with Smooth lines. */
+export function smoothEndpoints(
+  notes: readonly Pick<Note, "id" | "type" | "smoothLines">[],
+  mePresent: boolean,
+): (id: string) => boolean {
+  const smooth = new Set(notes.filter((note) => note.type === "beacon" || note.smoothLines === true).map((note) => note.id));
+  return (id) => id === ME_OBJECT_ID ? mePresent : smooth.has(id);
+}
+
+/**
+ * A link as it is saved. Anchors at a smooth end are derived from the measured note geometry and
+ * recomputed whenever the board opens, so they are left out: measured heights differ slightly
+ * between machines (fonts, DPI), and two people sharing a project over Git would otherwise rewrite
+ * the same link files with different numbers on every open.
+ */
+export function persistedLink(link: Link, smoothEnd: (id: string) => boolean): Link {
+  const dropFrom = Boolean(link.fromAnchor) && smoothEnd(link.from);
+  const dropTo = Boolean(link.toAnchor) && smoothEnd(link.to);
+  if (!dropFrom && !dropTo) return link;
+  const { fromAnchor, toAnchor, ...rest } = link;
+  return {
+    ...rest,
+    ...(fromAnchor && !dropFrom ? { fromAnchor } : {}),
+    ...(toAnchor && !dropTo ? { toAnchor } : {}),
+  };
+}
+
 export function serializeProjectNoteEntry(
   note: Note,
   previousNote: IndexedNote | undefined,

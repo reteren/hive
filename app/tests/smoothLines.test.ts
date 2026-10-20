@@ -6,6 +6,7 @@ import { removeLink } from "../src/model/links.svelte";
 import { notifySelectionInteraction } from "../src/selection/selection.svelte";
 import { reflowSmoothLineAnchorsRaw, smoothLinesForLinks, smoothLinesForObjects, toggleSmoothLinesForNote } from "../src/links/smoothLines";
 import { anchorAlongRay, pointAtAnchor, resolveLinkEndpoints } from "../src/links/anchors";
+import { persistedLink, smoothEndpoints } from "../src/project/index";
 import { noteMenuItems } from "../src/notes/noteMenu";
 import { ME_OBJECT_ID, type Link } from "../src/model/link";
 import type { Note } from "../src/model/note";
@@ -358,20 +359,35 @@ describe("Smooth lines", () => {
     }
   });
 
-  it("keeps saved anchors while an auto-height endpoint has never been measured (culled since open)", () => {
+  it("places the smooth end from an estimated height but leaves the saved end alone until it is measured", () => {
     const source = { ...note("smooth-src", 0, 0, 20, 20), smoothLines: true };
     const target = { ...note("auto-target", 60, 0, 20, 20), height: null };
     replaceBoard([source, target]);
     delete measuredHeights["auto-target"];
-    const saved = { x: 1, y: 0.123 };
-    addLink({ id: "kept", from: source.id, to: target.id, kind: "strong", shape: "base", fromAnchor: saved });
+    addLink({ id: "kept", from: source.id, to: target.id, kind: "strong", shape: "base" });
     reflowSmoothLineAnchorsRaw();
-    expect(links.byId.kept?.fromAnchor).toEqual(saved);
-
-    measuredHeights["auto-target"] = 20;
-    reflowSmoothLineAnchorsRaw();
-    expect(links.byId.kept?.fromAnchor).not.toEqual(saved);
+    // The smooth end is not saved, so it may follow the estimate; the plain end gets no derived anchor yet.
+    expect(links.byId.kept?.fromAnchor).toBeDefined();
+    expect(links.byId.kept?.toAnchor).toBeUndefined();
     delete measuredHeights["auto-target"];
+  });
+
+  it("does not save anchors at smooth ends, only at plain ends", () => {
+    const smooth = smoothEndpoints([
+      { id: "smooth", type: "note", smoothLines: true },
+      { id: "beacon", type: "beacon" },
+      { id: "plain", type: "note" },
+    ], true);
+    const link = {
+      id: "l", from: "smooth", to: "plain", kind: "strong" as const, shape: "base" as const,
+      fromAnchor: { x: 1, y: 0.25 }, toAnchor: { x: 0, y: 0.5 },
+    };
+    expect(persistedLink(link, smooth)).toEqual({ id: "l", from: "smooth", to: "plain", kind: "strong", shape: "base", toAnchor: { x: 0, y: 0.5 } });
+    expect(persistedLink({ ...link, from: "beacon" }, smooth).fromAnchor).toBeUndefined();
+    expect(persistedLink({ ...link, from: "me" }, smooth).fromAnchor).toBeUndefined();
+    expect(persistedLink({ ...link, from: "me" }, smoothEndpoints([], false)).fromAnchor).toEqual({ x: 1, y: 0.25 });
+    const plain = { ...link, from: "plain" };
+    expect(persistedLink(plain, smooth)).toBe(plain);
   });
 
   it("distributes selected links at both endpoints when both nodes have smoothing enabled", () => {

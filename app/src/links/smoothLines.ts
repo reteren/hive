@@ -210,9 +210,9 @@ export function reflowSmoothLineAnchorsForObjects(objectIds: readonly string[]):
 
 /**
  * Auto-height notes that were never drawn (culled since the project opened) only have an estimated
- * height. Anchors computed from it would differ from the saved ones and be written back on every
- * open — line drift plus noise in Git. Keep the saved anchors until both ends have real geometry;
- * the note's first measurement triggers the reflow again.
+ * height. Anchors on a smooth end are not saved (project/index.ts persistedLink), so they may follow
+ * the estimate; an anchor on the other end is saved and waits until both ends have real geometry.
+ * The note's first measurement triggers the reflow again.
  */
 function hasMeasuredGeometry(id: string): boolean {
   if (id === ME_OBJECT_ID) return true;
@@ -223,8 +223,16 @@ function hasMeasuredGeometry(id: string): boolean {
 
 function setAnchorsWhenMeasured(id: string, anchors: SmoothAnchors): void {
   const link = links.byId[id];
-  if (link && (!hasMeasuredGeometry(link.from) || !hasMeasuredGeometry(link.to))) return;
-  setAnchors(id, anchors);
+  if (!link) return;
+  if (hasMeasuredGeometry(link.from) && hasMeasuredGeometry(link.to)) {
+    setAnchors(id, anchors);
+    return;
+  }
+  const estimated: SmoothAnchors = {
+    fromAnchor: isSmoothEnabledEndpoint(link.from) ? anchors.fromAnchor : link.fromAnchor,
+    toAnchor: isSmoothEnabledEndpoint(link.to) ? anchors.toAnchor : link.toAnchor,
+  };
+  if (!anchorsEqual(copyAnchors(link), estimated)) setAnchors(id, estimated);
 }
 
 /** Coalesce model, lifecycle and interaction changes into one dirty reflow per frame. */
