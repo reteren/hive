@@ -5,7 +5,7 @@
   import { occurrencesBetween } from "../time/scheduler";
   import { calendarOccurrences, formatOccurrenceTime, localDateKey, monthGrid, occurrencesOnDay, visibleGridRange } from "./calendarLogic";
   import type { Note } from "../model/note";
-  import { i18n, t, tp } from "../i18n/i18n.svelte";
+  import { i18n, t, tp, uiLocale } from "../i18n/i18n.svelte";
 
   const initialNow = new Date();
   let now = $state(initialNow);
@@ -100,7 +100,7 @@
         class:today={day.isToday}
         class:selected={day.key === selectedDay}
         type="button"
-        aria-label={`${day.date.toLocaleDateString()}${count ? t(", {count} reminders", { count: count }) : ""}`}
+        aria-label={`${day.date.toLocaleDateString(uiLocale())}${count ? t(", {count} reminders", { count: count }) : ""}`}
         aria-pressed={day.key === selectedDay}
         data-calendar-day={day.key}
         data-selection-ignore

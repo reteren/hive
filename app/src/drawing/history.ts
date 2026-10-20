@@ -336,7 +336,7 @@ export function applyAcrossLevels(
         if (!quads.length) continue;
         const tile = drawingStore.texture(key, create);
         if (!tile) {
-          if (drawingStore.has(key)) throw new Error(`Drawing tile ${key} is not resident; load it before editing.`);
+          if (drawingStore.has(key)) throw new Error(t("Drawing tile {key} is not resident; load it before editing.", { key: key }));
           continue;
         }
         gpu.drawInto(tile, quads, blend);
@@ -414,7 +414,7 @@ function readRect(rasterX: number, rasterY: number, width: number, height: numbe
     const parsed = parseTileKey(key);
     const tile = drawingStore.texture(key, false);
     if (!parsed) continue;
-    if (!tile) throw new Error(`Drawing tile ${key} is not resident; load it before reading.`);
+    if (!tile) throw new Error(t("Drawing tile {key} is not resident; load it before reading.", { key: key }));
     gpu.ensureMips(tile);
     const scale = 2 ** (parsed.level - level);
     quads.push({

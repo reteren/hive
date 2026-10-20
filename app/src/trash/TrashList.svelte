@@ -4,7 +4,7 @@
   import { ME_OBJECT_ID } from "../model/link";
   import { board } from "../model/board.svelte";
   import { summarizeTrashEntry } from "./trashListModel";
-  import { t } from "../i18n/i18n.svelte";
+  import { t, tp, uiLocale } from "../i18n/i18n.svelte";
 
   let { compact = false }: { compact?: boolean } = $props();
   let entries = $derived(listTrashEntries());
@@ -95,7 +95,7 @@
 
   function formatTime(value: number): string {
     if (!Number.isFinite(value)) return t("Unknown date");
-    return new Date(value).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+    return new Date(value).toLocaleString(uiLocale(), { dateStyle: "short", timeStyle: "short" });
   }
 
   function datetimeAttribute(value: number): string {
@@ -167,7 +167,7 @@
             <div class="trash-confirm" role="alert" aria-label={t("Preview restoring {label}", { label: summary.label })}>
               <strong>{t("Restore preview")}</strong>
               {#if restorePreview.report.linksRestored.length > 0}
-                <p>{t("{count} link{value} will be restored.", { count: restorePreview.report.linksRestored.length, value: restorePreview.report.linksRestored.length === 1 ? "" : "s" })}</p>
+                <p>{tp(restorePreview.report.linksRestored.length, "{count} link will be restored.", "{count} links will be restored.")}</p>
               {/if}
               {#if restorePreview.report.linksBroken.length > 0}
                 <p>{t("These links will stay broken:")}</p>
@@ -220,7 +220,7 @@
 
   {#if confirmingEmpty}
     <div class="trash-empty-confirm" data-trash-empty-confirm role="dialog" aria-modal="false" aria-label={t("Confirm empty trash")} tabindex="-1" onkeydown={handleEmptyConfirmKeydown}>
-      <span>{t("Permanently delete all {count} {value}? This cannot be undone.", { count: entries.length, value: entries.length === 1 ? "entry" : "entries" })}</span>
+      <span>{tp(entries.length, "Permanently delete {count} entry? This cannot be undone.", "Permanently delete all {count} entries? This cannot be undone.")}</span>
       <div class="trash-confirm-actions">
         <button bind:this={emptyCancelButton} type="button" class="trash-action" data-trash-empty-cancel onclick={() => (confirmingEmpty = false)}>{t("Cancel")}</button>
         <button type="button" class="trash-action danger" onclick={confirmEmpty}>{t("Empty trash")}</button>
@@ -229,7 +229,7 @@
   {/if}
 
   <footer class="trash-list-footer">
-    <span>{entries.length} {entries.length === 1 ? "entry" : "entries"}</span>
+    <span>{tp(entries.length, "{count} entry", "{count} entries")}</span>
     <button type="button" class="trash-action danger" disabled={entries.length === 0} onclick={() => (confirmingEmpty = true)}>
       {t("Empty trash")}
     </button>

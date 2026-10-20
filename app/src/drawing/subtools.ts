@@ -17,7 +17,7 @@ export const DRAW_SUBTOOLS: readonly DrawSubtoolInfo[] = [
   { id: "select-rect", get label() { return t("Select rectangle"); }, key: "KeyM" },
   { id: "select-lasso", get label() { return t("Lasso"); }, key: "KeyL" },
   { id: "select-polygon", get label() { return t("Polygon"); }, key: "KeyP" },
-  { id: "text", get label() { return t("Text"); }, key: "KeyT", hint: "Click to type; Enter adds a line; Ctrl+Enter commits; Esc cancels." },
-  { id: "shape", get label() { return t("Shape"); }, key: "KeyU", hint: "Drag to draw; adjust, then Enter or click outside to commit; Esc cancels. Shift keeps proportions." },
+  { id: "text", get label() { return t("Text"); }, key: "KeyT", get hint() { return t("Click to type; Enter adds a line; Ctrl+Enter commits; Esc cancels."); } },
+  { id: "shape", get label() { return t("Shape"); }, key: "KeyU", get hint() { return t("Drag to draw; adjust, then Enter or click outside to commit; Esc cancels. Shift keeps proportions."); } },
   { id: "effect", get label() { return t("Effects"); }, key: "KeyJ", get hint() { return t("Blur, Smudge or Swirl — pick one in the Draw panel."); } },
 ];

@@ -2199,10 +2199,10 @@ type PendingBoardMove =
   }
 
   function resizeHandleTitle(edge: ResizeEdge, standaloneModule = false, scaleOnly = false, kind?: NoteKind): string {
-    if (kind === "image") return `Resize from ${handleLabel(edge)}; hold Ctrl to keep proportions`;
-    if (scaleOnly) return `Scale from ${handleLabel(edge)}; hold Shift while dragging`;
+    if (kind === "image") return t("Resize from {handleLabel}; hold Ctrl to keep proportions", { handleLabel: handleLabel(edge) });
+    if (scaleOnly) return t("Scale from {handleLabel}; hold Shift while dragging", { handleLabel: handleLabel(edge) });
     if (standaloneModule) {
-      return `Resize height from ${edge.startsWith("top") ? "top" : "bottom"}; hold Shift to scale uniformly`;
+      return edge.startsWith("top") ? t("Resize height from the top; hold Shift to scale uniformly") : t("Resize height from the bottom; hold Shift to scale uniformly");
     }
     const base = t("Resize from {handleLabel}", { handleLabel: handleLabel(edge) });
     const detail = edge === "top" || edge === "bottom" ? "; double-click for auto height" : "";
@@ -2298,7 +2298,7 @@ type PendingBoardMove =
               aria-label={`${shiftHeld || !normalResize
                 ? t("Scale {name} from {handleLabel}", { name: outline.name, handleLabel: handleLabel(edge) })
                 : isStandaloneModuleKind(outline.kind)
-                  ? t("Resize {name} height from {value}", { name: outline.name, value: edge.startsWith("top") ? "top" : "bottom" })
+                  ? edge.startsWith("top") ? t("Resize {name} height from the top", { name: outline.name }) : t("Resize {name} height from the bottom", { name: outline.name })
                   : t("Resize {name} from {handleLabel}", { name: outline.name, handleLabel: handleLabel(edge) })}; hold ${outline.kind === "image" ? t("Ctrl to keep proportions") : t("Shift to scale uniformly")}`}
               title={resizeHandleTitle(edge, isStandaloneModuleKind(outline.kind), !normalResize, outline.kind)}
             ></button>

@@ -999,7 +999,7 @@ function applyExternalBoard(change: BoardChange): void {
     persistedGlobalRevisions = globalRevisionStamp();
     const notices = [...change.warnings];
     if (conflicts.length > 0) {
-      notices.push(`${conflicts.length} object(s) were changed both here and in the pulled version; this window's version was kept.`);
+      notices.push(t("{count} object(s) were changed both here and in the pulled version; this window's version was kept.", { count: conflicts.length }));
     }
     project.warnings = [...new Set([...project.warnings, ...notices])];
   } finally {
@@ -1252,7 +1252,7 @@ async function handleExternalDelete(file: string): Promise<void> {
   }
 
   missingFileIds.add(note.id);
-  const warning = t("Note file ") + file + " was deleted outside Hive; it will be recreated on the next save.";
+  const warning = t("Note file {file} was deleted outside Hive; it will be recreated on the next save.", { file });
   externalDeleteWarnings.set(note.id, warning);
   if (!project.warnings.includes(warning)) project.warnings = [...project.warnings, warning];
   await acknowledgeExternalChange(file, undefined);

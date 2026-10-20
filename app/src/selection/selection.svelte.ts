@@ -4,7 +4,7 @@ import { screenToWorld, type Point } from "../board/cameraMath";
 import { camera } from "../board/camera.svelte";
 import { fitBoardPopupAnchor } from "../ui/boardAnchor";
 import type { Bounds } from "../notes/layout.svelte";
-import { t } from "../i18n/i18n.svelte";
+import { t, tp } from "../i18n/i18n.svelte";
 
 /** A reversible snapshot of the board selection, including registered selection domains. */
 export interface SelectionSnapshot {
@@ -197,7 +197,7 @@ function defaultSelectionLabel(before: SelectionSnapshot, after: SelectionSnapsh
   const count = after.ids.length + after.zoneIds.length + selectedExtensionCount(after);
   const previousCount = before.ids.length + before.zoneIds.length + selectedExtensionCount(before);
   if (count === 0 && previousCount > 0) return t("Deselect");
-  return t("Select {count} {value}", { count: count, value: count === 1 ? "object" : "objects" });
+  return tp(count, "Select {count} object", "Select {count} objects");
 }
 
 function selectedExtensionCount(snapshot: SelectionSnapshot): number {

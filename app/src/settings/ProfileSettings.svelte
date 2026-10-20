@@ -19,7 +19,8 @@
   let confirmingDelete = $state(false);
 
   const activeProfile = $derived(settingsProfiles.list.find((profile) => profile.id === settingsProfiles.active));
-  const options = $derived(settingsProfiles.list.map((profile) => ({ value: profile.id, label: profile.name })));
+  // The built-in profile is named "Default" in English; show that name in the interface language.
+  const options = $derived(settingsProfiles.list.map((profile) => ({ value: profile.id, label: t(profile.name) })));
   const atLimit = $derived(settingsProfiles.list.length >= MAX_PROFILES);
 
   async function beginEdit(next: Editor): Promise<void> {

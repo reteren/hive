@@ -24,7 +24,7 @@
 
 {#if hasMeBeacon()}
 <div class="me" data-dimmed={isDimmed("me")} data-member-zone-id={memberZone?.id} style:transform={`translate(${screen.x}px, ${screen.y}px) scale(${scale})`}>
-  <button class="dot" class:in-zone={Boolean(memberZone)} style:--zone-color={memberZone?.color ?? "transparent"} data-beacon-id="me" type="button" aria-label="ME beacon; press Delete to move to trash" onkeydown={onBeaconKeydown}></button>
+  <button class="dot" class:in-zone={Boolean(memberZone)} style:--zone-color={memberZone?.color ?? "transparent"} data-beacon-id="me" type="button" aria-label={t("ME beacon; press Delete to move to trash")} onkeydown={onBeaconKeydown}></button>
   {#if isMarked("me")}<span class="mark" aria-label={t("Marked beacon")}></span>{/if}
   <span class="label">ME</span>
 </div>

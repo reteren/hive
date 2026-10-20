@@ -8,7 +8,7 @@
   import { installMessageSoundUnlock } from "./sound";
   import { initializeOverhiveBridge } from "./overhiveBridge.svelte";
   import ReminderCard from "./ReminderCard.svelte";
-  import { t } from "../i18n/i18n.svelte";
+  import { t, tp } from "../i18n/i18n.svelte";
   let expanded = $state(false);
   let hiveCards = $derived(hiveMessageCards(messageQueue.items, board.notes, Object.values(links.byId)));
   let cards = $derived(visibleMessages(hiveCards, expanded));
@@ -23,7 +23,7 @@
 
 {#if hiveCards.length}
   <section class="message-cards" data-message-cards data-selection-ignore aria-label={t("Reminders")}>
-    <div class="message-announcement" role="status" aria-live="polite" aria-atomic="true">{t("{count} reminder{value}: {text}", { count: hiveCards.length, value: hiveCards.length === 1 ? "" : "s", text: hiveCards[0]?.text })}</div>
+    <div class="message-announcement" role="status" aria-live="polite" aria-atomic="true">{tp(hiveCards.length, "{count} reminder: {text}", "{count} reminders: {text}", { text: hiveCards[0]?.text })}</div>
     <div class="message-list">
       {#each cards as card (card.id)}
         <ReminderCard {card} title={card.title} available={card.available}

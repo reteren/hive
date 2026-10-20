@@ -71,7 +71,7 @@
       class="command-button {className}"
       class:with-label={showLabel}
       class:active={command.isActive?.() ?? false}
-      aria-label={`${command.label}${command.keys.length ? `; ${command.keys.map(formatKey).join(", ")}` : ""}`}
+      aria-label={`${t(command.label)}${command.keys.length ? `; ${command.keys.map(formatKey).join(", ")}` : ""}`}
       aria-pressed={command.isActive ? command.isActive() : undefined}
       data-icon={icon ? undefined : iconName}
       bind:this={button}

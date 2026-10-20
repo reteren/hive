@@ -147,7 +147,7 @@ export function tileKeysInRect(rect: WorldRect, level: number, accept: (key: Til
   if (Math.abs(firstCol) > MAX_TILE_COORDINATE || Math.abs(lastCol) > MAX_TILE_COORDINATE ||
     Math.abs(firstRow) > MAX_TILE_COORDINATE || Math.abs(lastRow) > MAX_TILE_COORDINATE ||
     (lastCol - firstCol + 1) * (lastRow - firstRow + 1) > MAX_TILES_PER_RECT) {
-    throw new RangeError(`Drawing operation covers more than ${MAX_TILES_PER_RECT} tiles; split it into smaller pieces.`);
+    throw new RangeError(t("Drawing operation covers more than {maxTilesPerRect} tiles; split it into smaller pieces.", { maxTilesPerRect: MAX_TILES_PER_RECT }));
   }
 
   const keys: TileKey[] = [];
@@ -401,7 +401,7 @@ export function createDrawingTileStore(): MutableDrawingTileStore {
       for (const key of new Set(keys)) {
         if (!validKey(key)) throw new Error(t("Invalid drawing tile key: {key}", { key: key }));
         const texture = tiles.get(key);
-        if (!texture && tileIndex.has(key)) throw new Error(`Drawing tile ${key} is not resident; load it before taking a synchronous snapshot.`);
+        if (!texture && tileIndex.has(key)) throw new Error(t("Drawing tile {key} is not resident; load it before taking a synchronous snapshot.", { key: key }));
         snapshot.set(key, texture ? new TileCopy(engine, texture) : null);
       }
       return snapshot;

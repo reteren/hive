@@ -5,7 +5,7 @@
   import { listViewForStats } from "./linkedList.svelte";
   import { tierlistViewForStats } from "./linkedTierlist.svelte";
   import { textStatisticsForScope } from "./statisticsCache.svelte";
-  import { t } from "../i18n/i18n.svelte";
+  import { t, tp } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let listView = $derived(listViewForStats(note.id));
@@ -27,7 +27,7 @@
   {:else if tierlistView}
     <div class="tierlist-lock" data-stats-tierlist-lock title={t("Remove the link to change")}>{t("Linked to {name}", { name: tierlistView.tierlist.name })}</div>
     <div class="tierlist-summary" role="status" aria-live="polite" aria-label={t("Tierlist statistics for {name}", { name: tierlistView.tierlist.name })}>
-      <strong class="tierlist-total" data-stats-tierlist-total>{tierlistView.summary.total} {tierlistView.summary.total === 1 ? "item" : "items"} total</strong>
+      <strong class="tierlist-total" data-stats-tierlist-total>{tp(tierlistView.summary.total, "{count} item total", "{count} items total")}</strong>
       <div class="tierlist-rows">
         {#each tierlistView.summary.rows as row (row.id)}
           <div class="tierlist-row" data-stats-tier-row={row.id}>

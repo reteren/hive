@@ -3,7 +3,7 @@
   import { backupPanelState, closeBackupsPanel } from "./panel.svelte";
   import { checkProjectHealth, createBackup, deleteBackup, listBackups, restoreBackup, type BackupInfo } from "./api";
   import Select from "../ui/Select.svelte";
-  import { t } from "../i18n/i18n.svelte";
+  import { t, uiLocale } from "../i18n/i18n.svelte";
 
   let backups = $state<BackupInfo[]>([]);
   let totalSizeBytes = $state(0);
@@ -95,7 +95,7 @@
   function formatDate(value: string): string {
     const iso = value.replace(/T(\d{2})-(\d{2})-(\d{2})\.(\d{3})Z(?:-\d+)?$/, "T$1:$2:$3.$4Z");
     const date = new Date(iso);
-    return Number.isNaN(date.valueOf()) ? value : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+    return Number.isNaN(date.valueOf()) ? value : new Intl.DateTimeFormat(uiLocale(), { dateStyle: "medium", timeStyle: "short" }).format(date);
   }
 
   function formatSize(size: number): string {

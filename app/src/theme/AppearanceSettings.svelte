@@ -88,10 +88,10 @@
     {#each BUILTIN_THEME_PRESETS as preset (preset.id)}
       <div class="theme-tile" role="listitem" data-theme-preset={preset.id}>
         <ThemePreviewCard
-          name={preset.name}
+          name={t(preset.name)}
           colors={preset.colors}
           active={activeId === preset.id}
-          label={t("Apply {name} theme", { name: preset.name })}
+          label={t("Apply {name} theme", { name: t(preset.name) })}
           onclick={() => applyThemePreset(preset.id)}
         />
       </div>

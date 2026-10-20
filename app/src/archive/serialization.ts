@@ -13,6 +13,7 @@ import { copyAudioRecordings, parseAudioRecordings } from "../audio/recordingDat
 import { parseYouTubeRef } from "../youtube/logic";
 import { copyArchivedLink, copyArchivedNote } from "./logic";
 import { copyNoteGlow, parseNoteGlow } from "../notes/noteGlowLogic";
+import { t } from "../i18n/i18n.svelte";
 
 const ARCHIVABLE_KINDS = new Set<NoteKind>([
   "note", "pro", "con", "importance", "purpose", "mood",
@@ -41,7 +42,7 @@ export function copyArchiveEntry(entry: ArchiveEntry): ArchiveEntry {
 /** Keep dangling link ends for the restore preview; they are never added to the live board. */
 export function sanitizeArchiveEntries(value: unknown): { entries: ArchiveEntry[]; warnings: string[] } {
   if (value === undefined) return { entries: [], warnings: [] };
-  if (!Array.isArray(value)) return { entries: [], warnings: ["Invalid archive in board.json; no entries were loaded."] };
+  if (!Array.isArray(value)) return { entries: [], warnings: [t("Invalid archive in board.json; no entries were loaded.")] };
   const entries: ArchiveEntry[] = [];
   const entryIds = new Set<string>();
   const noteIds = new Set<string>();
@@ -85,7 +86,7 @@ export function sanitizeArchiveEntries(value: unknown): { entries: ArchiveEntry[
   }
   return {
     entries,
-    warnings: invalid ? ["Invalid archive data in board.json was skipped; check the project backup before saving."] : [],
+    warnings: invalid ? [t("Invalid archive data in board.json was skipped; check the project backup before saving.")] : [],
   };
 }
 

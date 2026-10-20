@@ -14,6 +14,7 @@ import { copyAudioRecordings, parseAudioRecordings } from "../audio/recordingDat
 import { parseYouTubeRef } from "../youtube/logic";
 import { copyTrashEntry } from "./trash";
 import { parseNoteGlow } from "../notes/noteGlowLogic";
+import { t } from "../i18n/i18n.svelte";
 
 const NOTE_KINDS = new Set<NoteKind>([
   "note", "pro", "con", "importance", "purpose", "mood", "beacon",
@@ -27,7 +28,7 @@ const MAX_ENTRIES = 10_000;
 export function sanitizeTrashEntries(value: unknown): { entries: TrashEntry[]; warnings: string[] } {
   if (value === undefined) return { entries: [], warnings: [] };
   if (!Array.isArray(value) || value.length > MAX_ENTRIES) {
-    return { entries: [], warnings: ["Invalid or oversized trash in board.json; no entries were loaded."] };
+    return { entries: [], warnings: [t("Invalid or oversized trash in board.json; no entries were loaded.")] };
   }
 
   const entries: TrashEntry[] = [];
@@ -110,7 +111,7 @@ export function sanitizeTrashEntries(value: unknown): { entries: TrashEntry[]; w
   }
   return {
     entries: entries.map(copyTrashEntry),
-    warnings: invalid ? ["Invalid trash data in board.json was skipped; check the project backup before saving."] : [],
+    warnings: invalid ? [t("Invalid trash data in board.json was skipped; check the project backup before saving.")] : [],
   };
 }
 

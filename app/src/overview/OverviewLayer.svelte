@@ -147,7 +147,7 @@
       altGesture = next;
       if (!overview.active || shouldShowAltOverview(altGesture)) return;
       setOverviewActive(false);
-      diagnose("Alt + wheel in draw mode → overview off; brush opacity remains available");
+      diagnose(t("Alt + wheel in draw mode → overview off; brush opacity remains available"));
     }
 
     function onBlur(): void {

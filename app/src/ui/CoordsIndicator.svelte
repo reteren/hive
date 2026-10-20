@@ -18,7 +18,7 @@
 
 <!-- Cursor X/Y indicator in units (R0.3). -->
 <div class="coords" aria-label={t("Board coordinates and zoom")}>
-  <span class="source" class:center={isCenter}>{isCenter ? "CENTER" : "CURSOR"}</span>
+  <span class="source" class:center={isCenter}>{isCenter ? t("CENTER") : t("CURSOR")}</span>
   <span><span class="axis-label">X</span> {formatCoordinate(position.x)} <span class="unit">u</span></span>
   <span><span class="axis-label">Y</span> {formatCoordinate(position.y)} <span class="unit">u</span></span>
   <span class="zoom">{zoomPercent}%</span>

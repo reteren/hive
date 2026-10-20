@@ -20,7 +20,7 @@
     removeBank,
     startBankLabelSync,
   } from "./bankActions.svelte";
-  import { t } from "../i18n/i18n.svelte";
+  import { t, tp } from "../i18n/i18n.svelte";
 
   let { note, data }: { note: Note; data: CalculatorData } = $props();
   let root: HTMLElement;
@@ -174,7 +174,7 @@
     </div>
     {#if confirmingRemoval}
       <div class="bank-confirm" role="alert">
-        <span>{t("Remove bank and {count} {value}?", { count: data.rows.length, value: data.rows.length === 1 ? "row" : "rows" })}</span>
+        <span>{tp(data.rows.length, "Remove bank and {count} row?", "Remove bank and {count} rows?")}</span>
         <button type="button" onclick={() => { confirmingRemoval = false; }}>{t("Cancel")}</button>
         <button type="button" class="danger" onclick={() => { removeBank(note.name); confirmingRemoval = false; }}>{t("Remove")}</button>
       </div>
@@ -260,7 +260,7 @@
     </form>
   {:else}
     <button type="button" class="bank-create-button" onclick={openCreate}>{t("Create bank")}</button>
-    {#if data.rows.length}<small class="bank-pending">{t("{count} linked {value} ready", { count: data.rows.length, value: data.rows.length === 1 ? "row" : "rows" })}</small>{/if}
+    {#if data.rows.length}<small class="bank-pending">{tp(data.rows.length, "{count} linked row ready", "{count} linked rows ready")}</small>{/if}
   {/if}
   {#if error}<p class="bank-error" role="status">{error}</p>{/if}
 </section>

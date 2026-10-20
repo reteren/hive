@@ -36,7 +36,7 @@
   function startCapture(commandId: string, bindingIndex: number | null): void {
     capturing = { commandId, bindingIndex };
     pending = null;
-    status = "Press a key combination; Escape cancels capture.";
+    status = t("Press a key combination; Escape cancels capture.");
   }
 
   function handleKeydown(event: KeyboardEvent): void {
@@ -61,9 +61,9 @@
         event.stopPropagation();
         if (event.code === "Tab") {
           capturing = null;
-          status = "Tab is reserved for focus navigation; capture cancelled.";
+          status = t("Tab is reserved for focus navigation; capture cancelled.");
         } else {
-          status = "Choose a non-modifier key; Meta is not supported.";
+          status = t("Choose a non-modifier key; Meta is not supported.");
         }
         return;
       }
@@ -107,7 +107,7 @@
         true,
       );
       if (result.overrides) setCommandKeyOverrides(result.overrides);
-      status = `Assigned ${formatKey(conflict.binding)}; removed it from the previous command.`;
+      status = t("Assigned {key}; removed it from the previous command.", { key: formatKey(conflict.binding) });
     } else {
       status = t("Binding change cancelled.");
     }

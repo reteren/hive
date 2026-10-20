@@ -436,7 +436,7 @@
         <span>{t("Day")}</span>
         <input type="number" aria-label={t("Day of month")} min="1" max="31" step="1" bind:value={monthlyDay} />
       </label>
-      <p class="time-helper">31 = last day of short months</p>
+      <p class="time-helper">{t("31 = last day of short months")}</p>
     {:else if atRepeat === "yearly"}
       <div class="calendar-rule-fields">
         <label class="time-field">

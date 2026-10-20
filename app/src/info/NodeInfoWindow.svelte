@@ -237,7 +237,7 @@
     <div class="info-body">
       <dl class="facts">
         <dt>{t("Created")}</dt>
-        <dd>{#if createdAt}{formatDate(createdAt)} <span class="dim">{t("· exists {span}", { span: formatSpan(now - createdAt) })}</span>{:else}<span class="dim">unknown</span>{/if}</dd>
+        <dd>{#if createdAt}{formatDate(createdAt)} <span class="dim">{t("· exists {span}", { span: formatSpan(now - createdAt) })}</span>{:else}<span class="dim">{t("unknown")}</span>{/if}</dd>
         {#if disk?.git}
           <dt>{t("Created by")}</dt>
           <dd>{oldest?.author ?? (disk.git.uncommitted ? t("{value} (not committed yet)", { value: disk.git.me || "you" }) : "—")}</dd>
@@ -253,7 +253,7 @@
         <dt>{t("Position")}</dt>
         <dd class="mono">X {round(note.x)} · Y {round(note.y)} <span class="dim">· {round(note.width)} × {height === null ? "auto" : round(height)}</span></dd>
         <dt>{t("Your time here")}</dt>
-        <dd>{spentMs >= 1000 ? formatSpan(spentMs) : "—"} <span class="dim">editing</span></dd>
+        <dd>{spentMs >= 1000 ? formatSpan(spentMs) : "—"} <span class="dim">{t("editing")}</span></dd>
       </dl>
 
       {#if text}

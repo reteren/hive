@@ -110,8 +110,8 @@
           <button
             class="size-value"
             type="button"
-            aria-label={`Brush size ${brushState.size}; click to enter a value or scroll to change`}
-            title="Click to enter a size; scroll here to change it"
+            aria-label={t("Brush size {size}; click to enter a value or scroll to change", { size: brushState.size })}
+            title={t("Click to enter a size; scroll here to change it")}
             onclick={() => void beginEditing()}
           >{brushState.size}</button>
         {/if}

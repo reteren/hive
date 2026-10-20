@@ -77,7 +77,7 @@
     {/if}
     {#if brush.tip === "spray"}
       <label class="field" data-spray-options data-spray-density>
-        <span title="Dots per second at 24 px diameter; rate scales with brush area and pen pressure">{t("Density")} <strong>{density} dots/s</strong></span>
+        <span title={t("Dots per second at 24 px diameter; rate scales with brush area and pen pressure")}>{t("Density")} <strong>{t("{density} dots/s", { density })}</strong></span>
         <MediaSlider
           value={densitySlider}
           max={199}

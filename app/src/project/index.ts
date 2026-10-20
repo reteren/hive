@@ -164,7 +164,7 @@ export function parseProjectIndexWithWarnings(contents: string, now = Date.now()
   const validZoneIds = new Set(uniqueZones.map((zone) => zone.id));
   for (const note of notes) {
     if (note.zoneId && !validZoneIds.has(note.zoneId)) {
-      noteWarnings.push(`Invalid zone membership for note ${note.id}; membership was cleared.`);
+      noteWarnings.push(t("Invalid zone membership for note {id}; membership was cleared.", { id: note.id }));
       note.zoneId = null;
     }
   }
@@ -182,10 +182,10 @@ export function parseProjectIndexWithWarnings(contents: string, now = Date.now()
     : noteCreationTimes.length > 0 ? noteCreationTimes.reduce((earliest, candidate) => Math.min(earliest, candidate)) : now;
   const projectCounters = sanitizeProjectCounters(parsed.projectCounters);
   if ((version === 2 || version === 3) && parsed.taskLog === undefined) {
-    parsedTaskLog.warnings.push("Missing task log in board.json; defaulted to an empty log.");
+    parsedTaskLog.warnings.push(t("Missing task log in board.json; defaulted to an empty log."));
   }
   const marks = sanitizeBeaconMarks(parsed.beaconMarks, notes, !meDeleted);
-  if (version === 3 && parsed.beaconMarks === undefined) marks.warnings.push("Missing beacon marks in board.json; defaulted to none.");
+  if (version === 3 && parsed.beaconMarks === undefined) marks.warnings.push(t("Missing beacon marks in board.json; defaulted to none."));
   return {
     index: {
       ...parsed,
@@ -212,11 +212,11 @@ export function parseProjectIndexWithWarnings(contents: string, now = Date.now()
       ...parsedArchive.warnings,
       ...parsedTrash.warnings,
       ...(parsed.createdAt !== undefined && !finiteNonnegative(parsed.createdAt)
-        ? ["Invalid project creation time in board.json; it was restored from note dates."]
+        ? [t("Invalid project creation time in board.json; it was restored from note dates.")]
         : []),
       ...(projectCounters.invalid ? [t("Invalid project stopwatch counters in board.json were reset to zero.")] : []),
       ...(parsed.meDeleted !== undefined && typeof parsed.meDeleted !== "boolean"
-        ? ["Invalid ME beacon state in board.json; the default beacon was restored."]
+        ? [t("Invalid ME beacon state in board.json; the default beacon was restored.")]
         : []),
     ],
   };
@@ -450,7 +450,7 @@ function fixedNodeDimensions(type: NoteKind, headerHidden = false): { width: num
 function sanitizeCalculators(value: unknown): { values: Record<string, CalculatorData>; warnings: string[] } {
   if (value === undefined) return { values: {}, warnings: [] };
   if (!isRecord(value)) {
-    return { values: {}, warnings: ["Invalid calculator data in board.json; calculator history was cleared."] };
+    return { values: {}, warnings: [t("Invalid calculator data in board.json; calculator history was cleared.")] };
   }
 
   const values = Object.create(null) as Record<string, CalculatorData>;
@@ -466,7 +466,7 @@ function sanitizeCalculators(value: unknown): { values: Record<string, Calculato
   }
   return {
     values: Object.fromEntries(Object.entries(values)),
-    warnings: invalid ? ["Invalid calculator data in board.json; invalid entries were discarded."] : [],
+    warnings: invalid ? [t("Invalid calculator data in board.json; invalid entries were discarded.")] : [],
   };
 }
 
@@ -590,98 +590,98 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
 
   const warnings: string[] = [];
   if (value.widthLocked !== undefined && typeof value.widthLocked !== "boolean") {
-    warnings.push(`Invalid width lock for note ${id}; automatic width will be enabled.`);
+    warnings.push(t("Invalid width lock for note {id}; automatic width will be enabled.", { id: id }));
   }
   if (value.image !== undefined && !image || type === "image" && !image) {
-    warnings.push(`Invalid or missing image data for note ${id}; the image placeholder will be shown.`);
+    warnings.push(t("Invalid or missing image data for note {id}; the image placeholder will be shown.", { id: id }));
   }
   if (value.media !== undefined && !media || type === "pdf" && media?.kind !== "pdf" || type === "format" && media?.kind !== "text" || type === "audio" && media?.kind !== "audio" && !recordings || type === "video" && media?.kind !== "video") {
-    warnings.push(`Invalid or missing file data for note ${id}; the file placeholder will be shown.`);
+    warnings.push(t("Invalid or missing file data for note {id}; the file placeholder will be shown.", { id: id }));
   }
   if (value.recordings !== undefined && (type !== "audio" || !recordings)) {
-    warnings.push(`Invalid audio recordings for note ${id}; the recording list was cleared.`);
+    warnings.push(t("Invalid audio recordings for note {id}; the recording list was cleared.", { id: id }));
   }
   if (value.youtube !== undefined && !youtube || type === "youtube" && !youtube) {
-    warnings.push(`Invalid or missing YouTube data for note ${id}; the link placeholder will be shown.`);
+    warnings.push(t("Invalid or missing YouTube data for note {id}; the link placeholder will be shown.", { id: id }));
   }
   if (value.gifStopped !== undefined && value.gifStopped !== true) {
-    warnings.push(`Invalid GIF playback state for note ${id}; it was cleared.`);
+    warnings.push(t("Invalid GIF playback state for note {id}; it was cleared.", { id: id }));
   }
   if (value.opacity !== undefined && (type !== "image" || opacity === undefined)) {
-    warnings.push(`Invalid image opacity for note ${id}; it was cleared.`);
+    warnings.push(t("Invalid image opacity for note {id}; it was cleared.", { id: id }));
   }
   if (value.frameHidden !== undefined && (type !== "youtube" && type !== "video" || value.frameHidden !== true)) {
-    warnings.push(`Invalid hidden frame state for note ${id}; it was cleared.`);
+    warnings.push(t("Invalid hidden frame state for note {id}; it was cleared.", { id: id }));
   }
   if (value.pdfZoom !== undefined && (type !== "pdf" || pdfZoom === undefined)) {
-    warnings.push(`Invalid PDF zoom for note ${id}; fit-to-width was restored.`);
+    warnings.push(t("Invalid PDF zoom for note {id}; fit-to-width was restored.", { id: id }));
   }
   if (type === "image" && height === null) {
     height = image ? width * image.naturalHeight / image.naturalWidth : width;
-    warnings.push(`Missing image height for note ${id}; restored it from the image aspect ratio.`);
+    warnings.push(t("Missing image height for note {id}; restored it from the image aspect ratio.", { id: id }));
   }
   const scale = value.scale === undefined ? undefined : isValidNoteScale(value.scale) ? value.scale : null;
-  if (scale === null) warnings.push(`Invalid scale for note ${id}; defaulted to 1.`);
-  if (value.type !== undefined && type === null) warnings.push(`Invalid type for note ${id}; defaulted to note.`);
-  else if (requireV2Fields && value.type === undefined) warnings.push(`Missing type for note ${id}; defaulted to note.`);
+  if (scale === null) warnings.push(t("Invalid scale for note {id}; defaulted to 1.", { id: id }));
+  if (value.type !== undefined && type === null) warnings.push(t("Invalid type for note {id}; defaulted to note.", { id: id }));
+  else if (requireV2Fields && value.type === undefined) warnings.push(t("Missing type for note {id}; defaulted to note.", { id: id }));
 
   const task = parseTaskState(value.task);
   if (value.task !== undefined && value.task !== null && task === null) {
-    warnings.push(`Invalid task state for note ${id}; task flag was cleared.`);
-  } else if (requireV2Fields && value.task === undefined) warnings.push(`Missing task state for note ${id}; defaulted to no task.`);
+    warnings.push(t("Invalid task state for note {id}; task flag was cleared.", { id: id }));
+  } else if (requireV2Fields && value.task === undefined) warnings.push(t("Missing task state for note {id}; defaulted to no task.", { id: id }));
 
   const taskMemory = parseTaskState(value.taskMemory);
   if (value.taskMemory !== undefined && value.taskMemory !== null && taskMemory === null) {
-    warnings.push(`Invalid remembered task state for note ${id}; remembered state was cleared.`);
+    warnings.push(t("Invalid remembered task state for note {id}; remembered state was cleared.", { id: id }));
   } else if (requireV2Fields && value.taskMemory === undefined) {
-    warnings.push(`Missing remembered task state for note ${id}; defaulted to none.`);
+    warnings.push(t("Missing remembered task state for note {id}; defaulted to none.", { id: id }));
   }
 
   const importance = parseImportance(value.importance);
   if (value.importance !== undefined && value.importance !== null && importance === null) {
-    warnings.push(`Invalid importance for note ${id}; importance was cleared.`);
-  } else if (requireV2Fields && value.importance === undefined) warnings.push(`Missing importance for note ${id}; importance was cleared.`);
+    warnings.push(t("Invalid importance for note {id}; importance was cleared.", { id: id }));
+  } else if (requireV2Fields && value.importance === undefined) warnings.push(t("Missing importance for note {id}; importance was cleared.", { id: id }));
 
   const purposes = parsePurposes(value.purposes);
   if (value.purposes !== undefined && !purposes.valid) {
-    warnings.push(`Invalid purpose values for note ${id}; unknown values were discarded.`);
-  } else if (requireV2Fields && value.purposes === undefined) warnings.push(`Missing purposes for note ${id}; defaulted to none.`);
+    warnings.push(t("Invalid purpose values for note {id}; unknown values were discarded.", { id: id }));
+  } else if (requireV2Fields && value.purposes === undefined) warnings.push(t("Missing purposes for note {id}; defaulted to none.", { id: id }));
 
   const moods = parseMoods(value.moods);
   if (value.moods !== undefined && !moods.valid) {
-    warnings.push(`Invalid mood values for note ${id}; unknown values were discarded.`);
+    warnings.push(t("Invalid mood values for note {id}; unknown values were discarded.", { id: id }));
   }
 
   const color = typeof value.color === "string" ? normalizeBeaconColor(value.color) : null;
   if (value.color !== undefined && color === null && (value.color !== null || type === "beacon")) {
-    warnings.push(`Invalid beacon colour for note ${id}; default colour was used.`);
+    warnings.push(t("Invalid beacon colour for note {id}; default colour was used.", { id: id }));
   } else if (requireV3Fields && type === "beacon" && value.color === undefined) {
-    warnings.push(`Missing beacon colour for note ${id}; default colour was used.`);
+    warnings.push(t("Missing beacon colour for note {id}; default colour was used.", { id: id }));
   }
 
   const accentColor = typeof value.accentColor === "string" && type !== "beacon" ? normalizeBeaconColor(value.accentColor) : null;
   if (value.accentColor !== undefined && accentColor === null) {
-    warnings.push(`Invalid accent colour for note ${id}; it was cleared.`);
+    warnings.push(t("Invalid accent colour for note {id}; it was cleared.", { id: id }));
   }
   const glow = parseNoteGlow(value.glow);
 
   const parsedMessage = parseMessageData(value.message);
   const message = type === "message" ? parsedMessage ?? defaultMessageData() : value.message === undefined ? undefined : parsedMessage;
   const time = parseTimeData(value.time);
-  if (value.time !== undefined && !time) warnings.push(`Invalid reminder schedule for note ${id}; reminder data was cleared.`);
+  if (value.time !== undefined && !time) warnings.push(t("Invalid reminder schedule for note {id}; reminder data was cleared.", { id: id }));
   const embedSections = parseEmbedSections(value.embedSections);
-  if (value.embedSections !== undefined && !embedSections) warnings.push(`Invalid embedded section state for note ${id}; sections were expanded.`);
+  if (value.embedSections !== undefined && !embedSections) warnings.push(t("Invalid embedded section state for note {id}; sections were expanded.", { id: id }));
   const smoothLines = value.smoothLines === true;
   const smoothLineAnchors = smoothLines && value.smoothLineAnchors !== undefined
     ? parseSmoothLineAnchorSnapshot(value.smoothLineAnchors)
     : undefined;
   if (smoothLines && value.smoothLineAnchors !== undefined && !smoothLineAnchors) {
-    warnings.push(`Invalid smooth line anchors for note ${id}; anchors will be recalculated.`);
+    warnings.push(t("Invalid smooth line anchors for note {id}; anchors will be recalculated.", { id: id }));
   }
   const zoneId = value.zoneId === undefined || value.zoneId === null ? null
     : typeof value.zoneId === "string" && validZoneIds.has(value.zoneId) ? value.zoneId : null;
   if (value.zoneId !== undefined && value.zoneId !== null && zoneId === null) {
-    warnings.push(`Invalid zone membership for note ${id}; membership was cleared.`);
+    warnings.push(t("Invalid zone membership for note {id}; membership was cleared.", { id: id }));
   }
 
   return {
@@ -771,11 +771,11 @@ function sanitizeZones(value: unknown, requireV3Field: boolean): { zones: Zone[]
   if (value === undefined) {
     return {
       zones: [],
-      warnings: requireV3Field ? ["Missing zones in board.json; defaulted to none."] : [],
+      warnings: requireV3Field ? [t("Missing zones in board.json; defaulted to none.")] : [],
     };
   }
   if (!Array.isArray(value)) return { zones: [], warnings: [t("Invalid zones in board.json were discarded.")] };
-  if (value.length > MAX_ZONES) return { zones: [], warnings: ["Too many zones in board.json; all zones were discarded."] };
+  if (value.length > MAX_ZONES) return { zones: [], warnings: [t("Too many zones in board.json; all zones were discarded.")] };
 
   const zones: Zone[] = [];
   const ids = new Set<string>();

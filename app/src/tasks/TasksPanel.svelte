@@ -8,7 +8,7 @@
   import { teleportToObject } from "../navigation/navigate";
   import TaskCheckbox from "./TaskCheckbox.svelte";
   import { closePanelPopup, panelPopupState } from "../ui/popups/panelPopupState.svelte";
-  import { t } from "../i18n/i18n.svelte";
+  import { t, uiLocale } from "../i18n/i18n.svelte";
 
   let { variant = "dock" } = $props<{ variant?: "dock" | "popup" }>();
 
@@ -23,7 +23,7 @@
   }
 
   function formatTime(value: number): string {
-    return new Date(value).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+    return new Date(value).toLocaleString(uiLocale(), { dateStyle: "short", timeStyle: "short" });
   }
 
   function handleKeydown(event: KeyboardEvent): void {

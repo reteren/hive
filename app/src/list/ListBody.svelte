@@ -194,7 +194,7 @@
                 <button class="list-link" type="button" data-list-target={item.targetId} onclick={() => openTarget(item.targetId!)}>{display.label}</button>
               {:else}<span class="list-label">{display.label}</span>{/if}
             </div>
-            {#if display.missing}<span class="list-missing">missing</span>{/if}
+            {#if display.missing}<span class="list-missing">{t("missing")}</span>{/if}
             <ListKindIcon kind={listItemKind(item, board.notes, zones.byId)} />
             <button class="list-remove" type="button" data-list-remove={item.id} aria-label={t("Remove {label}", { label: display.label })} onclick={() => removeListRow(note.id, item.id)}>&times;</button>
           </div>

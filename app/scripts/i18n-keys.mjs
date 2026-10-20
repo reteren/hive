@@ -10,11 +10,14 @@ const srcDir = join(appDir, "src");
 const string = String.raw`"((?:[^"\\]|\\.)*)"`;
 const patterns = [
   new RegExp(String.raw`\b(?:t|msg)\(\s*${string}`, "g"),
-  new RegExp(String.raw`\btp\([^,]+,\s*${string},\s*${string}`, "g"),
+  new RegExp(String.raw`\b(?:tp|plural)\([^,]+,\s*${string},\s*${string}`, "g"),
   // Labels kept in English and translated where they are shown (commands, history entries).
   new RegExp(String.raw`\blabel:\s*${string}`, "g"),
   new RegExp(String.raw`\b(?:pushDrawingHistory|recordGeometryChange|geometryCommand|commitFinishedStroke|deleteSelectionItems)\(\s*${string}`, "g"),
 ];
+
+// Data names that are translated where they are shown: built-in theme names and the first profile.
+const DISPLAY_NAMES = ["Hive", "Black", "Dark Blue", "Dark Green", "Dark Purple", "Ember", "Grey", "Light", "Ocean", "Paper", "Sky Blue", "Wine", "Default"];
 
 function files(dir) {
   return readdirSync(dir).flatMap((entry) => {
@@ -25,7 +28,7 @@ function files(dir) {
 }
 
 export function collectKeys() {
-  const keys = new Map();
+  const keys = new Map(DISPLAY_NAMES.map((name) => [name, "display name"]));
   for (const file of files(srcDir)) {
     const source = readFileSync(file, "utf8");
     for (const pattern of patterns) {

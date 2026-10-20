@@ -9,7 +9,7 @@
   import { estimateJsonSize, formatStorageSize } from "../../export/storage";
   import { exportCurrentProject, importProjectFromZip, refreshStorageStats } from "../../export/actions";
   import { exportState } from "../../export/exportState.svelte";
-  import { t } from "../../i18n/i18n.svelte";
+  import { t, tp } from "../../i18n/i18n.svelte";
 
   let confirmingEmptyTrash = $state(false);
   let emptyTrashCancelButton = $state<HTMLButtonElement | null>(null);
@@ -74,12 +74,12 @@
     <div class="storage-stat">
       <span class="stat-label">{t("Snapshots")}</span>
       <span class="stat-value">{formatStorageSize(stats?.snapshotBytes ?? 0)}</span>
-      <span class="stat-detail">{stats?.snapshotCount ?? "—"} saved</span>
+      <span class="stat-detail">{stats ? tp(stats.snapshotCount, "{count} saved", "{count} saved") : "—"}</span>
     </div>
     <div class="storage-stat">
       <span class="stat-label">{t("Trash")}</span>
       <span class="stat-value">{formatStorageSize(estimateJsonSize(trash.entries))}</span>
-      <span class="stat-detail">{t("{count} entr{value}, approx.", { count: trash.entries.length, value: trash.entries.length === 1 ? "y" : "ies" })}</span>
+      <span class="stat-detail">{tp(trash.entries.length, "{count} entry, approx.", "{count} entries, approx.")}</span>
     </div>
     <div class="storage-stat">
       <span class="stat-label">{t("Undo history")}</span>
@@ -125,7 +125,7 @@
     </div>
     {#if confirmingEmptyTrash}
       <div class="settings-inline-panel is-danger" data-settings-trash-confirm role="dialog" aria-modal="false" aria-label={t("Confirm empty trash")} tabindex="-1" onkeydown={handleTrashConfirmKeydown}>
-        <p>{t("Permanently delete all")} <strong>{trash.entries.length}</strong> {t("{value}? This cannot be undone.", { value: trash.entries.length === 1 ? "entry" : "entries" })}</p>
+        <p>{tp(trash.entries.length, "Permanently delete {count} entry? This cannot be undone.", "Permanently delete all {count} entries? This cannot be undone.")}</p>
         <span class="setting-control">
           <button bind:this={emptyTrashCancelButton} class="settings-button" type="button" data-settings-trash-cancel onclick={() => (confirmingEmptyTrash = false)}>{t("Cancel")}</button>
           <button class="settings-button is-danger is-solid" type="button" data-settings-trash-confirm-action onclick={confirmEmptyTrash}>{t("Empty trash")}</button>

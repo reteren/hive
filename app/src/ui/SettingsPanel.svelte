@@ -33,7 +33,7 @@
     {
       id: "general",
       get label() { return t("General"); },
-      get description() { return t("Profile, motion and shortcuts."); },
+      get description() { return t("Profile, language, motion and shortcuts."); },
       icon: "M2.5 4.5h6M11.5 4.5h2M2.5 8h2M7.5 8h6M2.5 11.5h7.5M13 11.5h.5M10 3v3M6 6.5v3M11.5 10v3",
       body: GeneralSettings,
     },
@@ -144,7 +144,7 @@
           {/each}
         </nav>
         <footer class="settings-sidebar-footer">
-          {#if activeProfileName}<span class="sidebar-profile" title={t("Settings profile")}>{activeProfileName}</span>{/if}
+          {#if activeProfileName}<span class="sidebar-profile" title={t("Settings profile")}>{t("Profile: {name}", { name: t(activeProfileName) })}</span>{/if}
           <span class="app-version" data-app-version>hive {packageMetadata.version}</span>
         </footer>
       </aside>
@@ -284,11 +284,6 @@
     font-size: 11.5px;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .sidebar-profile::before {
-    content: "Profile: ";
-    opacity: 0.7;
   }
 
   .app-version {

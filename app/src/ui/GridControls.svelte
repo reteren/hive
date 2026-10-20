@@ -121,7 +121,7 @@
         <button
           class="step-strip"
           type="button"
-          aria-label={`${stepTitle()}. Activate to increase; right-click to decrease.`}
+          aria-label={t("{stepTitle}. Activate to increase; right-click to decrease.", { stepTitle: stepTitle() })}
           title={stepTitle()}
           onpointerdown={onStepPointerDown}
           oncontextmenu={preventStepContextMenu}

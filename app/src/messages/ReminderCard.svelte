@@ -93,7 +93,7 @@
       </span>
     {/if}
     <time datetime={messageDueIso(card.dueAt)}>{messageDueLabel(card.dueAt)}</time>
-    {#if card.overlate}<span class="message-late" data-message-late>late</span>{/if}
+    {#if card.overlate}<span class="message-late" data-message-late>{t("late")}</span>{/if}
     {#if available}<button type="button" class="message-go" data-message-go-to={card.id} onclick={onGoTo}>{t("Go to")}</button>
     {:else}<span class="message-unavailable">{t("Node unavailable")}</span>{/if}
   </footer>

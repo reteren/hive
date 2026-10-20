@@ -31,7 +31,7 @@ export function renameCalculatorNode(noteId: string, proposed: string): Calculat
   if (sourceKey !== targetKey && hasData(beforeSource) && hasData(beforeTarget)) {
     return {
       ok: false,
-      message: `A calculator named ${nextName} already has its own history; rename cancelled.`,
+      message: t("A calculator named {nextName} already has its own history; rename cancelled.", { nextName: nextName }),
     };
   }
 

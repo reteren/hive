@@ -365,7 +365,7 @@
   viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
   preserveAspectRatio="xMidYMid meet"
   role="img"
-  aria-label={variant === "overlay" ? "Board map; click or drag to move the camera, scroll to zoom" : "Board minimap; click or drag to move the camera, scroll to zoom"}
+  aria-label={variant === "overlay" ? t("Board map; click or drag to move the camera, scroll to zoom") : t("Board minimap; click or drag to move the camera, scroll to zoom")}
   data-map-view
   data-map-variant={variant}
   data-map-center-x={frame.camera.x}

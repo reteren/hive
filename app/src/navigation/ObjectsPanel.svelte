@@ -164,7 +164,7 @@
           class:pinned={objectsPanel.pinned}
           aria-label={objectsPanel.pinned ? t("Unpin search") : t("Pin search")}
           aria-pressed={objectsPanel.pinned}
-          title={objectsPanel.pinned ? "Unpin search; close after jumping" : "Pin search; keep the panel open after jumping"}
+          title={objectsPanel.pinned ? t("Unpin search; close after jumping") : t("Pin search; keep the panel open after jumping")}
           onclick={toggleSearchPin}
         >{objectsPanel.pinned ? t("Pinned") : t("Pin search")}</button>
         <button

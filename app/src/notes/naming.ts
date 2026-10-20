@@ -79,7 +79,7 @@ export function calculatorRenameTarget(
     note.id !== currentId && note.type !== "calculator" && noteFileKey(note.name) === key,
   );
   if (conflict) {
-    return { ok: false, message: `A non-calculator node already uses the name ${name}; rename cancelled.` };
+    return { ok: false, message: t("A non-calculator node already uses the name {name}; rename cancelled.", { name: name }) };
   }
   return { ok: true, name };
 }

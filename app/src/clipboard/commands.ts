@@ -109,7 +109,7 @@ export async function cutSelection(): Promise<void> {
   try {
     const result = await writeSelectionToClipboard(notes, selectedZonesNow);
     if (result !== "hive") {
-      showClipboardFeedback("Cut cancelled; Hive clipboard format is unavailable");
+      showClipboardFeedback(t("Cut cancelled; Hive clipboard format is unavailable"));
       return;
     }
 

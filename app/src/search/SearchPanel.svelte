@@ -169,7 +169,7 @@
     <section class="search-dialog">
       <header class="search-heading">
         <label for="note-search-input">{t("Search notes")}</label>
-        <div class="search-help" aria-hidden="true"><kbd>↑</kbd><kbd>↓</kbd><span>cycle</span><kbd>Enter</kbd><span>jump</span><kbd>Esc</kbd><span>close</span></div>
+        <div class="search-help" aria-hidden="true"><kbd>↑</kbd><kbd>↓</kbd><span>{t("cycle")}</span><kbd>Enter</kbd><span>{t("jump")}</span><kbd>Esc</kbd><span>{t("close")}</span></div>
         <button class="close-button" type="button" aria-label={t("Close search")} title={t("Close search")} onclick={closeSearch}><CloseGlyph /></button>
       </header>
 

@@ -92,7 +92,7 @@ function warningFor(note: Note, source: Note): TransferNotice {
   return {
     id: note.id,
     targetId: note.id,
-    message: `This task receives live text from ${source.name}; edits here are replaced on the next source edit.`,
+    message: t("This task receives live text from {name}; edits here are replaced on the next source edit.", { name: source.name }),
   };
 }
 
@@ -258,7 +258,7 @@ function inactiveNotices(
       return [{
         id: state.link.id,
         targetId: state.target.id,
-        message: `Transfer from ${state.source.name} is inactive; unlink and draw a new strong line to choose it again.`,
+        message: t("Transfer from {name} is inactive; unlink and draw a new strong line to choose it again.", { name: state.source.name }),
       }];
     }
     if (state.status === "inactive-superseded" && state.source && state.target) {

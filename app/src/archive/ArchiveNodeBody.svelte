@@ -7,7 +7,7 @@
   import { archive, type ArchiveEntry } from "../model/retention.svelte";
   import { deleteArchivedPermanently, duplicateArchivedNear, restoreArchived } from "./actions.svelte";
   import { planArchiveRestore } from "./logic";
-  import { t } from "../i18n/i18n.svelte";
+  import { t, tp, uiLocale } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let feedback = $state("");
@@ -84,7 +84,7 @@
 </script>
 
 <div class="archive-body" data-archive-node={note.id} data-selection-ignore role="region" aria-label={t("Project archive")}>
-  <div class="archive-heading"><strong>{t("Archive")}</strong><span>{archive.entries.length} items</span></div>
+  <div class="archive-heading"><strong>{t("Archive")}</strong><span>{tp(archive.entries.length, "{count} item", "{count} items")}</span></div>
   {#if feedback}<p class="archive-feedback" data-archive-feedback role="status">{feedback}</p>{/if}
   {#if items.length === 0}
     <p class="archive-empty">{t("Archived nodes appear here.")}</p>
@@ -96,14 +96,14 @@
           <div class="archive-item-heading">
             <span class="archive-kind" title={entry.note.task ? t("Task") : entry.note.type} aria-label={entry.note.task ? t("Task") : entry.note.type}>{kindIcon(entry.note)}</span>
             <strong class="archive-name">{entry.note.name}</strong>
-            <time datetime={new Date(entry.archivedAt).toISOString()}>{new Date(entry.archivedAt).toLocaleString()}</time>
+            <time datetime={new Date(entry.archivedAt).toISOString()}>{new Date(entry.archivedAt).toLocaleString(uiLocale())}</time>
           </div>
           <p class="archive-preview">{previewText(entry.note)}</p>
-          {#if item.idConflict}<p class="archive-notice">Original ID is in use; restore is unavailable.</p>{/if}
+          {#if item.idConflict}<p class="archive-notice">{t("Original ID is in use; restore is unavailable.")}</p>{/if}
           {#if item.oldPlan.nameChanged}<p class="archive-notice">{t("Restore will rename to {name}.", { name: item.oldPlan.note.name })}</p>{/if}
-          {#if item.oldPlan.calculatorUsesLiveData}<p class="archive-notice">A calculator with this name is active; restore will use its current data.</p>{/if}
-          {#if item.oldPlan.placeOccupied}<p class="archive-notice">Old place is occupied; restored node will overlap.</p>{/if}
-          {#if item.centrePlan.placeOccupied}<p class="archive-notice">Screen centre is occupied; centre restore will overlap.</p>{/if}
+          {#if item.oldPlan.calculatorUsesLiveData}<p class="archive-notice">{t("A calculator with this name is active; restore will use its current data.")}</p>{/if}
+          {#if item.oldPlan.placeOccupied}<p class="archive-notice">{t("Old place is occupied; restored node will overlap.")}</p>{/if}
+          {#if item.centrePlan.placeOccupied}<p class="archive-notice">{t("Screen centre is occupied; centre restore will overlap.")}</p>{/if}
           {#if entry.links.length > 0}
             <details class="archive-links" data-archive-links>
               <summary>{t("{count} links return · {count2} unavailable", { count: item.oldPlan.links.length, count2: item.oldPlan.missingLinks.length })}</summary>

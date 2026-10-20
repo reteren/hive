@@ -86,9 +86,9 @@
       <progress max={Math.max(1, progress.total)} value={progress.completed} aria-label={t("Import progress")}></progress>
 
       <div class="import-details">
-        <span>{progress.succeeded.toLocaleString()} imported</span>
+        <span>{t("{count} imported", { count: progress.succeeded.toLocaleString() })}</span>
         {#if progress.failed > 0}
-          <span class="import-failed">{progress.failed.toLocaleString()} skipped</span>
+          <span class="import-failed">{t("{count} skipped", { count: progress.failed.toLocaleString() })}</span>
         {/if}
       </div>
       {#if progress.currentFile}

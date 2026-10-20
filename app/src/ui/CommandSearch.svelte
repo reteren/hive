@@ -4,7 +4,7 @@
   import { closeCommandSearch, commandSearchState } from "../commands/commandSearch.svelte";
   import { formatKey } from "../commands/keys";
   import { getCommands, runCommand, type Command } from "../commands/registry.svelte";
-  import { t } from "../i18n/i18n.svelte";
+  import { t, tp } from "../i18n/i18n.svelte";
 
   let searchInput = $state<HTMLInputElement>();
   let query = $state("");
@@ -74,7 +74,7 @@
     <dialog open class="search-dialog" aria-modal="true" aria-label={t("Command search")}>
       <header class="search-heading">
         <label for="command-search-input">{t("Command search")}</label>
-        <div class="search-help"><kbd>↑</kbd><kbd>↓</kbd><span>navigate</span><kbd>Enter</kbd><span>run</span><kbd>Esc</kbd><span>close</span></div>
+        <div class="search-help"><kbd>↑</kbd><kbd>↓</kbd><span>{t("navigate")}</span><kbd>Enter</kbd><span>{t("run")}</span><kbd>Esc</kbd><span>{t("close")}</span></div>
       </header>
       <input
         id="command-search-input"
@@ -120,7 +120,7 @@
         {/each}
       </div>
       <footer class="search-footer">
-        <span>{results.length} commands</span>
+        <span>{tp(results.length, "{count} command", "{count} commands")}</span>
         <button type="button" onmousedown={preventMouseFocus} onclick={openKeymap}>{t("Edit key bindings")}</button>
       </footer>
     </dialog>

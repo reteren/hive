@@ -1,5 +1,5 @@
 import type { TimeSchedule } from "./types";
-import { t } from "../i18n/i18n.svelte";
+import { t, tp } from "../i18n/i18n.svelte";
 
 const HOUR_MS = 60 * 60 * 1_000;
 const FIVE_MINUTES_MS = 5 * 60 * 1_000;
@@ -30,8 +30,8 @@ export function intervalHoursHint(minutes: number): string {
   if (!Number.isFinite(minutes) || minutes < 1) return t("Enter at least 1 minute.");
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
-  if (hours === 0) return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
-  if (remainder === 0) return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+  if (hours === 0) return tp(minutes, "{count} minute", "{count} minutes");
+  if (remainder === 0) return tp(hours, "{count} hour", "{count} hours");
   return t("{hours} h {remainder} min", { hours: hours, remainder: remainder });
 }
 

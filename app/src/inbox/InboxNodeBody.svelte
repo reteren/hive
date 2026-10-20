@@ -6,7 +6,7 @@
   import { resolveInboxTwin } from "./inbox.svelte";
   import { formatInboxEntryTime } from "./inboxLogic";
   import { INBOX_ROW_HEIGHT } from "./inboxLayout";
-  import { t } from "../i18n/i18n.svelte";
+  import { t, tp } from "../i18n/i18n.svelte";
 
   let { note }: { note: Note } = $props();
   let entries = $derived.by(() => {
@@ -35,7 +35,7 @@
 <section class="inbox-body" data-inbox-node={note.id} aria-label={t("Inbox {name}", { name: note.name })} style:--inbox-row-height={`${INBOX_ROW_HEIGHT * 10}px`}>
   <header class="inbox-heading">
     <strong>{t("Inbox")}</strong>
-    <span data-inbox-entry-count>{entries.count} {entries.count === 1 ? "entry" : "entries"}</span>
+    <span data-inbox-entry-count>{tp(entries.count, "{count} entry", "{count} entries")}</span>
   </header>
   {#if entries.entries.length > 0}
     <ul class="inbox-entry-list" data-inbox-entry-list>

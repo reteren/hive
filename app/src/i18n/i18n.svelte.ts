@@ -30,6 +30,11 @@ export function dateLocale(): string {
   return i18n.locale === "en" ? "en-GB" : i18n.locale;
 }
 
+/** Locale for dates that follow the system in English (undefined) and the interface language otherwise. */
+export function uiLocale(): string | undefined {
+  return i18n.locale === "en" ? undefined : i18n.locale;
+}
+
 /** Marks a constant as translatable without translating it yet; the place that shows it calls t(). */
 export function msg(source: string): string {
   return source;

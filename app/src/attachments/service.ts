@@ -584,7 +584,7 @@ function detectImageMime(bytes: Uint8Array): (typeof IMAGE_MIME_TYPES)[number] |
 
 function unsupportedType(name: string): string {
   const extension = name.split(/[./\\]/).at(-1)?.toLowerCase() || "unknown";
-  return t("Unsupported file type: {extension}. Supported: {fORMATS}", { extension: extension, fORMATS: FORMATS.join(", ") });
+  return t("Unsupported file type: {extension}. Supported: {formats}", { extension: extension, formats: FORMATS.join(", ") });
 }
 
 function matches(bytes: Uint8Array, signature: number[]): boolean {

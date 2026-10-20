@@ -141,7 +141,7 @@
             class="beacon-circle"
             data-note-header
             type="button"
-            aria-label={t("Beacon {name}{value}", { name: note.name, value: memberZone ? `, Zone: ${memberZone.name}` : "" })}
+            aria-label={t("Beacon {name}{value}", { name: note.name, value: memberZone ? t(", Zone: {name}", { name: memberZone.name }) : "" })}
             class:in-zone={Boolean(memberZone)}
             style:--beacon-color={color}
             style:--note-glow-shadow={noteGlowShadow(glow)}

@@ -71,7 +71,7 @@
         type="button"
         aria-label={undoLogPanel.pinned ? t("Unpin undo log") : t("Pin undo log")}
         aria-pressed={undoLogPanel.pinned}
-        title={undoLogPanel.pinned ? "Unpin; close after choosing an entry" : "Pin; keep open after choosing an entry"}
+        title={undoLogPanel.pinned ? t("Unpin; close after choosing an entry") : t("Pin; keep open after choosing an entry")}
         onclick={toggleUndoLogPin}
       >
         {undoLogPanel.pinned ? t("Pinned") : t("Pin")}

@@ -236,7 +236,7 @@
     <input
       type="text"
       value={sourceValue}
-      placeholder={'https://… or C:\\Users\\Example\\file.mp4'}
+      placeholder={t("https://… or {path}", { path: "C:\\Users\\Example\\file.mp4" })}
       aria-label={t("Source URL or file path")}
       data-source-url-file
       onkeydown={(event) => rememberSelection("resource", event)}

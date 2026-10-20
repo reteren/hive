@@ -119,7 +119,7 @@ export async function saveFormatText(
   if (!result.ok) return result;
   if (result.media.kind !== "text") return { ok: false, error: t("The saved attachment is not a text file.") };
   if (board.notes[noteId]?.media?.file !== previous.file) {
-    return { ok: false, error: "The file changed while it was being saved; try again." };
+    return { ok: false, error: t("The file changed while it was being saved; try again.") };
   }
 
   const next: MediaRef = { ...result.media };

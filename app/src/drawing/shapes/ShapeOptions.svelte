@@ -76,7 +76,7 @@
     </label>
   {/if}
 
-  <p class="help">Drag to draw. Shift keeps proportions or snaps lines to 15°. Alt draws from the centre. Enter or click outside to commit; Esc cancels.</p>
+  <p class="help">{t("Drag to draw. Shift keeps proportions or snaps lines to 15°. Alt draws from the centre. Enter or click outside to commit; Esc cancels.")}</p>
   {#if shapeUi.committing}<p class="status" role="status">{t("Committing shape…")}</p>{/if}
   {#if shapeUi.error}<p class="error" role="alert">{shapeUi.error}</p>{/if}
 </section>

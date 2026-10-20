@@ -28,7 +28,7 @@
         {:else}
           <strong>{current.label}</strong>
         {/if}
-        <small>from {linkedList.name}{current.missing ? t(" · target missing") : ""}</small>
+        <small>{t("from {name}", { name: linkedList.name })}{current.missing ? t(" · target missing") : ""}</small>
       </div>
     {:else if note.randomPick}
       <p class="random-hint">{t("The previous choice is no longer in this List.")}</p>
