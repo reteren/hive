@@ -9,7 +9,6 @@
     deleteThemePreset,
     duplicateThemePreset,
     renameThemePreset,
-    resetThemeToHive,
     setThemeColor,
   } from "./appearance.svelte";
   import { BUILTIN_THEME_PRESETS } from "./presets";
@@ -83,7 +82,6 @@
 <section class="settings-block" aria-labelledby="appearance-themes-title" data-appearance-settings>
   <div class="settings-block-header">
     <h3 id="appearance-themes-title" class="settings-block-title">Themes</h3>
-    <button class="settings-button" type="button" data-reset-theme disabled={activeId === "hive"} onclick={resetThemeToHive}>Reset to Hive</button>
   </div>
   <div class="theme-gallery" role="list" aria-label="Appearance presets">
     {#each BUILTIN_THEME_PRESETS as preset (preset.id)}
