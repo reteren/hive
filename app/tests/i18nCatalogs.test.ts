@@ -1,21 +1,21 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { LOCALES } from "../src/i18n/locales";
 
-const dir = join(__dirname, "../src/i18n/catalogs");
-const files = readdirSync(dir).filter((file) => file.endsWith(".json"));
+type Catalog = Record<string, string | Record<string, string>>;
+const catalogs = import.meta.glob<Catalog>("../src/i18n/catalogs/*.json", { eager: true, import: "default" });
+const files = Object.keys(catalogs).map((path) => path.split("/").pop() ?? path);
 const holders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
 
 describe("interface language catalogs", () => {
   it("exist only for supported languages", () => {
     const tags = LOCALES.map((locale) => locale.tag);
     for (const file of files) expect(tags).toContain(file.replace(/\.json$/, ""));
+    expect(files.length).toBe(tags.length - 1);
   });
 
   for (const file of files) {
     it(`${file} keeps every placeholder of its English text`, () => {
-      const catalog = JSON.parse(readFileSync(join(dir, file), "utf8")) as Record<string, string | Record<string, string>>;
+      const catalog = catalogs[`../src/i18n/catalogs/${file}`];
       const broken: string[] = [];
       for (const [source, entry] of Object.entries(catalog)) {
         const expected = holders(source);
