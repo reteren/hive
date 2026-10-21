@@ -1,5 +1,8 @@
 # hive — состояние (обновлено 28.09.2026)
 
+
+**Актуально (21.10, 2.0.7):** фикс мигания скрытой ссылки на сильном зуме: MarkdownPreview больше не откатывается к сырому тексту, пока нода в visible.ids (IntersectionObserver только включает рендер). Установщик hive_2.0.7_x64-setup.exe, exe+sig+latest.json в Temp\claude\rel207.
+el207.
 **Актуально (20.10, 2.0.6):** интерфейс на 10 языках MarkNote (en ru de es pt it fr zh ja ar). src/i18n: t()/tp() с английским текстом как ключом, каталоги src/i18n/catalogs/<lang>.json (ленивая загрузка), язык в Настройки → General, общий для окон (localStorage hive.language.v1 + ViewSettings.language, не в профиле), трей переподписывается (tray_set_labels). Подписи команд и истории переводятся в месте показа; модульные константы — геттеры. scripts/i18n-keys.mjs собирает все ключи; tests/i18nCatalogs.test.ts проверяет плейсхолдеры. Новые тексты: писать t(\"…\") и добавлять перевод во все каталоги. Словари орфографии: все 8 из MarkNote. Арабский без RTL-раскладки. Rust-ошибки и имена нод по умолчанию остаются английскими. Установщик hive_2.0.6_x64-setup.exe, exe+sig+latest.json в Temp\claude\rel206.
 
 **Актуально (20.10, 2.0.5):** настройки переделаны: окно 960×700 с боковым меню разделов (General, Appearance, Editing, Media, AI tools, Storage; страницы в settings/pages/), общий стиль settings/settings.css (группы строк, .settings-button/.is-primary/.is-danger, свитчи, .settings-input, .settings-select), SettingToggle.svelte. Карточки тем ThemePreviewCard.svelte рисуют мини-доску во всех 5 цветах. Баг «Active на прошлой теме»: appearance был $state.raw-объектом, запись state.settings не была реактивной — теперь класс с raw-полем. Установщик hive_2.0.5_x64-setup.exe, exe+sig+latest.json в Temp\claude\rel205.
