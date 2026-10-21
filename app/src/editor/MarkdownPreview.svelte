@@ -105,7 +105,10 @@
 
   $effect(() => {
     const source = text;
-    const shouldRenderMarkdown = nearViewport && boardVisible;
+    // Rendered Markdown stays until the note leaves the board's visible set. Dropping back to raw text
+    // when only the preview box leaves the window looped at high zoom: a short rendered link moved out of
+    // the window, the long raw URL grew back into it, and the note flickered between both every frame.
+    const shouldRenderMarkdown = boardVisible && (nearViewport || renderedAsMarkdown);
     if (!container) return;
     if (!shouldRenderMarkdown) {
       if (source === renderedText && !renderedAsMarkdown && renderedNotesKey === "") return;
