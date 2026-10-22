@@ -1,6 +1,8 @@
 # hive — состояние (обновлено 28.09.2026)
 
 
+**Актуально (22.10, 2.0.8):** настройка «Simplify notes when zoomed out» (Settings → General, под Reduce animations): слайдер 0–50 %, по умолчанию 20 %, 0 = Off (ноды всегда полные). Все 4 порога LOD в board/visibility.svelte.ts двигаются пропорционально (0.85/0.65/0.55 от порога), значение в профиле (simplifyZoomPercent, settings/simplifyZoom.ts). Смоук 2000 нод: 20 % — медиана 16.8 мс при свипе зума, 40 % — 5.6 мс, Off — 55 мс. Установщик hive_2.0.8_x64-setup.exe, exe+sig+latest.json в Temp\claude\rel208.
+
 **Актуально (21.10, 2.0.7):** фикс мигания скрытой ссылки на сильном зуме: MarkdownPreview больше не откатывается к сырому тексту, пока нода в visible.ids (IntersectionObserver только включает рендер). Установщик hive_2.0.7_x64-setup.exe, exe+sig+latest.json в Temp\claude\rel207.
 el207.
 **Актуально (20.10, 2.0.6):** интерфейс на 10 языках MarkNote (en ru de es pt it fr zh ja ar). src/i18n: t()/tp() с английским текстом как ключом, каталоги src/i18n/catalogs/<lang>.json (ленивая загрузка), язык в Настройки → General, общий для окон (localStorage hive.language.v1 + ViewSettings.language, не в профиле), трей переподписывается (tray_set_labels). Подписи команд и истории переводятся в месте показа; модульные константы — геттеры. scripts/i18n-keys.mjs собирает все ключи; tests/i18nCatalogs.test.ts проверяет плейсхолдеры. Новые тексты: писать t(\"…\") и добавлять перевод во все каталоги. Словари орфографии: все 8 из MarkNote. Арабский без RTL-раскладки. Rust-ошибки и имена нод по умолчанию остаются английскими. Установщик hive_2.0.6_x64-setup.exe, exe+sig+latest.json в Temp\claude\rel206.
