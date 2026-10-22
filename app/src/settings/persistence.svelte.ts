@@ -14,6 +14,7 @@ import {
   setReduceAnimations,
   setTransferHintsShown,
   setVideoExternalThresholdMb,
+  setSimplifyZoomPercent,
 } from "./preferences.svelte";
 import { backupSettings, setBackupInterval } from "../backup/backupSettings.svelte";
 import { quickInputShortcut, setQuickInputShortcutValue } from "./quickInputShortcut.svelte";
@@ -246,6 +247,7 @@ function currentSettings(): ViewSettings {
     quickInputShortcut: quickInputShortcut.value,
     skipCompletedTimerConfirmation: timeEnablePreference.skipCompletedTimerConfirmation,
     videoExternalThresholdMb: preferences.videoExternalThresholdMb,
+    simplifyZoomPercent: preferences.simplifyZoomPercent,
     appearance: getThemeSettingsSnapshot(),
     createMenu: createMenuPreferencesSnapshot(),
     language: i18n.locale,
@@ -278,6 +280,7 @@ function applySettings(settings: ViewSettings): void {
   setQuickInputShortcutValue(settings.quickInputShortcut);
   timeEnablePreference.skipCompletedTimerConfirmation = settings.skipCompletedTimerConfirmation ?? false;
   setVideoExternalThresholdMb(settings.videoExternalThresholdMb);
+  setSimplifyZoomPercent(settings.simplifyZoomPercent);
   setThemeSettings(settings.appearance);
   setCreateMenuPreferences(settings.createMenu);
   if (settings.language !== i18n.locale) void setLanguage(settings.language);

@@ -15,13 +15,23 @@ export type LodTier = "full" | "simple" | "min";
 
 /**
  * Zoom thresholds with hysteresis, so hovering around a boundary does not remount everything.
- * FULL_* is also the per-note text threshold, applied to zoom × the note's own scale (noteShowsFull):
- * a big note keeps its text much farther out than a small one.
+ * fullEnter/fullLeave is also the per-note text threshold, applied to zoom × the note's own scale
+ * (noteShowsFull): a big note keeps its text much farther out than a small one.
+ * All four follow one user setting (Settings → General → Simplify notes when zoomed out), kept in the
+ * same proportions as the defaults 0.2 / 0.17 / 0.13 / 0.11. Zero turns simplification off.
  */
-const FULL_ENTER = 0.2;
-const FULL_LEAVE = 0.17;
-const SIMPLE_ENTER = 0.13;
-const SIMPLE_LEAVE = 0.11;
+export const DEFAULT_SIMPLIFY_ZOOM = 0.2;
+const thresholds = $state({ fullEnter: 0.2, fullLeave: 0.17, simpleEnter: 0.13, simpleLeave: 0.11 });
+
+/** Zoom below which notes turn into plain shells; 0 keeps every note fully drawn at any zoom. */
+export function setSimplifyZoom(zoom: number): void {
+  const enter = Number.isFinite(zoom) && zoom > 0 ? zoom : 0;
+  thresholds.fullEnter = enter;
+  thresholds.fullLeave = enter * 0.85;
+  thresholds.simpleEnter = enter * 0.65;
+  thresholds.simpleLeave = enter * 0.55;
+  scheduleVisibility();
+}
 /** Viewport margin (fraction of the viewport) a note must enter to mount, and leave to unmount. */
 const MOUNT_MARGIN = 0.35;
 const UNMOUNT_MARGIN = 0.9;
@@ -97,14 +107,15 @@ export function markNotesDirty(ids: Iterable<string>): void {
 }
 
 export function tierForZoom(zoom: number, current: LodTier): LodTier {
-  if (current === "full") return zoom < FULL_LEAVE ? (zoom < SIMPLE_LEAVE ? "min" : "simple") : "full";
-  if (current === "simple") return zoom >= FULL_ENTER ? "full" : zoom < SIMPLE_LEAVE ? "min" : "simple";
-  return zoom >= FULL_ENTER ? "full" : zoom >= SIMPLE_ENTER ? "simple" : "min";
+  const { fullEnter, fullLeave, simpleEnter, simpleLeave } = thresholds;
+  if (current === "full") return zoom < fullLeave ? (zoom < simpleLeave ? "min" : "simple") : "full";
+  if (current === "simple") return zoom >= fullEnter ? "full" : zoom < simpleLeave ? "min" : "simple";
+  return zoom >= fullEnter ? "full" : zoom >= simpleEnter ? "simple" : "min";
 }
 
 /** Whether a note draws its full body (text) at this zoom; `wasFull` adds hysteresis per note. */
 export function noteShowsFull(zoom: number, noteScale: number, wasFull: boolean): boolean {
-  return zoom * noteScale >= (wasFull ? FULL_LEAVE : FULL_ENTER);
+  return zoom * noteScale >= (wasFull ? thresholds.fullLeave : thresholds.fullEnter);
 }
 
 /** World rectangle on screen, grown by `margin` viewports on every side. */

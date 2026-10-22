@@ -167,6 +167,50 @@ label.setting-row {
 
 /* ---------- Controls ---------- */
 
+/* A row whose control spans the full width under its title (sliders). */
+.setting-row.is-stacked {
+  display: grid;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.setting-range-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-range {
+  width: 100%;
+  height: 16px;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.settings-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--accent) 0 var(--range-fill, 0%), var(--settings-line) var(--range-fill, 0%) 100%);
+}
+
+.settings-range::-webkit-slider-thumb {
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  appearance: none;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  background: var(--bg-panel-raised);
+}
+
+.settings-range:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  outline-offset: 3px;
+}
+
 .settings-button {
   display: inline-flex;
   height: var(--settings-control-height);

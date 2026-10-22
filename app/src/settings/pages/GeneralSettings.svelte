@@ -2,12 +2,15 @@
   import ProfileSettings from "../ProfileSettings.svelte";
   import QuickInputShortcutSetting from "../QuickInputShortcutSetting.svelte";
   import SettingToggle from "../SettingToggle.svelte";
-  import { preferences, setReduceAnimations } from "../preferences.svelte";
+  import { preferences, setReduceAnimations, setSimplifyZoomPercent } from "../preferences.svelte";
+  import { MAX_SIMPLIFY_ZOOM_PERCENT } from "../simplifyZoom";
   import { closeSettingsPanel } from "../settingsPanel.svelte";
   import { openKeymapPanel } from "../../commands/keymapPanel.svelte";
   import Select from "../../ui/Select.svelte";
   import { LOCALES } from "../../i18n/locales";
   import { i18n, setLanguage, t } from "../../i18n/i18n.svelte";
+
+  let simplifyLabel = $derived(preferences.simplifyZoomPercent === 0 ? t("Off") : `${preferences.simplifyZoomPercent}%`);
 
   function openKeyBindings(): void {
     closeSettingsPanel();
@@ -41,6 +44,25 @@
       checked={preferences.reduceAnimations}
       onchange={setReduceAnimations}
     />
+    <div class="setting-row is-stacked" data-settings-simplify-zoom>
+      <span class="setting-range-head">
+        <label class="setting-title" for="settings-simplify-zoom">{t("Simplify notes when zoomed out")}</label>
+        <span class="setting-unit" data-settings-simplify-zoom-value>{simplifyLabel}</span>
+      </span>
+      <input
+        id="settings-simplify-zoom"
+        class="settings-range"
+        type="range"
+        min="0"
+        max={MAX_SIMPLIFY_ZOOM_PERCENT}
+        step="1"
+        value={preferences.simplifyZoomPercent}
+        aria-valuetext={simplifyLabel}
+        style={`--range-fill: ${(preferences.simplifyZoomPercent / MAX_SIMPLIFY_ZOOM_PERCENT) * 100}%`}
+        oninput={(event) => setSimplifyZoomPercent(event.currentTarget.valueAsNumber)}
+      />
+      <span class="setting-description">{t("Optimization: zoomed out below this level, notes are drawn as plain grey blocks so big boards stay smooth. Lower keeps text visible farther out; Off always draws notes in full and can slow down large boards.")}</span>
+    </div>
   </div>
 </section>
 

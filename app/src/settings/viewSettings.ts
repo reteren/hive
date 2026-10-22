@@ -15,6 +15,7 @@ import {
   normalizeVideoExternalThresholdMb,
   type VideoExternalThresholdMb,
 } from "./videoThreshold";
+import { DEFAULT_SIMPLIFY_ZOOM_PERCENT, normalizeSimplifyZoomPercent } from "./simplifyZoom";
 import { DEFAULT_THEME_SETTINGS, normalizeThemeSettings, type ThemeSettings } from "../theme/presets";
 
 export const VIEW_SETTINGS_VERSION = 17;
@@ -63,6 +64,8 @@ export interface ViewSettings {
   quickInputShortcut: string;
   skipCompletedTimerConfirmation?: boolean;
   videoExternalThresholdMb: VideoExternalThresholdMb;
+  /** Zoom percent below which notes become plain shells; 0 = never. */
+  simplifyZoomPercent: number;
   appearance: ThemeSettings;
   /** Q menu: starred items (shown next to Note) and recently created ones. */
   createMenu: CreateMenuPreferences;
@@ -101,6 +104,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
   quickInputShortcut: DEFAULT_QUICK_INPUT_SHORTCUT,
   skipCompletedTimerConfirmation: false,
   videoExternalThresholdMb: DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB,
+  simplifyZoomPercent: DEFAULT_SIMPLIFY_ZOOM_PERCENT,
   appearance: normalizeThemeSettings(DEFAULT_THEME_SETTINGS),
   createMenu: { starred: [], recent: [] },
   language: DEFAULT_LOCALE,
@@ -173,6 +177,7 @@ export function parseViewSettings(serialized: string | null | undefined, default
       parsed.videoExternalThresholdMb,
       defaults.videoExternalThresholdMb,
     ),
+    simplifyZoomPercent: normalizeSimplifyZoomPercent(parsed.simplifyZoomPercent, defaults.simplifyZoomPercent),
     appearance: normalizeThemeSettings(parsed.appearance, defaults.appearance),
     createMenu: parsed.createMenu === undefined ? normalizeCreateMenuPreferences(defaults.createMenu) : normalizeCreateMenuPreferences(parsed.createMenu),
     language: normalizeLocale(parsed.language, defaults.language),
@@ -213,6 +218,7 @@ export function serializeViewSettings(settings: ViewSettings): string {
       settings.videoExternalThresholdMb,
       DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB,
     ),
+    simplifyZoomPercent: normalizeSimplifyZoomPercent(settings.simplifyZoomPercent),
     appearance: normalizeThemeSettings(settings.appearance),
     createMenu: normalizeCreateMenuPreferences(settings.createMenu),
     language: normalizeLocale(settings.language),
@@ -293,6 +299,7 @@ function cloneViewSettings(settings: ViewSettings): ViewSettings {
       settings.videoExternalThresholdMb,
       DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB,
     ),
+    simplifyZoomPercent: normalizeSimplifyZoomPercent(settings.simplifyZoomPercent),
     appearance: normalizeThemeSettings(settings.appearance),
     createMenu: normalizeCreateMenuPreferences(settings.createMenu),
     language: normalizeLocale(settings.language),

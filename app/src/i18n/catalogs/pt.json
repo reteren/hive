@@ -1912,5 +1912,7 @@
  "· attachments {bytes}": "· anexos {bytes}",
  "· exists {span}": "· existe há {span}",
  "· {done} done ({percent})": "· {done} concluídas ({percent})",
- "· ~{readingMinutes} min read": "· ~{readingMinutes} min de leitura"
+ "· ~{readingMinutes} min read": "· ~{readingMinutes} min de leitura",
+ "Simplify notes when zoomed out": "Simplificar notas ao afastar",
+ "Optimization: zoomed out below this level, notes are drawn as plain grey blocks so big boards stay smooth. Lower keeps text visible farther out; Off always draws notes in full and can slow down large boards.": "Otimização: abaixo deste zoom, as notas são desenhadas como blocos cinzentos simples para que quadros grandes continuem fluidos. Um valor menor mantém o texto visível de mais longe; Desligado desenha sempre as notas completas e pode tornar quadros grandes lentos."
 }

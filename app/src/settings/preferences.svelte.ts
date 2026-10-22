@@ -4,6 +4,8 @@ import {
   normalizeVideoExternalThresholdMb,
   type VideoExternalThresholdMb,
 } from "./videoThreshold";
+import { DEFAULT_SIMPLIFY_ZOOM_PERCENT, normalizeSimplifyZoomPercent } from "./simplifyZoom";
+import { setSimplifyZoom } from "../board/visibility.svelte";
 
 export const preferences = $state({
   reduceAnimations: systemPrefersReducedMotion(),
@@ -12,6 +14,7 @@ export const preferences = $state({
   recordInBackground: false,
   allowAiToolsMcp: true,
   videoExternalThresholdMb: DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB as VideoExternalThresholdMb,
+  simplifyZoomPercent: DEFAULT_SIMPLIFY_ZOOM_PERCENT,
 });
 
 export function setTransferHintsShown(count: number): void {
@@ -41,6 +44,11 @@ export function setAllowAiToolsMcp(enabled: boolean): void {
 
 export function setVideoExternalThresholdMb(value: unknown): void {
   preferences.videoExternalThresholdMb = normalizeVideoExternalThresholdMb(value);
+}
+
+export function setSimplifyZoomPercent(value: unknown): void {
+  preferences.simplifyZoomPercent = normalizeSimplifyZoomPercent(value, preferences.simplifyZoomPercent);
+  setSimplifyZoom(preferences.simplifyZoomPercent / 100);
 }
 
 applyReduceMotionPreference(preferences.reduceAnimations);

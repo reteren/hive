@@ -19,6 +19,7 @@ export const PROFILE_KEYS = [
   "recordInBackground",
   "skipCompletedTimerConfirmation",
   "videoExternalThresholdMb",
+  "simplifyZoomPercent",
   "appearance",
   "createMenu",
 ] as const;

@@ -1824,5 +1824,7 @@
  "· attachments {bytes}": "· المرفقات {bytes}",
  "· exists {span}": "· موجود منذ {span}",
  "· {done} done ({percent})": "· منجزة {done} ({percent})",
- "· ~{readingMinutes} min read": "· ~{readingMinutes} د قراءة"
+ "· ~{readingMinutes} min read": "· ~{readingMinutes} د قراءة",
+ "Simplify notes when zoomed out": "تبسيط الملاحظات عند التصغير",
+ "Optimization: zoomed out below this level, notes are drawn as plain grey blocks so big boards stay smooth. Lower keeps text visible farther out; Off always draws notes in full and can slow down large boards.": "تحسين الأداء: عند التصغير دون هذا المستوى تُرسم الملاحظات ككتل رمادية بسيطة لتبقى اللوحات الكبيرة سلسة. القيمة الأقل تُبقي النص ظاهرًا من مسافة أبعد؛ الإيقاف يرسم الملاحظات كاملة دائمًا وقد يبطئ اللوحات الكبيرة."
 }
