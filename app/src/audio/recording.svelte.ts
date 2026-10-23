@@ -10,6 +10,7 @@ import { preferences } from "../settings/preferences.svelte";
 import { importRecording, reportImportError } from "../attachments/service";
 import { uniqueName } from "../notes/naming";
 import { copyAudioRecordings } from "./recordingData";
+import { encodeRecording, type EncodedRecording } from "./recordingFormat";
 import { pinNote } from "../board/visibility.svelte";
 import { createRecordingPinController } from "./recordingPin";
 import {
@@ -308,8 +309,13 @@ async function finishRecording(session: Capture, mime: string): Promise<void> {
     const recordedSeconds = Math.max(0, (performance.now() - (session.startedAt ?? performance.now())) / 1000);
     const blob = new Blob(session.chunks, { type: mime });
     if (blob.size === 0) throw new Error(t("No audio was recorded."));
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    const result = await importRecording(bytes, mime, `${session.noteName}.webm`);
+    const webm = new Uint8Array(await blob.arrayBuffer());
+    const encoded = await encodeRecording(webm, preferences.recordingFormat).catch((error: unknown): EncodedRecording => {
+      // A failed conversion must not lose the take: keep the WebM as recorded.
+      console.warn("Recording conversion failed, keeping WebM", error);
+      return { bytes: webm, mime, extension: "webm" };
+    });
+    const result = await importRecording(encoded.bytes, encoded.mime, `${session.noteName}.${encoded.extension}`);
     if (capture !== session) return;
     if (!result.ok) throw new Error(result.error);
     if (result.media.kind !== "audio") throw new Error(t("The recorded file was not recognized as audio."));
@@ -324,7 +330,7 @@ async function finishRecording(session: Capture, mime: string): Promise<void> {
       name: nextRecordingName(before),
       media: Number.isFinite(result.media.duration) && (result.media.duration ?? 0) > 0
         ? result.media
-        : { ...result.media, duration: recordedSeconds },
+        : { ...result.media, duration: encoded.duration ?? recordedSeconds },
     };
     const after = appendRecording(before, recording);
     execute(recordingListCommand(before, after, (recordings) => {

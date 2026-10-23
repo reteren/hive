@@ -1812,5 +1812,7 @@
  "· {done} done ({percent})": "· {done} 件完了（{percent}）",
  "· ~{readingMinutes} min read": "· 約 {readingMinutes} 分で読めます",
  "Simplify notes when zoomed out": "ズームアウト時にノートを簡略化",
- "Optimization: zoomed out below this level, notes are drawn as plain grey blocks so big boards stay smooth. Lower keeps text visible farther out; Off always draws notes in full and can slow down large boards.": "最適化：このズーム以下ではノートを単純な灰色のブロックとして描画し、大きなボードでも滑らかに動くようにします。値を下げるとより遠くまで文字が見えます。オフにすると常にノートを完全に描画し、大きなボードが遅くなることがあります。"
+ "Optimization: zoomed out below this level, notes are drawn as plain grey blocks so big boards stay smooth. Lower keeps text visible farther out; Off always draws notes in full and can slow down large boards.": "最適化：このズーム以下ではノートを単純な灰色のブロックとして描画し、大きなボードでも滑らかに動くようにします。値を下げるとより遠くまで文字が見えます。オフにすると常にノートを完全に描画し、大きなボードが遅くなることがあります。",
+ "Recording format": "録音形式",
+ "File type for new dictaphone recordings. WAV and FLAC keep full quality but take more space.": "新しいボイスレコーダー録音のファイル形式。WAV と FLAC は音質を完全に保ちますが、容量が大きくなります。"
 }

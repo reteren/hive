@@ -11,6 +11,7 @@ import {
   setFitWidthToText,
   setAllowAiToolsMcp,
   setRecordInBackground,
+  setRecordingFormat,
   setReduceAnimations,
   setTransferHintsShown,
   setVideoExternalThresholdMb,
@@ -242,6 +243,7 @@ function currentSettings(): ViewSettings {
     fitWidthToText: preferences.fitWidthToText,
     gifPlayback: gifPlayback.mode,
     recordInBackground: preferences.recordInBackground,
+    recordingFormat: preferences.recordingFormat,
     allowAiToolsMcp: preferences.allowAiToolsMcp,
     backupIntervalMinutes: backupSettings.interval,
     quickInputShortcut: quickInputShortcut.value,
@@ -275,6 +277,7 @@ function applySettings(settings: ViewSettings): void {
   setFitWidthToText(settings.fitWidthToText);
   setGifPlaybackMode(settings.gifPlayback);
   setRecordInBackground(settings.recordInBackground);
+  setRecordingFormat(settings.recordingFormat);
   setAllowAiToolsMcp(settings.allowAiToolsMcp);
   setBackupInterval(settings.backupIntervalMinutes);
   setQuickInputShortcutValue(settings.quickInputShortcut);

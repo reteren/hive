@@ -1,7 +1,8 @@
 <script lang="ts">
   import Select from "../../ui/Select.svelte";
   import SettingToggle from "../SettingToggle.svelte";
-  import { preferences, setRecordInBackground, setVideoExternalThresholdMb } from "../preferences.svelte";
+  import { preferences, setRecordInBackground, setRecordingFormat, setVideoExternalThresholdMb } from "../preferences.svelte";
+  import { RECORDING_FORMAT_LABELS, RECORDING_FORMATS } from "../../audio/recordingFormat";
   import { DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB } from "../videoThreshold";
   import { gifPlayback, setGifPlaybackMode } from "../../attachments/gifPlayback.svelte";
   import { t } from "../../i18n/i18n.svelte";
@@ -64,6 +65,21 @@
       checked={preferences.recordInBackground}
       onchange={setRecordInBackground}
     />
+    <div class="setting-row" data-settings-recording-format>
+      <span class="setting-copy">
+        <span class="setting-title">{t("Recording format")}</span>
+        <span class="setting-description">{t("File type for new dictaphone recordings. WAV and FLAC keep full quality but take more space.")}</span>
+      </span>
+      <span class="settings-select">
+        <Select
+          id="settings-recording-format"
+          ariaLabel={t("Recording format")}
+          value={preferences.recordingFormat}
+          options={RECORDING_FORMATS.map((format) => ({ value: format, label: RECORDING_FORMAT_LABELS[format] }))}
+          onchange={setRecordingFormat}
+        />
+      </span>
+    </div>
   </div>
 </section>
 

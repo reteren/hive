@@ -1,4 +1,5 @@
 mod attachments;
+mod audio_encode;
 mod backup;
 mod board_store;
 mod board_watch;
@@ -250,6 +251,7 @@ pub fn run() {
             attachments::attachment_export,
             tray_set_labels,
             image_clipboard::image_copy_to_clipboard,
+            audio_encode::audio_encode_recording,
             set_quit_requested,
             app_quit,
             configure_quick_input_shortcut,

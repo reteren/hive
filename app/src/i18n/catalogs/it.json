@@ -1914,5 +1914,7 @@
  "· {done} done ({percent})": "· {done} completate ({percent})",
  "· ~{readingMinutes} min read": "· ~{readingMinutes} min di lettura",
  "Simplify notes when zoomed out": "Semplifica le note allontanando",
- "Optimization: zoomed out below this level, notes are drawn as plain grey blocks so big boards stay smooth. Lower keeps text visible farther out; Off always draws notes in full and can slow down large boards.": "Ottimizzazione: sotto questo livello di zoom le note vengono disegnate come semplici blocchi grigi, così le bacheche grandi restano fluide. Un valore più basso mantiene il testo visibile più da lontano; Disattivato disegna sempre le note per intero e può rallentare le bacheche grandi."
+ "Optimization: zoomed out below this level, notes are drawn as plain grey blocks so big boards stay smooth. Lower keeps text visible farther out; Off always draws notes in full and can slow down large boards.": "Ottimizzazione: sotto questo livello di zoom le note vengono disegnate come semplici blocchi grigi, così le bacheche grandi restano fluide. Un valore più basso mantiene il testo visibile più da lontano; Disattivato disegna sempre le note per intero e può rallentare le bacheche grandi.",
+ "Recording format": "Formato di registrazione",
+ "File type for new dictaphone recordings. WAV and FLAC keep full quality but take more space.": "Tipo di file per le nuove registrazioni del dittafono. WAV e FLAC mantengono la qualità piena ma occupano più spazio."
 }

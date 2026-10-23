@@ -17,6 +17,7 @@ export const PROFILE_KEYS = [
   "fitWidthToText",
   "gifPlayback",
   "recordInBackground",
+  "recordingFormat",
   "skipCompletedTimerConfirmation",
   "videoExternalThresholdMb",
   "simplifyZoomPercent",

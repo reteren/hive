@@ -6,12 +6,14 @@ import {
 } from "./videoThreshold";
 import { DEFAULT_SIMPLIFY_ZOOM_PERCENT, normalizeSimplifyZoomPercent } from "./simplifyZoom";
 import { setSimplifyZoom } from "../board/visibility.svelte";
+import { DEFAULT_RECORDING_FORMAT, normalizeRecordingFormat, type RecordingFormat } from "../audio/recordingFormat";
 
 export const preferences = $state({
   reduceAnimations: systemPrefersReducedMotion(),
   transferHintsShown: 0,
   fitWidthToText: true,
   recordInBackground: false,
+  recordingFormat: DEFAULT_RECORDING_FORMAT as RecordingFormat,
   allowAiToolsMcp: true,
   videoExternalThresholdMb: DEFAULT_VIDEO_EXTERNAL_THRESHOLD_MB as VideoExternalThresholdMb,
   simplifyZoomPercent: DEFAULT_SIMPLIFY_ZOOM_PERCENT,
@@ -36,6 +38,10 @@ export function setFitWidthToText(enabled: boolean): void {
 
 export function setRecordInBackground(enabled: boolean): void {
   preferences.recordInBackground = enabled;
+}
+
+export function setRecordingFormat(value: unknown): void {
+  preferences.recordingFormat = normalizeRecordingFormat(value, preferences.recordingFormat);
 }
 
 export function setAllowAiToolsMcp(enabled: boolean): void {

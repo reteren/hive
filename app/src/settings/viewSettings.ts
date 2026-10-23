@@ -15,6 +15,7 @@ import {
   normalizeVideoExternalThresholdMb,
   type VideoExternalThresholdMb,
 } from "./videoThreshold";
+import { DEFAULT_RECORDING_FORMAT, normalizeRecordingFormat, type RecordingFormat } from "../audio/recordingFormat";
 import { DEFAULT_SIMPLIFY_ZOOM_PERCENT, normalizeSimplifyZoomPercent } from "./simplifyZoom";
 import { DEFAULT_THEME_SETTINGS, normalizeThemeSettings, type ThemeSettings } from "../theme/presets";
 
@@ -59,6 +60,8 @@ export interface ViewSettings {
   fitWidthToText: boolean;
   gifPlayback: GifPlaybackMode;
   recordInBackground: boolean;
+  /** Dictaphone output format; WebM is what the webview records, the rest are encoded after. */
+  recordingFormat: RecordingFormat;
   allowAiToolsMcp: boolean;
   backupIntervalMinutes: BackupInterval;
   quickInputShortcut: string;
@@ -99,6 +102,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
   fitWidthToText: true,
   gifPlayback: "always",
   recordInBackground: false,
+  recordingFormat: DEFAULT_RECORDING_FORMAT,
   allowAiToolsMcp: true,
   backupIntervalMinutes: 30,
   quickInputShortcut: DEFAULT_QUICK_INPUT_SHORTCUT,
@@ -169,6 +173,7 @@ export function parseViewSettings(serialized: string | null | undefined, default
     fitWidthToText: booleanOrDefault(parsed.fitWidthToText, defaults.fitWidthToText),
     gifPlayback: normalizeGifPlaybackMode(parsed.gifPlayback, defaults.gifPlayback),
     recordInBackground: booleanOrDefault(parsed.recordInBackground, defaults.recordInBackground),
+    recordingFormat: normalizeRecordingFormat(parsed.recordingFormat, defaults.recordingFormat),
     allowAiToolsMcp: booleanOrDefault(parsed.allowAiToolsMcp, defaults.allowAiToolsMcp),
     backupIntervalMinutes: backupIntervalOrDefault(parsed.backupIntervalMinutes, defaults.backupIntervalMinutes),
     quickInputShortcut: normalizeQuickInputShortcut(parsed.quickInputShortcut) ?? defaults.quickInputShortcut,
@@ -210,6 +215,7 @@ export function serializeViewSettings(settings: ViewSettings): string {
     fitWidthToText: settings.fitWidthToText,
     gifPlayback: settings.gifPlayback,
     recordInBackground: settings.recordInBackground,
+    recordingFormat: normalizeRecordingFormat(settings.recordingFormat),
     allowAiToolsMcp: settings.allowAiToolsMcp,
     backupIntervalMinutes: backupIntervalOrDefault(settings.backupIntervalMinutes, 30),
     quickInputShortcut: normalizeQuickInputShortcut(settings.quickInputShortcut) ?? DEFAULT_QUICK_INPUT_SHORTCUT,
@@ -291,6 +297,7 @@ function cloneViewSettings(settings: ViewSettings): ViewSettings {
     fitWidthToText: settings.fitWidthToText,
     gifPlayback: settings.gifPlayback,
     recordInBackground: settings.recordInBackground,
+    recordingFormat: normalizeRecordingFormat(settings.recordingFormat),
     allowAiToolsMcp: settings.allowAiToolsMcp,
     backupIntervalMinutes: settings.backupIntervalMinutes,
     quickInputShortcut: settings.quickInputShortcut,
