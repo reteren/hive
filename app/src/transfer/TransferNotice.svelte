@@ -110,9 +110,9 @@
     justify-content: space-between;
     gap: 10px;
     padding: 8px;
-    border: 1px solid #786532;
+    border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--bg-panel));
     border-radius: 4px;
-    background: #25231b;
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg-panel));
     box-shadow: 0 5px 16px rgb(0 0 0 / 48%);
     color: var(--text);
     font-size: 10px;

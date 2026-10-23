@@ -395,7 +395,7 @@
     height: 36px;
     margin: 8px;
     padding: 5px 8px;
-    border: 1px solid #57503d;
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--bg-panel));
     border-radius: 3px;
     outline: none;
     background: var(--bg-panel-raised);

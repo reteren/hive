@@ -144,22 +144,22 @@
   .archive-heading span, .archive-empty, .archive-preview, .archive-item time { color: var(--text-dim); }
   .archive-heading strong { color: var(--accent); font-size: 12px; }
   .archive-empty, .archive-feedback, .archive-preview, .archive-notice { margin: 0; }
-  .archive-feedback { color: #d9cb92; }
+  .archive-feedback { color: color-mix(in srgb, var(--accent) 60%, var(--text)); }
   .archive-list { display: grid; min-height: 0; flex: 1 1 auto; overflow: auto; gap: 5px; }
   .archive-item { display: grid; gap: 5px; padding: 7px; border: 1px solid #49443a; border-radius: 4px; background: #22211f; }
   .archive-item-heading { display: flex; min-width: 0; align-items: center; gap: 6px; }
-  .archive-kind { display: grid; width: 18px; height: 18px; flex: none; place-items: center; border: 1px solid #8c7944; border-radius: 3px; color: #e2c56d; font-weight: 700; }
+  .archive-kind { display: grid; width: 18px; height: 18px; flex: none; place-items: center; border: 1px solid color-mix(in srgb, var(--accent) 60%, var(--bg-panel)); border-radius: 3px; color: var(--accent); font-weight: 700; }
   .archive-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .archive-item time { margin-left: auto; font-size: 9px; white-space: nowrap; }
   .archive-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .archive-notice { color: #e6c979; font-size: 10px; }
+  .archive-notice { color: var(--accent); font-size: 10px; }
   .archive-links { color: var(--text-dim); font-size: 10px; }
   .archive-links summary { cursor: pointer; }
   .archive-links ul { margin: 4px 0 0; padding-left: 16px; }
   .archive-actions { display: flex; flex-wrap: wrap; gap: 4px; }
-  .archive-resume-prompt { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; color: #e6c979; }
+  .archive-resume-prompt { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; color: var(--accent); }
   .archive-resume-prompt span { margin-right: auto; }
-  .archive-resume-prompt button { padding: 4px 7px; border: 1px solid #74633b; border-radius: 3px; color: var(--text); background: #332f23; font: inherit; font-size: 10px; cursor: pointer; }
+  .archive-resume-prompt button { padding: 4px 7px; border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--bg-panel)); border-radius: 3px; color: var(--text); background: color-mix(in srgb, var(--accent) 12%, var(--bg-panel)); font: inherit; font-size: 10px; cursor: pointer; }
   .archive-resume-prompt button:hover { border-color: var(--accent); }
   .archive-actions button { padding: 4px 6px; border: 1px solid #565044; border-radius: 3px; color: var(--text); background: #2c2a25; font: inherit; font-size: 10px; cursor: pointer; }
   .archive-actions button:hover:not(:disabled) { border-color: var(--accent); }

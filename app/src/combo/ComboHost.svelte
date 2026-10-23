@@ -136,7 +136,7 @@
   }
   .combo-section-toggle {
     display: grid; place-items: center; flex: 0 0 18px; width: 18px; height: 18px;
-    padding: 0; border: 0; border-radius: 2px; color: #c7a95e; background: transparent; cursor: pointer;
+    padding: 0; border: 0; border-radius: 2px; color: var(--accent); background: transparent; cursor: pointer;
   }
   .combo-section-toggle:hover, .combo-section-toggle:focus-visible { color: var(--text); background: #ffffff12; }
   .combo-section-chevron { line-height: 1; }

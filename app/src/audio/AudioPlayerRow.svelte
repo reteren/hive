@@ -298,7 +298,7 @@
   .file-heading { display: flex; min-width: 0; align-items: center; gap: 8px; }
   .file-name { min-width: 0; overflow: hidden; color: #d8d8d8; font-size: 11px; font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
   button.file-name { padding: 0; border: 0; background: transparent; text-align: left; cursor: text; }
-  .recording-name-input { min-width: 0; flex: 1; padding: 2px 4px; border: 1px solid #5c5137; border-radius: 3px; outline: none; color: #eee; background: #242424; font: inherit; font-size: 11px; }
+  .recording-name-input { min-width: 0; flex: 1; padding: 2px 4px; border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--bg-panel)); border-radius: 3px; outline: none; color: #eee; background: #242424; font: inherit; font-size: 11px; }
   .file-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; margin-left: auto; }
   .icon-button, .play-button { display: grid; flex: 0 0 auto; place-items: center; padding: 0; border: 1px solid transparent; color: #e8e8e8; background: transparent; cursor: pointer; }
   .icon-button { width: 23px; height: 23px; border-radius: 3px; }

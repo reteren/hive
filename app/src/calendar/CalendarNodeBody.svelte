@@ -138,7 +138,7 @@
   .weekday { display: grid; min-width: 0; min-height: 16px; place-items: center; color: #929b95; font-size: 8px; font-weight: 600; }
   .calendar-day { position: relative; display: flex; min-width: 0; align-items: center; justify-content: center; padding: 0; color: #d6dbd7; background: #282d2a; border: 1px solid #3e4541; border-radius: 3px; font: inherit; font-variant-numeric: tabular-nums; cursor: pointer; }
   .calendar-day.outside { color: #737c76; background: #232725; }
-  .calendar-day.today { outline: 1px solid #d5b65b; outline-offset: -2px; }
+  .calendar-day.today { outline: 1px solid var(--accent); outline-offset: -2px; }
   .calendar-day.selected { background: #394b43; border-color: #79a38b; }
   .day-dot { position: absolute; bottom: 0; color: #85c89d; font-size: 13px; line-height: 9px; }
   .day-count { position: absolute; right: 2px; bottom: 1px; color: #8fd0a4; font-size: 7px; font-weight: 700; line-height: 9px; }

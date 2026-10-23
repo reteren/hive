@@ -926,7 +926,7 @@
   }
 
   .link-line.link-preview {
-    stroke: #c5ad72;
+    stroke: color-mix(in srgb, var(--accent) 75%, #ffffff);
     opacity: 0.85;
   }
 
@@ -954,7 +954,7 @@
   }
 
   .link-arrow.link-preview {
-    fill: #c5ad72;
+    fill: color-mix(in srgb, var(--accent) 75%, #ffffff);
   }
 
   .link-arrow.link-preview.weak {
@@ -993,7 +993,7 @@
     width: max-content;
     max-width: min(280px, calc(100vw - 16px));
     padding: 4px 7px;
-    border: 1px solid #735b28;
+    border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--bg-panel));
     border-radius: 3px;
     color: var(--text);
     background: rgba(35, 32, 25, 0.96);

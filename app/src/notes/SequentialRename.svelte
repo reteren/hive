@@ -93,7 +93,7 @@
     width: min(390px, 100%);
     gap: 9px;
     padding: 12px;
-    border: 1px solid #5b5136;
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--bg-panel));
     border-radius: 4px;
     background: var(--bg-panel);
     box-shadow: 0 12px 32px rgb(0 0 0 / 55%);
@@ -135,7 +135,7 @@
     min-width: 0;
     height: 30px;
     padding: 4px 7px;
-    border: 1px solid #62562f;
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--bg-panel));
     border-radius: 3px;
     outline: none;
     background: var(--bg-panel-raised);

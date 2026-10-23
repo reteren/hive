@@ -1,4 +1,4 @@
 .note-card[data-inbox-twin="true"] {
-  outline: 1px dashed #8f805b;
+  outline: 1px dashed color-mix(in srgb, var(--accent) 60%, var(--bg-panel));
   outline-offset: 3px;
 }

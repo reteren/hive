@@ -32,6 +32,6 @@
   footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
   button { min-width: 58px; padding: 5px 12px; color: var(--text); background: var(--bg-panel-raised); border: 1px solid var(--border); border-radius: 3px; font: inherit; cursor: pointer; }
   button:hover { background: var(--bg-hover); }
-  .yes { border-color: #947837; }
+  .yes { border-color: color-mix(in srgb, var(--accent) 65%, var(--bg-panel)); }
   :is(button, input):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>

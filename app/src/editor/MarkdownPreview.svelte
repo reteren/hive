@@ -239,7 +239,7 @@
     padding: 0 0.2em;
     border-radius: 2px;
     background: #2a2a2a;
-    color: #e5c786;
+    color: color-mix(in srgb, var(--accent) 65%, #ffffff);
     white-space: pre-wrap;
   }
 

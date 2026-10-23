@@ -2546,9 +2546,9 @@ type PendingBoardMove =
     left: 50%;
     transform: translateX(-50%);
     padding: 4px 8px;
-    border: 1px solid #765d2b;
+    border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--bg-panel));
     border-radius: 3px;
-    background: rgba(35, 35, 35, 0.9);
+    background: color-mix(in srgb, var(--bg-panel) 90%, transparent);
     color: var(--text);
     font-size: 11px;
     pointer-events: none;
@@ -2562,7 +2562,7 @@ type PendingBoardMove =
     padding: 4px 8px;
     border: 1px solid #4c4c4c;
     border-radius: 3px;
-    background: rgba(35, 35, 35, 0.9);
+    background: color-mix(in srgb, var(--bg-panel) 90%, transparent);
     color: var(--text);
     font-size: 11px;
     pointer-events: none;
@@ -2600,6 +2600,6 @@ type PendingBoardMove =
 
   .selection-context-pick button:hover,
   .selection-context-pick button:focus-visible {
-    background: var(--bg-active);
+    background: var(--bg-hover);
   }
 </style>

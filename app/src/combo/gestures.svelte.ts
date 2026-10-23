@@ -45,8 +45,8 @@ export const comboPullout: Action<HTMLElement, ComboPulloutOptions> = (node, ini
       gesture.preview = document.createElement("div");
       gesture.preview.textContent = options.section === "message" ? t("Message") : t("Time");
       Object.assign(gesture.preview.style, {
-        position: "fixed", zIndex: "1000", padding: "4px 7px", border: "1px solid #806c3b",
-        borderRadius: "3px", background: "#2b2923", color: "var(--text)", fontSize: "10px", pointerEvents: "none",
+        position: "fixed", zIndex: "1000", padding: "4px 7px", border: "1px solid color-mix(in srgb, var(--accent) 55%, var(--bg-panel))",
+        borderRadius: "3px", background: "color-mix(in srgb, var(--accent) 10%, var(--bg-panel))", color: "var(--text)", fontSize: "10px", pointerEvents: "none",
       });
       document.body.append(gesture.preview);
     }
