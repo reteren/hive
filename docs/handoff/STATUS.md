@@ -1,6 +1,8 @@
 # hive — состояние (обновлено 28.09.2026)
 
 
+**Актуально (23.10, 2.1.0):** формат записи диктофона в Settings → Media (recordingFormat, по умолчанию mp3; ogg, webm, wav, flac; в профиле). WebView2 пишет только WebM/Opus: после стопа audio/recordingFormat.ts декодирует WebM в PCM (OfflineAudioContext 48 кГц, до 2 каналов, int16) и шлёт raw в Rust audio_encode_recording (src-tauri/src/audio_encode.rs: LAME 128 kbps, libvorbis q0.5, flacenc, свой WAV). Ошибка конвертации — запись сохраняется как WebM. Новые зависимости: mp3lame-encoder (LGPL, C), vorbis_rs (C), flacenc. Установщик hive_2.1.0_x64-setup.exe, exe+sig+latest.json в Temp\claude\rel210.
+
 **Актуально (23.10, 2.0.9):** акценты интерфейса больше не привязаны к золоту Hive: рамка имени записи (audio), поля поиска и F3, подсказки SelectionLayer/линий, Archive, today в Calendar, рамка Inbox-двойника, превью линии, inline code (color-mix от var(--accent)). Смысловые цвета (Goal, Importance, палитры маяков/зон, предупреждения о конфликтах) оставлены. Установщик hive_2.0.9_x64-setup.exe, exe+sig+latest.json в Temp\claude\rel209.
 
 **Актуально (22.10, 2.0.8):** настройка «Simplify notes when zoomed out» (Settings → General, под Reduce animations): слайдер 0–50 %, по умолчанию 20 %, 0 = Off (ноды всегда полные). Все 4 порога LOD в board/visibility.svelte.ts двигаются пропорционально (0.85/0.65/0.55 от порога), значение в профиле (simplifyZoomPercent, settings/simplifyZoom.ts). Смоук 2000 нод: 20 % — медиана 16.8 мс при свипе зума, 40 % — 5.6 мс, Off — 55 мс. Установщик hive_2.0.8_x64-setup.exe, exe+sig+latest.json в Temp\claude\rel208.
