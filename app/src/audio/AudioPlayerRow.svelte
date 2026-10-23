@@ -2,6 +2,7 @@
   import { onDestroy, tick } from "svelte";
   import type { MediaRef } from "../attachments/types";
   import { attachmentUrl, exportAttachmentAs } from "../attachments/service";
+  import { recordingFileName } from "./exportRecordings";
   import { pinNote } from "../board/visibility.svelte";
   import { MediaIcon, MediaSlider, MediaTime } from "../media-ui";
   import { dropAudioRecordingOnBoard } from "./recording.svelte";
@@ -202,9 +203,7 @@
   onDestroy(clearRecordingDrag);
 
   function exportFile(): void {
-    const extension = media.name?.split(".").at(-1) ?? media.file.split(".").at(-1) ?? "webm";
-    const suggestedName = /\.[a-z0-9]{1,8}$/i.test(name) ? name : `${name}.${extension}`;
-    void exportAttachmentAs(media, suggestedName);
+    void exportAttachmentAs(media, recordingFileName(name, media));
   }
 
   function deleteRow(event: MouseEvent): void {

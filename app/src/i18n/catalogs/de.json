@@ -1916,5 +1916,8 @@
  "Simplify notes when zoomed out": "Notizen beim Herauszoomen vereinfachen",
  "Optimization: zoomed out below this level, notes are drawn as plain grey blocks so big boards stay smooth. Lower keeps text visible farther out; Off always draws notes in full and can slow down large boards.": "Optimierung: Unterhalb dieser Zoomstufe werden Notizen als einfache graue Blöcke gezeichnet, damit große Boards flüssig bleiben. Niedriger zeigt Text auch weiter draußen; Aus zeichnet Notizen immer vollständig und kann große Boards verlangsamen.",
  "Recording format": "Aufnahmeformat",
- "File type for new dictaphone recordings. WAV and FLAC keep full quality but take more space.": "Dateityp für neue Diktiergerät-Aufnahmen. WAV und FLAC behalten die volle Qualität, brauchen aber mehr Platz."
+ "File type for new dictaphone recordings. WAV and FLAC keep full quality but take more space.": "Dateityp für neue Diktiergerät-Aufnahmen. WAV und FLAC behalten die volle Qualität, brauchen aber mehr Platz.",
+ "Export recordings…": "Aufnahmen exportieren…",
+ "Choose a folder for the recordings": "Ordner für die Aufnahmen wählen",
+ "Recordings exported: {count}": "Aufnahmen exportiert: {count}"
 }

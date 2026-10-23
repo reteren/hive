@@ -1814,5 +1814,8 @@
  "Simplify notes when zoomed out": "缩小时简化节点",
  "Optimization: zoomed out below this level, notes are drawn as plain grey blocks so big boards stay smooth. Lower keeps text visible farther out; Off always draws notes in full and can slow down large boards.": "优化：缩放低于此级别时，节点显示为简单的灰色方块，让大型画板保持流畅。数值越低，越远也能看到文字；关闭则始终完整绘制节点，可能使大型画板变慢。",
  "Recording format": "录音格式",
- "File type for new dictaphone recordings. WAV and FLAC keep full quality but take more space.": "新录音的文件类型。WAV 和 FLAC 保留完整音质，但占用更多空间。"
+ "File type for new dictaphone recordings. WAV and FLAC keep full quality but take more space.": "新录音的文件类型。WAV 和 FLAC 保留完整音质，但占用更多空间。",
+ "Export recordings…": "导出录音…",
+ "Choose a folder for the recordings": "选择录音的保存文件夹",
+ "Recordings exported: {count}": "已导出录音：{count}"
 }

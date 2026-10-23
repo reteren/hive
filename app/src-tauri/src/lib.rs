@@ -249,6 +249,7 @@ pub fn run() {
             attachments::attachment_directory,
             attachments::attachment_write_text,
             attachments::attachment_export,
+            attachments::attachment_export_many,
             tray_set_labels,
             image_clipboard::image_copy_to_clipboard,
             audio_encode::audio_encode_recording,

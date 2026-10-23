@@ -24,6 +24,7 @@
   import VideoNodeBody from "../video/VideoNodeBody.svelte";
   import YoutubeNodeBody from "../youtube/YoutubeNodeBody.svelte";
   import "../video/init";
+  import "../audio/init";
   import "../youtube/init";
   import { nodeBodyFor } from "./nodeBodies";
   import { effectiveCustomMarkFrameColors, effectiveImportance } from "../modules/moduleActions.svelte";

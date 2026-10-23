@@ -1,5 +1,5 @@
 use crate::project::{self, ProjectState};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
@@ -533,6 +533,59 @@ pub fn attachment_export(
     fs::copy(&source, &destination)
         .map(|_| ())
         .map_err(|error| format!("could not export attachment: {error}"))
+}
+
+#[derive(Deserialize)]
+pub struct ExportItem {
+    file: String,
+    name: String,
+}
+
+/// Copy several attachments into one folder. Names that repeat, or already exist there, become
+/// "name (2).ext", "name (3).ext", … so nothing in the folder is overwritten. Returns the written paths.
+#[tauri::command]
+pub fn attachment_export_many(
+    state: State<'_, ProjectState>,
+    items: Vec<ExportItem>,
+    directory: String,
+) -> Result<Vec<String>, String> {
+    let directory = PathBuf::from(directory);
+    if !directory.is_dir() {
+        return Err("The export folder does not exist.".to_string());
+    }
+    let root = project::active_project_root(&state)?;
+    let attachments = ensure_attachment_directory(&root)?;
+    let mut written = Vec::with_capacity(items.len());
+    for item in items {
+        validate_attachment_filename(&item.file)?;
+        let source = attachments.join(&item.file);
+        ensure_regular_attachment(&source)?;
+        let destination = free_export_path(&directory, &item.name);
+        fs::copy(&source, &destination).map_err(|error| format!("could not export attachment: {error}"))?;
+        written.push(destination.to_string_lossy().into_owned());
+    }
+    Ok(written)
+}
+
+/// First "name.ext", "name (2).ext", … that does not exist in `directory`.
+fn free_export_path(directory: &Path, name: &str) -> PathBuf {
+    let clean: String = name
+        .chars()
+        .map(|c| if c.is_control() || matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') { '_' } else { c })
+        .collect();
+    let clean = clean.trim().trim_end_matches('.');
+    let clean = if clean.is_empty() { "recording" } else { clean };
+    let (stem, extension) = match clean.rfind('.') {
+        Some(dot) if dot > 0 => (&clean[..dot], &clean[dot..]),
+        _ => (clean, ""),
+    };
+    let mut candidate = directory.join(clean);
+    let mut number = 2;
+    while candidate.exists() {
+        candidate = directory.join(format!("{stem} ({number}){extension}"));
+        number += 1;
+    }
+    candidate
 }
 
 #[tauri::command]
@@ -1782,5 +1835,25 @@ mod tests {
         assert_eq!(fs::read_dir(&outside).expect("list outside").count(), 0);
         fs::remove_dir_all(root).expect("remove root");
         fs::remove_dir_all(outside).expect("remove outside");
+    }
+}
+
+#[cfg(test)]
+mod export_many_tests {
+    use super::free_export_path;
+
+    #[test]
+    fn repeated_names_get_numbered() {
+        let dir = std::env::temp_dir().join(format!("hive-export-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let first = free_export_path(&dir, "Recording 1.mp3");
+        assert_eq!(first.file_name().unwrap(), "Recording 1.mp3");
+        std::fs::write(&first, b"a").unwrap();
+        let second = free_export_path(&dir, "Recording 1.mp3");
+        assert_eq!(second.file_name().unwrap(), "Recording 1 (2).mp3");
+        std::fs::write(&second, b"b").unwrap();
+        assert_eq!(free_export_path(&dir, "Recording 1.mp3").file_name().unwrap(), "Recording 1 (3).mp3");
+        assert_eq!(free_export_path(&dir, "a:b?.wav").file_name().unwrap(), "a_b_.wav");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
