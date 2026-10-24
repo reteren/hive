@@ -161,7 +161,7 @@
 
   .quick-input__eyebrow {
     margin: 0 0 2px;
-    color: #a7a7a7;
+    color: var(--text-dim);
     font-size: 9px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -179,7 +179,7 @@
     border: 1px solid transparent;
     border-radius: 3px;
     background: transparent;
-    color: #aaa;
+    color: var(--text-dim);
     font-size: 19px;
     line-height: 1;
     cursor: pointer;
@@ -187,9 +187,9 @@
 
   .quick-input__close:hover,
   .quick-input__close:focus-visible {
-    border-color: #555;
+    border-color: var(--border);
     background: var(--bg-hover);
-    color: #fff;
+    color: var(--text);
   }
 
   .quick-input__text {
@@ -199,7 +199,7 @@
     flex: 1;
     resize: none;
     padding: 9px 10px;
-    border: 1px solid #494949;
+    border: 1px solid color-mix(in srgb, var(--text) 22%, var(--bg-panel));
     border-radius: 3px;
     outline: none;
     background: var(--bg-panel-raised);
@@ -213,12 +213,12 @@
   }
 
   .quick-input__text::placeholder {
-    color: #777;
+    color: color-mix(in srgb, var(--text-dim) 75%, var(--bg-panel));
   }
 
   .quick-input__footer p {
     margin: 0;
-    color: #999;
+    color: var(--text-dim);
     font-size: 9px;
   }
 
@@ -242,7 +242,7 @@
   .quick-input__submit:disabled {
     border-color: var(--border);
     background: var(--bg-panel-raised);
-    color: #777;
+    color: var(--text-dim);
     cursor: default;
   }
 

@@ -102,6 +102,24 @@ export function applyTheme(): void {
   if (typeof window !== "undefined") window.dispatchEvent(new Event("hive:themechange"));
 }
 
+/**
+ * Secondary windows (quick input, Overhive) share the main window's localStorage but not its
+ * settings load: paint the cached theme now and repaint whenever the main window caches a new one.
+ */
+export function followCachedTheme(): void {
+  applyTheme();
+  if (typeof window === "undefined") return;
+  const reload = () => {
+    const next = loadBootstrapSettings();
+    if (JSON.stringify(next.colors) !== JSON.stringify(state.settings.colors)) setThemeSettings(next);
+  };
+  window.addEventListener("storage", (event) => {
+    if (event.key === BOOTSTRAP_STORAGE_KEY) reload();
+  });
+  // A hidden window may miss storage events; re-read when it is shown again.
+  window.addEventListener("focus", reload);
+}
+
 /** Mirror only the successfully persisted setting for synchronous startup hydration. */
 export function cacheThemeBootstrap(value: unknown): void {
   try {

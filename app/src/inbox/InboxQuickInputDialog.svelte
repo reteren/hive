@@ -130,7 +130,7 @@
     cursor: pointer;
   }
 
-  .inbox-prompt .inbox-prompt-submit { border-color: #637a46; background: #38442e; }
+  .inbox-prompt .inbox-prompt-submit { border-color: var(--accent); background: rgba(var(--accent-rgb), 0.16); color: var(--accent); }
   .inbox-prompt .inbox-prompt-close { padding: 1px 6px; font-size: 16px; }
   .inbox-prompt-error { margin: 0; color: #edaaa0; font-size: 10px; }
 </style>

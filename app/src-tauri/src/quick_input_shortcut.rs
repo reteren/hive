@@ -6,7 +6,9 @@ use tauri::{AppHandle, Emitter, Manager};
 pub fn activate_quick_input(app: &AppHandle) {
     if let Some(main) = app.get_webview_window("main") {
         let visible = main.is_visible().unwrap_or(false);
-        let focused = main.is_focused().unwrap_or(false);
+        // Tauri's is_focused stayed false while the WebView2 child held the keyboard, so every press
+        // inside hive opened the separate window; the OS foreground window is the reliable answer.
+        let focused = main.is_focused().unwrap_or(false) || is_foreground(&main);
         let minimized = main.is_minimized().unwrap_or(false);
         if visible && focused && !minimized {
             let result = main.emit("hive://quick-input-in-app", ());
@@ -15,6 +17,24 @@ pub fn activate_quick_input(app: &AppHandle) {
         }
     }
     show_quick_input_window(app);
+}
+
+/// Whether `window` (or one of its child windows, such as the webview) is the foreground window.
+#[cfg(windows)]
+fn is_foreground(window: &tauri::WebviewWindow) -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetAncestor, GetForegroundWindow, GA_ROOT};
+    let Ok(hwnd) = window.hwnd() else {
+        return false;
+    };
+    unsafe {
+        let foreground = GetForegroundWindow();
+        !foreground.is_null() && GetAncestor(foreground, GA_ROOT) == hwnd.0 as _
+    }
+}
+
+#[cfg(not(windows))]
+fn is_foreground(_window: &tauri::WebviewWindow) -> bool {
+    false
 }
 
 pub fn show_quick_input_window(app: &AppHandle) {
