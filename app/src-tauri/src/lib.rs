@@ -148,6 +148,9 @@ fn build_tray(app: &mut tauri::App) -> tauri::Result<()> {
 
 pub fn run() {
     tauri::Builder::default()
+        // Must be the first plugin: a second launch (Start menu, shortcut) only brings back the running
+        // hive instead of adding another tray icon and process.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| open_main_window(app)))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
