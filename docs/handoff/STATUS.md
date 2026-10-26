@@ -1,3 +1,5 @@
+**Актуально (26.10.2026, 2.1.3):** один экземпляр hive: tauri-plugin-single-instance (первый плагин в lib.rs), повторный запуск вызывает open_main_window вместо нового процесса и второй иконки в трее. Проверено: 3 запуска изолированной debug-сборки → 1 процесс. Релизные файлы: `C:\Users\reteren\AppData\Local\Temp\claude\rel213`.
+
 **Актуально (24.10.2026, 2.1.2):** окно Quick input и встроенный Inbox-диалог следуют теме (вторичные окна читают кэш темы из localStorage + storage-событие); шорткат внутри hive открывает встроенный диалог — фокус главного окна теперь проверяется через GetForegroundWindow (Tauri is_focused давал false). Релизные файлы: `C:\Users\reteren\AppData\Local\Temp\claude\rel212`.
 
 **Актуально (23.10.2026, 2.1.1):** экспорт записей через ПКМ по аудио-ноде («Export…»); при выделении нескольких — «Export recordings…» в выбранную папку, повторы имён → «имя (2)», существующие файлы не перезаписываются (Rust `attachment_export_many`). Релизные файлы: `C:\Users\reteren\AppData\Local\Temp\claude\rel211`.
