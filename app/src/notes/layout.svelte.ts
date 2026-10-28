@@ -13,7 +13,8 @@ export const FIT_WIDTH_MAX_MULTIPLIER = 2.5;
 const minimumTextWidths = new Map<string, number>();
 
 export function maximumNoteWidthForKind(kind: NoteKind | undefined): number {
-  if (!kind) return Number.POSITIVE_INFINITY;
+  // A Graph is stretched as wide as the user wants.
+  if (!kind || kind === "graph") return Number.POSITIVE_INFINITY;
   const baseWidth = kind === "format" ? DEFAULT_NOTE_WIDTH : kind in R5_BASE_WIDTHS
     ? R5_BASE_WIDTHS[kind as keyof typeof R5_BASE_WIDTHS]
     : kind === "pro" || kind === "con" ? 18 : DEFAULT_NOTE_WIDTH;

@@ -831,6 +831,23 @@ fn check_project_health_at(root: &Path) -> HealthReport {
         "stats",
         "archive",
         "trash",
+        "graph",
+        "inbox",
+        "list",
+        "source",
+        "glossary",
+        "map",
+        "random",
+        "markas",
+        "time",
+        "message",
+        "calendar",
+        "image",
+        "pdf",
+        "format",
+        "audio",
+        "video",
+        "youtube",
     ]
     .into_iter()
     .collect();

@@ -31,6 +31,7 @@ export const LIST_ICONS: Record<ListRowKind, ListIcon> = {
   progress: { get label() { return t("Progress"); }, color: "#91c8a4", paths: ["M3 5h12v8H3Z M6 7v4 M9 7v4"] },
   calculator: { get label() { return t("Calculator"); }, color: "#b8adce", paths: ["M4 2.5h10v13H4Z M6 5h6 M6 8h.01 M9 8h.01 M12 8h.01 M6 11h.01 M9 11h.01 M12 11h.01 M6 13h.01 M9 13h.01 M12 13h.01"] },
   tierlist: { get label() { return t("Tierlist"); }, color: "#c4a18a", paths: ["M3 3h12v12H3Z M3 7h12 M3 11h12 M7 3v12"] },
+  graph: { get label() { return t("Graph"); }, color: "#d99ab8", paths: ["M3 3v12h12 M6 11.5h.1 M9 7h.1 M12.5 9h.1"] },
   stats: { get label() { return t("Statistics"); }, color: "#91bbcf", paths: ["M3 15V3 M3 15h12 M6 12V9 M10 12V6 M14 12V3"] },
   archive: { get label() { return t("Archive"); }, color: "#c6af7b", paths: ["M2.5 3h13v3h-13Z M4 6v9h10V6 M7 9h4"] },
   trash: { get label() { return t("Trash"); }, color: "#b8a2a2", paths: ["M3 5h12 M6 5V3h6v2 M5 5l1 10h6l1-10 M8 8v4 M10 8v4"] },

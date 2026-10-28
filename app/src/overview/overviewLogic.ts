@@ -14,6 +14,7 @@ export const KIND_LABELS: Record<NoteKind, string> = {
   get progress() { return t("Progress"); },
   get calculator() { return t("Calculator"); },
   get tierlist() { return t("Tierlist"); },
+  get graph() { return t("Graph"); },
   get stats() { return t("Statistics"); },
   get archive() { return t("Archive"); },
   get trash() { return t("Trash"); },

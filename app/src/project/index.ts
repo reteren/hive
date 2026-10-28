@@ -29,7 +29,7 @@ import {
   sanitizeNoteName,
 } from "./fileNames";
 import type { TaskLogEntry } from "../tasks/taskLog.svelte";
-import { calculatorKey, parseCalculatorData, parseScope, parseTiers, type CalculatorData, type NodeScope, type TierRow, parseListItems, parseRandomPick, parseSource, parseCustomMarks, type CustomMark, type ListItem, type RandomPick, type SourceData } from "../model/nodeData";
+import { calculatorKey, parseCalculatorData, parseScope, parseTiers, type CalculatorData, type NodeScope, type TierRow, parseListItems, parseRandomPick, parseSource, parseCustomMarks, type CustomMark, type ListItem, type RandomPick, type SourceData, parseGraphData, type GraphData } from "../model/nodeData";
 import type { ArchiveEntry, TrashEntry } from "../model/retention.svelte";
 import { copyArchiveEntry, sanitizeArchiveEntries } from "../archive/serialization";
 import { copyTrashEntry } from "../trash/trash";
@@ -70,6 +70,7 @@ export interface IndexedNote {
   scope?: NodeScope;
   tiers?: TierRow[];
   listItems?: ListItem[];
+  graph?: GraphData;
   source?: SourceData;
   inboxGroup?: string;
   randomPick?: RandomPick;
@@ -342,6 +343,7 @@ export function serializeProjectNoteEntry(
     ...(note.scope ? { scope: note.scope } : {}),
     ...(note.tiers ? { tiers: note.tiers } : {}),
     ...(note.listItems ? { listItems: note.listItems } : {}),
+    ...(note.graph ? { graph: note.graph } : {}),
     ...(note.source ? { source: note.source } : {}),
     ...(note.inboxGroup ? { inboxGroup: note.inboxGroup } : {}),
     ...(note.randomPick ? { randomPick: note.randomPick } : {}),
@@ -403,6 +405,7 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       ...(entry.scope ? { scope: entry.scope } : {}),
       ...(entry.tiers ? { tiers: entry.tiers } : {}),
       ...(entry.listItems ? { listItems: entry.listItems } : {}),
+      ...(entry.graph ? { graph: entry.graph } : {}),
       ...(entry.source ? { source: entry.source } : {}),
       ...(entry.inboxGroup ? { inboxGroup: entry.inboxGroup } : {}),
       ...(entry.randomPick ? { randomPick: entry.randomPick } : {}),
@@ -722,6 +725,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
       scope: parseScope(value.scope) ?? undefined,
       tiers: parseTiers(value.tiers) ?? undefined,
       listItems: parseListItems(value.listItems) ?? undefined,
+      graph: type === "graph" ? parseGraphData(value.graph) ?? undefined : undefined,
       source: parseSource(value.source) ?? undefined,
       inboxGroup: typeof value.inboxGroup === "string" && value.inboxGroup ? value.inboxGroup : undefined,
       randomPick: parseRandomPick(value.randomPick) ?? undefined,
@@ -755,7 +759,7 @@ function validateUniqueNotes(notes: readonly IndexedNote[]): void {
 function parseNoteKind(value: unknown): NoteKind | null {
   return value === "note" || value === "pro" || value === "con" ||
     value === "importance" || value === "purpose" || value === "mood" || value === "beacon" ||
-    value === "goal" || value === "progress" || value === "calculator" || value === "tierlist" || value === "stats" ||
+    value === "goal" || value === "progress" || value === "calculator" || value === "tierlist" || value === "stats" || value === "graph" ||
     value === "archive" || value === "trash" || value === "image" || value === "pdf" || value === "format" || value === "audio" || value === "video" || value === "youtube" ||
     value === "inbox" || value === "list" || value === "source" || value === "glossary" || value === "map" || value === "random" || value === "markas" || value === "time" || value === "message" || value === "calendar"
     ? value

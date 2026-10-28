@@ -1226,7 +1226,7 @@ type PendingBoardMove =
       ? inboxAutoHeight(note) * scale
       : note.type === "glossary"
         ? measureDictionaryHeightLimits(id, userDictionary.words.length, bounds.height / scale).autoHeight * scale
-        : note.type === "map" ? Number.POSITIVE_INFINITY : maximumResizableHeightForNote(id) * scale;
+        : note.type === "map" || note.type === "graph" ? Number.POSITIVE_INFINITY : maximumResizableHeightForNote(id) * scale;
     const listLimits = listStatisticsFrameLimits(note,
       preferences.fitWidthToText ? minimumTextWidthForNote(id, maximumWidthForKind(note.type)) : MIN_NOTE_WIDTH,
       maximumWidthForKind(note.type));

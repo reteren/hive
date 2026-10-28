@@ -11,7 +11,7 @@ export const CREATE_ITEM_IDS = [
   "pro", "con", "importance", "purpose", "mood", "markas",
   "time", "calendar", "message",
   "image", "pdf", "format", "audio", "record-audio", "video", "youtube",
-  "calculator", "tierlist", "stats", "random", "glossary", "source",
+  "calculator", "tierlist", "graph", "stats", "random", "glossary", "source",
   "beacon", "map", "archive", "trash",
 ] as const;
 
@@ -49,6 +49,7 @@ export const CREATE_ITEMS: Record<CreateItemId, CreateItem> = {
   youtube: { id: "youtube", get label() { return t("YouTube link…"); }, keywords: "video url" },
   calculator: { id: "calculator", get label() { return t("Calculator"); }, keywords: "math sum" },
   tierlist: { id: "tierlist", get label() { return t("Tierlist"); }, keywords: "rank tier" },
+  graph: { id: "graph", get label() { return t("Graph"); }, keywords: "chart plot axis points scatter" },
   stats: { id: "stats", get label() { return t("Statistics"); }, keywords: "stats chart" },
   random: { id: "random", get label() { return t("Random Choice"); }, keywords: "dice pick" },
   glossary: { id: "glossary", get label() { return t("Dictionary"); }, keywords: "glossary words terms" },
@@ -72,7 +73,7 @@ export const CREATE_CATEGORIES: readonly CreateCategory[] = [
   { id: "marks", get label() { return t("Marks"); }, items: ["pro", "con", "importance", "purpose", "mood", "markas"] },
   { id: "time", get label() { return t("Time"); }, items: ["time", "calendar", "message"] },
   { id: "media", get label() { return t("Media"); }, items: ["image", "pdf", "format", "audio", "record-audio", "video", "youtube"] },
-  { id: "tools", get label() { return t("Tools"); }, items: ["calculator", "tierlist", "stats", "random", "glossary", "source"] },
+  { id: "tools", get label() { return t("Tools"); }, items: ["calculator", "tierlist", "graph", "stats", "random", "glossary", "source"] },
   { id: "board", get label() { return t("Board"); }, items: ["beacon", "map", "archive", "trash"] },
 ];
 

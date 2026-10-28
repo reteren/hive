@@ -117,7 +117,7 @@ describe("MCP read methods", () => {
     }>("schema");
 
     expect(result.kinds.map((kind) => kind.type)).toEqual(NOTE_KINDS);
-    expect(result.kinds).toHaveLength(30);
+    expect(result.kinds).toHaveLength(31);
     expect(result.kinds.find((kind) => kind.type === "note")).toMatchObject({ hasText: true, defaultWidth: 30 });
     expect(result.kinds.find((kind) => kind.type === "calculator")?.dataFields.calculatorData).toContain("entries");
     expect(result.kinds.find((kind) => kind.type === "image")?.dataFields.image).toContain("naturalWidth");

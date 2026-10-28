@@ -42,6 +42,8 @@ import type { ImageRef, MediaRef } from "../attachments/types";
 import { imageNodeName, initialImageSize } from "../images/imageLogic";
 import { openPdfExternally, registerFormatDropHandler } from "../formats/formatActions";
 import { fitVideoSize } from "../video/logic";
+import { emptyGraphData } from "../model/nodeData";
+import { GRAPH_DEFAULT_HEIGHT } from "../graph/logic";
 import { t, tp } from "../i18n/i18n.svelte";
 
 export const DEFAULT_MINI_NOTE_WIDTH = 18;
@@ -72,7 +74,7 @@ export function createNoteKind(kind: NoteKind, task = false): string {
   const height = estimatedCreationHeight({
     type: kind,
     width,
-    height: kind === "beacon" ? BEACON_SIZE : kind === "calendar" ? 34 : kind === "importance" ? MODULE_NOTE_HEIGHT : kind === "trash" || kind === "archive" ? 40 : kind === "map" ? 30 : kind === "source" ? 24 : null,
+    height: kind === "beacon" ? BEACON_SIZE : kind === "calendar" ? 34 : kind === "importance" ? MODULE_NOTE_HEIGHT : kind === "trash" || kind === "archive" ? 40 : kind === "map" ? 30 : kind === "graph" ? GRAPH_DEFAULT_HEIGHT : kind === "source" ? 24 : null,
     text: "",
   });
   const id = newId();
@@ -250,7 +252,7 @@ export function makeNote(kind: NoteKind, id: string, position: Point, createdAt:
       : kind === "importance" || kind === "purpose" || kind === "mood"
         ? MODULE_NOTE_WIDTH
         : DEFAULT_MINI_NOTE_WIDTH,
-    height: kind === "beacon" ? BEACON_SIZE : kind === "calendar" ? 34 : kind === "importance" ? MODULE_NOTE_HEIGHT : kind === "trash" || kind === "archive" ? 40 : kind === "map" ? 30 : kind === "source" ? 24 : null,
+    height: kind === "beacon" ? BEACON_SIZE : kind === "calendar" ? 34 : kind === "importance" ? MODULE_NOTE_HEIGHT : kind === "trash" || kind === "archive" ? 40 : kind === "map" ? 30 : kind === "graph" ? GRAPH_DEFAULT_HEIGHT : kind === "source" ? 24 : null,
     createdAt,
     ...(task ? { task: { done: false, doneAt: null } } : {}),
     ...(kind === "importance" ? { importance: "basic" as const } : {}),
@@ -259,6 +261,7 @@ export function makeNote(kind: NoteKind, id: string, position: Point, createdAt:
     ...(kind === "beacon" ? { color: beaconPaletteColor(Object.values(board.notes).filter((existing) => existing.type === "beacon").length) } : {}),
     ...(kind === "time" ? { time: { schedule: defaultAtTimeSchedule(createdAt), enabled: true } } : {}),
     ...(kind === "message" ? { message: defaultMessageData() } : {}),
+    ...(kind === "graph" ? { graph: emptyGraphData() } : {}),
   };
 }
 
@@ -274,6 +277,7 @@ function kindLabel(kind: NoteKind): string {
   if (kind === "calculator") return t("Calculator");
   if (kind === "tierlist") return t("Tierlist");
   if (kind === "stats") return t("Statistics");
+  if (kind === "graph") return t("Graph");
   if (kind === "archive") return t("Archive");
   if (kind === "trash") return t("Trash");
   if (kind === "inbox") return t("Inbox");

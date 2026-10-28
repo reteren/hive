@@ -1,7 +1,7 @@
 import { defaultMessageData, parseMessageData } from "../messages/data";
 import { isFrameAnchor, parseSmoothLineAnchorSnapshot } from "../links/anchors";
 import { pairKey, type Link } from "../model/link";
-import { parseCalculatorData, parseScope, parseTiers, parseListItems, parseRandomPick, parseSource, parseCustomMarks } from "../model/nodeData";
+import { parseCalculatorData, parseScope, parseTiers, parseListItems, parseGraphData, parseRandomPick, parseSource, parseCustomMarks } from "../model/nodeData";
 import { IMPORTANCE_LEVELS, isValidNoteScale, MOOD_KINDS, PURPOSE_KINDS, type Note, type NoteKind, type TaskState } from "../model/note";
 import type { ArchiveEntry } from "../model/retention.svelte";
 import type { CountMode, TimeNodeData, TimeRuntime, TimeSchedule } from "../time/types";
@@ -17,7 +17,7 @@ import { t } from "../i18n/i18n.svelte";
 
 const ARCHIVABLE_KINDS = new Set<NoteKind>([
   "note", "pro", "con", "importance", "purpose", "mood",
-  "goal", "progress", "calculator", "tierlist", "stats",
+  "goal", "progress", "calculator", "tierlist", "stats", "graph",
   "inbox", "list", "source", "glossary", "map", "random", "markas", "time", "message", "calendar", "image", "pdf", "format", "audio", "video", "youtube",
 ]);
 const LINK_SHAPES = new Set<Link["shape"]>(["base", "orthogonal", "zigzag", "wave"]);
@@ -169,6 +169,7 @@ function parseArchivedNote(value: unknown): Note | null {
     ...(scope ? { scope } : {}),
     ...(tiers ? { tiers } : {}),
     ...(parseListItems(value.listItems) ? { listItems: parseListItems(value.listItems)! } : {}),
+    ...(value.type === "graph" && parseGraphData(value.graph) ? { graph: parseGraphData(value.graph)! } : {}),
     ...(parseSource(value.source) ? { source: parseSource(value.source)! } : {}),
     ...(typeof value.inboxGroup === "string" && value.inboxGroup ? { inboxGroup: value.inboxGroup } : {}),
     ...(parseRandomPick(value.randomPick) ? { randomPick: parseRandomPick(value.randomPick)! } : {}),

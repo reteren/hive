@@ -1,4 +1,5 @@
 import type { Point } from "../board/cameraMath";
+import { GRAPH_MIN_HEIGHT, GRAPH_MIN_WIDTH } from "../graph/logic";
 import { snapToGrid } from "../board/gridMath";
 import { MIN_NOTE_HEIGHT, MIN_NOTE_WIDTH, maximumNoteWidthForKind, minimumTextWidthForNote } from "../notes/layout.svelte";
 import { estimatedCreationHeight } from "../notes/creationPosition";
@@ -58,6 +59,7 @@ const RULES: Partial<Record<NoteKind, NodeResizeRule>> = {
   inbox: { width: "locked", height: "shrink-only", handles: "bottom-if-shrinkable", groupDimensions: "preserve" },
   glossary: { width: "locked", height: "shrink-only", handles: "bottom-if-shrinkable", groupDimensions: "preserve" },
   map: { width: "free", height: "free", handles: "all", groupDimensions: "scale" },
+  graph: { width: "free", height: "free", handles: "all", groupDimensions: "scale" },
 };
 
 const MODULE_RULE: NodeResizeRule = { width: "locked", height: "free", handles: "vertical", groupDimensions: "scale" };
@@ -146,12 +148,13 @@ export function maximumWidthForKind(kind: NoteKind | undefined): number {
 }
 
 export function minimumWidthForKind(kind: NoteKind | undefined): number {
-  return kind === "image" ? 4 : kind === "map" ? MAP_MIN_WIDTH : kind === "pdf" ? 30 : defaultWidthForKind(kind);
+  return kind === "image" ? 4 : kind === "map" ? MAP_MIN_WIDTH : kind === "graph" ? GRAPH_MIN_WIDTH : kind === "pdf" ? 30 : defaultWidthForKind(kind);
 }
 
 export function minimumHeightForKind(kind: NoteKind | undefined): number {
   if (kind === "image") return 4;
   if (kind === "map") return MAP_MIN_HEIGHT;
+  if (kind === "graph") return GRAPH_MIN_HEIGHT;
   if (kind === "pdf") return 30;
   if (kind === "format") return 10;
   if (kind === "calendar") return CALENDAR_MIN_HEIGHT;
@@ -197,7 +200,7 @@ export function resizeNote(
   const axes = resizeEdgeAxes(edge);
   const scale = normalizeNoteScale(initial.scale);
   const maxWidth = limits.maxWidth ?? initial.maxWidth ?? maximumWidthForKind(initial.type) * scale;
-  const maxHeight = initial.type === "image" || initial.type === "map" || initial.type === "pdf"
+  const maxHeight = initial.type === "image" || initial.type === "map" || initial.type === "graph" || initial.type === "pdf"
     ? Number.POSITIVE_INFINITY
     : limits.maxHeight ?? initial.maxHeight ?? (initial.type ? MIN_NOTE_HEIGHT * 1.5 * scale : Number.POSITIVE_INFINITY);
   const hostedMinimumWidth = board.notes[initial.id]
@@ -216,6 +219,8 @@ export function resizeNote(
   let height = initial.height;
   const minimumWidth = initial.type === "map"
     ? initial.minWidth ?? MAP_MIN_WIDTH * scale
+    : initial.type === "graph"
+      ? initial.minWidth ?? GRAPH_MIN_WIDTH * scale
     : initial.type === "image"
       ? Math.max(4 * scale, initial.minWidth ?? 0)
     : Math.max(

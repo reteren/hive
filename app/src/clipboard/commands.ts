@@ -1,4 +1,5 @@
 import { camera, pointer } from "../board/camera.svelte";
+import { copyGraphData } from "../model/nodeData";
 import { grid } from "../board/grid.svelte";
 import { DEFAULT_NOTE_WIDTH, newId, type Note } from "../model/note";
 import { board, addNote, addNotes, removeNote, removeNotes } from "../model/board.svelte";
@@ -282,7 +283,7 @@ type CopySource = Omit<Pick<Note,
   "type" | "name" | "text" | "x" | "y" | "width" | "height" | "createdAt" |
   "task" | "taskMemory" | "importance" | "purposes" | "embedSections" | "headerHidden" | "textHidden" | "frameHidden" | "image" | "opacity" | "media" | "pdfZoom" | "recordings" | "youtube" | "source" | "flipX" | "flipY" | "gifStopped"
   | "glow" | "accentColor"
-  | "listItems" | "listStats" | "inboxGroup" | "randomPick" | "customMarks" | "customMarkFrame"
+  | "listItems" | "listStats" | "graph" | "inboxGroup" | "randomPick" | "customMarks" | "customMarkFrame"
 >, "time" | "message"> & {
   time?: Note["time"] | null;
   message?: Note["message"] | null;
@@ -373,6 +374,7 @@ function copyNoteForPaste(
     ...(note.flipY === true ? { flipY: true as const } : {}),
     ...(note.gifStopped === true ? { gifStopped: true as const } : {}),
     ...(note.listItems ? { listItems: note.listItems.map((item) => ({ ...item, targetId: item.targetId ? idMap.get(item.targetId) ?? item.targetId : null })) } : {}),
+    ...(note.type === "graph" && note.graph ? { graph: { ...copyGraphData(note.graph), points: note.graph.points.map((point) => ({ ...point, targetId: point.targetId ? idMap.get(point.targetId) ?? point.targetId : null })) } } : {}),
     ...(note.listStats === true ? { listStats: true } : {}),
     ...(note.inboxGroup ? { inboxGroup: note.inboxGroup } : {}),
     ...(note.randomPick ? { randomPick: { ...note.randomPick, listId: idMap.get(note.randomPick.listId) ?? note.randomPick.listId } } : {}),

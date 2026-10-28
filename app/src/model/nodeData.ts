@@ -182,6 +182,59 @@ export function parseListItems(value: unknown): ListItem[] | null {
     : []);
 }
 
+/**
+ * Graph node: a point on a plain two-axis chart. x and y are fractions of the plot (0…1, y = 0 at the
+ * bottom), so resizing the node stretches the chart instead of moving points off it. A point carries
+ * a label and/or a board object to teleport to.
+ */
+export interface GraphPoint {
+  id: string;
+  x: number;
+  y: number;
+  label: string;
+  targetId: string | null;
+}
+
+export interface GraphData {
+  xLabel: string;
+  yLabel: string;
+  points: GraphPoint[];
+}
+
+export function emptyGraphData(): GraphData {
+  return { xLabel: "", yLabel: "", points: [] };
+}
+
+export function copyGraphData(graph: Readonly<GraphData>): GraphData {
+  return { xLabel: graph.xLabel, yLabel: graph.yLabel, points: graph.points.map((point) => ({ ...point })) };
+}
+
+function unitFraction(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : null;
+}
+
+export function parseGraphData(value: unknown): GraphData | null {
+  if (!isRecord(value)) return null;
+  const points = (Array.isArray(value.points) ? value.points : []).flatMap((point): GraphPoint[] => {
+    if (!isRecord(point) || !nonEmptyString(point.id)) return [];
+    const x = unitFraction(point.x);
+    const y = unitFraction(point.y);
+    if (x === null || y === null) return [];
+    return [{
+      id: point.id,
+      x,
+      y,
+      label: typeof point.label === "string" ? point.label : "",
+      targetId: nonEmptyString(point.targetId) ? point.targetId : null,
+    }];
+  });
+  return {
+    xLabel: typeof value.xLabel === "string" ? value.xLabel : "",
+    yLabel: typeof value.yLabel === "string" ? value.yLabel : "",
+    points,
+  };
+}
+
 export function parseSource(value: unknown): SourceData | null {
   if (!isRecord(value)) return null;
   return {

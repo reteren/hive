@@ -1,7 +1,7 @@
 import { defaultMessageData, parseMessageData } from "../messages/data";
 import { isFrameAnchor, parseSmoothLineAnchorSnapshot } from "../links/anchors";
 import { ME_OBJECT_ID, pairKey, type Link } from "../model/link";
-import { calculatorKey, parseCalculatorData, parseScope, parseTiers, type CalculatorData, parseListItems, parseRandomPick, parseSource, parseCustomMarks } from "../model/nodeData";
+import { calculatorKey, parseCalculatorData, parseScope, parseTiers, type CalculatorData, parseListItems, parseGraphData, parseRandomPick, parseSource, parseCustomMarks } from "../model/nodeData";
 import { IMPORTANCE_LEVELS, isValidNoteScale, MOOD_KINDS, PURPOSE_KINDS, type Note, type NoteKind, type TaskState } from "../model/note";
 import type { TrashEntry } from "../model/retention.svelte";
 import type { Zone } from "../model/zone";
@@ -18,7 +18,7 @@ import { t } from "../i18n/i18n.svelte";
 
 const NOTE_KINDS = new Set<NoteKind>([
   "note", "pro", "con", "importance", "purpose", "mood", "beacon",
-  "goal", "progress", "calculator", "tierlist", "stats", "archive", "trash",
+  "goal", "progress", "calculator", "tierlist", "stats", "graph", "archive", "trash",
   "inbox", "list", "source", "glossary", "map", "random", "markas", "time", "message", "calendar", "image", "pdf", "format", "audio", "video", "youtube",
 ]);
 const LINK_SHAPES = new Set<Link["shape"]>(["base", "orthogonal", "zigzag", "wave"]);
@@ -193,6 +193,7 @@ function parseTrashNote(value: unknown): Note | null {
     ...(scope ? { scope } : {}),
     ...(tiers ? { tiers } : {}),
     ...(parseListItems(value.listItems) ? { listItems: parseListItems(value.listItems)! } : {}),
+    ...(value.type === "graph" && parseGraphData(value.graph) ? { graph: parseGraphData(value.graph)! } : {}),
     ...(parseSource(value.source) ? { source: parseSource(value.source)! } : {}),
     ...(typeof value.inboxGroup === "string" && value.inboxGroup ? { inboxGroup: value.inboxGroup } : {}),
     ...(parseRandomPick(value.randomPick) ? { randomPick: parseRandomPick(value.randomPick)! } : {}),

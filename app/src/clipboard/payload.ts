@@ -30,6 +30,9 @@ import { parseYouTubeRef } from "../youtube/logic";
 import {
   parseCustomMarks,
   parseListItems,
+  parseGraphData,
+  copyGraphData,
+  type GraphData,
   parseRandomPick,
   parseSource,
   type CustomMark,
@@ -84,6 +87,8 @@ export interface ClipboardNode {
   /** List node items and its statistics extension. */
   listItems?: ListItem[];
   listStats?: true;
+  /** Graph points (targetIds are remapped when their nodes are pasted too). */
+  graph?: GraphData;
   /** Inbox grouping. */
   inboxGroup?: string;
   /** Random Choice: the last pick (listId is remapped when its List is pasted too). */
@@ -136,7 +141,7 @@ export function serializeNotes(
     version: HIVE_CLIPBOARD_VERSION,
     nodes: notes.map(({
       id, type, name, text, x, y, width, height, createdAt, task, taskMemory, time, message, embedSections, importance, purposes, moods, color, accentColor, glow, zoneId, headerHidden, textHidden, frameHidden, image, opacity, media, pdfZoom, recordings, youtube, source, flipX, flipY, gifStopped,
-      listItems, listStats, inboxGroup, randomPick, customMarks, customMarkFrame,
+      listItems, listStats, graph, inboxGroup, randomPick, customMarks, customMarkFrame,
     }) => ({
       sourceId: id,
       type,
@@ -173,6 +178,7 @@ export function serializeNotes(
       ...(type === "image" && flipY === true ? { flipY: true } : {}),
       ...(type === "image" && gifStopped === true ? { gifStopped: true } : {}),
       ...(listItems ? { listItems: listItems.map((item) => ({ ...item })) } : {}),
+      ...(type === "graph" && graph ? { graph: copyGraphData(graph) } : {}),
       ...(listStats === true ? { listStats: true } : {}),
       ...(inboxGroup ? { inboxGroup } : {}),
       ...(randomPick ? { randomPick: { ...randomPick } } : {}),
@@ -477,7 +483,7 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     (value.type !== "note" && value.type !== "pro" && value.type !== "con" &&
       value.type !== "importance" && value.type !== "purpose" && value.type !== "mood" && value.type !== "beacon" &&
       value.type !== "goal" && value.type !== "progress" && value.type !== "calculator" &&
-      value.type !== "tierlist" && value.type !== "stats" && value.type !== "time" && value.type !== "message" && value.type !== "calendar" && value.type !== "image" && value.type !== "pdf" && value.type !== "format" && value.type !== "audio" && value.type !== "video" && value.type !== "youtube" && value.type !== "source" &&
+      value.type !== "tierlist" && value.type !== "stats" && value.type !== "graph" && value.type !== "time" && value.type !== "message" && value.type !== "calendar" && value.type !== "image" && value.type !== "pdf" && value.type !== "format" && value.type !== "audio" && value.type !== "video" && value.type !== "youtube" && value.type !== "source" &&
       // Organisational and project-wide view nodes (they used to paste back as plain notes).
       value.type !== "markas" && value.type !== "archive" && value.type !== "trash" && value.type !== "list" &&
       value.type !== "map" && value.type !== "glossary" && value.type !== "inbox" && value.type !== "random") ||
@@ -525,6 +531,8 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
   const source = value.source === undefined ? null : parseSource(value.source);
   const listItems = value.listItems === undefined ? null : parseListItems(value.listItems);
   if (value.listItems !== undefined && !listItems) return null;
+  const graph = value.graph === undefined ? null : parseGraphData(value.graph);
+  if (value.graph !== undefined && (value.type !== "graph" || !graph)) return null;
   const randomPick = value.randomPick === undefined ? null : parseRandomPick(value.randomPick);
   if (value.randomPick !== undefined && !randomPick) return null;
   const customMarks = value.customMarks === undefined ? null : parseCustomMarks(value.customMarks);
@@ -579,6 +587,7 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     ...(value.type === "image" && value.flipY === true ? { flipY: true } : {}),
     ...(value.type === "image" && value.gifStopped === true ? { gifStopped: true } : {}),
     ...(listItems ? { listItems } : {}),
+    ...(graph ? { graph } : {}),
     ...(value.listStats === true ? { listStats: true } : {}),
     ...(typeof value.inboxGroup === "string" && value.inboxGroup ? { inboxGroup: value.inboxGroup } : {}),
     ...(randomPick ? { randomPick } : {}),

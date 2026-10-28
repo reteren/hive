@@ -39,7 +39,7 @@
   const NOTE_TINTS: Record<NoteKind, string> = {
     note: "#d3d7dc", pro: "#8dd6a7", con: "#ed9a93", importance: "#e6c65b",
     purpose: "#85b8e8", mood: "#d5a3db", beacon: "#f0cf62", goal: "#7bd5b4",
-    progress: "#73c6d8", calculator: "#bbabef", tierlist: "#e5a875", stats: "#9dc778",
+    progress: "#73c6d8", calculator: "#bbabef", tierlist: "#e5a875", graph: "#e59ac0", stats: "#9dc778",
     archive: "#baad91", trash: "#d78b82", inbox: "#86c0d4", list: "#9fc982",
     source: "#8ca9dc", glossary: "#d2a5d4", map: "#d7bd70", random: "#e5a469", markas: "#c9a0e8", time: "#7fc4d8", message: "#e8c070", calendar: "#8fc4a0", image: "#9aa6b8", pdf: "#d07a6a", format: "#8fb0c8", audio: "#b39ad6", video: "#c99a5b", youtube: "#d05a5a",
   };

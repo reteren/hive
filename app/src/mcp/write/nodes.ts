@@ -46,7 +46,7 @@ import { execute } from "../../history/history.svelte";
 import { McpError, asParams, registerMcpMethod } from "../registry";
 
 const NOTE_KINDS: readonly NoteKind[] = [
-  "note", "pro", "con", "importance", "purpose", "mood", "beacon", "goal", "progress", "calculator", "tierlist", "stats",
+  "note", "pro", "con", "importance", "purpose", "mood", "beacon", "goal", "progress", "calculator", "tierlist", "stats", "graph",
   "archive", "trash", "inbox", "list", "source", "glossary", "map", "random", "markas", "time", "message", "calendar",
   "image", "pdf", "format", "audio", "video", "youtube",
 ];
@@ -601,7 +601,7 @@ function validateNote(value: Note, path: string): Note {
   }
   const source = value as unknown as Record<string, unknown>;
   const normalizedInput = parsed.note as unknown as Record<string, unknown>;
-  for (const key of ["glow", "scope", "tiers", "listItems", "source", "randomPick", "customMarks", "message"]) {
+  for (const key of ["glow", "scope", "tiers", "listItems", "graph", "source", "randomPick", "customMarks", "message"]) {
     if (source[key] !== undefined && source[key] !== null && normalizedInput[key] === undefined) invalid(`${path}.${key}`, `The ${key} field is not valid for this node. Check its fields and allowed values.`);
   }
   if (source.message !== undefined && !parseMessageData(source.message)) invalid(`${path}.message`, "Message settings are invalid. Use the Message node's supported settings.");

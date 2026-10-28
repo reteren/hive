@@ -1,4 +1,4 @@
-import type { CustomMark, ListItem, NodeScope, RandomPick, SourceData, TierRow } from "./nodeData";
+import type { CustomMark, GraphData, ListItem, NodeScope, RandomPick, SourceData, TierRow } from "./nodeData";
 import type { LinkAnchor } from "./link";
 import type { MessageNodeData, TimeNodeData } from "../time/types";
 import type { EmbedSectionState } from "../combo/data";
@@ -14,7 +14,7 @@ import type { ImageRef, MediaRef, YouTubeRef } from "../attachments/types";
  */
 export type NoteKind =
   | "note" | "pro" | "con" | "importance" | "purpose" | "mood" | "beacon"
-  | "goal" | "progress" | "calculator" | "tierlist" | "stats"
+  | "goal" | "progress" | "calculator" | "tierlist" | "stats" | "graph"
   | "archive" | "trash"
   | "inbox" | "list" | "source" | "glossary" | "map" | "random"
   | "markas"
@@ -37,7 +37,7 @@ export const R8_KINDS = ["time", "message", "calendar"] as const;
 export const R9_KINDS = ["image", "pdf", "format", "audio", "video", "youtube"] as const;
 
 /** Default R5 node widths (u), shared by creation and resize limits. */
-export const R5_BASE_WIDTHS = { goal: 30, progress: 30, calculator: 40, tierlist: 60, stats: 30, archive: 40, trash: 40, inbox: 30, list: 30, source: 34, glossary: 40, map: 40, random: 30, markas: 30, time: 30, message: 30, calendar: 36, image: 30, pdf: 40, format: 50, audio: 34, video: 48, youtube: 48 } as const;
+export const R5_BASE_WIDTHS = { goal: 30, progress: 30, calculator: 40, tierlist: 60, stats: 30, graph: 50, archive: 40, trash: 40, inbox: 30, list: 30, source: 34, glossary: 40, map: 40, random: 30, markas: 30, time: 30, message: 30, calendar: 36, image: 30, pdf: 40, format: 50, audio: 34, video: 48, youtube: 48 } as const;
 
 /** Importance levels (R3.3): white / yellow / red / purple / rainbow. */
 export const IMPORTANCE_LEVELS = ["basic", "medium", "important", "immediately", "absolute"] as const;
@@ -174,6 +174,8 @@ export interface Note {
   gifStopped?: true;
   /** Tierlist (R5.7): rows and their cards. */
   tiers?: TierRow[];
+  /** Graph: axis names and the points placed on the chart. */
+  graph?: GraphData;
   /** List (R7.3): ordered items, each a link to a board object or a missing target. */
   listItems?: ListItem[];
   /** Source (R7.4): a web link and/or a file with a description. */

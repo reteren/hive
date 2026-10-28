@@ -25,7 +25,7 @@ const DATA_FIELDS: readonly (keyof BoardNote)[] = [
   "scale", "headerHidden", "textHidden", "smoothLines", "smoothLineAnchors", "createdAt", "task", "time", "message",
   "embedSections", "taskMemory", "importance", "purposes", "moods", "color", "accentColor", "glow", "zoneId",
   "scope", "image", "opacity", "media", "pdfZoom", "recordings", "youtube", "frameHidden", "flipX", "flipY",
-  "gifStopped", "tiers", "listItems", "source", "inboxGroup", "randomPick", "customMarks", "customMarkFrame", "listStats",
+  "gifStopped", "tiers", "listItems", "graph", "source", "inboxGroup", "randomPick", "customMarks", "customMarkFrame", "listStats",
 ];
 
 interface ParsedContentOptions extends ContentOptions {}

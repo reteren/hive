@@ -25,6 +25,7 @@ import "./tierlist/init";
 import "./backup/init";
 import "./archive/init";
 import "./map/init";
+import "./graph/init";
 import "./list/init";
 import "./random/init";
 import "./quickInput/init";

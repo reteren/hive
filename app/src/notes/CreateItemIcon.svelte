@@ -60,6 +60,8 @@
     <rect x="3" y="2" width="10" height="12" rx="1.5" /><path d="M5 4.5h6M5.5 7.8h.1M8 7.8h.1M10.5 7.8h.1M5.5 10.3h.1M8 10.3h.1M10.5 10.3h.1" />
   {:else if id === "tierlist"}
     <path d="M2.5 4h11M2.5 8h7.5M2.5 12h4.5" />
+  {:else if id === "graph"}
+    <path d="M3 2.5v11h10.5" /><circle class="dot" cx="6" cy="10" r="1" /><circle class="dot" cx="8.5" cy="6.5" r="1" /><circle class="dot" cx="11.5" cy="8" r="1" />
   {:else if id === "stats"}
     <path d="M2.5 13.5h11M4.5 13.5V9M8 13.5V4M11.5 13.5V7" />
   {:else if id === "random"}
