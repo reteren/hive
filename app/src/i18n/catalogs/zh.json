@@ -1843,5 +1843,9 @@
  "Link a node…": "关联节点…",
  "Unlink node": "取消关联节点",
  "Delete point": "删除点",
- "Double-click to add a point, or drop a node here": "双击添加点，或将节点拖到这里"
+ "Double-click to add a point, or drop a node here": "双击添加点，或将节点拖到这里",
+ "Add point": "添加点",
+ "Add node…": "添加节点…",
+ "Open node": "打开节点",
+ "Find a node to add": "查找要添加的节点"
 }

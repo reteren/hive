@@ -2,18 +2,22 @@ import { execute, type HistoryCommand } from "../history/history.svelte";
 import { board, updateNote } from "../model/board.svelte";
 import { copyGraphData, emptyGraphData, type GraphData } from "../model/nodeData";
 import { newId } from "../model/note";
-import { addGraphPoint, removeGraphPoint, updateGraphPoint } from "./logic";
+import { addGraphPoint, liveGraphPoints, removeGraphPoint, updateGraphPoint } from "./logic";
 import { t } from "../i18n/i18n.svelte";
 
+/** The graph as shown: node points whose node is gone are dropped, so the next edit forgets them. */
 export function graphFor(noteId: string): GraphData {
   const note = board.notes[noteId];
-  return note?.type === "graph" ? copyGraphData(note.graph ?? emptyGraphData()) : emptyGraphData();
+  if (note?.type !== "graph") return emptyGraphData();
+  const graph = copyGraphData(note.graph ?? emptyGraphData());
+  graph.points = liveGraphPoints(graph, board.notes);
+  return graph;
 }
 
 export function graphChangeCommand(noteId: string, label: string, next: GraphData): HistoryCommand | null {
   const note = board.notes[noteId];
   if (note?.type !== "graph") return null;
-  const before = graphFor(noteId);
+  const before = copyGraphData(note.graph ?? emptyGraphData());
   const after = copyGraphData(next);
   if (JSON.stringify(before) === JSON.stringify(after)) return null;
   return {
@@ -41,13 +45,8 @@ export function moveGraphPoint(noteId: string, pointId: string, x: number, y: nu
 }
 
 export function renameGraphPoint(noteId: string, pointId: string, label: string): boolean {
+  if (graphFor(noteId).points.find((point) => point.id === pointId)?.targetId) return false;
   return run(graphChangeCommand(noteId, t("Rename Graph point"), updateGraphPoint(graphFor(noteId), pointId, { label: label.trim() })));
-}
-
-export function linkGraphPoint(noteId: string, pointId: string, targetId: string | null): boolean {
-  if (targetId === noteId) return false;
-  return run(graphChangeCommand(noteId, targetId ? t("Link node to Graph point") : t("Unlink Graph point"),
-    updateGraphPoint(graphFor(noteId), pointId, { targetId })));
 }
 
 export function deleteGraphPoint(noteId: string, pointId: string): boolean {

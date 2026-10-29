@@ -57,7 +57,7 @@ const KIND_DEFINITIONS: Record<NoteKind, KindDefinition> = {
     dataFields: { calculatorData: "Project-level data keyed by normalized calculator name: entries[{id,expression}], bank|null, and rows[{id,label,amount,sourceNoteId}]." },
   },
   tierlist: { description: "Tier ranking with text, linked-node, or image cards.", dataFields: { tiers: "Rows {id,name,color,cards}; cards are text, note, or image records." } },
-  graph: { description: "Plain two-axis chart with labelled points; a point may link to a board object to teleport to.", dataFields: {
+  graph: { description: "Plain two-axis chart. Each point is either a labelled point (targetId null) or a node point (targetId set, shows that node's name, click teleports); a node point disappears when its node is deleted.", dataFields: {
     graph: "{xLabel,yLabel,points:[{id,x,y,label,targetId:string|null}]}; x and y are 0..1 fractions of the plot, y=0 at the bottom.",
   } },
   stats: { description: "Statistics summary for linked tasks or Lists.", dataFields: { scope: "Optional scope for counted objects: auto, board, {kind:zone,id}, or {kind:beacon,id}." } },

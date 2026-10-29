@@ -1843,5 +1843,9 @@
  "Link a node…": "ノードを関連付け…",
  "Unlink node": "ノードの関連付けを解除",
  "Delete point": "点を削除",
- "Double-click to add a point, or drop a node here": "ダブルクリックで点を追加、またはここにノードをドロップ"
+ "Double-click to add a point, or drop a node here": "ダブルクリックで点を追加、またはここにノードをドロップ",
+ "Add point": "点を追加",
+ "Add node…": "ノードを追加…",
+ "Open node": "ノードを開く",
+ "Find a node to add": "追加するノードを検索"
 }

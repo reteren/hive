@@ -2013,5 +2013,9 @@
  "Link a node…": "Привязать ноду…",
  "Unlink node": "Отвязать ноду",
  "Delete point": "Удалить точку",
- "Double-click to add a point, or drop a node here": "Двойной клик — добавить точку, или перетащите сюда ноду"
+ "Double-click to add a point, or drop a node here": "Двойной клик — добавить точку, или перетащите сюда ноду",
+ "Add point": "Добавить точку",
+ "Add node…": "Добавить ноду…",
+ "Open node": "Открыть ноду",
+ "Find a node to add": "Найти ноду для добавления"
 }

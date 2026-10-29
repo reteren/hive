@@ -1945,5 +1945,9 @@
  "Link a node…": "Lier un nœud…",
  "Unlink node": "Délier le nœud",
  "Delete point": "Supprimer le point",
- "Double-click to add a point, or drop a node here": "Double-cliquez pour ajouter un point, ou déposez un nœud ici"
+ "Double-click to add a point, or drop a node here": "Double-cliquez pour ajouter un point, ou déposez un nœud ici",
+ "Add point": "Ajouter un point",
+ "Add node…": "Ajouter un nœud…",
+ "Open node": "Ouvrir le nœud",
+ "Find a node to add": "Chercher un nœud à ajouter"
 }

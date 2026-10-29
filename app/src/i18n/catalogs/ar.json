@@ -1857,5 +1857,9 @@
  "Link a node…": "ربط عقدة…",
  "Unlink node": "فك ربط العقدة",
  "Delete point": "حذف النقطة",
- "Double-click to add a point, or drop a node here": "انقر مرتين لإضافة نقطة، أو أفلت عقدة هنا"
+ "Double-click to add a point, or drop a node here": "انقر مرتين لإضافة نقطة، أو أفلت عقدة هنا",
+ "Add point": "إضافة نقطة",
+ "Add node…": "إضافة عقدة…",
+ "Open node": "فتح العقدة",
+ "Find a node to add": "ابحث عن عقدة لإضافتها"
 }

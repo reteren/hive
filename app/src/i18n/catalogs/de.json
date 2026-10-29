@@ -1945,5 +1945,9 @@
  "Link a node…": "Knoten verknüpfen…",
  "Unlink node": "Knoten lösen",
  "Delete point": "Punkt löschen",
- "Double-click to add a point, or drop a node here": "Doppelklick fügt einen Punkt hinzu, oder einen Knoten hierher ziehen"
+ "Double-click to add a point, or drop a node here": "Doppelklick fügt einen Punkt hinzu, oder einen Knoten hierher ziehen",
+ "Add point": "Punkt hinzufügen",
+ "Add node…": "Knoten hinzufügen…",
+ "Open node": "Knoten öffnen",
+ "Find a node to add": "Knoten zum Hinzufügen suchen"
 }

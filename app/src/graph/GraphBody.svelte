@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
+  import type { Action } from "svelte/action";
   import { camera, viewport } from "../board/camera.svelte";
   import { worldToScreen, type Point } from "../board/cameraMath";
   import { board } from "../model/board.svelte";
@@ -10,34 +11,40 @@
   import { activeDropTarget, registerDropTarget, type DropTargetMatch } from "../selection/dropTargets";
   import { dismissBoardPopup } from "../ui/boardAnchor";
   import { listPickerInput } from "../list/pickerInput";
-  import { addGraphPoint, fractionInRect, graphPointAt, graphPointDisplay, updateGraphPoint } from "./logic";
-  import {
-    addPoint,
-    deleteGraphPoint,
-    graphChangeCommand,
-    graphFor,
-    linkGraphPoint,
-    moveGraphPoint,
-    renameGraphAxis,
-    renameGraphPoint,
-  } from "./actions.svelte";
+  import { addGraphPoint, fractionInRect, graphPointText, liveGraphPoints } from "./logic";
+  import { addPoint, deleteGraphPoint, graphChangeCommand, graphFor, moveGraphPoint, renameGraphAxis, renameGraphPoint } from "./actions.svelte";
   import { newId } from "../model/note";
   import { t } from "../i18n/i18n.svelte";
+
+  const MENU_MARGIN = 8;
+
+  /** The menu lives on <body>, outside the zoomed board, so it matches the board's own menus at any zoom. */
+  const portal: Action<HTMLElement> = (element) => {
+    document.body.appendChild(element);
+    return { destroy: () => element.remove() };
+  };
+
+  type GraphMenu =
+    | { kind: "plot"; clientX: number; clientY: number; x: number; y: number; picking: boolean }
+    | { kind: "point"; clientX: number; clientY: number; pointId: string };
 
   let { note }: { note: Note } = $props();
   let plot: HTMLDivElement | undefined = $state();
   let graph = $derived(note.graph ?? emptyGraphData());
+  let points = $derived(liveGraphPoints(graph, board.notes));
   /** Live position of the point being dragged; committed as one Undo step on release. */
   let dragging = $state<{ pointId: string; pointerId: number; start: Point; x: number; y: number; moved: boolean } | null>(null);
   let editingId = $state<string | null>(null);
   let labelDraft = $state("");
   let labelInput: HTMLInputElement | undefined = $state();
-  let menu = $state<{ pointId: string; linking: boolean } | null>(null);
+  let menu = $state<GraphMenu | null>(null);
+  let menuElement: HTMLDivElement | undefined = $state();
+  let menuAt = $state<{ left: number; top: number } | null>(null);
   let query = $state("");
   let searchInput: HTMLInputElement | undefined = $state();
   let selectedId = $state<string | null>(null);
-  let dropPayload = $derived($activeDropTarget?.ownerId === `graph:${note.id}`
-    ? ($activeDropTarget.payload as { pointId?: string; x?: number; y?: number } | undefined) ?? null : null);
+  let dropActive = $derived($activeDropTarget?.ownerId === `graph:${note.id}`);
+  let menuPoint = $derived(menu?.kind === "point" ? points.find((point) => point.id === (menu as { pointId: string }).pointId) ?? null : null);
 
   let choices = $derived.by(() => {
     const candidates = board.order.flatMap((id) => {
@@ -53,12 +60,9 @@
     ownerId: `graph:${note.id}`,
     accepts: findDropTarget,
     drop: (ids, match) => {
-      const payload = match.payload as { pointId?: string; x: number; y: number };
-      const current = graphFor(note.id);
-      const next = payload.pointId
-        ? updateGraphPoint(current, payload.pointId, { targetId: ids[0] })
-        : addGraphPoint(current, { id: newId(), x: payload.x, y: payload.y, label: "", targetId: ids[0] });
-      return graphChangeCommand(note.id, t("Link node to Graph point"), next);
+      const at = match.payload as { x: number; y: number };
+      const next = addGraphPoint(graphFor(note.id), { id: newId(), x: at.x, y: at.y, label: "", targetId: ids[0] });
+      return graphChangeCommand(note.id, t("Add Graph point"), next);
     },
   }));
 
@@ -71,9 +75,7 @@
     const clientY = boardRect.top + screen.y;
     const rect = plot.getBoundingClientRect();
     if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return null;
-    const hit = graphPointAt(graph, clientX, clientY, rect);
-    const at = fractionInRect(clientX, clientY, rect);
-    return { ownerId: `graph:${note.id}`, targetId: note.id, payload: hit ? { pointId: hit.id, x: hit.x, y: hit.y } : at };
+    return { ownerId: `graph:${note.id}`, targetId: note.id, payload: fractionInRect(clientX, clientY, rect) };
   }
 
   function position(point: GraphPoint): { x: number; y: number } {
@@ -81,9 +83,11 @@
   }
 
   async function beginLabelEdit(pointId: string): Promise<void> {
-    menu = null;
+    closeMenu();
+    const point = points.find((item) => item.id === pointId);
+    if (!point || point.targetId) return;
     editingId = pointId;
-    labelDraft = graph.points.find((point) => point.id === pointId)?.label ?? "";
+    labelDraft = point.label;
     await tick();
     labelInput?.focus();
     labelInput?.select();
@@ -96,13 +100,22 @@
     if (commit) renameGraphPoint(note.id, id, labelDraft);
   }
 
+  function addLabelPoint(x: number, y: number): void {
+    const id = addPoint(note.id, x, y);
+    if (id) void beginLabelEdit(id);
+  }
+
   function addPointAt(event: MouseEvent): void {
     if (!plot || event.target !== plot) return;
     event.preventDefault();
     event.stopPropagation();
     const at = fractionInRect(event.clientX, event.clientY, plot.getBoundingClientRect());
-    const id = addPoint(note.id, at.x, at.y);
-    if (id) void beginLabelEdit(id);
+    addLabelPoint(at.x, at.y);
+  }
+
+  function openNode(point: GraphPoint): void {
+    closeMenu();
+    if (point.targetId && board.notes[point.targetId]) teleportToObject(point.targetId, { label: t("Open Graph point") });
   }
 
   function beginPointDrag(point: GraphPoint, event: PointerEvent): void {
@@ -133,9 +146,9 @@
       moveGraphPoint(note.id, finished.pointId, finished.x, finished.y);
       return;
     }
-    // A plain click on a linked point jumps to its node.
-    const point = graph.points.find((item) => item.id === finished.pointId);
-    if (point?.targetId && board.notes[point.targetId]) teleportToObject(point.targetId, { label: t("Open Graph point") });
+    // A plain click on a node point jumps to its node.
+    const point = points.find((item) => item.id === finished.pointId);
+    if (point?.targetId) openNode(point);
   }
 
   function handlePointKeydown(point: GraphPoint, event: KeyboardEvent): void {
@@ -147,32 +160,74 @@
     } else if (event.key === "Enter" || event.key === "F2") {
       event.preventDefault();
       event.stopPropagation();
-      void beginLabelEdit(point.id);
+      if (point.targetId) openNode(point);
+      else void beginLabelEdit(point.id);
     }
   }
 
-  function openMenu(point: GraphPoint, event: MouseEvent): void {
+  async function showMenu(next: GraphMenu): Promise<void> {
+    menu = next;
+    menuAt = null;
+    await tick();
+    placeMenu();
+  }
+
+  /** Opens at the cursor and flips inward when it would leave the window. */
+  function placeMenu(): void {
+    if (!menu || !menuElement) return;
+    const { width, height } = menuElement.getBoundingClientRect();
+    const left = menu.clientX + width + MENU_MARGIN <= window.innerWidth ? menu.clientX : menu.clientX - width;
+    const top = menu.clientY + height + MENU_MARGIN <= window.innerHeight ? menu.clientY : menu.clientY - height;
+    menuAt = {
+      left: Math.max(MENU_MARGIN, Math.min(left, window.innerWidth - width - MENU_MARGIN)),
+      top: Math.max(MENU_MARGIN, Math.min(top, window.innerHeight - height - MENU_MARGIN)),
+    };
+  }
+
+  function openPointMenu(point: GraphPoint, event: MouseEvent): void {
     event.preventDefault();
     event.stopPropagation();
     selectedId = point.id;
-    menu = { pointId: point.id, linking: false };
+    void showMenu({ kind: "point", clientX: event.clientX, clientY: event.clientY, pointId: point.id });
   }
 
-  async function startLinking(): Promise<void> {
-    if (!menu) return;
-    menu = { ...menu, linking: true };
+  function openPlotMenu(event: MouseEvent): void {
+    if (!plot || event.target !== plot) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const at = fractionInRect(event.clientX, event.clientY, plot.getBoundingClientRect());
+    void showMenu({ kind: "plot", clientX: event.clientX, clientY: event.clientY, x: at.x, y: at.y, picking: false });
+  }
+
+  async function startPicking(): Promise<void> {
+    if (menu?.kind !== "plot") return;
     query = "";
-    await tick();
+    await showMenu({ ...menu, picking: true });
     searchInput?.focus();
   }
 
   function closeMenu(): void {
     menu = null;
+    menuAt = null;
     query = "";
   }
 
-  function chooseTarget(targetId: string | null): void {
-    if (menu) linkGraphPoint(note.id, menu.pointId, targetId);
+  /** Menu handlers read the menu before closing it; closing re-renders the menu block away. */
+  function addPointFromMenu(): void {
+    if (menu?.kind !== "plot") return;
+    const { x, y } = menu;
+    closeMenu();
+    addLabelPoint(x, y);
+  }
+
+  function deletePointFromMenu(): void {
+    const pointId = menu?.kind === "point" ? menu.pointId : null;
+    closeMenu();
+    if (pointId) deleteGraphPoint(note.id, pointId);
+  }
+
+  function chooseNode(targetId: string): void {
+    if (menu?.kind === "plot" && targetId !== note.id) addPoint(note.id, menu.x, menu.y, targetId);
     closeMenu();
   }
 
@@ -199,23 +254,23 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="graph-plot"
-    class:drop-target={dropPayload !== null && !dropPayload.pointId}
+    class:drop-target={dropActive}
     bind:this={plot}
     data-selection-ignore
+    data-own-context-menu
     data-graph-plot={note.id}
     role="group"
     aria-label={t("Graph plot. Double-click to add a point.")}
     ondblclick={addPointAt}
+    oncontextmenu={openPlotMenu}
   >
-    {#each graph.points as point (point.id)}
+    {#each points as point (point.id)}
       {@const at = position(point)}
-      {@const display = graphPointDisplay(point, board.notes)}
+      {@const text = graphPointText(point, board.notes)}
       <div
         class="graph-point"
-        class:linked={point.targetId !== null && !display.missing}
-        class:missing={display.missing}
+        class:linked={point.targetId !== null}
         class:selected={selectedId === point.id}
-        class:drop-target={dropPayload?.pointId === point.id}
         class:right-label={at.x > 0.75}
         style:left={`${at.x * 100}%`}
         style:bottom={`${at.y * 100}%`}
@@ -223,14 +278,14 @@
         data-own-context-menu
         role="button"
         tabindex="0"
-        aria-label={display.text || t("Graph point")}
-        title={point.targetId && !display.missing ? t("Click to open the linked node") : undefined}
+        aria-label={text || t("Graph point")}
+        title={point.targetId ? t("Click to open the linked node") : undefined}
         onpointerdown={(event) => beginPointDrag(point, event)}
         onpointermove={movePointDrag}
         onpointerup={(event) => endPointDrag(event)}
         onpointercancel={(event) => endPointDrag(event, true)}
-        ondblclick={(event) => { event.stopPropagation(); void beginLabelEdit(point.id); }}
-        oncontextmenu={(event) => openMenu(point, event)}
+        ondblclick={(event) => { event.stopPropagation(); if (!point.targetId) void beginLabelEdit(point.id); }}
+        oncontextmenu={(event) => openPointMenu(point, event)}
         onkeydown={(event) => handlePointKeydown(point, event)}
         onblur={() => { if (selectedId === point.id && !menu) selectedId = null; }}
       >
@@ -240,7 +295,7 @@
             class="graph-label-edit"
             bind:this={labelInput}
             bind:value={labelDraft}
-            placeholder={display.text || t("Label")}
+            placeholder={t("Label")}
             aria-label={t("Point label")}
             onpointerdown={(event) => event.stopPropagation()}
             onkeydown={(event) => {
@@ -250,49 +305,12 @@
             }}
             onblur={() => finishLabelEdit(true)}
           />
-        {:else if display.text || display.missing}
-          <span class="graph-label">{display.missing && !point.label.trim() ? t("Missing node") : display.text}</span>
-        {/if}
-        {#if menu?.pointId === point.id}
-          <div
-            class="graph-menu"
-            data-selection-ignore
-            role="menu"
-            tabindex="-1"
-            use:dismissBoardPopup={{ close: closeMenu }}
-            onpointerdown={(event) => event.stopPropagation()}
-            ondblclick={(event) => event.stopPropagation()}
-          >
-            {#if menu.linking}
-              <div class="graph-picker" use:listPickerInput={closeMenu}>
-                <input
-                  bind:this={searchInput}
-                  bind:value={query}
-                  placeholder={t("Find a node…")}
-                  aria-label={t("Find a node to link")}
-                  onkeydown={(event) => event.stopPropagation()}
-                />
-                <div class="graph-picker-results">
-                  {#each choices as choice (choice.id)}
-                    <button type="button" data-graph-target-option={choice.id} onclick={() => chooseTarget(choice.id)}>{choice.name}</button>
-                  {:else}
-                    <span class="graph-picker-empty">{t("No matching board object.")}</span>
-                  {/each}
-                </div>
-              </div>
-            {:else}
-              <button type="button" role="menuitem" onclick={() => void beginLabelEdit(point.id)}>{t("Rename")}</button>
-              <button type="button" role="menuitem" onclick={() => void startLinking()}>{point.targetId ? t("Link another node…") : t("Link a node…")}</button>
-              {#if point.targetId}
-                <button type="button" role="menuitem" onclick={() => chooseTarget(null)}>{t("Unlink node")}</button>
-              {/if}
-              <button type="button" role="menuitem" class="danger" onclick={() => { closeMenu(); deleteGraphPoint(note.id, point.id); }}>{t("Delete point")}</button>
-            {/if}
-          </div>
+        {:else if text}
+          <span class="graph-label">{text}</span>
         {/if}
       </div>
     {/each}
-    {#if graph.points.length === 0}
+    {#if points.length === 0}
       <span class="graph-hint">{t("Double-click to add a point, or drop a node here")}</span>
     {/if}
   </div>
@@ -306,6 +324,53 @@
     onkeydown={axisKeydown}
   />
 </div>
+
+{#if menu}
+  <div
+    class="graph-menu"
+    bind:this={menuElement}
+    use:portal
+    use:dismissBoardPopup={{ close: closeMenu }}
+    data-graph-menu={note.id}
+    role="menu"
+    tabindex="-1"
+    aria-label={t("Graph")}
+    style:left={`${menuAt?.left ?? menu.clientX}px`}
+    style:top={`${menuAt?.top ?? menu.clientY}px`}
+    style:visibility={menuAt ? "visible" : "hidden"}
+    oncontextmenu={(event) => event.preventDefault()}
+  >
+    {#if menu.kind === "plot" && menu.picking}
+      <div class="graph-picker" use:listPickerInput={closeMenu}>
+        <input
+          bind:this={searchInput}
+          bind:value={query}
+          placeholder={t("Find a node…")}
+          aria-label={t("Find a node to add")}
+          onkeydown={(event) => event.stopPropagation()}
+        />
+        <div class="graph-picker-results">
+          {#each choices as choice (choice.id)}
+            <button type="button" role="menuitem" data-graph-target-option={choice.id} onclick={() => chooseNode(choice.id)}>{choice.name}</button>
+          {:else}
+            <span class="graph-picker-empty">{t("No matching board object.")}</span>
+          {/each}
+        </div>
+      </div>
+    {:else if menu.kind === "plot"}
+      <button type="button" role="menuitem" onclick={addPointFromMenu}>{t("Add point")}</button>
+      <button type="button" role="menuitem" onclick={() => void startPicking()}>{t("Add node…")}</button>
+    {:else if menuPoint}
+      {#if menuPoint.targetId}
+        <button type="button" role="menuitem" onclick={() => { if (menuPoint) openNode(menuPoint); }}>{t("Open node")}</button>
+      {:else}
+        <button type="button" role="menuitem" onclick={() => { if (menuPoint) void beginLabelEdit(menuPoint.id); }}>{t("Rename")}</button>
+      {/if}
+      <div class="menu-divider"></div>
+      <button type="button" role="menuitem" onclick={deletePointFromMenu}>{t("Delete point")}</button>
+    {/if}
+  </div>
+{/if}
 
 <style>
   :global(.note-card[data-kind="graph"] .note-content) { display: flex; min-height: 0; padding: 4px 6px 6px; overflow: hidden; }
@@ -388,9 +453,7 @@
 
   .graph-point.linked .graph-dot { background: var(--accent); }
   .graph-point.linked { cursor: pointer; }
-  .graph-point.missing .graph-dot { border-color: var(--text-dim); border-style: dashed; }
   .graph-point.selected .graph-dot, .graph-point:hover .graph-dot { transform: scale(1.3); }
-  .graph-point.drop-target .graph-dot { transform: scale(1.6); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.35); }
 
   .graph-label {
     max-width: 160px;
@@ -402,8 +465,6 @@
     font-size: 10px;
     text-overflow: ellipsis;
   }
-
-  .graph-point.missing .graph-label { color: var(--text-dim); font-style: italic; }
 
   .graph-label-edit {
     width: 110px;
@@ -429,40 +490,60 @@
     pointer-events: none;
   }
 
+  /* Same look as the board's own right-click menu (NotesLayer .link-context-menu). */
   .graph-menu {
-    position: absolute;
-    top: 14px;
-    left: 0;
-    z-index: 5;
-    display: grid;
-    min-width: 150px;
-    gap: 3px;
-    padding: 5px;
-    border: 1px solid var(--border);
+    position: fixed;
+    z-index: 2147483000;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    box-sizing: border-box;
+    width: max-content;
+    min-width: 168px;
+    max-width: calc(100vw - 16px);
+    padding: 4px;
+    border: 1px solid #4c4c4c;
     border-radius: 4px;
+    outline: none;
     background: var(--bg-panel);
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
-    cursor: default;
-    white-space: normal;
+    box-shadow: 0 5px 16px rgb(0 0 0 / 45%);
+    color: var(--text);
   }
 
-  .graph-menu button, .graph-picker input {
-    box-sizing: border-box;
-    padding: 4px 7px;
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    background: var(--bg-panel-raised);
+  .graph-menu button {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    min-height: 28px;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 2px;
+    background: transparent;
     color: var(--text);
     font: inherit;
-    font-size: 10px;
     text-align: left;
     cursor: pointer;
   }
 
-  .graph-menu button:hover, .graph-menu button:focus-visible { border-color: var(--accent); color: var(--accent); }
-  .graph-menu button.danger:hover, .graph-menu button.danger:focus-visible { border-color: #c4575f; color: #f0b3b8; }
-  .graph-picker { display: grid; gap: 4px; width: 190px; }
-  .graph-picker input { cursor: text; }
-  .graph-picker-results { display: grid; max-height: 130px; gap: 2px; overflow: auto; }
-  .graph-picker-empty { color: var(--text-dim); font-size: 10px; }
+  .graph-menu button:hover, .graph-menu button:focus-visible { outline: none; background: var(--bg-hover); color: var(--text); }
+  .graph-menu .menu-divider { height: 1px; margin: 2px 7px; background: #474747; }
+  .graph-picker { display: flex; flex-direction: column; gap: 4px; width: 230px; }
+
+  .graph-picker input {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 28px;
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    outline: none;
+    background: var(--bg-panel-raised);
+    color: var(--text);
+    font: inherit;
+  }
+
+  .graph-picker input:focus { border-color: var(--accent); }
+  .graph-picker-results { display: flex; flex-direction: column; max-height: 220px; gap: 2px; overflow: auto; }
+  .graph-picker-results button { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .graph-picker-empty { padding: 6px 8px; color: var(--text-dim); }
 </style>

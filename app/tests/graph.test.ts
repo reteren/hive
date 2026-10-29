@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addGraphPoint, fractionInRect, graphPointAt, graphPointDisplay, removeGraphPoint, updateGraphPoint } from "../src/graph/logic";
+import { addGraphPoint, fractionInRect, graphPointAt, graphPointText, liveGraphPoints, removeGraphPoint, updateGraphPoint } from "../src/graph/logic";
 import { emptyGraphData, parseGraphData } from "../src/model/nodeData";
 import { parseMcpNote } from "../src/project/index";
 import { maximumWidthForKind, resizeRuleForKind } from "../src/selection/resize";
@@ -24,11 +24,17 @@ describe("graph node", () => {
     expect(removeGraphPoint(moved, "p").points).toEqual([]);
   });
 
-  it("shows a label, else the linked node's live name, and flags missing nodes", () => {
+  it("shows a node point's live name and a plain point's label, and drops points of deleted nodes", () => {
     const notes = { n1: { id: "n1", name: "Target" } as Note };
-    expect(graphPointDisplay({ id: "p", x: 0, y: 0, label: "", targetId: "n1" }, notes)).toEqual({ text: "Target", missing: false });
-    expect(graphPointDisplay({ id: "p", x: 0, y: 0, label: "Mine", targetId: "n1" }, notes)).toEqual({ text: "Mine", missing: false });
-    expect(graphPointDisplay({ id: "p", x: 0, y: 0, label: "", targetId: "gone" }, notes)).toEqual({ text: "", missing: true });
+    expect(graphPointText({ id: "p", x: 0, y: 0, label: "", targetId: "n1" }, notes)).toBe("Target");
+    expect(graphPointText({ id: "p", x: 0, y: 0, label: "Old", targetId: "n1" }, notes)).toBe("Target");
+    expect(graphPointText({ id: "p", x: 0, y: 0, label: " Mine ", targetId: null }, notes)).toBe("Mine");
+    const graph = { xLabel: "", yLabel: "", points: [
+      { id: "a", x: 0, y: 0, label: "Plain", targetId: null },
+      { id: "b", x: 0, y: 0, label: "", targetId: "n1" },
+      { id: "c", x: 0, y: 0, label: "", targetId: "gone" },
+    ] };
+    expect(liveGraphPoints(graph, notes).map((point) => point.id)).toEqual(["a", "b"]);
   });
 
   it("finds the nearest point within the hit radius", () => {

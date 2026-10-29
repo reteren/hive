@@ -45,11 +45,17 @@ export function removeGraphPoint(graph: Readonly<GraphData>, pointId: string): G
   return next;
 }
 
-/** What a point shows: its own label, else the linked node's live name. */
-export function graphPointDisplay(point: Readonly<GraphPoint>, notes: Readonly<Record<string, Note>>): { text: string; missing: boolean } {
-  const target = point.targetId ? notes[point.targetId] : undefined;
-  const missing = point.targetId !== null && !target;
-  return { text: point.label.trim() || target?.name || "", missing };
+/**
+ * A point is either a plain labelled point or a node point; they never turn into each other.
+ * A node point whose node is gone (deleted, archived) drops off the graph with it.
+ */
+export function liveGraphPoints(graph: Readonly<GraphData>, notes: Readonly<Record<string, Note>>): GraphPoint[] {
+  return graph.points.filter((point) => point.targetId === null || Boolean(notes[point.targetId]));
+}
+
+/** A node point shows the node's live name; a plain point shows its own label. */
+export function graphPointText(point: Readonly<GraphPoint>, notes: Readonly<Record<string, Note>>): string {
+  return point.targetId ? notes[point.targetId]?.name ?? "" : point.label.trim();
 }
 
 /** Nearest point within `radiusPx` of a client position, measured in the plot's on-screen size. */
