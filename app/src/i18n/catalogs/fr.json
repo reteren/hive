@@ -1949,5 +1949,15 @@
  "Add point": "Ajouter un point",
  "Add node…": "Ajouter un nœud…",
  "Open node": "Ouvrir le nœud",
- "Find a node to add": "Chercher un nœud à ajouter"
+ "Find a node to add": "Chercher un nœud à ajouter",
+ "Attention": "Attention",
+ "Attention period": "Période d'attention",
+ "7 days": "7 jours",
+ "30 days": "30 jours",
+ "All time": "Depuis toujours",
+ "under a minute": "moins d'une minute",
+ "Total {time}": "Total {time}",
+ "outside zones {percent}%": "hors zones {percent} %",
+ "No time counted yet: it adds up while you work in hive": "Encore vide : le temps s'accumule pendant que vous travaillez dans hive",
+ "Show where you spend your time on the board": "Montrer où vous passez votre temps sur le tableau"
 }

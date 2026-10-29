@@ -1847,5 +1847,15 @@
  "Add point": "添加点",
  "Add node…": "添加节点…",
  "Open node": "打开节点",
- "Find a node to add": "查找要添加的节点"
+ "Find a node to add": "查找要添加的节点",
+ "Attention": "注意力",
+ "Attention period": "注意力时段",
+ "7 days": "7 天",
+ "30 days": "30 天",
+ "All time": "全部时间",
+ "under a minute": "不到一分钟",
+ "Total {time}": "共 {time}",
+ "outside zones {percent}%": "区域外 {percent}%",
+ "No time counted yet: it adds up while you work in hive": "暂无数据：在 hive 中工作时会累计时间",
+ "Show where you spend your time on the board": "显示你在白板上把时间花在哪里"
 }

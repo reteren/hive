@@ -1847,5 +1847,15 @@
  "Add point": "点を追加",
  "Add node…": "ノードを追加…",
  "Open node": "ノードを開く",
- "Find a node to add": "追加するノードを検索"
+ "Find a node to add": "追加するノードを検索",
+ "Attention": "注目",
+ "Attention period": "注目の期間",
+ "7 days": "7 日",
+ "30 days": "30 日",
+ "All time": "全期間",
+ "under a minute": "1 分未満",
+ "Total {time}": "合計 {time}",
+ "outside zones {percent}%": "ゾーン外 {percent}%",
+ "No time counted yet: it adds up while you work in hive": "まだ空です：hive で作業している間に時間が貯まります",
+ "Show where you spend your time on the board": "ボードのどこで時間を使っているかを表示"
 }

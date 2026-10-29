@@ -2017,5 +2017,15 @@
  "Add point": "Добавить точку",
  "Add node…": "Добавить ноду…",
  "Open node": "Открыть ноду",
- "Find a node to add": "Найти ноду для добавления"
+ "Find a node to add": "Найти ноду для добавления",
+ "Attention": "Внимание",
+ "Attention period": "Период внимания",
+ "7 days": "7 дней",
+ "30 days": "30 дней",
+ "All time": "Всё время",
+ "under a minute": "меньше минуты",
+ "Total {time}": "Всего {time}",
+ "outside zones {percent}%": "вне зон {percent}%",
+ "No time counted yet: it adds up while you work in hive": "Пока пусто: время копится, пока вы работаете в hive",
+ "Show where you spend your time on the board": "Показать, где на доске вы проводите время"
 }

@@ -32,6 +32,7 @@
   import { cameraSnapshot, recordMapCameraChange, recordMapInternalZoomChange, restoreCamera, type CameraSnapshot } from "./cameraHistory";
   import { mapViewState, setMapInternalZoom } from "./mapViewState.svelte";
   import { t } from "../i18n/i18n.svelte";
+  import { ATTENTION_CELL, attentionPercent, type AttentionSummary } from "../attention/logic";
 
   const MAP_WIDTH = 400;
   const MAP_HEIGHT = 300;
@@ -68,7 +69,7 @@
   }
 
   let svg: SVGSVGElement;
-  let { variant = "overlay" }: { variant?: "overlay" | "node" } = $props();
+  let { variant = "overlay", attention = null }: { variant?: "overlay" | "node"; attention?: AttentionSummary | null } = $props();
   const initialFrame: MapFrame = {
     transform: mapTransformForBounds({ x: 0, y: 0, width: 0, height: 0 }, { width: MAP_WIDTH, height: MAP_HEIGHT }, MAP_PADDING, mapViewState.zoom),
     zones: [],
@@ -82,6 +83,36 @@
     internalZoom: mapViewState.zoom,
   };
   let frame = $derived(sharedMapFrame.value ?? initialFrame);
+  const heatFilterId = `map-heat-${Math.random().toString(36).slice(2)}`;
+  /** Attention overlay: heat cells where the camera looked, and each zone's share of that time. */
+  let heat = $derived.by(() => {
+    if (!attention || attention.maxCell <= 0) return [];
+    const { transform } = frame;
+    const size = ATTENTION_CELL * transform.scale;
+    return attention.cells.map((cell) => ({
+      ...worldToMap({ x: cell.x, y: cell.y }, transform),
+      size,
+      key: `${cell.x},${cell.y}`,
+      opacity: 0.12 + 0.68 * Math.sqrt(cell.seconds / attention!.maxCell),
+    }));
+  });
+
+  let zoneShares = $derived.by(() => {
+    if (!attention) return [];
+    const { transform } = frame;
+    return zones.order.flatMap((id) => {
+      const zone = zones.byId[id];
+      if (!zone || zone.parts.length === 0) return [];
+      const points = zone.parts.flat();
+      if (points.length === 0) return [];
+      const xs = points.map((point) => point.x);
+      const ys = points.map((point) => point.y);
+      const center = worldToMap({ x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 }, transform);
+      const name = zone.name.length > 18 ? `${zone.name.slice(0, 17)}…` : zone.name;
+      return [{ id, ...center, name, percent: attentionPercent(attention!.zones[id] ?? 0, attention!.total) }];
+    });
+  });
+
   let dragBefore: CameraSnapshot | null = null;
   let dragStartClient: Point | null = null;
   let dragScreenToMap: ClientToMapMatrix | null = null;
@@ -375,6 +406,7 @@
   data-map-dragging={mapDragging ? "true" : undefined}
   data-map-link-count={frame.links.length}
   data-map-links-skipped={frame.linksSkipped ? "true" : undefined}
+  data-map-attention={attention ? "true" : undefined}
   use:captureWheel
   onpointerdown={onPointerDown}
   onpointermove={onPointerMove}
@@ -386,7 +418,7 @@
     <path
       d={zone.path}
       fill={zone.color}
-      fill-opacity="0.24"
+      fill-opacity={attention ? "0.12" : "0.24"}
       fill-rule="evenodd"
       stroke={zone.color}
       stroke-opacity="0.75"
@@ -418,9 +450,27 @@
       height={mark.height}
       rx="0.8"
       fill={mark.color}
-      fill-opacity="0.88"
+      fill-opacity={attention ? "0.3" : "0.88"}
       data-map-note={mark.id}
     />
+  {/each}
+  {#if heat.length > 0}
+    <defs>
+      <filter id={heatFilterId} x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation={Math.max(1, heat[0].size * 0.45)} />
+      </filter>
+    </defs>
+    <g class="map-heat" filter={`url(#${heatFilterId})`}>
+      {#each heat as cell (cell.key)}
+        <rect x={cell.x} y={cell.y} width={cell.size} height={cell.size} fill="var(--accent)" fill-opacity={cell.opacity} data-map-heat />
+      {/each}
+    </g>
+  {/if}
+  {#each zoneShares as share (share.id)}
+    <g class="map-zone-share" data-map-zone-share={share.id} transform={`translate(${share.x} ${share.y})`}>
+      <text class="map-share-percent" text-anchor="middle" y="0">{share.percent}%</text>
+      {#if share.name}<text class="map-share-name" text-anchor="middle" y="10">{share.name}</text>{/if}
+    </g>
   {/each}
   {#each frame.beacons as beacon (beacon.id)}
     <circle cx={beacon.x} cy={beacon.y} r={beacon.radius} fill={beacon.color} stroke="#171717" stroke-width="0.7" data-map-beacon={beacon.id} />
@@ -446,5 +496,7 @@
 <style>
   .map-view { display: block; width: 100%; height: 100%; overflow: hidden; background: var(--bg-board); cursor: crosshair; touch-action: none; user-select: none; }
   .map-background { fill: var(--bg-board); }
-  .map-viewport { pointer-events: none; }
+  .map-viewport, .map-heat, .map-zone-share { pointer-events: none; }
+  .map-share-percent { fill: var(--text); font-size: 13px; font-weight: 700; paint-order: stroke; stroke: var(--bg-board); stroke-width: 3px; }
+  .map-share-name { fill: var(--text-dim); font-size: 8px; paint-order: stroke; stroke: var(--bg-board); stroke-width: 2.5px; }
 </style>
