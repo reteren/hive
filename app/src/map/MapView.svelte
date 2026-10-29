@@ -466,12 +466,6 @@
       {/each}
     </g>
   {/if}
-  {#each zoneShares as share (share.id)}
-    <g class="map-zone-share" data-map-zone-share={share.id} transform={`translate(${share.x} ${share.y})`}>
-      <text class="map-share-percent" text-anchor="middle" y="0">{share.percent}%</text>
-      {#if share.name}<text class="map-share-name" text-anchor="middle" y="10">{share.name}</text>{/if}
-    </g>
-  {/each}
   {#each frame.beacons as beacon (beacon.id)}
     <circle cx={beacon.x} cy={beacon.y} r={beacon.radius} fill={beacon.color} stroke="#171717" stroke-width="0.7" data-map-beacon={beacon.id} />
   {/each}
@@ -491,12 +485,19 @@
     vector-effect="non-scaling-stroke"
     data-map-viewport
   />
+  <!-- Zone shares sit above everything, beacons and the viewport frame included. -->
+  {#each zoneShares as share (share.id)}
+    <g class="map-zone-share" data-map-zone-share={share.id} transform={`translate(${share.x} ${share.y})`}>
+      <text class="map-share-percent" text-anchor="middle" y="0">{share.percent}%</text>
+      {#if share.name}<text class="map-share-name" text-anchor="middle" y="10">{share.name}</text>{/if}
+    </g>
+  {/each}
 </svg>
 
 <style>
   .map-view { display: block; width: 100%; height: 100%; overflow: hidden; background: var(--bg-board); cursor: crosshair; touch-action: none; user-select: none; }
   .map-background { fill: var(--bg-board); }
   .map-viewport, .map-heat, .map-zone-share { pointer-events: none; }
-  .map-share-percent { fill: var(--text); font-size: 13px; font-weight: 700; paint-order: stroke; stroke: var(--bg-board); stroke-width: 3px; }
-  .map-share-name { fill: var(--text-dim); font-size: 8px; paint-order: stroke; stroke: var(--bg-board); stroke-width: 2.5px; }
+  .map-share-percent { fill: var(--text); font-size: 13px; font-weight: 600; }
+  .map-share-name { fill: var(--text); font-size: 8px; }
 </style>

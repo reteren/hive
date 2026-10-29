@@ -65,55 +65,46 @@
   .map-node-body { position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
   :global(.note-card[data-kind="map"] .note-content) { display: flex; min-height: 0; padding: 2px; overflow: hidden; }
 
-  .attention-bar {
+  /* Floating panels styled like the app's right-click menus. */
+  .attention-bar, .attention-summary {
     position: absolute;
-    top: 4px;
     left: 4px;
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
     max-width: calc(100% - 8px);
-    pointer-events: none;
+    padding: 3px;
+    border: 1px solid #4c4c4c;
+    border-radius: 4px;
+    background: var(--bg-panel);
+    box-shadow: 0 5px 16px rgb(0 0 0 / 45%);
+    color: var(--text);
+    font-size: 11px;
   }
 
-  .attention-toggle, .attention-periods {
+  .attention-bar { top: 4px; flex-wrap: wrap; }
+
+  .attention-toggle, .attention-periods button {
     display: flex;
     align-items: center;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: color-mix(in srgb, var(--bg-panel) 88%, transparent);
-    pointer-events: auto;
-  }
-
-  .attention-toggle { gap: 4px; padding: 2px 6px 2px 4px; color: var(--text); font-size: 10px; cursor: pointer; user-select: none; }
-  .attention-toggle input { width: 11px; height: 11px; margin: 0; accent-color: var(--accent); cursor: pointer; }
-  .attention-periods { padding: 1px; gap: 1px; }
-
-  .attention-periods button {
-    padding: 1px 5px;
+    min-height: 22px;
+    padding: 3px 7px;
     border: 0;
-    border-radius: 3px;
+    border-radius: 2px;
     background: transparent;
-    color: var(--text-dim);
+    color: var(--text);
     font: inherit;
-    font-size: 10px;
     cursor: pointer;
+    user-select: none;
   }
 
-  .attention-periods button:hover { color: var(--text); }
-  .attention-periods button.active { background: rgba(var(--accent-rgb), 0.18); color: var(--accent); }
+  .attention-toggle { gap: 6px; }
+  .attention-toggle input { width: 12px; height: 12px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+  .attention-toggle:hover, .attention-periods button:hover { background: var(--bg-hover); }
+  .attention-periods { display: flex; align-items: center; gap: 2px; }
+  .attention-periods::before { content: ""; width: 1px; height: 14px; margin: 0 3px; background: #474747; }
+  .attention-periods button { color: var(--text-dim); }
+  .attention-periods button.active { background: var(--bg-hover); color: var(--text); }
 
-  .attention-summary {
-    position: absolute;
-    left: 4px;
-    bottom: 4px;
-    max-width: calc(100% - 8px);
-    padding: 2px 6px;
-    border-radius: 4px;
-    background: color-mix(in srgb, var(--bg-panel) 88%, transparent);
-    color: var(--text-dim);
-    font-size: 10px;
-    pointer-events: none;
-  }
+  .attention-summary { bottom: 4px; padding: 4px 8px; pointer-events: none; }
 </style>
