@@ -2027,5 +2027,6 @@
  "Total {time}": "Всего {time}",
  "outside zones {percent}%": "вне зон {percent}%",
  "No time counted yet: it adds up while you work in hive": "Пока пусто: время копится, пока вы работаете в hive",
- "Show where you spend your time on the board": "Показать, где на доске вы проводите время"
+ "Show where you spend your time on the board": "Показать, где на доске вы проводите время",
+ "Move zones": "Переместить зоны"
 }

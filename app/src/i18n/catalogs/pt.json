@@ -1959,5 +1959,6 @@
  "Total {time}": "Total {time}",
  "outside zones {percent}%": "fora das zonas {percent}%",
  "No time counted yet: it adds up while you work in hive": "Ainda vazio: o tempo acumula enquanto trabalha no hive",
- "Show where you spend your time on the board": "Mostrar onde passa o tempo no quadro"
+ "Show where you spend your time on the board": "Mostrar onde passa o tempo no quadro",
+ "Move zones": "Mover zonas"
 }

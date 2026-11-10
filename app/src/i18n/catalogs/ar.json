@@ -1871,5 +1871,6 @@
  "Total {time}": "المجموع {time}",
  "outside zones {percent}%": "خارج المناطق {percent}%",
  "No time counted yet: it adds up while you work in hive": "لا بيانات بعد: يتراكم الوقت أثناء عملك في hive",
- "Show where you spend your time on the board": "إظهار أين تقضي وقتك على اللوحة"
+ "Show where you spend your time on the board": "إظهار أين تقضي وقتك على اللوحة",
+ "Move zones": "نقل المناطق"
 }

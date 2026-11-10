@@ -1857,5 +1857,6 @@
  "Total {time}": "合計 {time}",
  "outside zones {percent}%": "ゾーン外 {percent}%",
  "No time counted yet: it adds up while you work in hive": "まだ空です：hive で作業している間に時間が貯まります",
- "Show where you spend your time on the board": "ボードのどこで時間を使っているかを表示"
+ "Show where you spend your time on the board": "ボードのどこで時間を使っているかを表示",
+ "Move zones": "ゾーンを移動"
 }

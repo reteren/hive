@@ -1857,5 +1857,6 @@
  "Total {time}": "共 {time}",
  "outside zones {percent}%": "区域外 {percent}%",
  "No time counted yet: it adds up while you work in hive": "暂无数据：在 hive 中工作时会累计时间",
- "Show where you spend your time on the board": "显示你在白板上把时间花在哪里"
+ "Show where you spend your time on the board": "显示你在白板上把时间花在哪里",
+ "Move zones": "移动区域"
 }

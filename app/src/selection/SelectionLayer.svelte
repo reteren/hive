@@ -23,8 +23,12 @@ import { measureDictionaryHeightLimits } from "../spell/dictionarySizing";
   import { beginZoneMembershipBatch, endZoneMembershipBatch, zoneMembers } from "../zones/membership.svelte";
   import { isDimmed } from "../beacons/focus.svelte";
   import {
+    combinedZone,
+    copyZone,
     createZoneMoveGesture,
     createZoneResizeGesture,
+    translateZone,
+    zoneGroupMoveHistoryCommand,
     cancelZoneMoveGesture,
     isRectZone,
     updateZoneMoveGesture,
@@ -75,7 +79,7 @@ import { measureDictionaryHeightLimits } from "../spell/dictionarySizing";
     type ResizeGesture,
     type ScaleModeGesture,
   } from "./gestures";
-  import { hitTestNotes, hitTestZones, noteSelectionCornerRadius, notesTouchingMarquee, pointInBounds, rectFromPoints, zonesSelectedByMarquee } from "./hitTesting";
+  import { hitTestNotes, hitTestZones, noteSelectionCornerRadius, notesTouchingMarquee, pointInBounds, rectFromPoints, zonesSelectedByMarquee, zonesTouchingMarquee } from "./hitTesting";
   import {
     cancelGroupScaleGesture,
     createGroupScaleGesture,
@@ -196,6 +200,8 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
         started: boolean;
         captured: boolean;
         gesture: ZoneMoveGesture;
+        /** Zones moved together (their geometry before the move); null for a single zone. */
+        group: Zone[] | null;
       }
     | {
         kind: "zone-resize";
@@ -215,6 +221,8 @@ import { clearZoneMovePreview, setZoneMovePreview, zoneMovePreview } from "../zo
         captured: boolean;
         additive: boolean;
         clickZoneId: string | null;
+        /** Zone move mode: the rectangle selects zones only. */
+        zonesOnly?: boolean;
       };
 
   interface PendingAltContextPick {
@@ -539,10 +547,25 @@ type PendingBoardMove =
       if (tool.active === "zone") {
         if (zoneMode.active !== "move") return;
         const zoneId = hitTestZones(world, zones.byId, zones.order);
-        if (!zoneId || !zones.byId[zoneId]) return;
         event.preventDefault();
         event.stopPropagation();
-        startZoneMove(event, zoneId, local, world);
+        if (!zoneId || !zones.byId[zoneId]) {
+          // Empty board: drag a rectangle to select several zones and then move them together.
+          activeGesture = {
+            kind: "marquee",
+            pointerId: event.pointerId,
+            startScreen: local,
+            startWorld: world,
+            started: false,
+            captured: false,
+            additive: event.ctrlKey,
+            clickZoneId: null,
+            zonesOnly: true,
+          };
+          return;
+        }
+        const selectedGroup = selection.zoneIds.filter((id) => zones.byId[id]);
+        startZoneMove(event, zoneId, local, world, selectedGroup.length > 1 && selectedGroup.includes(zoneId) ? selectedGroup : [zoneId]);
         capturePointer(event.pointerId);
         return;
       }
@@ -1369,10 +1392,19 @@ type PendingBoardMove =
     id: string,
     screen: Point,
     world: Point,
+    groupIds: readonly string[] = [id],
   ): void {
     const zone = zones.byId[id];
     if (!zone) return;
-    const members = memberPositions(id);
+    const groupZones = groupIds.flatMap((groupId) => zones.byId[groupId] ? [zones.byId[groupId]] : []);
+    const grouped = groupZones.length > 1;
+    const inGroup = new Set(grouped ? groupZones.map((member) => member.id) : [id]);
+    const seen = new Set<string>();
+    const members = [...inGroup].flatMap((zoneId) => memberPositions(zoneId)).filter((member) => {
+      if (seen.has(member.id)) return false;
+      seen.add(member.id);
+      return true;
+    });
     beginZoneMoveBatch();
     activeGesture = {
       kind: "zone-move",
@@ -1382,8 +1414,12 @@ type PendingBoardMove =
       started: false,
       captured: false,
       gesture: createZoneMoveGesture(
-        zone, Object.values(zones.byId).filter((other) => other.id !== id), members, world,
+        grouped ? combinedZone([zone, ...groupZones.filter((member) => member.id !== id)]) : zone,
+        Object.values(zones.byId).filter((other) => !inGroup.has(other.id)),
+        members,
+        world,
       ),
+      group: grouped ? groupZones.map(copyZone) : null,
     };
   }
 
@@ -1574,7 +1610,8 @@ type PendingBoardMove =
         grid.step,
         event.ctrlKey,
       );
-      applyZoneMovePreview(gesture.gesture);
+      if (gesture.group) applyZoneGroupPreview(gesture.group, gesture.gesture);
+      else applyZoneMovePreview(gesture.gesture);
       zoneCollisionHint = gesture.gesture.blocked;
       return;
     }
@@ -1654,7 +1691,16 @@ type PendingBoardMove =
     if (gesture.kind === "move" || gesture.kind === "body-move") endMovingStacking();
     zoneCollisionHint = false;
 
-    if (gesture.kind === "marquee") {
+    if (gesture.kind === "marquee" && gesture.zonesOnly) {
+      const marquee = selection.marquee;
+      setMarquee(null);
+      if (!cancelled) {
+        const zoneIds = gesture.started && marquee ? zonesTouchingMarquee(marquee, zones.byId, zones.order) : [];
+        changeSelectionUndoable((next) => {
+          next.zoneIds = gesture.additive ? [...new Set([...next.zoneIds, ...zoneIds])] : [...zoneIds];
+        }, undefined, true);
+      }
+    } else if (gesture.kind === "marquee") {
       const marquee = selection.marquee;
       if (cancelled) {
         setMarquee(null);
@@ -1729,11 +1775,28 @@ type PendingBoardMove =
           else recordGeometryChange(scaleChanged ? "Scale" : "Resize", note?.name ?? "", change);
         }
       }
+    } else if (gesture.kind === "zone-move" && gesture.group) {
+      const group = gesture.group;
+      if (cancelled || !gesture.started) {
+        applyZoneGroup(group, gesture.gesture.beforeMembers);
+      } else {
+        const command = zoneGroupMoveHistoryCommand(group, gesture.gesture, applyZoneGroup);
+        if (command) {
+          command.do();
+          record(command);
+        } else {
+          applyZoneGroup(group, gesture.gesture.beforeMembers);
+        }
+      }
+      endZoneMoveBatch();
     } else if (gesture.kind === "zone-move") {
       if (cancelled) {
         const before = cancelZoneMoveGesture(gesture.gesture);
         applyMemberPositions(before.beforeMembers);
-      } else if (gesture.started && zoneGestureChanged(gesture.gesture.beforeZone, gesture.gesture.afterZone)) {
+      } else if (!gesture.started) {
+        // A click on a zone in move mode selects it, so a group can be built and seen.
+        if (tool.active === "zone") selectZoneUndoable(gesture.gesture.beforeZone.id);
+      } else if (zoneGestureChanged(gesture.gesture.beforeZone, gesture.gesture.afterZone)) {
         applyZoneMove(gesture.gesture.afterZone, gesture.gesture.afterMembers);
         recordZoneMove(gesture.gesture);
       }
@@ -2077,6 +2140,28 @@ type PendingBoardMove =
       zoneMoveCards = { key, cards };
       movingVisuals.setTargets(cards);
     }
+  }
+
+  /** Group move preview: every zone takes the gesture's offset; members follow as for one zone. */
+  function applyZoneGroupPreview(group: readonly Zone[], gesture: ZoneMoveGesture): void {
+    for (const zone of group) applyZoneGeometry(translateZone(zone, gesture.offset));
+    applyMemberPositions(gesture.afterMembers);
+    const movedIds = movedZoneMemberIds(gesture);
+    const key = movedIds.join("|");
+    if (zoneMoveCards?.key !== key) {
+      const ids = new Set(movedIds);
+      const cards = boardElement
+        ? [...boardElement.querySelectorAll<HTMLElement>(".note-card[data-note-id], .beacon-object[data-note-id]")]
+          .filter((card) => ids.has(card.dataset.noteId ?? ""))
+        : [];
+      zoneMoveCards = { key, cards };
+      movingVisuals.setTargets(cards);
+    }
+  }
+
+  function applyZoneGroup(group: readonly Zone[], members: readonly MemberPosition[]): void {
+    for (const zone of group) applyZoneGeometry(zone);
+    applyMemberPositions(members);
   }
 
   function applyMemberPositions(members: readonly MemberPosition[]): void {

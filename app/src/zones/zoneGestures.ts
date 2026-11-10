@@ -227,6 +227,39 @@ export function zoneMoveHistoryCommand(
   };
 }
 
+/**
+ * Several selected zones move as one: the gesture runs on a single shape made of all their
+ * contours (so collisions with the other zones stop the whole group), and each zone then takes
+ * the same offset. Keeps the first zone's id and name for the gesture and its history label.
+ */
+export function combinedZone(group: readonly Zone[]): Zone {
+  const [first] = group;
+  return {
+    ...copyZone(first!),
+    parts: group.flatMap((zone) => zone.parts.map((ring) => ring.map((point) => ({ ...point })))),
+    holes: group.flatMap((zone) => zone.holes.map((ring) => ring.map((point) => ({ ...point })))),
+  };
+}
+
+/** One Undo step for a group move: every zone and every carried member back and forth together. */
+export function zoneGroupMoveHistoryCommand(
+  group: readonly Zone[],
+  gesture: ZoneMoveGesture,
+  apply: (zones: readonly Zone[], members: readonly MemberPosition[]) => void,
+): HistoryCommand | null {
+  if (!zoneGestureChanged(gesture.beforeZone, gesture.afterZone)) return null;
+  const before = group.map(copyZone);
+  const after = group.map((zone) => translateZone(copyZone(zone), gesture.offset));
+  const beforeMembers = gesture.beforeMembers.map((member) => ({ ...member }));
+  const afterMembers = gesture.afterMembers.map((member) => ({ ...member }));
+  return {
+    label: t("Move zones"),
+    target: group.map((zone) => zone.name).join(", "),
+    do: () => apply(after, afterMembers),
+    undo: () => apply(before, beforeMembers),
+  };
+}
+
 /** Resize geometry is already previewed; undo and redo both return to its dedicated mode. */
 export function zoneResizeHistoryCommand(
   gesture: ZoneResizeGesture,
@@ -265,7 +298,7 @@ export function deleteZonesAction(zoneIds: readonly string[]): Pick<HistoryComma
   };
 }
 
-function copyZone(zone: Zone): Zone {
+export function copyZone(zone: Zone): Zone {
   return {
     ...zone,
     parts: zone.parts.map((part) => part.map((point) => ({ ...point }))),
@@ -290,7 +323,7 @@ function moveInOrder(gesture: ZoneMoveGesture, desired: Point, order: "xy" | "yx
 }
 
 /** Translation preserves a zone's topology, so moving it does not need grid normalization. */
-function translateZone(zone: Zone, delta: Point): Zone {
+export function translateZone(zone: Zone, delta: Point): Zone {
   if (delta.x === 0 && delta.y === 0) return zone;
   const moveRing = (ring: readonly Point[]) => ring.map((point) => ({
     x: roundCoordinate(point.x + delta.x),
