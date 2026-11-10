@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolveDuplicateNames, uniqueName } from "../src/notes/naming";
+import { noteMarkdownFileName } from "../src/project/fileNames";
 
 describe("uniqueName", () => {
   it("keeps a safe name when it is available", () => {
@@ -10,14 +11,17 @@ describe("uniqueName", () => {
     expect(uniqueName("Name", ["name", "Name 2"])).toBe("Name 3");
   });
 
-  it("replaces Windows-invalid characters and trims forbidden trailing dots and spaces", () => {
-    expect(uniqueName(" A/B:C*  ", [])).toBe("A_B_C_");
-    expect(uniqueName("Trailing.  ", [])).toBe("Trailing");
+  it("keeps characters Windows forbids in file names; only the .md file name is made safe", () => {
+    expect(uniqueName(" Why? A/B:C*  ", [])).toBe("Why? A/B:C*");
+    expect(uniqueName("Trailing.  ", [])).toBe("Trailing.");
+    expect(uniqueName("CON", [])).toBe("CON");
+    expect(noteMarkdownFileName({ id: "n", name: "Why? A/B:C*", type: "note" })).toBe("Why_ A_B_C_.md");
+    expect(noteMarkdownFileName({ id: "n", name: "CON", type: "note" })).toBe("CON_.md");
   });
 
-  it("protects reserved Windows device names, including names with extensions", () => {
-    expect(uniqueName("CON", [])).toBe("CON_");
-    expect(uniqueName("aux.md", [])).toBe("aux_.md");
+  it("treats names that share a file name as the same name", () => {
+    expect(uniqueName("Why?", ["Why_"])).toBe("Why? 2");
+    expect(uniqueName("Line\nbreak", [])).toBe("Line break");
   });
 
   it("uses a safe default when sanitizing leaves no name", () => {

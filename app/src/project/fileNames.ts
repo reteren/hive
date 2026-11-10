@@ -23,6 +23,16 @@ export function sanitizeNoteName(name: string): string {
   return safe;
 }
 
+/**
+ * A node's display name: any characters, including ones Windows forbids in file names
+ * ("Why?", "A: B"). Only control characters go and the length is capped; the .md file name
+ * is made safe separately by `sanitizeNoteName`, and uniqueness is checked on `noteFileKey`.
+ */
+export function displayNoteName(name: string): string {
+  const cleaned = name.normalize("NFC").replace(/[\u0000-\u001f\u007f]/g, " ").trim();
+  return truncateUtf16(cleaned, MAX_BASE_NAME_UNITS).trim() || "Note";
+}
+
 /** Stable case-insensitive key used to reject names that collide on Windows. */
 export function noteFileKey(name: string): string {
   return sanitizeNoteName(name).normalize("NFC").toLowerCase();

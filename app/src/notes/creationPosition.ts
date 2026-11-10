@@ -7,7 +7,7 @@ import { queryRect } from "../board/visibility.svelte";
 import { board, onBoardMutation } from "../model/board.svelte";
 import { noteBounds } from "./layout.svelte";
 import { widthWithListStatistics } from "../stats/listStatsLayout";
-import { noteFileKey, sanitizeNoteName } from "../project/fileNames";
+import { noteFileKey, displayNoteName } from "../project/fileNames";
 import { t } from "../i18n/i18n.svelte";
 
 /** Keep newly created board objects visually distinct from their neighbours. */
@@ -118,7 +118,7 @@ export function yieldCreationWork(): Promise<void> {
 function allocatorFromOccupied(occupied: Set<string>): (base: string) => string {
   const nextSuffix = new Map<string, number>();
   return (base: string): string => {
-    const safeBase = sanitizeNoteName(base.trim());
+    const safeBase = displayNoteName(base.trim());
     const baseKey = noteFileKey(safeBase);
     if (!occupied.has(baseKey)) {
       occupied.add(baseKey);
@@ -148,7 +148,7 @@ function suffixedCreationName(base: string, suffix: number): string {
     if (truncated.length + character.length > maxBaseUnits) break;
     truncated += character;
   }
-  return sanitizeNoteName(`${truncated.replace(/[. ]+$/g, "") || "Note"}${suffixText}`);
+  return displayNoteName(`${truncated.replace(/[. ]+$/g, "") || "Note"}${suffixText}`);
 }
 
 /** Return only indexed notes touching a candidate placement rectangle. */

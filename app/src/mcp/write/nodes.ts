@@ -38,7 +38,7 @@ import {
 } from "../../notes/creationPosition";
 import { parseMcpNote } from "../../project/index";
 import { parseMessageData } from "../../messages/data";
-import { noteFileKey, sanitizeNoteName } from "../../project/fileNames";
+import { noteFileKey, displayNoteName } from "../../project/fileNames";
 import { moveToTrash } from "../../trash/trashActions.svelte";
 import { canBeTask, toggleTaskCompletion, toggleTaskFlag } from "../../tasks/taskActions.svelte";
 import { captureSelectionSnapshot, clearSelection, restoreSelectionSnapshot, selectOnly, includeSelected, selection } from "../../selection/selection.svelte";
@@ -182,7 +182,7 @@ function applyCreateFields(note: Note, spec: CreateSpec, index: number, reserved
   const field = (name: string) => `nodes[${index}].${name}`;
   const namePolicy = spec.onNameConflict === undefined ? "rename" : requireEnum(spec.onNameConflict, ["rename", "error"] as const, field("onNameConflict"));
   const requestedName = spec.name === undefined ? note.name : requireString(spec.name, field("name"));
-  const sanitizedName = sanitizeNoteName(requestedName.trim());
+  const sanitizedName = displayNoteName(requestedName.trim());
   const unique = uniqueName(sanitizedName, reservedNames);
   if (namePolicy === "error" && noteFileKey(unique) !== noteFileKey(sanitizedName)) {
     throw new McpError("name_conflict", `Node name '${sanitizedName}' is already in use. Choose another name or set onNameConflict to 'rename'.`, { field: field("name") });
@@ -390,7 +390,7 @@ function updateNodes(raw: unknown) {
     if (Object.prototype.hasOwnProperty.call(update, "task")) changedFields.add("task");
     const parsed = validateNote(candidate, `updates[${index}]`);
     if (update.name !== undefined) {
-      const desired = sanitizeNoteName(parsed.name.trim());
+      const desired = displayNoteName(parsed.name.trim());
       const conflicts = Object.values(board.notes).filter((other) => other.id !== id).map((other) => other.name);
       const unique = uniqueName(desired, conflicts);
       if (noteFileKey(unique) !== noteFileKey(desired)) {

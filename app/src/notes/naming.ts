@@ -1,4 +1,4 @@
-import { noteFileKey, sanitizeNoteName } from "../project/fileNames";
+import { noteFileKey, displayNoteName } from "../project/fileNames";
 import type { Note } from "../model/note";
 import { t } from "../i18n/i18n.svelte";
 
@@ -11,13 +11,13 @@ export type CalculatorRenameTarget =
  * so uniqueness is checked with the same case-insensitive key the project uses on disk.
  */
 export function uniqueName(base: string, existing: readonly string[]): string {
-  const safeBase = sanitizeNoteName(base.trim());
+  const safeBase = displayNoteName(base.trim());
   const occupied = new Set(existing.map(noteFileKey));
 
   if (!occupied.has(noteFileKey(safeBase))) return safeBase;
 
   for (let suffix = 2; suffix < Number.MAX_SAFE_INTEGER; suffix += 1) {
-    const candidate = sanitizeNoteName(`${safeBase} ${suffix}`);
+    const candidate = displayNoteName(`${safeBase} ${suffix}`);
     if (!occupied.has(noteFileKey(candidate))) return candidate;
   }
 
@@ -52,11 +52,11 @@ export function resolveDuplicateNames<T extends Pick<Note, "id" | "name" | "type
     let suffix = 1;
     for (const note of group.slice(1)) {
       // Room for " (n)" under the file name length limit, or the suffix would be cut off.
-      const base = sanitizeNoteName(Array.from(note.name.trim()).slice(0, 100).join(""));
-      let candidate = sanitizeNoteName(`${base} (${suffix})`);
+      const base = displayNoteName(Array.from(note.name.trim()).slice(0, 100).join(""));
+      let candidate = displayNoteName(`${base} (${suffix})`);
       while (occupied.has(noteFileKey(candidate))) {
         suffix += 1;
-        candidate = sanitizeNoteName(`${base} (${suffix})`);
+        candidate = displayNoteName(`${base} (${suffix})`);
       }
       suffix += 1;
       occupied.add(noteFileKey(candidate));
@@ -73,7 +73,7 @@ export function calculatorRenameTarget(
   currentId: string,
   existing: readonly Pick<Note, "id" | "name" | "type">[],
 ): CalculatorRenameTarget {
-  const name = sanitizeNoteName(proposed.trim());
+  const name = displayNoteName(proposed.trim());
   const key = noteFileKey(name);
   const conflict = existing.find((note) =>
     note.id !== currentId && note.type !== "calculator" && noteFileKey(note.name) === key,
