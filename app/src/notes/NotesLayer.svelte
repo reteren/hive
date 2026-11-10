@@ -150,7 +150,7 @@
       }
 
       const noteRoot = target.closest<HTMLElement>("[data-note-id]");
-      const noteId = noteRoot?.dataset.noteId ?? canvasNoteId;
+      const noteId = noteRoot?.dataset.noteId ?? canvasNoteId ?? selectionGroupMenuNoteId(event);
       const rect = boardElement!.getBoundingClientRect();
       const local = { x: event.clientX - rect.left, y: event.clientY - rect.top };
       const point = screenToWorld(camera, viewport, local);
@@ -201,6 +201,21 @@
       };
       linkContext.commandNoteId = null;
       linkContext.commandPoint = point;
+    }
+
+    /**
+     * Right-click on empty space inside the frame around several selected nodes opens their
+     * menu, as if a selected node had been clicked: the frame reads as one object.
+     */
+    function selectionGroupMenuNoteId(event: MouseEvent): string | null {
+      if (selection.ids.length < 2) return null;
+      const outline = boardElement?.querySelector<HTMLElement>('[data-selection-group="true"]');
+      const frame = outline?.getBoundingClientRect();
+      if (!frame || event.clientX < frame.left || event.clientX > frame.right || event.clientY < frame.top || event.clientY > frame.bottom) {
+        return null;
+      }
+      const primary = selection.primaryId && selection.ids.includes(selection.primaryId) ? selection.primaryId : selection.ids.at(-1);
+      return primary && board.notes[primary] ? primary : null;
     }
 
     function onWindowClick(event: MouseEvent): void {
