@@ -139,6 +139,30 @@ describe("clipboard creation placement", () => {
     expect(calculatorData("Travel")).toEqual(data);
   });
 
+  it("keeps size, scale, a locked width, tierlist rows and links to nodes later in the copy", () => {
+    clearHistory();
+    const scaled: Note = { id: "scaled", type: "note", name: "Scaled", text: "", x: 0, y: 0, width: 42, widthLocked: true, height: 17, scale: 2.5 };
+    const tier: Note = {
+      id: "tier", type: "tierlist", name: "Tier", text: "", x: 60, y: 0, width: 50, height: 40,
+      tiers: [{ id: "row", name: "S", color: "#ff0000", cards: [{ id: "card", kind: "note", noteId: "target" }] }],
+    };
+    const target: Note = { id: "target", type: "note", name: "Target", text: "", x: 120, y: 0, width: 20, height: null };
+    replaceBoard([scaled, tier, target]);
+    replaceLinks([]);
+    clearSelection();
+    clearSelectedLink();
+    for (const id of ["scaled", "tier", "target"]) includeSelected(id);
+    pointer.world = { x: 0, y: 200 };
+
+    duplicateSelection();
+    const copies = selection.ids.map((id) => board.notes[id]!);
+    const scaledCopy = copies.find((note) => note.name.startsWith("Scaled"))!;
+    const tierCopy = copies.find((note) => note.type === "tierlist")!;
+    const targetCopy = copies.find((note) => note.name.startsWith("Target"))!;
+    expect(scaledCopy).toMatchObject({ width: 42, height: 17, scale: 2.5, widthLocked: true });
+    expect(tierCopy.tiers?.[0]?.cards[0]).toMatchObject({ kind: "note", noteId: targetCopy.id });
+  });
+
   it("moves a duplicate away from its source and restores the selection with the same history step", () => {
     clearHistory();
     const original: Note = { id: "source", type: "note", name: "Source", text: "", x: -15, y: -5, width: 30, height: null };

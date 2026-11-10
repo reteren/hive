@@ -1,7 +1,7 @@
 import type { Point } from "../board/cameraMath";
 import type { Link, LinkAnchor } from "../model/link";
 import { isFrameAnchor } from "../links/anchors";
-import { newId } from "../model/note";
+import { isValidNoteScale, newId } from "../model/note";
 import {
   IMPORTANCE_LEVELS,
   MOOD_KINDS,
@@ -34,8 +34,12 @@ import {
   copyGraphData,
   type GraphData,
   parseRandomPick,
+  parseScope,
   parseSource,
+  parseTiers,
   type CustomMark,
+  type NodeScope,
+  type TierRow,
   type ListItem,
   type RandomPick,
   type SourceData,
@@ -58,6 +62,10 @@ export interface ClipboardNode {
   y: number;
   width: number;
   height: number | null;
+  /** Uniform scale (S mode); absent means 100 %. */
+  scale?: number;
+  /** A hand-set width that typing must not change. */
+  widthLocked?: true;
   createdAt?: number;
   task: TaskState | null;
   taskMemory: TaskState | null;
@@ -96,6 +104,11 @@ export interface ClipboardNode {
   /** Mark as: its custom marks and frame option. */
   customMarks?: CustomMark[];
   customMarkFrame?: true;
+  /** Tierlist rows (note cards are remapped when their nodes are pasted too). */
+  tiers?: TierRow[];
+  /** Progress / Statistics: what the node counts (zone and beacon ids are remapped when pasted too). */
+  scope?: NodeScope;
+  smoothLines?: true;
 }
 
 export interface ClipboardZone extends Omit<Zone, "id"> {
@@ -141,7 +154,7 @@ export function serializeNotes(
     version: HIVE_CLIPBOARD_VERSION,
     nodes: notes.map(({
       id, type, name, text, x, y, width, height, createdAt, task, taskMemory, time, message, embedSections, importance, purposes, moods, color, accentColor, glow, zoneId, headerHidden, textHidden, frameHidden, image, opacity, media, pdfZoom, recordings, youtube, source, flipX, flipY, gifStopped,
-      listItems, listStats, graph, inboxGroup, randomPick, customMarks, customMarkFrame,
+      listItems, listStats, graph, inboxGroup, randomPick, customMarks, customMarkFrame, scale, widthLocked, tiers, scope, smoothLines,
     }) => ({
       sourceId: id,
       type,
@@ -151,6 +164,8 @@ export function serializeNotes(
       y,
       width,
       height,
+      ...(isValidNoteScale(scale) && scale !== 1 ? { scale } : {}),
+      ...(widthLocked === true ? { widthLocked: true } : {}),
       createdAt,
       task: task ? { ...task } : null,
       taskMemory: taskMemory ? { ...taskMemory } : null,
@@ -184,6 +199,9 @@ export function serializeNotes(
       ...(randomPick ? { randomPick: { ...randomPick } } : {}),
       ...(customMarks ? { customMarks: customMarks.map((mark) => ({ ...mark })) } : {}),
       ...(customMarkFrame === true ? { customMarkFrame: true } : {}),
+      ...(type === "tierlist" && tiers ? { tiers: tiers.map((row) => ({ ...row, cards: row.cards.map((card) => ({ ...card })) })) } : {}),
+      ...(scope ? { scope: { ...scope } } : {}),
+      ...(smoothLines === true ? { smoothLines: true } : {}),
     })),
     links: links.flatMap((link) => noteIds.has(link.from) && noteIds.has(link.to)
       ? [{
@@ -538,6 +556,8 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
   const customMarks = value.customMarks === undefined ? null : parseCustomMarks(value.customMarks);
   if (value.customMarks !== undefined && !customMarks) return null;
   if (value.inboxGroup !== undefined && typeof value.inboxGroup !== "string") return null;
+  const tiers = value.tiers === undefined ? null : parseTiers(value.tiers);
+  const scope = value.scope === undefined ? null : parseScope(value.scope);
   if (value.image !== undefined && !image || value.type === "image" && (!image || !finite(value.height) || value.height <= 0) ||
     value.media !== undefined && !media || value.type === "pdf" && media?.kind !== "pdf" || value.type === "format" && media?.kind !== "text" || value.type === "audio" && media?.kind !== "audio" && !recordings || value.type === "video" && media?.kind !== "video" ||
     value.recordings !== undefined && (value.type !== "audio" || !recordings) ||
@@ -560,6 +580,8 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     y: value.y,
     width: value.width,
     height: value.height,
+    ...(isValidNoteScale(value.scale) && value.scale !== 1 ? { scale: value.scale } : {}),
+    ...(value.widthLocked === true ? { widthLocked: true } : {}),
     ...(value.createdAt === undefined ? {} : { createdAt: value.createdAt }),
     task,
     taskMemory,
@@ -593,6 +615,9 @@ function parseClipboardNode(value: unknown): ClipboardNode | null {
     ...(randomPick ? { randomPick } : {}),
     ...(customMarks ? { customMarks } : {}),
     ...(value.customMarkFrame === true ? { customMarkFrame: true } : {}),
+    ...(value.type === "tierlist" && tiers ? { tiers } : {}),
+    ...(scope ? { scope } : {}),
+    ...(value.smoothLines === true ? { smoothLines: true } : {}),
   };
 }
 

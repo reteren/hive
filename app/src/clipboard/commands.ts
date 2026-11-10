@@ -284,6 +284,7 @@ type CopySource = Omit<Pick<Note,
   "task" | "taskMemory" | "importance" | "purposes" | "embedSections" | "headerHidden" | "textHidden" | "frameHidden" | "image" | "opacity" | "media" | "pdfZoom" | "recordings" | "youtube" | "source" | "flipX" | "flipY" | "gifStopped"
   | "glow" | "accentColor"
   | "listItems" | "listStats" | "graph" | "inboxGroup" | "randomPick" | "customMarks" | "customMarkFrame"
+  | "scale" | "widthLocked" | "tiers" | "scope" | "smoothLines"
 >, "time" | "message"> & {
   time?: Note["time"] | null;
   message?: Note["message"] | null;
@@ -322,9 +323,10 @@ function createCopiesSync(
   const zoneIdMap = new Map<string, string>();
   const placementHeights = new Map<string, number>();
   sourceZones.forEach((zone) => zoneIdMap.set(zone.id, newId()));
+  // Every new id first: a Graph point, List item or Tierlist card may point at a node later in the list.
+  sourceNotes.forEach((note) => idMap.set(note.sourceId, newId()));
   const notes = sourceNotes.map((note, index) => {
-    const id = newId();
-    idMap.set(note.sourceId, id);
+    const id = idMap.get(note.sourceId)!;
     const measuredHeight = measuredHeights[note.sourceId];
     if (note.height === null && Number.isFinite(measuredHeight) && measuredHeight > 0) placementHeights.set(id, measuredHeight);
     return copyNoteForPaste(note, id, names[index]!, offset, idMap, zoneIdMap);
@@ -353,6 +355,8 @@ function copyNoteForPaste(
     id, type: note.type, name, text: note.text,
     x: note.x + offset.x, y: note.y + offset.y, width: note.width,
     height: note.type === "purpose" || note.type === "mood" ? null : note.height,
+    ...(note.scale !== undefined && note.scale !== 1 ? { scale: note.scale } : {}),
+    ...(note.widthLocked === true ? { widthLocked: true } : {}),
     createdAt: note.createdAt ?? Date.now(),
     ...taskFieldsForPaste(note),
     ...(note.time ? { time: copyTimeForHost(note.type, note.time) } : {}),
@@ -380,6 +384,13 @@ function copyNoteForPaste(
     ...(note.randomPick ? { randomPick: { ...note.randomPick, listId: idMap.get(note.randomPick.listId) ?? note.randomPick.listId } } : {}),
     ...(note.customMarks ? { customMarks: note.customMarks.map((mark) => ({ ...mark })) } : {}),
     ...(note.customMarkFrame === true ? { customMarkFrame: true } : {}),
+    ...(note.type === "tierlist" && note.tiers ? { tiers: note.tiers.map((row) => ({
+      ...row,
+      cards: row.cards.map((card) => card.kind === "note" ? { ...card, noteId: idMap.get(card.noteId) ?? card.noteId } : { ...card }),
+    })) } : {}),
+    ...(note.scope ? { scope: note.scope.kind === "zone" ? { kind: "zone" as const, id: zoneIdMap.get(note.scope.id) ?? note.scope.id }
+      : note.scope.kind === "beacon" ? { kind: "beacon" as const, id: idMap.get(note.scope.id) ?? note.scope.id } : { ...note.scope } } : {}),
+    ...(note.smoothLines === true ? { smoothLines: true } : {}),
     importance: note.importance ?? null,
     purposes: [...new Set(note.purposes ?? [])],
     ...(note.type === "beacon" ? { color: note.color ?? beaconPaletteColor(0) } : note.color ? { color: note.color } : {}),
@@ -420,9 +431,10 @@ async function createCopiesAsync(
   const zoneIdMap = new Map<string, string>();
   const placementHeights = new Map<string, number>();
   sourceZones.forEach((zone) => zoneIdMap.set(zone.id, newId()));
+  // Every new id first: a Graph point, List item or Tierlist card may point at a node later in the list.
+  sourceNotes.forEach((note) => idMap.set(note.sourceId, newId()));
   const notes = await mapCreationBatch(sourceNotes, (note, index) => {
-    const id = newId();
-    idMap.set(note.sourceId, id);
+    const id = idMap.get(note.sourceId)!;
     const measuredHeight = measuredHeights[note.sourceId];
     if (note.height === null && Number.isFinite(measuredHeight) && measuredHeight > 0) {
       placementHeights.set(id, measuredHeight);

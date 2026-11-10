@@ -66,6 +66,17 @@ describe("clipboard payload", () => {
     expect(parseNotesPayload(serialized)?.nodes).toHaveLength(2);
   });
 
+  it("round trips scale, a locked width, tierlist rows and a scope", () => {
+    const tier: Note = {
+      ...noteA, id: "t", type: "tierlist", scale: 1.5, widthLocked: true, smoothLines: true,
+      tiers: [{ id: "r", name: "A", color: "#00ff00", cards: [{ id: "c", kind: "text", text: "hi" }] }],
+    };
+    const stats: Note = { ...noteB, id: "s", type: "stats", scope: { kind: "zone", id: "z1" } };
+    const parsed = parseNotesPayload(serializeNotes([tier, stats]));
+    expect(parsed?.nodes[0]).toMatchObject({ scale: 1.5, widthLocked: true, smoothLines: true, tiers: tier.tiers });
+    expect(parsed?.nodes[1]).toMatchObject({ scope: { kind: "zone", id: "z1" } });
+  });
+
   it("keeps a calculator name and kind in copy data so paste can create a mirror", () => {
     const calculator: Note = {
       id: "calculator-source", type: "calculator", name: "Trip", text: "unused", x: 2, y: 3, width: 40, height: null,
