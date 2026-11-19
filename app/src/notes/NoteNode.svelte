@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick, untrack } from "svelte";
+  import { untrack } from "svelte";
   import type { Action } from "svelte/action";
   import { NOTE_HEADER_HEIGHT_UNITS, normalizeNoteScale, type Note } from "../model/note";
   import { updateNote } from "../model/board.svelte";
@@ -13,6 +13,7 @@
   import { renameCalculatorNode } from "./calculatorRename.svelte";
   import NoteBody from "../editor/NoteBody.svelte";
   import TaskCheckbox from "../tasks/TaskCheckbox.svelte";
+  import TitleInput from "./TitleInput.svelte";
   import NoteModules from "../modules/NoteModules.svelte";
   import ModuleNodeBody from "../modules/ModuleNodeBody.svelte";
   import MoodNodeBody from "../moods/MoodNodeBody.svelte";
@@ -52,7 +53,6 @@ import { takeFreshNote } from "./freshNotes";
   let { note, measureHeight }: { note: Note; measureHeight: Action<HTMLElement, string> } = $props();
   let renaming = $state(false);
   let draftName = $state("");
-  let renameInput = $state<HTMLInputElement>();
   let renameError = $state("");
   let memberZone = $derived(zones.byId[zoneOf(note.id) ?? ""]);
   let customMarkFrameColors = $derived(effectiveCustomMarkFrameColors(note.id));
@@ -78,10 +78,6 @@ import { takeFreshNote } from "./freshNotes";
     renameError = "";
     editing.noteId = null;
     renaming = true;
-    void tick().then(() => {
-      renameInput?.focus();
-      renameInput?.select();
-    });
   }
 
   function startRename(event: MouseEvent): void {
@@ -91,18 +87,6 @@ import { takeFreshNote } from "./freshNotes";
     event.preventDefault();
     event.stopPropagation();
     beginRename();
-  }
-
-  function handleRenameKeydown(event: KeyboardEvent): void {
-    if (event.code === "Enter") {
-      event.preventDefault();
-      event.stopPropagation();
-      commitRename();
-    } else if (event.code === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      cancelRename();
-    }
   }
 
   function handleHeaderKeydown(event: KeyboardEvent): void {
@@ -214,14 +198,12 @@ import { takeFreshNote } from "./freshNotes";
     >
       <TaskCheckbox {note} />
       {#if renaming}
-        <input
-          bind:this={renameInput}
+        <TitleInput
           bind:value={draftName}
-          class="rename-input"
-          aria-label={t("Note name")}
-          oninput={() => { renameError = ""; }}
-          onkeydown={handleRenameKeydown}
-          onblur={commitRename}
+          label={t("Note name")}
+          onInput={() => { renameError = ""; }}
+          onCommit={commitRename}
+          onCancel={cancelRename}
         />
       {:else}
         <span class="note-name">{note.name}</span>
@@ -472,17 +454,6 @@ import { takeFreshNote } from "./freshNotes";
     white-space: nowrap;
   }
 
-  .rename-input {
-    width: 100%;
-    min-width: 0;
-    padding: 2px 3px;
-    color: var(--text);
-    background: #202020;
-    border: 1px solid var(--accent);
-    border-radius: 2px;
-    font: inherit;
-    user-select: text;
-  }
 
   .note-card.list-with-statistics > .note-header,
   .note-card.list-with-statistics > .note-frame {

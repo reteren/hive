@@ -26,6 +26,7 @@
     suggestions: spellcheckMenu.suggestions,
     loading: spellcheckMenu.loading,
     linkUrl: spellcheckMenu.linkUrl,
+    plain: spellcheckMenu.plain,
   }));
 
   let popup = $state<HTMLDivElement>();

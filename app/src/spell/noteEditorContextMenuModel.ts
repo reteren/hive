@@ -21,6 +21,8 @@ export type NoteMenuOptions = {
   suggestions?: readonly string[];
   loading?: boolean;
   linkUrl?: string | null;
+  /** One-line field: no formatting, paragraph or insert submenus. */
+  plain?: boolean;
 };
 
 const separator = (): NoteMenuSeparator => ({ separator: true });
@@ -51,6 +53,16 @@ export function buildNoteEditorContextMenu(options: NoteMenuOptions): NoteMenuEn
   const linkItems: NoteMenuOption[] = options.linkUrl
     ? [item("link.open", t("Open link")), item("link.copy", t("Copy link address")), separator()]
     : [];
+
+  const clipboardItems: NoteMenuOption[] = [
+    item("cut", t("Cut"), "Ctrl+X", !options.hasSelection),
+    item("copy", t("Copy"), "Ctrl+C", !options.hasSelection),
+    item("paste", t("Paste"), "Ctrl+V"),
+    ...(options.plain ? [] : [item("edit.pastePlainText", t("Paste as Plain Text"), "Ctrl+Shift+V")]),
+    item("delete", t("Delete"), undefined, !options.hasSelection),
+    item("select-all", t("Select All"), "Ctrl+A"),
+  ];
+  if (options.plain) return [...spellItems, ...clipboardItems];
 
   return [
     ...spellItems,
@@ -98,11 +110,6 @@ export function buildNoteEditorContextMenu(options: NoteMenuOptions): NoteMenuEn
       ],
     },
     separator(),
-    item("cut", t("Cut"), "Ctrl+X", !options.hasSelection),
-    item("copy", t("Copy"), "Ctrl+C", !options.hasSelection),
-    item("paste", t("Paste"), "Ctrl+V"),
-    item("edit.pastePlainText", t("Paste as Plain Text"), "Ctrl+Shift+V"),
-    item("delete", t("Delete"), undefined, !options.hasSelection),
-    item("select-all", t("Select All"), "Ctrl+A"),
+    ...clipboardItems,
   ];
 }

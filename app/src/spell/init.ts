@@ -1,5 +1,6 @@
 import { mount } from "svelte";
 import { EditorSelection } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 import { camera, viewport } from "../board/camera.svelte";
 import { screenToWorld, type Point } from "../board/cameraMath";
 import { registerNodeBody } from "../notes/nodeBodies";
@@ -30,7 +31,8 @@ if (typeof document !== "undefined") {
     const content = event.target.closest<HTMLElement>(".cm-content");
     const note = content?.closest<HTMLElement>("[data-note-id]");
     if (!content || !note) return;
-    const view = editorForNote(note.dataset.noteId ?? "");
+    const plain = content.hasAttribute("data-title-input");
+    const view = (plain ? EditorView.findFromDOM(content) : null) ?? editorForNote(note.dataset.noteId ?? "");
     if (!view) return;
     const position = view.posAtCoords({ x: event.clientX, y: event.clientY }) ?? view.state.selection.main.head;
     const context = spellSettings.enabled ? getSpellcheckContextAt(view, position) : null;
@@ -52,6 +54,7 @@ if (typeof document !== "undefined") {
     spellcheckMenu.context = context;
     spellcheckMenu.linkUrl = linkUrl;
     spellcheckMenu.editor = view;
+    spellcheckMenu.plain = plain;
     spellcheckMenu.anchor = anchor;
     spellcheckMenu.zoomAtOpen = camera.zoom;
     spellcheckMenu.suggestions = [];

@@ -7,6 +7,8 @@ export const spellcheckMenu = $state({
   context: null as SpellcheckContext | null,
   linkUrl: null as string | null,
   editor: null as EditorView | null,
+  /** A one-line field (node title): spelling and clipboard items only, no Markdown formatting. */
+  plain: false,
   anchor: null as Point | null,
   zoomAtOpen: 1,
   suggestions: [] as string[],
@@ -19,6 +21,7 @@ export function closeSpellcheckMenu(): void {
   spellcheckMenu.context = null;
   spellcheckMenu.linkUrl = null;
   spellcheckMenu.editor = null;
+  spellcheckMenu.plain = false;
   spellcheckMenu.anchor = null;
   spellcheckMenu.suggestions = [];
   spellcheckMenu.loading = false;
