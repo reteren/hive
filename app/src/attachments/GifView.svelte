@@ -59,6 +59,7 @@
   $effect(() => {
     const source = url;
     const currentCanvas = canvas;
+    void root;
     const { width: boxWidth, height: boxHeight } = box;
     void camera.zoom;
     void scaleRevision;
@@ -78,9 +79,12 @@
     }
     if (!source || !currentCanvas || boxWidth <= 0 || boxHeight <= 0 || !shouldLoadStill) return;
 
+    // Measure the surface, not the canvas: while the GIF plays the canvas is hidden (display: none),
+    // so it measured 0 wide, the still was never drawn and "Loading image…" covered the GIF for good.
+    const measureTarget: Element = root ?? currentCanvas;
     const sourceWidth = image.naturalWidth || 480;
     const sourceHeight = image.naturalHeight || 270;
-    const screenScale = screenScaleOf(currentCanvas, boxWidth, camera.zoom, scaleRevision);
+    const screenScale = screenScaleOf(measureTarget, boxWidth, camera.zoom, scaleRevision);
     const size = displayBitmapSize(sourceWidth, sourceHeight, boxWidth, boxHeight, screenScale * ratio);
     if (size.width <= 0 || size.height <= 0) return;
     let active = true;
@@ -115,7 +119,7 @@
       const frame = new Image();
       frame.onload = () => {
         if (!active || frame.naturalWidth <= 0 || frame.naturalHeight <= 0) return;
-        const screenScale = screenScaleOf(currentCanvas, boxWidth, camera.zoom, scaleRevision);
+        const screenScale = screenScaleOf(measureTarget, boxWidth, camera.zoom, scaleRevision);
         const target = displayBitmapSize(frame.naturalWidth, frame.naturalHeight, boxWidth, boxHeight, screenScale * ratio);
         const still = document.createElement("canvas");
         still.width = target.width;
