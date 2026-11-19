@@ -2034,5 +2034,19 @@
  "Add text box": "Добавить текст",
  "Select all nodes": "Выделить все ноды",
  "Select zone nodes": "Выделить ноды зоны",
- "Select nodes outside zones": "Выделить ноды вне зон"
+ "Select nodes outside zones": "Выделить ноды вне зон",
+ "Could not read the AI agents' settings: {message}": "Не удалось прочитать настройки AI-агентов: {message}",
+ "{name}: {message}": "{name}: {message}",
+ "Could not copy to the clipboard.": "Не удалось скопировать в буфер обмена.",
+ "Connected": "Подключён",
+ "Uses another hive server": "Другой сервер hive",
+ "Not connected": "Не подключён",
+ "Not installed": "Не установлен",
+ "AI agents": "AI-агенты",
+ "Configure": "Подключить",
+ "Looking for AI agents…": "Ищу AI-агентов…",
+ "Other agents": "Другие агенты",
+ "Copied": "Скопировано",
+ "Copy config": "Копировать конфиг",
+ "hive itself is the MCP server: agents start hive.exe in MCP mode, which talks to the running hive. Restart the agent after connecting it. Before changing an agent's config file hive keeps the old one as a .hive-backup copy.": "MCP-сервер — это сам hive: агенты запускают hive.exe в режиме MCP, и он работает с открытым hive. После подключения перезапустите агента. Прежде чем менять файл настроек агента, hive сохраняет старый как копию .hive-backup."
 }

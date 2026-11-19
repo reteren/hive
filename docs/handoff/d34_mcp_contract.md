@@ -3,6 +3,17 @@
 User goal (Russian, binding): «я хочу из своей программы сделать замену обсидиана … mcp работало максимально точно … давать задачи по созданию нод … чтобы он создавал ноды и что-то писал и в целом чтобы mcp работал идеально точно с программой».
 User decisions (05.10): changes go THROUGH THE RUNNING hive (no direct file writes); when hive is closed the MCP server may only READ the project folder; first version covers everything core + every node kind; ONE MCP call = ONE Undo step (label "MCP: …").
 
+## Built-in server (hive 2.2.3+)
+
+`hive.exe mcp` is the same MCP server, built into the app (src-tauri/src/mcp_stdio/: JSON-RPC on stdio,
+the 29 tools and the study_project prompt ported from hive-mcp 0.2.2; client.rs is the bridge client
+below, offline.rs the read-only fallback, content.rs/youtube.rs the content blocks). It starts before
+Tauri (no window, no single-instance hand-off) and is a normal bridge client, so the bridge protocol
+is unchanged and the separate hive-mcp package keeps working. Settings → AI tools → AI agents writes
+`hive.exe mcp` into Claude Code (`claude mcp add --scope user`), Codex (`[mcp_servers.hive]`),
+Claude Desktop, Cursor, Gemini CLI and Windsurf (`mcpServers.hive`) — src-tauri/src/mcp_agents.rs.
+Tool changes now go into mcp_stdio/tools.rs (and hive-mcp only if it is still published).
+
 ## Architecture
 
 ```

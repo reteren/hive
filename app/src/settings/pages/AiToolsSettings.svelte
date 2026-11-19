@@ -1,5 +1,6 @@
 <script lang="ts">
   import SettingToggle from "../SettingToggle.svelte";
+  import McpAgentsSettings from "./McpAgentsSettings.svelte";
   import { preferences, setAllowAiToolsMcp } from "../preferences.svelte";
   import { setMcpBridgeEnabled } from "../../mcp/bridge";
   import { mcpBridge } from "../../mcp/bridge.svelte";
@@ -45,3 +46,5 @@
   </div>
   <p class="setting-hint">{t("Only programs on this computer can connect. Every change they make is one undo step, labelled “MCP”.")}</p>
 </section>
+
+<McpAgentsSettings />

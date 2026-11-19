@@ -1864,5 +1864,19 @@
  "Add text box": "テキストボックスを追加",
  "Select all nodes": "すべてのノードを選択",
  "Select zone nodes": "ゾーンのノードを選択",
- "Select nodes outside zones": "ゾーン外のノードを選択"
+ "Select nodes outside zones": "ゾーン外のノードを選択",
+ "Could not read the AI agents' settings: {message}": "AI エージェントの設定を読み込めませんでした: {message}",
+ "{name}: {message}": "{name}: {message}",
+ "Could not copy to the clipboard.": "クリップボードにコピーできませんでした。",
+ "Connected": "接続済み",
+ "Uses another hive server": "別の hive サーバー",
+ "Not connected": "未接続",
+ "Not installed": "未インストール",
+ "AI agents": "AI エージェント",
+ "Configure": "設定",
+ "Looking for AI agents…": "AI エージェントを検索中…",
+ "Other agents": "その他のエージェント",
+ "Copied": "コピーしました",
+ "Copy config": "設定をコピー",
+ "hive itself is the MCP server: agents start hive.exe in MCP mode, which talks to the running hive. Restart the agent after connecting it. Before changing an agent's config file hive keeps the old one as a .hive-backup copy.": "hive 自体が MCP サーバーです。エージェントは hive.exe を MCP モードで起動し、実行中の hive とやり取りします。接続後はエージェントを再起動してください。エージェントの設定ファイルを変更する前に、hive は元のファイルを .hive-backup として保存します。"
 }

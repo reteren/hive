@@ -1966,5 +1966,19 @@
  "Add text box": "Adicionar caixa de texto",
  "Select all nodes": "Selecionar todos os nós",
  "Select zone nodes": "Selecionar nós da zona",
- "Select nodes outside zones": "Selecionar nós fora das zonas"
+ "Select nodes outside zones": "Selecionar nós fora das zonas",
+ "Could not read the AI agents' settings: {message}": "Não foi possível ler as configurações dos agentes de IA: {message}",
+ "{name}: {message}": "{name}: {message}",
+ "Could not copy to the clipboard.": "Não foi possível copiar para a área de transferência.",
+ "Connected": "Conectado",
+ "Uses another hive server": "Outro servidor hive",
+ "Not connected": "Não conectado",
+ "Not installed": "Não instalado",
+ "AI agents": "Agentes de IA",
+ "Configure": "Configurar",
+ "Looking for AI agents…": "Procurando agentes de IA…",
+ "Other agents": "Outros agentes",
+ "Copied": "Copiado",
+ "Copy config": "Copiar configuração",
+ "hive itself is the MCP server: agents start hive.exe in MCP mode, which talks to the running hive. Restart the agent after connecting it. Before changing an agent's config file hive keeps the old one as a .hive-backup copy.": "O próprio hive é o servidor MCP: os agentes iniciam o hive.exe no modo MCP, que conversa com o hive em execução. Reinicie o agente depois de conectá-lo. Antes de alterar o arquivo de configuração de um agente, o hive guarda o antigo como cópia .hive-backup."
 }

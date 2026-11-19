@@ -1864,5 +1864,19 @@
  "Add text box": "添加文本框",
  "Select all nodes": "选择所有节点",
  "Select zone nodes": "选择区域内的节点",
- "Select nodes outside zones": "选择区域外的节点"
+ "Select nodes outside zones": "选择区域外的节点",
+ "Could not read the AI agents' settings: {message}": "无法读取 AI 代理的设置：{message}",
+ "{name}: {message}": "{name}：{message}",
+ "Could not copy to the clipboard.": "无法复制到剪贴板。",
+ "Connected": "已连接",
+ "Uses another hive server": "使用其他 hive 服务器",
+ "Not connected": "未连接",
+ "Not installed": "未安装",
+ "AI agents": "AI 代理",
+ "Configure": "配置",
+ "Looking for AI agents…": "正在查找 AI 代理…",
+ "Other agents": "其他代理",
+ "Copied": "已复制",
+ "Copy config": "复制配置",
+ "hive itself is the MCP server: agents start hive.exe in MCP mode, which talks to the running hive. Restart the agent after connecting it. Before changing an agent's config file hive keeps the old one as a .hive-backup copy.": "hive 本身就是 MCP 服务器：代理以 MCP 模式启动 hive.exe，由它与正在运行的 hive 通信。连接后请重启代理。修改代理的配置文件之前，hive 会把旧文件保存为 .hive-backup 副本。"
 }

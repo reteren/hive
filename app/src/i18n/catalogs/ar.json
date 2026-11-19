@@ -1878,5 +1878,19 @@
  "Add text box": "إضافة مربع نص",
  "Select all nodes": "تحديد كل العقد",
  "Select zone nodes": "تحديد عقد المنطقة",
- "Select nodes outside zones": "تحديد العقد خارج المناطق"
+ "Select nodes outside zones": "تحديد العقد خارج المناطق",
+ "Could not read the AI agents' settings: {message}": "تعذّرت قراءة إعدادات وكلاء الذكاء الاصطناعي: {message}",
+ "{name}: {message}": "{name}: {message}",
+ "Could not copy to the clipboard.": "تعذّر النسخ إلى الحافظة.",
+ "Connected": "متصل",
+ "Uses another hive server": "يستخدم خادم hive آخر",
+ "Not connected": "غير متصل",
+ "Not installed": "غير مثبت",
+ "AI agents": "وكلاء الذكاء الاصطناعي",
+ "Configure": "إعداد",
+ "Looking for AI agents…": "جارٍ البحث عن وكلاء الذكاء الاصطناعي…",
+ "Other agents": "وكلاء آخرون",
+ "Copied": "تم النسخ",
+ "Copy config": "نسخ الإعداد",
+ "hive itself is the MCP server: agents start hive.exe in MCP mode, which talks to the running hive. Restart the agent after connecting it. Before changing an agent's config file hive keeps the old one as a .hive-backup copy.": "hive نفسه هو خادم MCP: يشغّل الوكلاء hive.exe في وضع MCP، فيتواصل مع hive المفتوح. أعد تشغيل الوكيل بعد ربطه. قبل تعديل ملف إعداد الوكيل يحتفظ hive بالملف القديم كنسخة .hive-backup."
 }
