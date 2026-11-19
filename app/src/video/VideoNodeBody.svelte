@@ -8,6 +8,7 @@
   import NoteBody from "../editor/NoteBody.svelte";
   import { videoCaptureAction } from "./logic";
   import VideoControls from "./VideoControls.svelte";
+  import { toggleVideoLoop } from "./loop";
   import { createControlsAutoHide } from "./controlsAutoHide";
   import { beginMediaCaptureGesture } from "./mediaCaptureGesture";
   import { t } from "../i18n/i18n.svelte";
@@ -192,6 +193,7 @@
         data-video-file={media?.file}
         src={source}
         preload="none"
+        loop={note.loop === true}
         playsinline
         aria-label={t("Video player for {value}", { value: media?.name ?? note.name })}
         data-selection-ignore
@@ -220,6 +222,8 @@
       {/if}
       <VideoControls
         playing={playing}
+        loop={note.loop === true}
+        onToggleLoop={() => toggleVideoLoop(note.id)}
         visible={controlsVisible || !playing}
         currentTime={displayTime}
         {duration}

@@ -2,6 +2,7 @@
   import DeleteIcon from "./icons/DeleteIcon.svelte";
   import ExportIcon from "./icons/ExportIcon.svelte";
   import FullscreenIcon from "./icons/FullscreenIcon.svelte";
+  import LoopIcon from "./icons/LoopIcon.svelte";
   import MuteIcon from "./icons/MuteIcon.svelte";
   import PauseIcon from "./icons/PauseIcon.svelte";
   import PlayIcon from "./icons/PlayIcon.svelte";
@@ -9,7 +10,7 @@
   import StopIcon from "./icons/StopIcon.svelte";
   import VolumeIcon from "./icons/VolumeIcon.svelte";
 
-  type MediaIconName = "play" | "pause" | "volume" | "mute" | "record" | "stop" | "export" | "delete" | "fullscreen";
+  type MediaIconName = "play" | "pause" | "volume" | "mute" | "record" | "stop" | "export" | "delete" | "fullscreen" | "loop";
   let { name, size = 16 }: { name: MediaIconName; size?: number } = $props();
 </script>
 
@@ -30,6 +31,8 @@
     <ExportIcon {size} />
   {:else if name === "delete"}
     <DeleteIcon {size} />
+  {:else if name === "loop"}
+    <LoopIcon {size} />
   {:else}
     <FullscreenIcon {size} />
   {/if}

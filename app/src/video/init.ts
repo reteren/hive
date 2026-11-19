@@ -2,6 +2,7 @@ import { registerNoteMenuItem } from "../notes/noteMenu";
 import { board, updateNote } from "../model/board.svelte";
 import { execute } from "../history/history.svelte";
 import { registerVideoDropHandler } from "./import";
+import { toggleVideoLoop } from "./loop";
 import { t } from "../i18n/i18n.svelte";
 
 registerVideoDropHandler();
@@ -23,4 +24,12 @@ registerNoteMenuItem({
     });
   },
   order: 75,
+});
+
+registerNoteMenuItem({
+  id: "video.loop",
+  label: (noteId) => board.notes[noteId]?.loop ? t("Stop looping") : t("Loop video"),
+  visible: (noteId) => board.notes[noteId]?.type === "video",
+  run: toggleVideoLoop,
+  order: 74,
 });

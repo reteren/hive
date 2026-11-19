@@ -9,6 +9,8 @@
 
   interface Props {
     playing: boolean;
+    loop?: boolean;
+    onToggleLoop?: () => void;
     visible: boolean;
     currentTime: number;
     duration: number;
@@ -24,7 +26,7 @@
   }
 
   let {
-    playing, visible, currentTime, duration, buffered = 0, volume, muted,
+    playing, loop = false, onToggleLoop, visible, currentTime, duration, buffered = 0, volume, muted,
     onTogglePlayback, onSeekPreview, onSeek, onVolume, onToggleMute, onFullscreen,
   }: Props = $props();
   let volumeOpen = $state(false);
@@ -85,6 +87,11 @@
       <MediaSlider value={volume} max={1} step={0.01} label={t("Video volume")} orientation="vertical" oninput={onVolume} onchange={onVolume} />
     </div>
   </div>
+  {#if onToggleLoop}
+    <button class="player-button" class:active={loop} type="button" aria-label={loop ? t("Stop looping") : t("Loop video")} title={loop ? t("Stop looping") : t("Loop video")} aria-pressed={loop} onclick={onToggleLoop}>
+      <MediaIcon name="loop" size={15} />
+    </button>
+  {/if}
   <button class="player-button" type="button" aria-label={t("Fullscreen")} onclick={onFullscreen}>
     <MediaIcon name="fullscreen" size={15} />
   </button>
@@ -99,6 +106,7 @@
   .player-button:hover { border-color: rgba(255, 255, 255, .35); color: #fff; background: #363636; }
   .player-button:active { border-color: rgba(255, 255, 255, .35); color: #fff; background: #363636; }
   .player-button:focus-visible { border-color: rgba(255, 255, 255, .35); color: #fff; background: #363636; outline: 2px solid var(--accent); outline-offset: 1px; }
+  .player-button.active { color: var(--accent); }
   .volume-control { position: relative; display: flex; align-items: center; }
   .volume-slider { display: none; position: absolute; z-index: 3; right: 50%; bottom: calc(100% - 4px); box-sizing: border-box; width: var(--volume-popover-width); height: var(--volume-popover-height); padding: 6px; transform: translateX(50%); border: 1px solid #4a4a4a; border-radius: 6px; background: #363636; box-shadow: 0 3px 10px rgb(0 0 0 / 32%); }
   .volume-slider :global(.media-slider) { width: 16px; min-width: 16px; height: 100%; flex: 0 0 auto; }

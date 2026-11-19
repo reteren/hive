@@ -167,6 +167,8 @@ export interface Note {
   /** Hide the outer frame on video and YouTube nodes, leaving the player surface. */
   frameHidden?: true;
   /** Mirror an image horizontally when its resize handle crosses the opposite edge. */
+  /** Video plays on repeat ("Loop video"). */
+  loop?: true;
   flipX?: true;
   /** Mirror an image vertically when its resize handle crosses the opposite edge. */
   flipY?: true;

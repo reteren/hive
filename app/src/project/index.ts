@@ -89,6 +89,7 @@ export interface IndexedNote {
   recordings?: Note["recordings"];
   youtube?: YouTubeRef;
   frameHidden?: true;
+  loop?: true;
   flipX?: true;
   flipY?: true;
   gifStopped?: true;
@@ -359,6 +360,7 @@ export function serializeProjectNoteEntry(
     recordings: note.type === "audio" ? copyAudioRecordings(note.recordings) : undefined,
     youtube: note.youtube ? { ...note.youtube } : undefined,
     frameHidden: (note.type === "youtube" || note.type === "video") && note.frameHidden === true ? true as const : undefined,
+    loop: note.type === "video" && note.loop === true ? true as const : undefined,
     gifStopped: note.gifStopped === true ? true as const : undefined,
     flipX: note.type === "image" && note.flipX === true ? true as const : undefined,
     flipY: note.type === "image" && note.flipY === true ? true as const : undefined,
@@ -422,6 +424,7 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       ...(entry.recordings ? { recordings: copyAudioRecordings(entry.recordings) } : {}),
       ...(entry.youtube ? { youtube: { ...entry.youtube } } : {}),
       ...((entry.type === "youtube" || entry.type === "video") && entry.frameHidden === true ? { frameHidden: true } : {}),
+      ...(entry.type === "video" && entry.loop === true ? { loop: true } : {}),
       ...(entry.type === "image" && entry.gifStopped === true ? { gifStopped: true } : {}),
       ...(entry.type === "image" && entry.flipX === true ? { flipX: true } : {}),
       ...(entry.type === "image" && entry.flipY === true ? { flipY: true } : {}),
@@ -718,6 +721,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
       recordings: type === "audio" && recordings ? copyAudioRecordings(recordings) : undefined,
       youtube: youtube ?? undefined,
       frameHidden,
+      loop: type === "video" && value.loop === true ? true : undefined,
       gifStopped: type === "image" ? gifStopped : undefined,
       flipX: type === "image" && value.flipX === true ? true : undefined,
       flipY: type === "image" && value.flipY === true ? true : undefined,
