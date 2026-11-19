@@ -25,6 +25,8 @@ export interface ShapeResult {
   endTangent: Point;
   /** Board-space arc-length ranges for shape-aligned weak-line dashes. */
   dashRanges?: Array<{ start: number; end: number }>;
+  /** The exact cubic of a "base" line; `polyline` samples it at uniform t (index / (length - 1)). */
+  cubic?: { start: Point; control1: Point; control2: Point; end: Point };
 }
 
 export interface ArrowGeometry {
@@ -93,16 +95,20 @@ export function buildArrowGeometry(
   const totalLength = distances[distances.length - 1] ?? 0;
   const trimDistance = Math.min(Math.max(0, finite(headLength)), totalLength * 0.45);
   const base = pointAtDistance(route, distances, Math.max(0, totalLength - trimDistance));
-  const shaftPoints = trimRoute(route, distances, Math.max(0, totalLength - trimDistance));
   const tangent = normalized(geometry.endTangent, lastTangent(route, { x: 1, y: 0 }));
   const normal = { x: -tangent.y, y: tangent.x };
   const halfWidth = Math.max(0, finite(headWidth)) / 2;
   const left = add(base, scale(normal, halfWidth));
   const right = subtract(base, scale(normal, halfWidth));
   const smooth = shape === "base" || shape === "wave";
+  // A base line is one cubic: its shaft is the same cubic cut at the arrow base (one segment)
+  // instead of a Catmull-Rom chain through up to 512 samples — same curve, a tiny SVG path.
+  const cubicShaft = shape === "base" && geometry.cubic && route === geometry.polyline
+    ? trimmedCubicPath(geometry.cubic, route, distances, Math.max(0, totalLength - trimDistance), base)
+    : null;
 
   return {
-    shaftPath: smooth ? smoothPath(shaftPoints) : pathFromPoints(shaftPoints),
+    shaftPath: cubicShaft ?? shaftFromRoute(route, distances, Math.max(0, totalLength - trimDistance), smooth),
     headPath: `M ${tip.x} ${tip.y} L ${left.x} ${left.y} L ${right.x} ${right.y} Z`,
     tip,
     base,
@@ -481,10 +487,49 @@ function result(points: Point[], fallbackTangent: Point): ShapeResult {
 
 function cubicResult(curve: Cubic, points: Point[], endTangent: Point): ShapeResult {
   return {
+    cubic: { start: curve.start, control1: curve.control1, control2: curve.control2, end: curve.end },
     path: `M ${curve.start.x} ${curve.start.y} C ${curve.control1.x} ${curve.control1.y}, ${curve.control2.x} ${curve.control2.y}, ${curve.end.x} ${curve.end.y}`,
     polyline: points,
     endTangent,
   };
+}
+
+/**
+ * SVG path of the cubic from t = 0 to the parameter where the sampled arc length reaches
+ * `endDistance` (de Casteljau split). `points` are the cubic sampled at uniform t.
+ */
+function shaftFromRoute(route: readonly Point[], distances: readonly number[], endDistance: number, smooth: boolean): string {
+  const shaftPoints = trimRoute(route, distances, endDistance);
+  return smooth ? smoothPath(shaftPoints) : pathFromPoints(shaftPoints);
+}
+
+function trimmedCubicPath(
+  curve: { start: Point; control1: Point; control2: Point; end: Point },
+  points: readonly Point[],
+  distances: readonly number[],
+  endDistance: number,
+  endPoint: Point,
+): string | null {
+  const segments = points.length - 1;
+  if (segments < 1 || distances.length !== points.length) return null;
+  let t = 1;
+  for (let index = 1; index <= segments; index += 1) {
+    if (distances[index] + EPSILON < endDistance) continue;
+    const span = distances[index] - distances[index - 1];
+    const ratio = span <= EPSILON ? 0 : clamp((endDistance - distances[index - 1]) / span, 0, 1);
+    t = (index - 1 + ratio) / segments;
+    break;
+  }
+  const a = interpolateRaw(curve.start, curve.control1, t);
+  const b = interpolateRaw(curve.control1, curve.control2, t);
+  const ab = interpolateRaw(a, b, t);
+  // The split point and the arrow base differ by far less than a pixel; end exactly at the base
+  // so the shaft meets the head.
+  return `M ${curve.start.x} ${curve.start.y} C ${a.x} ${a.y}, ${ab.x} ${ab.y}, ${endPoint.x} ${endPoint.y}`;
+}
+
+function interpolateRaw(start: Point, end: Point, t: number): Point {
+  return { x: start.x + (end.x - start.x) * t, y: start.y + (end.y - start.y) * t };
 }
 
 function pathFromPoints(points: readonly Point[]): string {
