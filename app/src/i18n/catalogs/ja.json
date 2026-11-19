@@ -1858,5 +1858,11 @@
  "outside zones {percent}%": "ゾーン外 {percent}%",
  "No time counted yet: it adds up while you work in hive": "まだ空です：hive で作業している間に時間が貯まります",
  "Show where you spend your time on the board": "ボードのどこで時間を使っているかを表示",
- "Move zones": "ゾーンを移動"
+ "Move zones": "ゾーンを移動",
+ "Go along line": "線に沿って移動",
+ "Text box": "テキストボックス",
+ "Add text box": "テキストボックスを追加",
+ "Select all nodes": "すべてのノードを選択",
+ "Select zone nodes": "ゾーンのノードを選択",
+ "Select nodes outside zones": "ゾーン外のノードを選択"
 }

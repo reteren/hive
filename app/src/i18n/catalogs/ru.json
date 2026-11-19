@@ -2028,5 +2028,11 @@
  "outside zones {percent}%": "вне зон {percent}%",
  "No time counted yet: it adds up while you work in hive": "Пока пусто: время копится, пока вы работаете в hive",
  "Show where you spend your time on the board": "Показать, где на доске вы проводите время",
- "Move zones": "Переместить зоны"
+ "Move zones": "Переместить зоны",
+ "Go along line": "Переход по линии",
+ "Text box": "Текст",
+ "Add text box": "Добавить текст",
+ "Select all nodes": "Выделить все ноды",
+ "Select zone nodes": "Выделить ноды зоны",
+ "Select nodes outside zones": "Выделить ноды вне зон"
 }

@@ -1858,5 +1858,11 @@
  "outside zones {percent}%": "区域外 {percent}%",
  "No time counted yet: it adds up while you work in hive": "暂无数据：在 hive 中工作时会累计时间",
  "Show where you spend your time on the board": "显示你在白板上把时间花在哪里",
- "Move zones": "移动区域"
+ "Move zones": "移动区域",
+ "Go along line": "沿连线跳转",
+ "Text box": "文本框",
+ "Add text box": "添加文本框",
+ "Select all nodes": "选择所有节点",
+ "Select zone nodes": "选择区域内的节点",
+ "Select nodes outside zones": "选择区域外的节点"
 }

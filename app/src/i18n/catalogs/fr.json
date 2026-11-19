@@ -1960,5 +1960,11 @@
  "outside zones {percent}%": "hors zones {percent} %",
  "No time counted yet: it adds up while you work in hive": "Encore vide : le temps s'accumule pendant que vous travaillez dans hive",
  "Show where you spend your time on the board": "Montrer où vous passez votre temps sur le tableau",
- "Move zones": "Déplacer les zones"
+ "Move zones": "Déplacer les zones",
+ "Go along line": "Suivre la ligne",
+ "Text box": "Zone de texte",
+ "Add text box": "Ajouter une zone de texte",
+ "Select all nodes": "Sélectionner tous les nœuds",
+ "Select zone nodes": "Sélectionner les nœuds de la zone",
+ "Select nodes outside zones": "Sélectionner les nœuds hors zones"
 }
