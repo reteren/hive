@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { camera } from "../board/camera.svelte";
-  import { createScreenScale } from "./screenScale";
+  import { createBatchedScreenScale } from "./screenScale";
   import { attachmentUrl } from "./service";
   import { acquireDisplayBitmap, displayBitmapSize, peekAnyDisplayBitmap, type DisplayBitmapLease } from "./displayBitmap";
   import type { ImageRef } from "./types";
@@ -46,7 +46,8 @@
     renderedKey = "";
   });
 
-  const screenScaleOf = createScreenScale();
+  let measureRevision = $state(0);
+  const screenScaleOf = createBatchedScreenScale(() => { measureRevision += 1; });
 
   $effect(() => {
     const element = canvas;
@@ -54,6 +55,7 @@
     const { width: boxWidth, height: boxHeight } = box;
     void camera.zoom;
     void scaleRevision;
+    void measureRevision;
     const ratio = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
     if (!element || !source || boxWidth <= 0 || boxHeight <= 0 || !nearViewport) {
       if (!element || nearViewport) return;
@@ -67,6 +69,7 @@
     const sourceWidth = image.naturalWidth || intrinsicSize.width;
     const sourceHeight = image.naturalHeight || intrinsicSize.height;
     const screenScale = screenScaleOf(element, boxWidth, camera.zoom, scaleRevision);
+    if (screenScale === null) return;
     if (sourceWidth <= 0 || sourceHeight <= 0) {
       let current = true;
       const probe = new Image();
