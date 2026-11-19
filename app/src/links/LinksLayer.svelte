@@ -32,6 +32,8 @@
   import { isDimmed, visibleInFocus } from "../beacons/focus.svelte";
   import { linkRouteIndex } from "./routeIndex";
   import { t } from "../i18n/i18n.svelte";
+  import { teleportToObject, teleportToPoint } from "../navigation/navigate";
+  import { nearestFractionOnPath, pickLineJumpEnd, type LineJumpMemory } from "./lineJump";
 
   const CUT_DRAG_THRESHOLD_PX = 5;
   const CUT_TOLERANCE_PX = 4;
@@ -106,6 +108,7 @@
   let gesture: PointerGesture | null = null;
   let linkMarquee = $state<{ start: Point; end: Point } | null>(null);
   let lastBodyClick: { id: string; at: number } | null = null;
+  let lastLineJump: LineJumpMemory | null = null;
   let textSelectionElement: HTMLElement | null = null;
   let previousUserSelect = "";
   // Applied as an SVG attribute so the browser re-renders the vectors at the current zoom;
@@ -463,9 +466,40 @@
       if (linkId) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        selectLinkUndoable(linkId, event.ctrlKey || event.metaKey || event.shiftKey, true);
+        const modified = event.ctrlKey || event.metaKey || event.shiftKey;
+        if (!modified && jumpAlongLink(linkId, event)) return;
+        selectLinkUndoable(linkId, modified, true);
         return;
       }
+    }
+
+    /** Plain click on a line: teleport to the nearer end, a repeat click within 5 s to the other end. */
+    function jumpAlongLink(linkId: string, event: PointerEvent): boolean {
+      const link = links.byId[linkId];
+      if (!link) return false;
+      const group = event.target instanceof Element ? event.target.closest<SVGGElement>("[data-link-id]") : null;
+      const path = group?.querySelector<SVGPathElement>("path.link-hit");
+      let fraction = 0.5;
+      const matrix = path?.getScreenCTM();
+      if (path && matrix) {
+        const local = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
+        fraction = nearestFractionOnPath(path, local);
+      }
+      const now = performance.now();
+      const endId = pickLineJumpEnd({ linkId, from: link.from, to: link.to, fraction, now, last: lastLineJump });
+      const label = t("Go along line");
+      let jumped = false;
+      if (board.notes[endId]) jumped = teleportToObject(endId, { label });
+      else {
+        const bounds = objectBounds(endId);
+        if (bounds) {
+          teleportToPoint({ x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }, { label });
+          jumped = true;
+        }
+      }
+      if (!jumped) return false;
+      lastLineJump = { linkId, endId, at: now };
+      return true;
     }
 
     function onPointerMove(event: PointerEvent): void {
