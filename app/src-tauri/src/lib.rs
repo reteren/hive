@@ -9,7 +9,9 @@ mod clipboard_permission;
 mod drawing;
 mod export;
 mod image_clipboard;
+mod mcp_agents;
 mod mcp_bridge;
+mod mcp_stdio;
 mod node_info;
 mod overhive;
 mod project;
@@ -147,6 +149,13 @@ fn build_tray(app: &mut tauri::App) -> tauri::Result<()> {
 }
 
 pub fn run() {
+    let context = tauri::generate_context!();
+    // `hive.exe mcp`: serve MCP on stdio for AI agents (no window, no tray, no single-instance
+    // hand-off) and talk to the running hive through the local bridge.
+    if mcp_stdio::requested() {
+        mcp_stdio::run(&context.config().identifier);
+        return;
+    }
     tauri::Builder::default()
         // Must be the first plugin: a second launch (Start menu, shortcut) only brings back the running
         // hive instead of adding another tray icon and process.
@@ -261,6 +270,9 @@ pub fn run() {
             configure_quick_input_shortcut,
             quick_input_shortcut::log_overview,
             mcp_bridge::mcp_respond,
+            mcp_agents::mcp_agents_list,
+            mcp_agents::mcp_agent_configure,
+            mcp_agents::mcp_command_info,
             mcp_bridge::mcp_bridge_ready,
             mcp_bridge::mcp_bridge_set_enabled,
             capture::capture_board_preview,
@@ -313,7 +325,7 @@ pub fn run() {
             spellcheck::spellcheck_import_dictionary,
             spellcheck::spellcheck_remove_word
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building hive")
         .run(|app_handle, event| {
             if let RunEvent::Exit = &event {
