@@ -28,6 +28,13 @@ const frameGate = new FrameSnapshotGate();
 let scheduled = false;
 let rafHandle: number | null = null;
 let geometryDirty = true;
+/**
+ * Rebuilding the whole map (every note, zone and link) on each frame of a drag cost more than the
+ * drag itself. Geometry changes refresh the map at most this often; camera moves stay per-frame.
+ */
+const MAP_GEOMETRY_MIN_INTERVAL_MS = 66;
+let lastGeometryBuildAt = Number.NEGATIVE_INFINITY;
+let geometryTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function mapNoteGeometry(note: Note | undefined): { bounds: Bounds; signature: string } | null {
   if (!note) return null;
@@ -62,7 +69,19 @@ export function invalidateMapFrame(): void {
 
 export function invalidateMapGeometry(): void {
   geometryDirty = true;
+  const wait = MAP_GEOMETRY_MIN_INTERVAL_MS - (now() - lastGeometryBuildAt);
+  if (wait > 0) {
+    geometryTimer ??= setTimeout(() => {
+      geometryTimer = null;
+      if (geometryDirty) invalidateMapFrame();
+    }, wait);
+    return;
+  }
   invalidateMapFrame();
+}
+
+function now(): number {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
 }
 
 export function mapGeometryNeedsRebuild(): boolean {
@@ -71,6 +90,7 @@ export function mapGeometryNeedsRebuild(): boolean {
 
 export function markMapGeometryBuilt(): void {
   geometryDirty = false;
+  lastGeometryBuildAt = now();
 }
 
 export function ensureMapFrame(): MapFrame | null {
