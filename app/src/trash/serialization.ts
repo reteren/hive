@@ -196,6 +196,7 @@ function parseTrashNote(value: unknown): Note | null {
     ...(value.type === "graph" && parseGraphData(value.graph) ? { graph: parseGraphData(value.graph)! } : {}),
     ...(parseSource(value.source) ? { source: parseSource(value.source)! } : {}),
     ...(typeof value.inboxGroup === "string" && value.inboxGroup ? { inboxGroup: value.inboxGroup } : {}),
+    ...(typeof value.overlayOf === "string" && value.overlayOf ? { overlayOf: value.overlayOf } : {}),
     ...(parseRandomPick(value.randomPick) ? { randomPick: parseRandomPick(value.randomPick)! } : {}),
     ...(parseCustomMarks(value.customMarks) ? { customMarks: parseCustomMarks(value.customMarks)! } : {}),
     ...(value.customMarkFrame === true ? { customMarkFrame: true } : {}),

@@ -44,6 +44,7 @@ import { measureDictionaryHeightLimits } from "../spell/dictionarySizing";
     type ZoneResizeGesture,
   } from "../zones/zoneGestures";
   import { isTextEditingTarget } from "../commands/focus";
+  import { imageOverlayIds } from "../images/overlays";
   import { commands } from "../commands/registry.svelte";
   import { findMatchingCommand } from "../commands/keys";
   import {
@@ -465,7 +466,7 @@ type PendingBoardMove =
         return;
       }
       selectNoteUndoable(noteId);
-      const frames = framesForSelection();
+      const frames = movingFramesForSelection();
       if (frames.length > 0) startMove(event, local, screenToWorld(camera, viewport, local), frames, noteId);
     }
 
@@ -656,7 +657,7 @@ type PendingBoardMove =
         !interactiveTarget &&
         !listStatisticsExtension
       ) {
-        const frames = framesForSelection();
+        const frames = movingFramesForSelection();
         const anchorId = selection.primaryId && boardState.notes[selection.primaryId]
           ? selection.primaryId
           : frames[0]?.id;
@@ -690,7 +691,7 @@ type PendingBoardMove =
         }
 
         if (!selection.ids.includes(id)) return;
-        const frames = framesForSelection();
+        const frames = movingFramesForSelection();
         if (frames.length === 0) return;
         startMove(event, local, world, frames, id, toggleOnClickId);
         return;
@@ -1241,6 +1242,21 @@ type PendingBoardMove =
     return selection.ids.flatMap((id) => (boardState.notes[id] ? [frameForNote(id)] : []));
   }
 
+  /** Selection frames plus the text boxes laid over selected images: they ride along on a move. */
+  function movingFramesForSelection(): NoteFrame[] {
+    const frames = framesForSelection();
+    const ids = new Set(frames.map((frame) => frame.id));
+    for (const frame of [...frames]) {
+      if (boardState.notes[frame.id]?.type !== "image") continue;
+      for (const overlayId of imageOverlayIds(frame.id)) {
+        if (ids.has(overlayId)) continue;
+        ids.add(overlayId);
+        frames.push(frameForNote(overlayId));
+      }
+    }
+    return frames;
+  }
+
   function frameForNote(id: string): NoteFrame {
     const note = boardState.notes[id];
     const scale = normalizeNoteScale(note.scale);
@@ -1582,7 +1598,7 @@ type PendingBoardMove =
         } else {
           selectNoteUndoable(gesture.noteId, "move");
         }
-        const frames = framesForSelection();
+        const frames = movingFramesForSelection();
         if (frames.length === 0) return;
         gesture.gesture = createMoveGesture(frames, gesture.noteId, gesture.startWorld);
         beginMovingStacking(frames);
@@ -1854,7 +1870,7 @@ type PendingBoardMove =
       return;
     }
     if (grabGesture || scaleModeGesture || activeGesture || selection.ids.length === 0) return;
-    const frames = framesForSelection();
+    const frames = movingFramesForSelection();
     if (frames.length === 0) return;
     const anchorId = selection.primaryId && boardState.notes[selection.primaryId]
       ? selection.primaryId

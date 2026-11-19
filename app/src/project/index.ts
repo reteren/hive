@@ -73,6 +73,7 @@ export interface IndexedNote {
   graph?: GraphData;
   source?: SourceData;
   inboxGroup?: string;
+  overlayOf?: string;
   randomPick?: RandomPick;
   customMarks?: CustomMark[];
   customMarkFrame?: boolean;
@@ -346,6 +347,7 @@ export function serializeProjectNoteEntry(
     ...(note.graph ? { graph: note.graph } : {}),
     ...(note.source ? { source: note.source } : {}),
     ...(note.inboxGroup ? { inboxGroup: note.inboxGroup } : {}),
+    ...(note.overlayOf ? { overlayOf: note.overlayOf } : {}),
     ...(note.randomPick ? { randomPick: note.randomPick } : {}),
     ...(note.customMarks?.length ? { customMarks: note.customMarks } : {}),
     ...(note.customMarkFrame ? { customMarkFrame: true } : {}),
@@ -408,6 +410,7 @@ export function mergeLoadedNotes(index: ProjectIndex, loaded: readonly LoadedPro
       ...(entry.graph ? { graph: entry.graph } : {}),
       ...(entry.source ? { source: entry.source } : {}),
       ...(entry.inboxGroup ? { inboxGroup: entry.inboxGroup } : {}),
+      ...(entry.overlayOf ? { overlayOf: entry.overlayOf } : {}),
       ...(entry.randomPick ? { randomPick: entry.randomPick } : {}),
       ...(entry.customMarks?.length ? { customMarks: entry.customMarks } : {}),
       ...(entry.customMarkFrame ? { customMarkFrame: true } : {}),
@@ -728,6 +731,7 @@ function parseNote(value: unknown, index: number, requireV2Fields: boolean, requ
       graph: type === "graph" ? parseGraphData(value.graph) ?? undefined : undefined,
       source: parseSource(value.source) ?? undefined,
       inboxGroup: typeof value.inboxGroup === "string" && value.inboxGroup ? value.inboxGroup : undefined,
+      overlayOf: typeof value.overlayOf === "string" && value.overlayOf ? value.overlayOf : undefined,
       randomPick: parseRandomPick(value.randomPick) ?? undefined,
       customMarks: parseCustomMarks(value.customMarks) ?? undefined,
       customMarkFrame: value.customMarkFrame === true ? true : undefined,

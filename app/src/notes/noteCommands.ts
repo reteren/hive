@@ -374,3 +374,55 @@ registerNoteMenuItem({
   visible: (noteId) => board.notes[noteId]?.type === "pdf",
   order: 30,
 });
+
+/** Inner padding (u) of a text box added over an image. */
+const IMAGE_TEXT_BOX_PADDING = 2;
+
+/**
+ * "Add text box" on an image: a plain note without a header, laid over the top-left of the
+ * picture. It is an ordinary note (colour, Importance, Mood, task… all apply) and rides along
+ * whenever the image is moved (`overlayOf`).
+ */
+export function createImageTextBox(imageId: string): string | null {
+  const image = board.notes[imageId];
+  if (!image || image.type !== "image") return null;
+  const id = newId();
+  const imageWidth = image.width * (image.scale ?? 1);
+  const width = Math.max(DEFAULT_MINI_NOTE_WIDTH, Math.min(DEFAULT_NOTE_WIDTH, imageWidth - IMAGE_TEXT_BOX_PADDING * 2));
+  const note: Note = {
+    ...makeNote("note", id, { x: image.x + IMAGE_TEXT_BOX_PADDING, y: image.y + IMAGE_TEXT_BOX_PADDING }, Date.now()),
+    name: uniqueName(t("Text box"), Object.values(board.notes).map((existing) => existing.name)),
+    width,
+    headerHidden: true,
+    overlayOf: imageId,
+  };
+  markNoteFresh(id);
+  const index = board.order.length;
+  const previousEditing = editing.noteId;
+  const previousSelection = captureSelectionSnapshot();
+  execute({
+    label: t("Add text box"),
+    target: note.name,
+    do: () => {
+      addNote(note, index);
+      clearSelection();
+      clearSelectedLink();
+      selectOnly(id);
+      editing.noteId = id;
+    },
+    undo: () => {
+      removeNote(id);
+      restoreSelectionSnapshot(previousSelection);
+      if (editing.noteId === id) editing.noteId = previousEditing;
+    },
+  });
+  return id;
+}
+
+registerNoteMenuItem({
+  id: "image.addTextBox",
+  label: () => t("Add text box"),
+  run: (noteId) => { createImageTextBox(noteId); },
+  visible: (noteId) => board.notes[noteId]?.type === "image",
+  order: 10,
+});

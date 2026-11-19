@@ -182,6 +182,8 @@ export interface Note {
   source?: SourceData;
   /** Inbox twins (R7.2/H35): notes created by one quick entry near several Inbox nodes share this id until one is chosen. */
   inboxGroup?: string;
+  /** Image node this text box was added over ("Add text box"): moves together with that image. */
+  overlayOf?: string;
   /** Random Choice (R7.7): the last picked list item. */
   randomPick?: RandomPick;
   /** Mark as (custom module, 27.09): user tags; on a "markas" node its own tags, on other notes the inserted tags. */
