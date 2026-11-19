@@ -111,7 +111,8 @@ export function measureAndCacheTextMinimumWidth(
   const font = context.font;
   // Debug 28 #5 (user correction): only the FIRST line sets the node's width while typing;
   // later lines wrap. Manual resizing stays free.
-  const firstLine = text.split(/\r\n|\r|\n/u, 1)[0] ?? "";
+  // Measured as shown: a Markdown link takes the width of its label, not of `[label](hive://…)`.
+  const firstLine = displayedLineText(text.split(/\r\n|\r|\n/u, 1)[0] ?? "");
   const widestLine = widestNaturalLineWidth(noteId, firstLine, font, (line) => context.measureText(line).width);
 
   const contentStyle = getComputedStyle(content);
@@ -125,6 +126,14 @@ export function measureAndCacheTextMinimumWidth(
   );
   // The first line no longer constrains manual resizing (debug 28 #5): the user resizes freely.
   return minimumWidth;
+}
+
+const MARKDOWN_LINK = /\[((?:\\.|[^\]\\])*)\]\((?:<[^>]*>|[^)\s]*)\)/gu;
+
+/** A line as the live preview shows it when the caret is elsewhere: links collapse to their labels. */
+export function displayedLineText(line: string): string {
+  if (!line.includes("](")) return line;
+  return line.replace(MARKDOWN_LINK, (_match, label: string) => label.replace(/\\([\\[\]])/gu, "$1"));
 }
 
 export function clearTextFitWidthCache(noteId: string): void {

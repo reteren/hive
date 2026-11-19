@@ -59,14 +59,18 @@ export function visibleMarkdownLinksInTree(
   return [...found.values()].sort((left, right) => left.from - right.from);
 }
 
-/** A caret at or adjacent to a link reveals it; non-empty selections reveal overlapping links. */
+/**
+ * A caret strictly inside a link reveals its source; a caret right before or after it keeps the link
+ * compact (a freshly pasted link stays short, arrow keys step into it to edit). Non-empty
+ * selections reveal overlapping links.
+ */
 export function isMarkdownLinkActive(
   link: Pick<MarkdownLinkRange, "from" | "to">,
   selection: EditorSelection,
 ): boolean {
   return selection.ranges.some((range) =>
     range.empty
-      ? range.from >= link.from && range.from <= link.to
+      ? range.from > link.from && range.from < link.to
       : range.from < link.to && range.to > link.from,
   );
 }

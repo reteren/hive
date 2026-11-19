@@ -22,15 +22,17 @@ describe("editor Markdown links", () => {
     ]));
   });
 
-  it("reveals link syntax for a caret inside or immediately beside the link", () => {
+  it("reveals link syntax only for a caret inside the link, keeps it compact beside it", () => {
     const [link] = visibleMarkdownLinks(source, visible);
     expect(link).toBeDefined();
     if (!link) return;
 
-    for (const position of [link.from, link.labelFrom + 1, link.to]) {
+    for (const position of [link.labelFrom, link.labelFrom + 1, link.labelTo]) {
       expect(collapsedLinkMarkup([link], caret(position))).toEqual([]);
     }
-    expect(collapsedLinkMarkup([link], caret(link.from - 1))).toHaveLength(2);
+    for (const position of [link.from, link.to]) {
+      expect(collapsedLinkMarkup([link], caret(position))).toHaveLength(2);
+    }
   });
 
   it("reveals raw markup when a selection overlaps a link and ignores selection outside it", () => {
