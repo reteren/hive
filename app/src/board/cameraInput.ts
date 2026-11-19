@@ -3,9 +3,12 @@ import { camera, cameraSettings, refreshPointerWorld, setPointerScreen, viewport
 import { pixelsPerUnit, zoomAt, type Point } from "./cameraMath";
 import { isTextEditingTarget } from "../commands/focus";
 import { overview } from "../overview/overview.svelte";
+import { handleSelectTap } from "../selection/selectByKey";
 
 const PAN_KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD"]);
 const SHIFT_SPEED_MULTIPLIER = 2.5;
+/** A press of A shorter than this (with no other key) is a tap: it selects instead of panning. */
+const SELECT_TAP_MAX_MS = 180;
 
 /**
  * Camera input on the board element (R0.2): MMB drag, WASD, wheel zoom around the cursor.
@@ -22,6 +25,8 @@ export function attachCameraInput(board: HTMLElement): () => void {
   let lastFrameTime: number | null = null;
   let shiftHeld = false;
   const heldKeys = new Set<string>();
+  /** A pressed alone: where the camera was, to undo the tiny pan if it turns out to be a tap. */
+  let selectTap: { at: number; x: number; y: number } | null = null;
   const originalCursor = board.style.cursor;
 
   board.style.cursor = "grab";
@@ -51,6 +56,7 @@ export function attachCameraInput(board: HTMLElement): () => void {
 
   function clearHeldKeys(): void {
     heldKeys.clear();
+    selectTap = null;
     shiftHeld = false;
     stopPanLoop();
   }
@@ -213,6 +219,11 @@ export function attachCameraInput(board: HTMLElement): () => void {
     if (isTextEditingTarget(document.activeElement)) return;
 
     event.preventDefault();
+    if (event.code === "KeyA" && !event.repeat && heldKeys.size === 0 && !overview.active && !event.altKey) {
+      selectTap = { at: performance.now(), x: camera.x, y: camera.y };
+    } else if (!event.repeat) {
+      selectTap = null;
+    }
     heldKeys.add(event.code);
     startPanLoop();
   }
@@ -223,6 +234,14 @@ export function attachCameraInput(board: HTMLElement): () => void {
 
     heldKeys.delete(event.code);
     if (heldKeys.size === 0) stopPanLoop();
+    const tap = event.code === "KeyA" ? selectTap : null;
+    selectTap = null;
+    if (tap && heldKeys.size === 0 && performance.now() - tap.at <= SELECT_TAP_MAX_MS &&
+      !isTextEditingTarget(document.activeElement) && handleSelectTap()) {
+      camera.x = tap.x;
+      camera.y = tap.y;
+      refreshPointerWorld();
+    }
   }
 
   function onWindowBlur(): void {
