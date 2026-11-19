@@ -18,6 +18,15 @@
 
   let { image, class: className = "", style = "", alt = image.name ?? image.file }: Props = $props();
   let canvas = $state<HTMLCanvasElement | null>(null);
+
+  /**
+   * A CPU-backed 2D context: a GPU canvas is its own compositor layer, and with dozens of pictures
+   * on screen (plus everything overlapping them) re-layerizing them cost most of each frame while
+   * panning or zooming. The pixels are the same; only where they are rasterised changes.
+   */
+  function pictureContext(element: HTMLCanvasElement): CanvasRenderingContext2D | null {
+    return element.getContext("2d", { willReadFrequently: true });
+  }
   let box = $state({ width: 0, height: 0 });
   // Notes are mounted only near the viewport, so draw on the first frame instead of waiting for the observer.
   let nearViewport = $state(true);
@@ -68,7 +77,7 @@
         const key = `${source}\u0000${target.width}x${target.height}`;
         element.width = target.width;
         element.height = target.height;
-        const context = element.getContext("2d");
+        const context = pictureContext(element);
         if (context) {
           context.clearRect(0, 0, target.width, target.height);
           context.drawImage(probe, 0, 0, target.width, target.height);
@@ -96,7 +105,7 @@
       if (cached) {
         element.width = cached.width;
         element.height = cached.height;
-        element.getContext("2d")?.drawImage(cached, 0, 0);
+        pictureContext(element)?.drawImage(cached, 0, 0);
         renderedKey = `${source}\u0000cached`;
         loadState = "ready";
       } else {
@@ -111,7 +120,7 @@
       lease = acquired;
       element.width = acquired.bitmap.width;
       element.height = acquired.bitmap.height;
-      element.getContext("2d")?.drawImage(acquired.bitmap, 0, 0);
+      pictureContext(element)?.drawImage(acquired.bitmap, 0, 0);
       renderedKey = key;
       loadState = "ready";
     }).catch(() => {

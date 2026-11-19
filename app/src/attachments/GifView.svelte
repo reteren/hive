@@ -90,7 +90,7 @@
       if (!active || !currentCanvas.isConnected) return;
       currentCanvas.width = bitmap.width;
       currentCanvas.height = bitmap.height;
-      const context = currentCanvas.getContext("2d");
+      const context = currentCanvas.getContext("2d", { willReadFrequently: true });
       if (context) {
         context.clearRect(0, 0, currentCanvas.width, currentCanvas.height);
         context.drawImage(bitmap, 0, 0);
@@ -125,7 +125,7 @@
         stillContext?.drawImage(frame, 0, 0, target.width, target.height);
         currentCanvas.width = target.width;
         currentCanvas.height = target.height;
-        const targetContext = currentCanvas.getContext("2d");
+        const targetContext = currentCanvas.getContext("2d", { willReadFrequently: true });
         targetContext?.clearRect(0, 0, target.width, target.height);
         targetContext?.drawImage(still, 0, 0);
         still.width = 0;
