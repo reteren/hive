@@ -2,9 +2,8 @@ import { board, updateNote } from "../model/board.svelte";
 import { NOTE_HEADER_HEIGHT_UNITS, type Note } from "../model/note";
 import { editing } from "./editing.svelte";
 import { selection } from "../selection/selection.svelte";
-import { linksOf } from "../model/links.svelte";
 import { execute } from "../history/history.svelte";
-import { toggleSmoothLinesForNote } from "../links/smoothLines";
+import { smoothLineTargets, toggleSmoothLinesForSelection } from "../links/smoothLines";
 import { menuShortcutLabel } from "../commands/menuShortcut";
 import { runNoteMenuCommand } from "../commands/objectMenu";
 import { camera } from "../board/camera.svelte";
@@ -63,7 +62,7 @@ export function noteMenuItemsForContext(
   const target = gifTarget?.noteId === noteId ? gifTarget : null;
 
   if (note?.type === "image") {
-    const allowed = new Set(["notes.copyLink", "image.copyToClipboard", "image.erase", "image.opacity", "archive.note", ...UNIVERSAL_MENU_IDS]);
+    const allowed = new Set(["notes.copyLink", "image.copyToClipboard", "image.addTextBox", "image.erase", "image.opacity", "archive.note", ...UNIVERSAL_MENU_IDS]);
     if (note.task) allowed.add("task.toggleFlag");
     if (note.image?.mime === "image/gif" && target?.kind === "board") {
       allowed.add("attachments.toggleGif");
@@ -116,10 +115,12 @@ registerNoteMenuItem({
 
 registerNoteMenuItem({
   id: "links.smoothLines",
-  label: (noteId) => board.notes[noteId]?.smoothLines ? t("Remove smooth") : t("Smooth lines"),
-  run: toggleSmoothLinesForNote,
-  visible: (noteId) => board.notes[noteId]?.type !== "beacon" &&
-    (board.notes[noteId]?.smoothLines === true || linksOf(noteId).length > 0),
+  label: (noteId) => {
+    const targets = smoothLineTargets(noteId);
+    return targets.length > 0 && targets.every((id) => board.notes[id]?.smoothLines === true) ? t("Remove smooth") : t("Smooth lines");
+  },
+  run: (noteId) => { toggleSmoothLinesForSelection(noteId); },
+  visible: (noteId) => smoothLineTargets(noteId).length > 0,
   order: 85,
 });
 

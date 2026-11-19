@@ -5,7 +5,7 @@ import { ME_OBJECT_ID, type Link, type LinkAnchor } from "../model/link";
 import { hasMeBeacon } from "../beacons/beaconState.svelte";
 import { board, updateNote } from "../model/board.svelte";
 import { links, linksOf, registerLinkLifecycle, updateLink } from "../model/links.svelte";
-import { execute } from "../history/history.svelte";
+import { abortHistoryTransaction, beginHistoryTransaction, commitHistoryTransaction, execute } from "../history/history.svelte";
 import { ME_POSITION } from "../board/camera.svelte";
 import { measuredHeights, noteBounds, type Bounds } from "../notes/layout.svelte";
 import { registerSelectionInteractionListener, selection } from "../selection/selection.svelte";
@@ -87,6 +87,40 @@ export function smoothLinesForObjects(objectIds: readonly string[]): boolean {
     if (isSmoothEnabledEndpoint(link.to)) ids.add(link.to);
   }
   return smoothLinks(affected, ids, objectIds.length === 1 ? objectName(objectIds[0]) : tp(ids.size, "{count} object", "{count} objects"));
+}
+
+/** Nodes a "Smooth lines" menu click on `noteId` applies to: the whole selection when it contains it. */
+export function smoothLineTargets(noteId: string): string[] {
+  const ids = selection.ids.includes(noteId) ? selection.ids : [noteId];
+  return ids.filter((id) => {
+    const note = board.notes[id];
+    return Boolean(note && note.type !== "beacon" && (note.smoothLines === true || linksOf(id).length > 0));
+  });
+}
+
+/**
+ * Menu "Smooth lines" / "Remove smooth" for the clicked node, or for every selected node when the
+ * click is on the selection: if all of them are smooth, remove; otherwise smooth the rest. One Undo.
+ */
+export function toggleSmoothLinesForSelection(noteId: string): boolean {
+  const targets = smoothLineTargets(noteId);
+  if (targets.length <= 1) return toggleSmoothLinesForNote(targets[0] ?? noteId);
+  const enable = !targets.every((id) => board.notes[id]?.smoothLines === true);
+  const toggled = targets.filter((id) => (board.notes[id]?.smoothLines === true) !== enable);
+  beginHistoryTransaction(enable ? "Smooth lines" : "Remove smooth");
+  try {
+    let changed = false;
+    for (const id of toggled) changed = toggleSmoothLinesForNote(id) || changed;
+    if (!changed) {
+      abortHistoryTransaction();
+      return false;
+    }
+    commitHistoryTransaction();
+    return true;
+  } catch (error) {
+    abortHistoryTransaction();
+    throw error;
+  }
 }
 
 /** Toggle the persistent per-node smoothing state as one reversible history action. */
