@@ -7,6 +7,7 @@ mod client;
 mod compact;
 mod content;
 mod offline;
+mod short_ids;
 mod tools;
 mod youtube;
 

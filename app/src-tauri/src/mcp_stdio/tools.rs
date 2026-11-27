@@ -5,6 +5,7 @@ use super::client::{read_last_project_root, HiveBridge, HiveError};
 use super::compact::compact_text;
 use super::content::{content_to_blocks, offline_content, text_block, youtube_blocks_for, youtube_ids_in, youtube_to_blocks};
 use super::offline::{self, OfflineProject};
+use super::short_ids::IdIndex;
 use super::youtube;
 use serde_json::{json, Map, Value};
 use std::path::PathBuf;
@@ -375,13 +376,20 @@ impl Tools {
         Ok(&self.offline_cache.as_ref().expect("cache filled above").0)
     }
 
-    /// Live call; read tools fall back to the project files when hive is not running.
-    fn read(&mut self, method: &str, params: Value, fallback: impl FnOnce(&OfflineProject) -> Value) -> Value {
-        match self.bridge.call(method, params) {
+    /// Live call; read tools fall back to the project files when hive is not running. Offline, the
+    /// fallback gets the params with short ids expanded and its result names objects by short id,
+    /// exactly as hive's own dispatcher does live.
+    fn read(&mut self, method: &str, params: Value, fallback: impl FnOnce(&OfflineProject, &Value) -> Value) -> Value {
+        match self.bridge.call(method, params.clone()) {
             Ok(value) => ok(value),
             Err(error) if error.is_not_running() => match self.offline() {
                 Ok(project) => {
-                    let mut value = fallback(project);
+                    let ids = IdIndex::new(project.object_ids());
+                    let params = match ids.expand_params(&params) {
+                        Ok(params) => params,
+                        Err(error) => return fail(&error),
+                    };
+                    let mut value = ids.shorten(&fallback(project, &params));
                     if let Some(map) = value.as_object_mut() {
                         map.insert("offline".into(), json!(true));
                     }
@@ -403,27 +411,27 @@ impl Tools {
     pub fn call(&mut self, name: &str, args: Value) -> Option<Value> {
         let args = if args.is_object() { args } else { json!({}) };
         let result = match name {
-            "get_status" => self.read("status", json!({}), OfflineProject::status),
+            "get_status" => self.read("status", json!({}), |project, _| project.status()),
             "describe_node_kinds" => self.write("schema", json!({})),
-            "list_nodes" => self.read("nodes.list", args.clone(), |project| project.list(&args)),
-            "get_nodes" => self.read("nodes.get", args.clone(), |project| project.get(&args)),
-            "search_nodes" => self.read("search", args.clone(), |project| project.search(&args)),
+            "list_nodes" => self.read("nodes.list", args, |project, params| project.list(params)),
+            "get_nodes" => self.read("nodes.get", args, |project, params| project.get(params)),
+            "search_nodes" => self.read("search", args, |project, params| project.search(params)),
             "create_nodes" => self.write("nodes.create", args),
             "update_nodes" => self.write("nodes.update", args),
             "delete_nodes" => self.write("nodes.delete", args),
             "move_nodes" => self.write("nodes.move", args),
             "arrange_nodes" => self.write("nodes.arrange", args),
-            "list_links" => self.read("links.list", args.clone(), |project| project.links(&args)),
+            "list_links" => self.read("links.list", args, |project, params| project.links(params)),
             "create_links" => self.write("links.create", args),
             "update_links" => self.write("links.update", args),
             "delete_links" => self.write("links.delete", args),
-            "list_zones" => self.read("zones.list", args.clone(), OfflineProject::zones),
+            "list_zones" => self.read("zones.list", args, |project, params| project.zones(params)),
             "create_zone" => self.write("zones.create", args),
             "update_zone" => self.write("zones.update", args),
             "delete_zones" => self.write("zones.delete", args),
             "import_file" => self.write("files.import", args),
-            "list_trash" => self.read("trash.list", json!({}), |project| json!({ "entries": project.entries("trash") })),
-            "list_archive" => self.read("archive.list", json!({}), |project| json!({ "entries": project.entries("archive") })),
+            "list_trash" => self.read("trash.list", json!({}), |project, _| json!({ "entries": project.entries("trash") })),
+            "list_archive" => self.read("archive.list", json!({}), |project, _| json!({ "entries": project.entries("archive") })),
             "restore_from_trash" => self.write("trash.restore", args),
             "focus_view" => self.write("view.focus", args),
             "undo_last_change" => self.write("history.undo", args),
@@ -441,7 +449,7 @@ impl Tools {
                 Ok(result) => json!({ "content": content_to_blocks(&result, "Board screenshot") }),
                 Err(error) => fail(&error),
             },
-            "get_board_overview" => self.read("board.overview", json!({}), |project| {
+            "get_board_overview" => self.read("board.overview", json!({}), |project, _| {
                 let mut status = project.status();
                 status["note"] = json!("Overview needs hive running; offline status shown instead.");
                 status
@@ -464,7 +472,10 @@ impl Tools {
             }
             let content = match self.bridge.call("nodes.content", Value::Object(params)) {
                 Ok(content) => content,
-                Err(error) if error.is_not_running() => match self.offline().and_then(|project| offline_content(project, &id, 200_000)) {
+                Err(error) if error.is_not_running() => match self.offline().and_then(|project| {
+                    let full = IdIndex::new(project.object_ids()).resolve(&id)?;
+                    offline_content(project, &full, 200_000)
+                }) {
                     Ok(content) => content,
                     Err(offline_error) => {
                         blocks.push(text_block(format!("Node {id}: {}", offline_error.message)));

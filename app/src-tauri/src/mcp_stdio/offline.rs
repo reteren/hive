@@ -26,7 +26,9 @@ const SPLIT_COLLECTIONS: [(&str, &str); 6] = [
     ("taskLog", "tasklog"),
 ];
 
-const PREVIEW: usize = 160;
+/// Default and largest text preview in list results, as in hive (app/src/mcp/readMethods.ts).
+const PREVIEW: u64 = 80;
+const MAX_PREVIEW: u64 = 300;
 
 pub fn load(root: &Path) -> Result<OfflineProject, HiveError> {
     let index_path = root.join("board.json");
@@ -150,22 +152,36 @@ impl OfflineProject {
     fn link_info(&self, link: &Map<String, Value>) -> Value {
         let from = link.get("from").cloned().unwrap_or(Value::Null);
         let to = link.get("to").cloned().unwrap_or(Value::Null);
-        json!({
-            "id": link.get("id"),
-            "from": from,
-            "to": to,
-            "kind": link.get("kind"),
-            "shape": link.get("shape"),
-            "fromName": self.name_of(&from),
-            "toName": self.name_of(&to),
-        })
+        let mut out = Map::new();
+        out.insert("id".into(), link.get("id").cloned().unwrap_or(Value::Null));
+        out.insert("from".into(), from.clone());
+        out.insert("to".into(), to.clone());
+        // Kind and shape only when they are not the defaults (strong, base), as hive answers.
+        if let Some(kind) = link.get("kind").filter(|kind| kind.as_str() != Some("strong")) {
+            out.insert("kind".into(), kind.clone());
+        }
+        if let Some(shape) = link.get("shape").filter(|shape| shape.as_str() != Some("base")) {
+            out.insert("shape".into(), shape.clone());
+        }
+        out.insert("fromName".into(), self.name_of(&from));
+        out.insert("toName".into(), self.name_of(&to));
+        Value::Object(out)
+    }
+
+    /// Every id an agent can name: nodes, links, zones, Trash and Archive entries.
+    pub fn object_ids(&self) -> Vec<String> {
+        let mut ids: Vec<String> = self.notes.iter().map(id_of).collect();
+        for key in ["links", "zones", "trash", "archive"] {
+            ids.extend(self.collection(key).into_iter().filter_map(|item| item.get("id").and_then(Value::as_str).map(str::to_string)));
+        }
+        ids
     }
 
     fn touches(link: &Map<String, Value>, id: &str) -> bool {
         link.get("from").and_then(Value::as_str) == Some(id) || link.get("to").and_then(Value::as_str) == Some(id)
     }
 
-    fn summary(&self, note: &Map<String, Value>) -> Value {
+    fn summary(&self, note: &Map<String, Value>, preview: usize) -> Value {
         let id = id_of(note);
         let text = self.text_of(note);
         let mut out = Map::new();
@@ -191,9 +207,14 @@ impl OfflineProject {
                 out.insert(key.into(), Value::Array(list.clone()));
             }
         }
-        out.insert("textPreview".into(), json!(collapse_whitespace(&text).chars().take(PREVIEW).collect::<String>()));
+        let text_preview: String = collapse_whitespace(&text).chars().take(preview).collect();
+        if !text_preview.is_empty() {
+            out.insert("textPreview".into(), json!(text_preview));
+        }
         let links = self.collection("links").into_iter().filter(|link| Self::touches(link, &id)).count();
-        out.insert("linkCount".into(), json!(links));
+        if links > 0 {
+            out.insert("linkCount".into(), json!(links));
+        }
         Value::Object(out)
     }
 
@@ -293,9 +314,10 @@ impl OfflineProject {
             }),
         }
         let offset = filter.get("offset").and_then(Value::as_u64).unwrap_or(0) as usize;
-        let limit = filter.get("limit").and_then(Value::as_u64).unwrap_or(100).clamp(1, 500) as usize;
+        let limit = filter.get("limit").and_then(Value::as_u64).unwrap_or(50).clamp(1, 500) as usize;
+        let preview = filter.get("preview").and_then(Value::as_u64).unwrap_or(PREVIEW).min(MAX_PREVIEW) as usize;
         let total = result.len();
-        let nodes: Vec<Value> = result.into_iter().skip(offset).take(limit).map(|note| self.summary(note)).collect();
+        let nodes: Vec<Value> = result.into_iter().skip(offset).take(limit).map(|note| self.summary(note, preview)).collect();
         json!({ "total": total, "nodes": nodes })
     }
 
@@ -385,24 +407,60 @@ impl OfflineProject {
         json!({ "links": links })
     }
 
-    pub fn zones(&self) -> Value {
+    /// Zones as hive lists them: bounding rectangle and node count; member ids and polygon on request.
+    pub fn zones(&self, input: &Value) -> Value {
+        let members_wanted = input.get("members").and_then(Value::as_bool) == Some(true);
+        let geometry_wanted = input.get("geometry").and_then(Value::as_bool) == Some(true);
         let zones: Vec<Value> = self
             .collection("zones")
             .into_iter()
             .map(|zone| {
-                let mut out = zone.clone();
                 let members: Vec<Value> = self
                     .notes
                     .iter()
                     .filter(|note| note.get("zoneId").is_some() && note.get("zoneId") == zone.get("id"))
                     .map(|note| note.get("id").cloned().unwrap_or(Value::Null))
                     .collect();
-                out.insert("nodeIds".into(), Value::Array(members));
+                let mut out = Map::new();
+                for key in ["id", "name", "color"] {
+                    out.insert(key.into(), zone.get(key).cloned().unwrap_or(Value::Null));
+                }
+                out.insert("rect".into(), zone_rect(zone));
+                out.insert("nodeCount".into(), json!(members.len()));
+                if members_wanted {
+                    out.insert("nodeIds".into(), Value::Array(members));
+                }
+                if geometry_wanted {
+                    for key in ["parts", "holes"] {
+                        out.insert(key.into(), zone.get(key).cloned().unwrap_or_else(|| json!([])));
+                    }
+                }
                 Value::Object(out)
             })
             .collect();
         json!({ "zones": zones })
     }
+}
+
+/// Bounding rectangle of a zone's outer contours.
+fn zone_rect(zone: &Map<String, Value>) -> Value {
+    let points: Vec<(f64, f64)> = zone
+        .get("parts")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_array)
+        .flatten()
+        .filter_map(|point| Some((point.get("x")?.as_f64()?, point.get("y")?.as_f64()?)))
+        .collect();
+    if points.is_empty() {
+        return json!({ "x": 0.0, "y": 0.0, "width": 0.0, "height": 0.0 });
+    }
+    let min_x = points.iter().map(|point| point.0).fold(f64::INFINITY, f64::min);
+    let min_y = points.iter().map(|point| point.1).fold(f64::INFINITY, f64::min);
+    let max_x = points.iter().map(|point| point.0).fold(f64::NEG_INFINITY, f64::max);
+    let max_y = points.iter().map(|point| point.1).fold(f64::NEG_INFINITY, f64::max);
+    json!({ "x": min_x, "y": min_y, "width": max_x - min_x, "height": max_y - min_y })
 }
 
 fn truthy(value: &Value) -> bool {
@@ -438,4 +496,78 @@ fn snippet_around(text: &str, needle: &str) -> Option<String> {
     let start = at.saturating_sub(60);
     let end = (at + needle_chars.len() + 60).min(chars.len());
     Some(collapse_whitespace(&chars[start..end].iter().collect::<String>()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn project() -> OfflineProject {
+        let notes: Vec<Map<String, Value>> = (0..60)
+            .map(|index| {
+                let mut note = json!({ "id": format!("n{index}"), "name": format!("Node {index}"), "type": "note", "x": index * 40, "y": 0, "width": 30 });
+                if index < 2 {
+                    note["zoneId"] = json!("z1");
+                }
+                note.as_object().unwrap().clone()
+            })
+            .collect();
+        let index = json!({
+            "notes": notes,
+            "links": [
+                { "id": "l1", "from": "n0", "to": "n1", "kind": "strong", "shape": "base" },
+                { "id": "l2", "from": "n1", "to": "n2", "kind": "weak", "shape": "wave" },
+            ],
+            "zones": [{ "id": "z1", "name": "Zone", "color": "#608ac1", "parts": [[{ "x": 0, "y": 0 }, { "x": 70.5, "y": 0 }, { "x": 70.5, "y": 100 }, { "x": 0, "y": 100 }]], "holes": [] }],
+            "trash": [{ "id": "t1" }],
+            "archive": [],
+        });
+        let mut texts = HashMap::new();
+        texts.insert("n3".to_string(), "The quick brown fox".to_string());
+        texts.insert("n4".to_string(), "x".repeat(200));
+        OfflineProject { root: PathBuf::from("C:/p"), name: "P".into(), index: index.as_object().unwrap().clone(), notes, texts }
+    }
+
+    #[test]
+    fn zones_are_summaries_with_members_and_geometry_on_request() {
+        let project = project();
+        let summary = json!({ "id": "z1", "name": "Zone", "color": "#608ac1", "rect": { "x": 0.0, "y": 0.0, "width": 70.5, "height": 100.0 }, "nodeCount": 2 });
+        assert_eq!(project.zones(&json!({})), json!({ "zones": [summary.clone()] }));
+        let mut with_members = summary.clone();
+        with_members["nodeIds"] = json!(["n0", "n1"]);
+        assert_eq!(project.zones(&json!({ "members": true })), json!({ "zones": [with_members] }));
+        let geometry = project.zones(&json!({ "geometry": true }));
+        assert!(geometry["zones"][0]["parts"].is_array() && geometry["zones"][0]["holes"].is_array());
+    }
+
+    #[test]
+    fn list_pages_50_with_preview_and_link_counts() {
+        let project = project();
+        let listed = project.list(&json!({}));
+        assert_eq!(listed["total"], json!(60));
+        assert_eq!(listed["nodes"].as_array().unwrap().len(), 50);
+        let node = |listed: &Value, id: &str| listed["nodes"].as_array().unwrap().iter().find(|node| node["id"] == json!(id)).cloned().unwrap();
+        assert_eq!(node(&listed, "n4")["textPreview"].as_str().unwrap().chars().count(), 80);
+        assert!(node(&listed, "n10").get("textPreview").is_none());
+        assert!(node(&listed, "n10").get("linkCount").is_none());
+        assert_eq!(node(&listed, "n1")["linkCount"], json!(2));
+        assert_eq!(node(&project.list(&json!({ "preview": 5 })), "n3")["textPreview"], json!("The q"));
+        assert!(node(&project.list(&json!({ "preview": 0 })), "n3").get("textPreview").is_none());
+    }
+
+    #[test]
+    fn links_leave_out_default_kind_and_shape() {
+        let links = project().links(&json!({}));
+        assert_eq!(links["links"][0], json!({ "id": "l1", "from": "n0", "to": "n1", "fromName": "Node 0", "toName": "Node 1" }));
+        assert_eq!(links["links"][1]["kind"], json!("weak"));
+        assert_eq!(links["links"][1]["shape"], json!("wave"));
+    }
+
+    #[test]
+    fn object_ids_cover_every_collection() {
+        let ids = project().object_ids();
+        for id in ["n0", "n59", "l1", "z1", "t1"] {
+            assert!(ids.contains(&id.to_string()), "{id}");
+        }
+    }
 }
