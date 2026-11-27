@@ -27,7 +27,7 @@ fn with_description(mut schema: Value, description: &str) -> Value {
 }
 
 fn node_id() -> Value {
-    json!({ "type": "string", "minLength": 1, "description": "Node id (from list_nodes / search_nodes / create_nodes)." })
+    json!({ "type": "string", "minLength": 1, "description": "Node id as hive returns it (short or full), from list_nodes / search_nodes / create_nodes." })
 }
 
 fn ids(max: u64) -> Value {

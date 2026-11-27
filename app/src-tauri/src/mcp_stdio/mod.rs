@@ -17,6 +17,7 @@ use std::path::PathBuf;
 
 const INSTRUCTIONS: &str = "hive is a spatial board for notes (an Obsidian-like app): nodes (notes, tasks, beacons, lists, tierlists, media…) placed on an infinite board, connected by links and grouped by zones.
 - Call get_status first; describe_node_kinds before creating anything but plain notes.
+- Ids are short (8 characters, a few longer to stay unique); pass them back exactly as given — full ids work too.
 - Coordinates are board units; x/y is a node's top-left; y grows downward. Omit x/y to let hive place nodes without overlaps.
 - Every write tool call is ONE undo step in hive (the user can press Ctrl+Z), labelled \"MCP: …\".
 - Find nodes with search_nodes or list_nodes; read full text with get_nodes; edit text precisely with update_nodes textEdit.

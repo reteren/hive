@@ -60,10 +60,12 @@ registerMcpMethod({ name: "nodes.create", mutating: true, label: (p) => "create 
 
 ## Data shapes returned to the AI
 
-`NodeSummary`: `{ id, type, name, x, y, width, height /* effective, measured when auto */, color?, task?: {done}, importance?, purposes?, moods?, zoneId?, textPreview /* first 160 chars, plain */, linkCount }`
+**Ids and compactness (2.2.5).** Every id in a result is its short form: the shortest prefix, at least 8 characters, unique among the project's nodes, links, zones, Trash and Archive entries (`me` and ids of 8 characters or fewer stay as they are). Params accept the short form, any unique prefix of 6+ characters (case-insensitive) or the full id under the keys `id`, `ids`, `nodeId`, `zoneId`, `linkedTo`, `node`, `from`, `to` — never inside `data` and never a value equal to a `ref` of the same call; an ambiguous prefix is `invalid_params` listing the matches. Both are done once, in `src/mcp/dispatcher.ts` (`src/mcp/shortIds.ts`); the offline fallback mirrors them (`mcp_stdio/short_ids.rs`). `hive.exe mcp` sends each result once, as one compact JSON text block without `structuredContent`, with fractions rounded to 2 decimals and nested `null`/`[]`/`{}` fields left out (`mcp_stdio/compact.rs`).
+
+`NodeSummary`: `{ id, type, name, x, y, width, height /* effective, measured when auto */, color?, task?: {done}, importance?, purposes?, moods?, zoneId?, textPreview? /* plain, `preview` chars (default 80), left out when empty */, linkCount? /* left out when 0 */ }`
 `NodeFull`: the stored Note JSON (all fields, as in board.json, plus `text`) + `height` effective + `links: LinkInfo[]` + `zone?: {id,name}`.
-`LinkInfo`: `{ id, from, to, kind: "strong"|"weak", shape, fromName, toName }`
-`ZoneInfo`: zone JSON + `nodeIds` (members).
+`LinkInfo`: `{ id, from, to, kind?: "weak" /* left out when "strong" */, shape? /* left out when "base" */, fromName, toName }`
+`ZoneInfo`: `{ id, name, color, rect: {x,y,width,height} /* bounding box */, nodeCount, nodeIds? /* with members:true */, parts?, holes? /* with geometry:true */ }`.
 Coordinates are board units (u); x,y = top-left; y grows downward. Node ids are permanent strings; names are unique per project (the app's uniqueName rule) — when a requested name is taken, the call fails with `name_conflict` unless `"onNameConflict":"rename"` (default "rename" for create, "error" for rename).
 
 ## Methods
@@ -71,11 +73,11 @@ Coordinates are board units (u); x,y = top-left; y grows downward. Node ids are 
 ### Read (mutating:false) — task B
 - `status` → `{ appVersion, protocol, project:{name, root}, counts:{nodes, links, zones, trash, archive}, camera:{x,y,zoom}, viewport:{x,y,width,height} /* board units */, selection: string[] }`
 - `schema` → `{ kinds: [{ type, label, description, defaultWidth, hasText, dataFields: {field: "short description / allowed values"} }], enums: { importance, purposes, moods, linkKinds, linkShapes }, markdown: "notes on supported Markdown + inline images + links-in-text syntax" }` — generated from the real constants (NoteKind, IMPORTANCE_LEVELS, PURPOSE_KINDS, MOOD_KINDS, R5_BASE_WIDTHS, link shapes) so it never drifts.
-- `nodes.list` `{ types?, zoneId?, task?: "open"|"done"|"any"|"none", query?, bbox?:{x,y,width,height}, linkedTo?: id, sort?: "position"|"created"|"name", limit? (100, max 500), offset? }` → `{ total, nodes: NodeSummary[] }`
+- `nodes.list` `{ types?, zoneId?, task?: "open"|"done"|"any"|"none", query?, bbox?:{x,y,width,height}, linkedTo?: id, sort?: "position"|"created"|"name", limit? (50, max 500), offset?, preview? (80, 0–300) }` → `{ total, nodes: NodeSummary[] }`
 - `nodes.get` `{ ids?: string[], names?: string[] }` (≤ 50) → `{ nodes: NodeFull[], missing: string[] }` (names matched exactly, then case-insensitively)
 - `search` `{ query, types?, limit? (20, max 100) }` → `{ results: [{ id, name, type, matchedIn: "name"|"kind"|"text", snippet }] }` — reuse src/search/matching.ts (same ranking as the Search panel).
 - `links.list` `{ nodeId? }` → `{ links: LinkInfo[] }`
-- `zones.list` → `{ zones: ZoneInfo[] }`
+- `zones.list` `{ members?: boolean, geometry?: boolean }` → `{ zones: ZoneInfo[] }`
 - `trash.list` / `archive.list` → `{ entries: [{ id, name, type, deletedAt }] }`
 
 ### Write — nodes (mutating:true) — task C
@@ -84,9 +86,9 @@ Coordinates are board units (u); x,y = top-left; y grows downward. Node ids are 
   Placement: explicit x/y wins; else `near`; else `layout` from `origin` (default: centre of the current viewport) — never overlapping existing nodes (reuse creationObstacleForNote / randomFreeNoteCenter / notePositionAt) and not each other. "tree" lays out by the `links` given (parents left → children right).
   Build each node with the app's own constructor (`makeNote` in notes/noteCommands.ts — export it) so defaults equal the Q menu, then apply the spec and validate the result with the board.json parser (project/index.ts parseNote) — an invalid result → `invalid_params` naming the field.
   Kind specifics (time restart, beacon size, module nodes, media without a file → invalid_params "use files.import") follow the existing creation code paths.
-- `nodes.update` `{ updates: [{ id, name?, text?, textEdit?: { find: string, replace: string, all?: boolean } | { append: string } | { prepend: string }, x?, y?, width?, height? (null = auto), color? (null clears), accentColor?, glow? (null clears), headerHidden?, task?: boolean | {done:boolean} | null, importance? (null clears), purposes?, moods?, zoneId?, data? }] }` → `{ nodes: NodeSummary[] }`. `textEdit.find` must match exactly once unless `all` → otherwise `invalid_params` with the match count. Renames keep the .md file in sync through the normal rename path.
+- `nodes.update` `{ updates: [{ id, name?, text?, textEdit?: { find: string, replace: string, all?: boolean } | { append: string } | { prepend: string }, x?, y?, width?, height? (null = auto), color? (null clears), accentColor?, glow? (null clears), headerHidden?, task?: boolean | {done:boolean} | null, importance? (null clears), purposes?, moods?, zoneId?, data? }] }` → `{ updated: [{ id, name, x, y, width, height }] }`. `textEdit.find` must match exactly once unless `all` → otherwise `invalid_params` with the match count. Renames keep the .md file in sync through the normal rename path.
 - `nodes.delete` `{ ids, mode?: "trash" | "archive" }` (default trash, exactly like Delete in the UI incl. its links) → `{ deleted: string[] }`
-- `nodes.arrange` `{ ids, layout: "row"|"column"|"grid"|"tree"|"circle", origin?, gap? }` and `nodes.move` `{ moves: [{ id, x, y }] }` → `{ nodes: NodeSummary[] }`
+- `nodes.arrange` `{ ids, layout: "row"|"column"|"grid"|"tree"|"circle", origin?, gap? }` → `{ nodes: [{ id, x, y }] }`; `nodes.move` `{ moves: [{ id, x, y }] }` → `{ moved: number }`
 
 ### Write — links, zones, files, view, history, trash — task D
 - `links.create` `{ links: [{ from, to, kind?: "strong"|"weak", shape? }] }` → `{ links: LinkInfo[] }` (respect canLink/linkRefusalReason → `invalid_params` with the reason)
