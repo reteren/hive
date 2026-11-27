@@ -7,7 +7,7 @@ import { zones } from "../model/zones.svelte";
 import { trash } from "../model/retention.svelte";
 import { execute, history, undo } from "../history/history.svelte";
 import { McpError, registerMcpMethod, asParams } from "./registry";
-import { zoneSummary, type ZoneSummary } from "./read/serialize";
+import { linkStyle, zoneSummary, type ZoneSummary } from "./read/serialize";
 import { changeLinkShape, createBoardLink, unlink } from "../links/operations";
 import { effectiveLinkKind, linkRefusalReason } from "../links/rules";
 import { createZone, deleteZone, recolorZone, renameZone, ZONE_COLORS } from "../zones/commands";
@@ -30,7 +30,7 @@ import { flushPendingSave } from "../project/persistence.svelte";
 import { previewRestore, restoreTrashEntry } from "../trash/trashActions.svelte";
 
 type RecordValue = Record<string, unknown>;
-type LinkInfo = Pick<Link, "id" | "from" | "to" | "kind" | "shape"> & { fromName: string; toName: string };
+type LinkInfo = Pick<Link, "id" | "from" | "to"> & Partial<Pick<Link, "kind" | "shape">> & { fromName: string; toName: string };
 
 const LINK_KINDS = ["strong", "weak"] as const;
 const LINE_SHAPES: readonly LineShape[] = ["base", "orthogonal", "zigzag", "wave"];
@@ -570,8 +570,7 @@ function linkInfo(link: Link): LinkInfo {
     id: link.id,
     from: link.from,
     to: link.to,
-    kind: link.kind,
-    shape: link.shape,
+    ...linkStyle(link),
     fromName: link.from === ME_OBJECT_ID ? (hasMeBeacon() ? "ME" : "Missing ME") : board.notes[link.from]?.name ?? "",
     toName: board.notes[link.to]?.name ?? (link.to === ME_OBJECT_ID ? (hasMeBeacon() ? "ME" : "Missing ME") : ""),
   };

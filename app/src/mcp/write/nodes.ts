@@ -458,7 +458,7 @@ function updateNodes(raw: unknown) {
       }
     }
   }
-  return { nodes: prepared.map(({ id }) => summarize(board.notes[id]!)) };
+  return { updated: prepared.map(({ id }) => rectAck(board.notes[id]!)) };
 }
 
 function deleteNodes(raw: unknown) {
@@ -490,7 +490,7 @@ function moveNodes(raw: unknown) {
     return { id, x: requireFinite(move.x, `moves[${index}].x`), y: requireFinite(move.y, `moves[${index}].y`) };
   });
   applyPositions(planned, "Move nodes");
-  return { nodes: planned.map(({ id }) => summarize(board.notes[id]!)) };
+  return { moved: planned.length };
 }
 
 async function arrangeNodes(raw: unknown) {
@@ -523,7 +523,7 @@ async function arrangeNodes(raw: unknown) {
     return { id: note.id, ...position };
   });
   applyPositions(moves, "Arrange nodes");
-  return { nodes: moves.map(({ id }) => summarize(board.notes[id]!)) };
+  return { nodes: moves.map(({ id }) => ({ id, x: board.notes[id]!.x, y: board.notes[id]!.y })) };
 }
 
 function applyPositions(moves: readonly { id: string; x: number; y: number }[], label: string): void {
@@ -654,25 +654,9 @@ function sameValue(first: unknown, second: unknown): boolean {
   catch { return false; }
 }
 
-function summarize(note: Note) {
-  const plain = note.text.replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[#>*_`~|-]/g, " ").replace(/\s+/g, " ").trim();
-  return {
-    id: note.id,
-    type: note.type,
-    name: note.name,
-    x: note.x,
-    y: note.y,
-    width: note.width,
-    height: effectiveHeight(note),
-    ...(note.color ? { color: note.color } : {}),
-    ...(note.task ? { task: { done: note.task.done } } : {}),
-    ...(note.importance ? { importance: note.importance } : {}),
-    ...(note.purposes?.length ? { purposes: [...note.purposes] } : {}),
-    ...(note.moods?.length ? { moods: [...note.moods] } : {}),
-    ...(note.zoneId ? { zoneId: note.zoneId } : {}),
-    textPreview: plain.slice(0, 160),
-    linkCount: Object.values(links.byId).filter((link) => link.from === note.id || link.to === note.id).length,
-  };
+/** What an agent needs back after changing a node: its final name and rectangle. */
+function rectAck(note: Note) {
+  return { id: note.id, name: note.name, x: note.x, y: note.y, width: note.width, height: effectiveHeight(note) };
 }
 
 function effectiveHeight(note: Note): number {

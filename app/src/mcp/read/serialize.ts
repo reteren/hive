@@ -13,8 +13,10 @@ export interface LinkInfo {
   id: string;
   from: string;
   to: string;
-  kind: Link["kind"];
-  shape: Link["shape"];
+  /** Left out when "strong" (the default). */
+  kind?: Link["kind"];
+  /** Left out when "base" (the default). */
+  shape?: Link["shape"];
   fromName: string;
   toName: string;
 }
@@ -67,14 +69,21 @@ export function linkInfo(link: Link): LinkInfo {
     id: link.id,
     from: link.from,
     to: link.to,
-    kind: link.kind,
-    shape: link.shape,
+    ...linkStyle(link),
     fromName: objectName(link.from),
     toName: objectName(link.to),
   };
 }
 
 /** A node in a list: position, size and marks; a plain-text preview and link count when non-empty. */
+/** Kind and shape of a link, each only when it is not the default (strong, base). */
+export function linkStyle(link: Pick<Link, "kind" | "shape">): Pick<LinkInfo, "kind" | "shape"> {
+  return {
+    ...(link.kind === "strong" ? {} : { kind: link.kind }),
+    ...(link.shape === "base" ? {} : { shape: link.shape }),
+  };
+}
+
 export function nodeSummary(note: Note, previewLength = 80): NodeSummary {
   const bounds = noteBounds(note);
   const zoneId = zoneOf(note.id);

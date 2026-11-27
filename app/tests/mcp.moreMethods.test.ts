@@ -113,6 +113,9 @@ describe("MCP links, zones, file import, trash, view, history, and save methods"
     await method("links.delete")({ ids: [id] });
     expect(links.byId[id]).toBeUndefined();
     expect(() => method("links.create")({ links: [{ from: "a", to: "a" }] })).toThrow(expect.objectContaining({ code: "invalid_params" }));
+    const plain = await method("links.create")({ links: [{ from: "b", to: "a" }] }) as { links: Array<Record<string, unknown>> };
+    expect(plain.links[0]).not.toHaveProperty("kind");
+    expect(plain.links[0]).not.toHaveProperty("shape");
   });
 
   it("records a complete mutating method as one MCP undo entry", async () => {

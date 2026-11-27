@@ -209,3 +209,25 @@ describe("MCP node write methods", () => {
     expect(archive.entries.map((entry) => entry.note.id)).toContain("n2");
   });
 });
+
+describe("MCP write acks token diet", () => {
+  it("answers update with name and rectangle only", () => {
+    replaceBoard([note("n1", "Before", { text: "alpha", x: 10, y: 20 })]);
+    const result = call("nodes.update", { updates: [{ id: "n1", name: "After" }] }) as { updated: Array<Record<string, unknown>> };
+    expect(result.updated).toHaveLength(1);
+    expect(Object.keys(result.updated[0]!).sort()).toEqual(["height", "id", "name", "width", "x", "y"]);
+    expect(result.updated[0]).toMatchObject({ id: "n1", name: "After", x: 10, y: 20 });
+  });
+
+  it("answers move with a count", () => {
+    replaceBoard([note("n1", "One"), note("n2", "Two", { x: 150 })]);
+    expect(call("nodes.move", { moves: [{ id: "n1", x: 400, y: 400 }, { id: "n2", x: 450, y: 400 }] })).toEqual({ moved: 2 });
+  });
+
+  it("answers arrange with positions", async () => {
+    replaceBoard([note("n1", "One"), note("n2", "Two", { x: 150 })]);
+    const result = await callAsync("nodes.arrange", { ids: ["n1", "n2"], layout: "row", origin: { x: 600, y: 600 }, gap: 10 }) as { nodes: Array<Record<string, unknown>> };
+    expect(result.nodes.map((node) => Object.keys(node).sort())).toEqual([["id", "x", "y"], ["id", "x", "y"]]);
+    expect(result.nodes[0]).toMatchObject({ id: "n1", x: board.notes.n1!.x, y: board.notes.n1!.y });
+  });
+});
