@@ -182,11 +182,13 @@ describe("MCP node write methods", () => {
       },
     }) as { created: Array<{ id: string; ref: string; x: number; y: number; height: number }> };
 
+    // dispatchMcpRequest answers with short ids (prefixes of the board ids).
+    const noteFor = (id: string) => Object.values(board.notes).find((note) => note.id.startsWith(id));
     const children = response.created.filter(({ ref }) => ref.startsWith("child"))
-      .map(({ id }) => board.notes[id]!)
+      .map(({ id }) => noteFor(id)!)
       .sort((first, second) => first.y - second.y);
     for (const returned of response.created) {
-      expect(board.notes[returned.id]).toMatchObject({ x: returned.x, y: returned.y });
+      expect(noteFor(returned.id)).toMatchObject({ x: returned.x, y: returned.y });
     }
     expect(response.created.find(({ ref }) => ref === "root")?.height).toBe(7.2);
     expect(response.created.filter(({ ref }) => ref.startsWith("child")).map(({ height }) => height)).toEqual([11.4, 11.4, 11.4, 11.4]);

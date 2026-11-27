@@ -3,7 +3,9 @@ import {
   beginHistoryTransaction,
   commitHistoryTransaction,
 } from "../history/history.svelte";
-import { getMcpMethod, mcpMethodNames, McpError, asParams } from "./registry";
+import { getMcpMethod, mcpMethodNames, McpError, asParams, type McpMethod } from "./registry";
+import { currentObjectIds } from "./idUniverse";
+import { createIdIndex, expandParamIds, shortenIds } from "./shortIds";
 
 export interface McpRequest {
   requestId: string;
@@ -17,6 +19,11 @@ export interface McpErrorPayload {
   data?: unknown;
 }
 
+/**
+ * Run one bridge request. Params may name objects by short id (see shortIds.ts); the result and
+ * error data name them by short id, computed over the objects that existed before or after the call
+ * so ids of just-deleted objects shrink too.
+ */
 export async function dispatchMcpRequest(request: Pick<McpRequest, "method" | "params">): Promise<unknown> {
   const method = getMcpMethod(request.method);
   if (!method) {
@@ -25,7 +32,18 @@ export async function dispatchMcpRequest(request: Pick<McpRequest, "method" | "p
     throw new McpError("unsupported", `Method '${request.method}' is not supported.${suffix}`, names);
   }
 
-  const params = asParams(request.params);
+  const idsBefore = currentObjectIds();
+  const shorten = <T>(value: T): T => shortenIds(value, createIdIndex([...idsBefore, ...currentObjectIds()]));
+  try {
+    const params = expandParamIds(asParams(request.params), createIdIndex(idsBefore));
+    return shorten(await runMethod(method, params));
+  } catch (error) {
+    if (error instanceof McpError && error.data !== undefined) throw new McpError(error.code, error.message, shorten(error.data));
+    throw error;
+  }
+}
+
+async function runMethod(method: McpMethod, params: Record<string, unknown>): Promise<unknown> {
   if (!method.mutating) return await method.run(params);
 
   const label = method.label?.(params) || method.name;
