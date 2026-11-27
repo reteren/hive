@@ -4,6 +4,7 @@
 //! tools show the last project read-only. Nothing but protocol messages may go to stdout.
 
 mod client;
+mod compact;
 mod content;
 mod offline;
 mod tools;

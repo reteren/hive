@@ -1,6 +1,7 @@
 //! Turning hive's node content into MCP content blocks, plus the read-only file fallback.
 
 use super::client::HiveError;
+use super::compact::compact_text;
 use super::offline::OfflineProject;
 use super::youtube::{self, YouTubeInfo};
 use base64::Engine;
@@ -24,7 +25,7 @@ fn is_image_payload(value: &Value) -> bool {
 pub fn content_to_blocks(content: &Value, label: &str) -> Vec<Value> {
     let mut images: Vec<(String, Value)> = Vec::new();
     let stripped = strip_images(content, "", label, &mut images);
-    let mut blocks = vec![text_block(format!("{label}\n{}", pretty(&stripped)))];
+    let mut blocks = vec![text_block(format!("{label}\n{}", compact_text(&stripped)))];
     for (index, (caption, payload)) in images.iter().enumerate() {
         blocks.push(text_block(format!("Image #{}: {caption}", index + 1)));
         blocks.push(image_block(
@@ -67,10 +68,6 @@ fn strip_images(value: &Value, path: &str, label: &str, images: &mut Vec<(String
         ),
         other => other.clone(),
     }
-}
-
-pub fn pretty(value: &Value) -> String {
-    serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
 }
 
 /// YouTube video ids mentioned anywhere in a node's content.
@@ -122,7 +119,7 @@ fn urls_in(text: &str) -> Vec<String> {
 }
 
 pub fn youtube_to_blocks(info: &YouTubeInfo, with_thumbnail: bool) -> Vec<Value> {
-    let mut blocks = vec![text_block(format!("YouTube {}\n{}", info.video_id, pretty(&info.to_json())))];
+    let mut blocks = vec![text_block(format!("YouTube {}\n{}", info.video_id, compact_text(&info.to_json())))];
     if with_thumbnail {
         if let Some(thumbnail) = &info.thumbnail {
             let title = info.title.as_ref().map(|title| format!(" \"{title}\"")).unwrap_or_default();

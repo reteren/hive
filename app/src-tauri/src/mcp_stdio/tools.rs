@@ -2,7 +2,8 @@
 //! files while hive is closed; write tools need the running app (every call = one Undo step there).
 
 use super::client::{read_last_project_root, HiveBridge, HiveError};
-use super::content::{content_to_blocks, offline_content, pretty, text_block, youtube_blocks_for, youtube_ids_in, youtube_to_blocks};
+use super::compact::compact_text;
+use super::content::{content_to_blocks, offline_content, text_block, youtube_blocks_for, youtube_ids_in, youtube_to_blocks};
 use super::offline::{self, OfflineProject};
 use super::youtube;
 use serde_json::{json, Map, Value};
@@ -336,13 +337,14 @@ pub struct Tools {
     offline_cache: Option<(OfflineProject, Instant)>,
 }
 
+/// One text block of compact JSON: no `structuredContent` copy (the tools declare no outputSchema,
+/// so clients read `content`), which halves what the agent receives.
 fn ok(value: Value) -> Value {
-    let structured = if value.is_object() { value.clone() } else { json!({ "value": value }) };
-    json!({ "content": [text_block(pretty(&value))], "structuredContent": structured })
+    json!({ "content": [text_block(compact_text(&value))] })
 }
 
 fn fail(error: &HiveError) -> Value {
-    let data = error.data.as_ref().map(|data| format!("\n{}", pretty(data))).unwrap_or_default();
+    let data = error.data.as_ref().map(|data| format!("\n{}", compact_text(data))).unwrap_or_default();
     json!({ "content": [text_block(format!("[{}] {}{data}", error.code, error.message))], "isError": true })
 }
 
