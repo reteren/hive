@@ -1,5 +1,6 @@
 import { mount } from "svelte";
 import "../styles/theme.css";
+import "../ui/browserDefaultsGuard";
 import QuickInput from "./QuickInput.svelte";
 import { bootLanguage } from "../i18n/i18n.svelte";
 import { followCachedTheme } from "../theme/appearance.svelte";

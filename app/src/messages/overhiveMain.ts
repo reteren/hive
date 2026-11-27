@@ -1,5 +1,6 @@
 import { mount } from "svelte";
 import Overhive from "./Overhive.svelte";
+import "../ui/browserDefaultsGuard";
 import { bootLanguage } from "../i18n/i18n.svelte";
 import { followCachedTheme } from "../theme/appearance.svelte";
 followCachedTheme();
