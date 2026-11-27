@@ -33,8 +33,8 @@ export interface NodeSummary {
   purposes?: NonNullable<Note["purposes"]>;
   moods?: NonNullable<Note["moods"]>;
   zoneId?: string;
-  textPreview: string;
-  linkCount: number;
+  textPreview?: string;
+  linkCount?: number;
 }
 
 export interface ZoneSummary {
@@ -74,9 +74,12 @@ export function linkInfo(link: Link): LinkInfo {
   };
 }
 
-export function nodeSummary(note: Note): NodeSummary {
+/** A node in a list: position, size and marks; a plain-text preview and link count when non-empty. */
+export function nodeSummary(note: Note, previewLength = 80): NodeSummary {
   const bounds = noteBounds(note);
   const zoneId = zoneOf(note.id);
+  const textPreview = plainTextPreview(note.text, previewLength);
+  const linkCount = Object.values(links.byId).filter((link) => link.from === note.id || link.to === note.id).length;
   return {
     id: note.id,
     type: note.type,
@@ -91,8 +94,8 @@ export function nodeSummary(note: Note): NodeSummary {
     ...(note.purposes?.length ? { purposes: [...note.purposes] } : {}),
     ...(note.moods?.length ? { moods: [...note.moods] } : {}),
     ...(zoneId ? { zoneId } : {}),
-    textPreview: plainTextPreview(note.text),
-    linkCount: Object.values(links.byId).filter((link) => link.from === note.id || link.to === note.id).length,
+    ...(textPreview ? { textPreview } : {}),
+    ...(linkCount > 0 ? { linkCount } : {}),
   };
 }
 

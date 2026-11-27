@@ -20,7 +20,9 @@ import { NOTE_KINDS, buildMcpSchema } from "./read/schema";
 import { displayPath, fullNode, jsonClone, linkInfo, nodeSummary, zoneSummary, type LinkInfo } from "./read/serialize";
 
 const MCP_PROTOCOL_VERSION = 1;
-const DEFAULT_NODE_LIMIT = 100;
+const DEFAULT_NODE_LIMIT = 50;
+const DEFAULT_PREVIEW = 80;
+const MAX_PREVIEW = 300;
 const MAX_NODE_LIMIT = 500;
 const DEFAULT_SEARCH_LIMIT = 20;
 const MAX_SEARCH_LIMIT = 100;
@@ -202,6 +204,7 @@ registerMcpMethod({
     }
     const limit = parseInteger(params.limit, "limit", DEFAULT_NODE_LIMIT, MAX_NODE_LIMIT);
     const offset = parseInteger(params.offset, "offset", 0, Number.MAX_SAFE_INTEGER);
+    const preview = parseInteger(params.preview, "preview", DEFAULT_PREVIEW, MAX_PREVIEW);
     const zoneId = params.zoneId;
     if (zoneId !== undefined && typeof zoneId !== "string") {
       throw new McpError("invalid_params", "zoneId must be a zone id string.");
@@ -241,7 +244,7 @@ registerMcpMethod({
     const sorted = sortNotes(result, sort);
     return {
       total: sorted.length,
-      nodes: sorted.slice(offset, offset + limit).map(nodeSummary),
+      nodes: sorted.slice(offset, offset + limit).map((note) => nodeSummary(note, preview)),
     };
   },
 });

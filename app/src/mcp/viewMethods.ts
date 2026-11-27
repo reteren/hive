@@ -96,7 +96,7 @@ registerMcpMethod({
       .sort((left, right) => (right.createdAt ?? Number.NEGATIVE_INFINITY) - (left.createdAt ?? Number.NEGATIVE_INFINITY) ||
         (orderById.get(left.id) ?? 0) - (orderById.get(right.id) ?? 0))
       .slice(0, 10)
-      .map(nodeSummary);
+      .map((note) => nodeSummary(note));
     const largestTexts = [...notes]
       .filter((note) => note.text.length > 0)
       .sort((left, right) => right.text.length - left.text.length ||

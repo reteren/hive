@@ -252,3 +252,28 @@ describe("MCP read methods", () => {
     }
   });
 });
+
+describe("MCP nodes.list token diet", () => {
+  type Listed = { total: number; nodes: Array<{ id: string; textPreview?: string; linkCount?: number }> };
+
+  it("pages 50 nodes by default and leaves out zero link counts", () => {
+    replaceLinks([]);
+    replaceBoard(Array.from({ length: 60 }, (_, index) => note(`p${index}`, "note", `Page ${index}`, { x: index * 40, y: 500 })));
+    const result = call<Listed>("nodes.list");
+    expect(result.total).toBe(60);
+    expect(result.nodes).toHaveLength(50);
+    expect(result.nodes[0]).not.toHaveProperty("linkCount");
+  });
+
+  it("sizes the text preview with preview", () => {
+    expect(call<Listed>("nodes.list", { preview: 0 }).nodes.find((node) => node.id === "n2")).not.toHaveProperty("textPreview");
+    expect(call<Listed>("nodes.list", { preview: 5 }).nodes.find((node) => node.id === "n2")?.textPreview).toBe("The q");
+    updateNote("n2", { text: "x".repeat(200) });
+    expect(call<Listed>("nodes.list").nodes.find((node) => node.id === "n2")?.textPreview).toHaveLength(80);
+    expect(() => call("nodes.list", { preview: 301 })).toThrow(McpError);
+  });
+
+  it("filters a zone by the same membership zones.list counts", () => {
+    expect(call<Listed>("nodes.list", { zoneId: "z1" }).nodes.map((node) => node.id)).toEqual(["n1"]);
+  });
+});

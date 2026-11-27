@@ -215,7 +215,7 @@ pub fn definitions() -> Vec<Value> {
             "Every node kind hive supports (note, beacon, list, tierlist, goal, calendar, …) with a description, default width, whether it has a Markdown body, and its kind-specific `data` fields; plus the allowed values for importance, purposes, moods, link kinds and shapes, and the Markdown syntax hive renders. Call before creating anything other than plain notes. Needs hive running.",
             empty.clone(), READ_ONLY),
         tool("list_nodes", "List nodes",
-            "List nodes with filters (kind, zone, task state, text query, rectangle, linked to a node) and paging. Returns short summaries with a 160-character text preview; use get_nodes for full text. Coordinates are board units, x/y = top-left, y grows downward.",
+            "List nodes with filters (kind, zone, task state, text query, rectangle, linked to a node) and paging. Returns short summaries with an 80-character text preview (preview sets the length); use get_nodes for full text. Coordinates are board units, x/y = top-left, y grows downward.",
             obj(json!({
                 "types": with_description(string_array(), "Only these kinds."),
                 "zoneId": { "type": "string" },
@@ -224,7 +224,8 @@ pub fn definitions() -> Vec<Value> {
                 "bbox": with_description(rect(), "Only nodes intersecting this board rectangle."),
                 "linkedTo": { "type": "string", "description": "Only nodes linked to this node id." },
                 "sort": { "type": "string", "enum": ["position", "created", "name"] },
-                "limit": { "type": "integer", "minimum": 1, "maximum": 500, "description": "Default 100." },
+                "limit": { "type": "integer", "minimum": 1, "maximum": 500, "description": "Default 50." },
+                "preview": { "type": "integer", "minimum": 0, "maximum": 300, "description": "Characters of text preview, default 80; 0 = none." },
                 "offset": { "type": "integer", "minimum": 0 },
             }), &[]), READ_ONLY),
         tool("get_nodes", "Get nodes",
