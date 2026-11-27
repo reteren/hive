@@ -62,7 +62,7 @@ registerMcpMethod({
     const zoneList = zones.order.flatMap((id) => {
       const zone = zones.byId[id];
       if (!zone) return [];
-      return [{ id: zone.id, name: zone.name, bbox: zoneBounds(zone), nodeIds: zoneMembersById.get(id) ?? [] }];
+      return [{ id: zone.id, name: zone.name, bbox: zoneBounds(zone), nodeCount: zoneMembersById.get(id)?.length ?? 0 }];
     });
     const mePresent = hasMeBeacon();
     const meBounds = { x: -3.6, y: -3.6, width: 7.2, height: 7.2 };

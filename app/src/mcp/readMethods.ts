@@ -10,7 +10,6 @@ import { projectNoteFiles } from "../project/index";
 import { savedNoteFiles } from "../project/persistence.svelte";
 import { selection } from "../selection/selection.svelte";
 import { searchNotes, type SearchNote } from "../search/matching";
-import { zoneMembers } from "../zones/membership.svelte";
 import type { Note, NoteKind } from "../model/note";
 import { ME_OBJECT_ID } from "../model/link";
 import { hasMeBeacon } from "../beacons/beaconState.svelte";
@@ -18,7 +17,7 @@ import { noteBounds } from "../notes/layout.svelte";
 import { trashEntrySummary } from "../trash/trash";
 import { asParams, McpError, registerMcpMethod } from "./registry";
 import { NOTE_KINDS, buildMcpSchema } from "./read/schema";
-import { displayPath, fullNode, jsonClone, linkInfo, nodeSummary, type LinkInfo } from "./read/serialize";
+import { displayPath, fullNode, jsonClone, linkInfo, nodeSummary, zoneSummary, type LinkInfo } from "./read/serialize";
 
 const MCP_PROTOCOL_VERSION = 1;
 const DEFAULT_NODE_LIMIT = 100;
@@ -76,6 +75,12 @@ function parseBBox(value: unknown): BBox | undefined {
     throw new McpError("invalid_params", "bbox must contain finite x, y, width, and height values; width and height cannot be negative.");
   }
   return { x: value.x, y: value.y, width: value.width, height: value.height };
+}
+
+function parseFlag(value: unknown, field: string): boolean {
+  if (value === undefined) return false;
+  if (typeof value !== "boolean") throw new McpError("invalid_params", `${field} must be true or false.`);
+  return value;
 }
 
 function parseInteger(value: unknown, field: string, fallback: number, maximum: number): number {
@@ -332,12 +337,13 @@ registerMcpMethod({
 registerMcpMethod({
   name: "zones.list",
   mutating: false,
-  run: () => {
+  run: (rawParams) => {
     requireProject();
+    const params = asParams(rawParams);
+    const options = { members: parseFlag(params.members, "members"), geometry: parseFlag(params.geometry, "geometry") };
     const result = zones.order.flatMap((id) => {
       const zone = zones.byId[id];
-      if (!zone) return [];
-      return [{ ...jsonClone(zone), nodeIds: zoneMembers(id) }];
+      return zone ? [zoneSummary(zone, options)] : [];
     });
     return { zones: result };
   },

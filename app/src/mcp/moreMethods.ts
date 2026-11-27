@@ -7,13 +7,13 @@ import { zones } from "../model/zones.svelte";
 import { trash } from "../model/retention.svelte";
 import { execute, history, undo } from "../history/history.svelte";
 import { McpError, registerMcpMethod, asParams } from "./registry";
+import { zoneSummary, type ZoneSummary } from "./read/serialize";
 import { changeLinkShape, createBoardLink, unlink } from "../links/operations";
 import { effectiveLinkKind, linkRefusalReason } from "../links/rules";
 import { createZone, deleteZone, recolorZone, renameZone, ZONE_COLORS } from "../zones/commands";
 import { MIN_ZONE_SIZE, rectangleOverlapsZones } from "../zones/geometry";
 import { addZone, updateZone } from "../model/zones.svelte";
 import { rectContour, type Zone, type ZoneBounds } from "../model/zone";
-import { zoneMembers } from "../zones/membership.svelte";
 import { noteBounds } from "../notes/layout.svelte";
 import { notePositionAt, randomFreeNoteCenter } from "../notes/creationPosition";
 import { uniqueName } from "../notes/naming";
@@ -204,7 +204,7 @@ function deleteLinks(params: RecordValue): { deleted: string[] } {
   return { deleted: ids };
 }
 
-function createMcpZone(params: RecordValue): ZoneInfo {
+function createMcpZone(params: RecordValue): ZoneSummary {
   assertKeys(params, ["name", "color", "rect", "around"], "zones.create");
   if ((params.rect === undefined) === (params.around === undefined)) invalid("rect/around", "provide exactly one of rect or around");
   const requestedName = params.name === undefined ? undefined : nonEmptyString(params.name, "name");
@@ -225,10 +225,10 @@ function createMcpZone(params: RecordValue): ZoneInfo {
   if (color !== undefined) recolorZone(created.id, color);
   const zone = zones.byId[created.id];
   if (!zone) throw new McpError("internal", "Hive created a zone but it could not be read back.");
-  return zoneInfo(zone);
+  return zoneSummary(zone);
 }
 
-function updateMcpZone(params: RecordValue): ZoneInfo {
+function updateMcpZone(params: RecordValue): ZoneSummary {
   assertKeys(params, ["id", "name", "color", "rect"], "zones.update");
   const id = string(params.id, "id");
   const zone = zones.byId[id];
@@ -251,7 +251,7 @@ function updateMcpZone(params: RecordValue): ZoneInfo {
   if (name !== undefined && name !== zone.name) renameZone(id, name);
   if (color !== undefined && color.toLowerCase() !== zone.color.toLowerCase()) recolorZone(id, color);
   if (rect) setZoneRect(zone, rect);
-  return zoneInfo(zone);
+  return zoneSummary(zone);
 }
 
 function deleteZones(params: RecordValue): { deleted: string[] } {
@@ -273,12 +273,6 @@ function setZoneRect(zone: Zone, bounds: ZoneBounds): void {
     do: () => updateZone(zone.id, { parts: nextParts, holes: [] }),
     undo: () => updateZone(zone.id, { parts: before.parts, holes: before.holes }),
   });
-}
-
-interface ZoneInfo extends Zone { nodeIds: string[] }
-
-function zoneInfo(zone: Zone): ZoneInfo {
-  return { ...copyZone(zone), nodeIds: zoneMembers(zone.id) };
 }
 
 function copyZone(zone: Zone): Zone {

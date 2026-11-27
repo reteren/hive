@@ -127,9 +127,11 @@ describe("MCP links, zones, file import, trash, view, history, and save methods"
   });
 
   it("creates zones around notes, updates their shape and color, and deletes them to trash", async () => {
-    const created = await method("zones.create")({ name: "Research", color: "#123456", around: { ids: ["a", "b"], padding: 5 } }) as { id: string; name: string; color: string; nodeIds: string[] };
-    expect(created).toMatchObject({ name: "Research", color: "#123456" });
-    expect(created.nodeIds).toEqual(expect.arrayContaining(["a", "b"]));
+    const created = await method("zones.create")({ name: "Research", color: "#123456", around: { ids: ["a", "b"], padding: 5 } }) as { id: string; name: string; color: string; nodeCount: number };
+    expect(created).toMatchObject({ name: "Research", color: "#123456", nodeCount: 3 }); // a, b and the ME beacon
+    expect(created).not.toHaveProperty("nodeIds");
+    expect(created).not.toHaveProperty("parts");
+    expect(await method("zones.update")({ id: created.id, name: "Evidence" })).toMatchObject({ name: "Evidence", nodeCount: 3 });
     await method("zones.update")({ id: created.id, name: "Evidence", color: "#abcdef", rect: { x: -10, y: -10, width: 110, height: 50 } });
     expect(zones.byId[created.id]).toMatchObject({ name: "Evidence", color: "#abcdef" });
     await method("zones.delete")({ ids: [created.id] });

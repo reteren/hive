@@ -67,7 +67,7 @@ describe("MCP board overview", () => {
       project: { name: string; root: string };
       counts: { nodes: number; links: number; zones: number; trash: number; archive: number };
       bounds: { x: number; y: number; width: number; height: number };
-      zones: Array<{ id: string; name: string; bbox: { x: number; y: number; width: number; height: number }; nodeIds: string[] }>;
+      zones: Array<{ id: string; name: string; bbox: { x: number; y: number; width: number; height: number }; nodeCount: number }>;
       clusters: Array<{ nodeIds: string[]; label: string }>;
       kinds: Record<string, number>;
       media: Record<string, number>;
@@ -79,7 +79,7 @@ describe("MCP board overview", () => {
       project: { name: "Sample", root: "C:/projects/sample" },
       counts: { nodes: 3, links: 3, zones: 1, trash: 0, archive: 0 },
       bounds: { x: -20, y: -20, width: 130, height: 60 },
-      zones: [{ id: "z1", name: "Zone", bbox: { x: -20, y: -20, width: 100, height: 60 } }],
+      zones: [{ id: "z1", name: "Zone", bbox: { x: -20, y: -20, width: 100, height: 60 }, nodeCount: 3 }], // a, b and the ME beacon
       kinds: { note: 2, image: 1 },
       media: { images: 1, gifs: 1 },
       tasks: { open: 1, done: 1 },
@@ -87,7 +87,7 @@ describe("MCP board overview", () => {
       largestTexts: [{ id: "a", chars: 40 }, { id: "c", chars: 20 }, { id: "b", chars: 4 }],
     });
     expect(result.clusters).toEqual([{ bbox: { x: 0, y: 0, width: 110, height: 10 }, nodeIds: ["a", "b", "c"], label: "Alpha" }]);
-    expect(result.zones[0].nodeIds).toContain("a");
+    expect(result.zones[0]).not.toHaveProperty("nodeIds");
     expect(board.order).toEqual(orderBefore);
     expect(selection.ids).toEqual(selectionBefore);
     expect(camera).toEqual(cameraBefore);

@@ -197,8 +197,13 @@ describe("MCP read methods", () => {
     const linksResult = call<{ links: Array<{ id: string; fromName: string; toName: string; kind: string; shape: string }> }>("links.list", { nodeId: "n3" });
     expect(linksResult.links).toEqual([{ id: "l2", from: "me", to: "n3", kind: "weak", shape: "orthogonal", fromName: "ME", toName: "Gamma" }]);
 
-    const zonesResult = call<{ zones: Array<{ id: string; name: string; nodeIds: string[] }> }>("zones.list");
-    expect(zonesResult.zones).toEqual([{ ...zoneState.byId.z1, nodeIds: ["n1", "me"] }]);
+    const summary = { id: "z1", name: "Research", color: "#608ac1", rect: { x: 0, y: 0, width: 70, height: 100 }, nodeCount: 2 };
+    expect(call<{ zones: unknown[] }>("zones.list").zones).toEqual([summary]);
+    expect(call<{ zones: unknown[] }>("zones.list", { members: true }).zones).toEqual([{ ...summary, nodeIds: ["n1", "me"] }]);
+    expect(call<{ zones: unknown[] }>("zones.list", { geometry: true }).zones).toEqual([
+      { ...summary, parts: zoneState.byId.z1!.parts, holes: [] },
+    ]);
+    expect(() => call("zones.list", { members: "yes" })).toThrow(McpError);
 
     const trashEntry: TrashEntry = { id: "t1", deletedAt: 200, notes: [note("gone", "note", "Old note")], zones: [], links: [] };
     const archiveEntry: ArchiveEntry = { id: "a1", archivedAt: 100, note: note("archived", "pro", "Archived"), links: [] };

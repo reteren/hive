@@ -276,7 +276,12 @@ pub fn definitions() -> Vec<Value> {
             ADDITIVE),
         tool("delete_links", "Delete links", "Remove links by id (nodes stay). One undoable step.",
             obj(json!({ "ids": { "type": "array", "items": { "type": "string" }, "minItems": 1, "maxItems": 500 } }), &["ids"]), DESTRUCTIVE),
-        tool("list_zones", "List zones", "Zones (coloured areas that group nodes) with their rectangles and member node ids.", empty.clone(), READ_ONLY),
+        tool("list_zones", "List zones",
+            "Zones (coloured areas that group nodes): id, name, colour, bounding rectangle and node count. Member ids: list_nodes {zoneId} or members:true; polygon points: geometry:true.",
+            obj(json!({
+                "members": { "type": "boolean", "description": "Add nodeIds (default false)." },
+                "geometry": { "type": "boolean", "description": "Add the polygon parts and holes (default false)." },
+            }), &[]), READ_ONLY),
         tool("create_zone", "Create zone", "Create a zone either from an explicit rectangle or `around` a set of nodes with padding. One undoable step.",
             obj(json!({
                 "name": { "type": "string" },
@@ -411,7 +416,7 @@ impl Tools {
             "create_links" => self.write("links.create", args),
             "update_links" => self.write("links.update", args),
             "delete_links" => self.write("links.delete", args),
-            "list_zones" => self.read("zones.list", json!({}), OfflineProject::zones),
+            "list_zones" => self.read("zones.list", args.clone(), OfflineProject::zones),
             "create_zone" => self.write("zones.create", args),
             "update_zone" => self.write("zones.update", args),
             "delete_zones" => self.write("zones.delete", args),

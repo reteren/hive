@@ -3,7 +3,8 @@ import type { Note } from "../../model/note";
 import { board } from "../../model/board.svelte";
 import { links } from "../../model/links.svelte";
 import { zones } from "../../model/zones.svelte";
-import { zoneOf } from "../../zones/membership.svelte";
+import { zoneBounds, type Zone, type ZoneBounds } from "../../model/zone";
+import { zoneMembers, zoneOf } from "../../zones/membership.svelte";
 import { noteBounds } from "../../notes/layout.svelte";
 import { inlineImageTextForFit } from "../../editor/markdownSyntax";
 import { hasMeBeacon } from "../../beacons/beaconState.svelte";
@@ -34,6 +35,31 @@ export interface NodeSummary {
   zoneId?: string;
   textPreview: string;
   linkCount: number;
+}
+
+export interface ZoneSummary {
+  id: string;
+  name: string;
+  color: string;
+  rect: ZoneBounds;
+  nodeCount: number;
+  nodeIds?: string[];
+  parts?: Zone["parts"];
+  holes?: Zone["holes"];
+}
+
+/** A zone as agents see it: its bounding rectangle and member count; ids and polygon on request. */
+export function zoneSummary(zone: Zone, options: { members?: boolean; geometry?: boolean } = {}): ZoneSummary {
+  const members = zoneMembers(zone.id);
+  return {
+    id: zone.id,
+    name: zone.name,
+    color: zone.color,
+    rect: zoneBounds(zone),
+    nodeCount: members.length,
+    ...(options.members ? { nodeIds: members } : {}),
+    ...(options.geometry ? { parts: jsonClone(zone.parts), holes: jsonClone(zone.holes) } : {}),
+  };
 }
 
 export function linkInfo(link: Link): LinkInfo {
